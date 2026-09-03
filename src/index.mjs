@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.104.0-2026-09-03-d-green-outline-on-what-you-just-drew";
+const BUILD = "aura-core-v9.105.0-2026-09-03-e-a-re-walk-button-on-every-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6476,7 +6476,7 @@ async function processCommand(line, env, isOp) {
             ).join("")).join("")
           ).join("") + "</div>").join("")) +
         "<div id=bar><div class=t><span><b id=cnt>0</b> tagged</span>" +
-        "<span><button id=go>go</button> <button id=clr>clear</button></span></div>" +
+        "<span><button id=go>go</button> <button id=rw>re-walk</button> <button id=clr>clear</button></span></div>" +
         "<pre id=out>R redraws a tile \u00b7 D or \u00d7 drops it so it comes back</pre></div>" +
         "<script>" + WALK_TAG_JS.replace("__KEY__", tatSlug(catW))
           .replace("__CAT__", String(catW).replace(/[\\\"]/g, ""))
@@ -55036,6 +55036,21 @@ const WALK_TAG_JS = [
   "if(d){T={};localStorage.setItem(K,'{}');paint()}",
   "e.target.textContent=d?'copied':'select + Ctrl-C';",
   "setTimeout(function(){e.target.textContent='go'},1400);return}",
+  // ══ RE-WALK: THE PAGE IS A SNAPSHOT AND CANNOT REBUILD ITSELF (2026-09-03) ═══════════
+  // A stored page never notices a deploy, so every fix to the page builder is invisible on all
+  // 56 categories until each one is walked again by hand. This puts that one command on the
+  // page itself: no tags needed, no sweep needed - press it, paste it, and the page you are
+  // looking at is rebuilt with whatever the worker does today.
+  "if(e.target.id==='rw'){var rc='RUN \"WALK __CAT____TIGHT__\"';",
+  "document.getElementById('out').textContent=rc;",
+  "var rd=0;try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(rc);rd=1}}catch(x){}",
+  "if(!rd){try{var rt=document.createElement('textarea');rt.value=rc;rt.style.position='fixed';",
+  "rt.style.opacity='0';document.body.appendChild(rt);rt.select();rd=document.execCommand('copy');",
+  "document.body.removeChild(rt)}catch(x){}}",
+  "var rr=document.createRange();rr.selectNodeContents(document.getElementById('out'));",
+  "var rs=window.getSelection();rs.removeAllRanges();rs.addRange(rr);",
+  "e.target.textContent=rd?'copied':'select + Ctrl-C';",
+  "setTimeout(function(){e.target.textContent='re-walk'},1400);return}",
   "if(e.target.id==='clr'){T={};localStorage.setItem(K,'{}');paint();return}",
   "var b=e.target.closest('figure b');if(!b)return;",
   "var f=b.closest('figure[data-a]'),a=f.dataset.a,w=b.classList.contains('r')?'r':'d';",

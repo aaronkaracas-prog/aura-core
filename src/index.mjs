@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.116.0-2026-09-03-p-the-walk-page-evolves-a-tile";
+const BUILD = "aura-core-v9.117.0-2026-09-03-q-answer-design-where-it-lands";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61254,6 +61254,31 @@ export default {
     // deliberately low-value to forge - it can only add noise to a cost ledger, not read or spend -
     // but it is worth naming rather than pretending the path is private. If the meter ever becomes
     // billing-grade for tenants, this needs the operator check that the rest of the surface has.
+    // ══ auras.guide/_design LANDS HERE, NOT ON THE DOORWAY (2026-09-03) ═════════════════════
+    // MEASURED: the walk page's E chip POSTed to /_design and got back plain text starting
+    // "aura-core", not JSON. aura-host serves 780 page: keys on auras.guide and owns /_design on
+    // mytattoo.world - but on THIS hostname the path arrives here, so the doorway's handler was
+    // never reached.
+    // Three ways out were on the table: a Cloudflare route change, CORS on aura-host (which has
+    // none today and whose own config says not to widen it casually), or moving operator pages to
+    // the consumer domain. None are needed. `design` is a method on PublicEntry IN THIS FILE - the
+    // logic the customer page uses is already here. Answering the path where it actually lands is
+    // the same door, not a second one.
+    if (url.pathname === "/_design" && request.method === "POST") {
+      let bodyD = {};
+      try { bodyD = await request.json(); } catch {}
+      let outD = { ok: false, error: "design unavailable" };
+      try {
+        // The fetch handler is `(request, env)` - there is no `ctx` here. WorkerEntrypoint only
+        // needs the state slot to exist; `design` uses `this.env` and nothing else.
+        const entry = new PublicEntry(null, env);
+        outD = await entry.design(String(bodyD.action || ""), bodyD);
+      } catch (e) {
+        outD = { ok: false, error: "DESIGN_FAILED", detail: String((e && e.message) || e).slice(0, 300) };
+      }
+      return new Response(JSON.stringify(outD || { ok: false }), {
+        headers: { "content-type": "application/json", "cache-control": "no-store" } });
+    }
     if (url.pathname === "/egress/record" && request.method === "POST") {
       try {
         const rec = await request.json();

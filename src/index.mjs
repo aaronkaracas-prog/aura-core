@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.122.0-2026-09-03-v-one-declaration-per-block";
+const BUILD = "aura-core-v9.123.0-2026-09-03-w-chips-below-the-artwork";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6474,7 +6474,8 @@ async function processCommand(line, env, isOp) {
       const cell = (t, a, src, name, sub2, fresh) =>
         "<figure" + (fresh ? " class=fresh" : "") + " data-t=" + t + " data-a=\"" + eW(a) +
         "\"><a href=\"" + eW(src) + "\" target=_blank rel=noopener>" +
-        "<img loading=lazy src='" + eW(src) + "'></a><b class=r>R</b><b class=e>E</b><b class=d>D</b>" +
+        "<img loading=lazy src='" + eW(src) + "'></a>" +
+        "<div class=chips><b class=r>R</b><b class=e>E</b><b class=d>D</b></div>" +
         "<figcaption>" + eW(name) + "<br><i>" + eW(sub2) + "</i></figcaption></figure>";
       const htmlW =
         '<!doctype html><html lang=en><head><meta charset=utf-8>' +
@@ -6505,12 +6506,19 @@ async function processCommand(line, env, isOp) {
         "figure.gap{border:1px dashed #ef4444;min-height:78px}" +
         "figcaption{padding:3px 4px;font-size:9px;line-height:1.25;color:#c7cede}" +
         "figcaption i{color:#5a6478;font-style:normal}" +
-        // The chips shrink with the tile but stay tappable - they are the review loop, and a
-        // chip you cannot hit on a phone is a page you cannot review on one.
-        "figure b{position:absolute;top:3px;width:18px;height:18px;border-radius:5px;" +
-          "background:rgba(11,13,18,.72);color:#8b93a7;font:600 10px/18px system-ui;" +
-          "text-align:center;cursor:pointer;z-index:2}" +
-        "figure b.r{right:24px}figure b.d{right:3px}" +
+        // ══ THE CHIPS SAT ON THE ARTWORK (2026-09-03) ═══════════════════════════════════
+        // Absolutely positioned over the top-right of the image, which is exactly where the
+        // hand-lettering in the doodle category lives - so the three controls covered the words
+        // you need to read to judge the tile. A review control that hides the thing under review
+        // is worse than no control.
+        // Now a row under the picture, above the caption. Still tappable on a phone, nothing
+        // overlapping the art, and the same three verbs in the same order on every tile.
+        "figure .chips{display:flex;gap:3px;padding:3px 4px 0}" +
+        "figure b{width:20px;height:18px;border-radius:5px;" +
+          "background:#1a1f2e;color:#8b93a7;font:600 10px/18px system-ui;" +
+          "text-align:center;cursor:pointer;flex:0 0 auto;user-select:none}" +
+        "figure b:hover{background:#242c40;color:#e9edf5}" +
+        "figure b.e{background:#1d4ed8;color:#fff}" +
         "figure b.on{background:#7aa2ff;color:#0b0d12}figure b.d.on{background:#ef4444;color:#fff}" +
         "#bar{position:fixed;left:0;right:0;bottom:0;background:#0b0d12;border-top:1px solid #1a1f2e;padding:10px 16px}" +
         "#bar .t{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}" +
@@ -6533,7 +6541,7 @@ async function processCommand(line, env, isOp) {
           // nothing is lost, and the eye can cross the whole category in one screen.
           ? "<div class=g>" + secs.map((s) => s.items.map((i) =>
               (i.url ? cell("redo", i.name, i.url, i.name, s.kind, i.fresh)
-                     : "<figure class=gap data-e=\"1\" data-t=redo data-a=\"" + eW(i.name) + "\"><b class=r>R</b><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
+                     : "<figure class=gap data-e=\"1\" data-t=redo data-a=\"" + eW(i.name) + "\"><div class=chips><b class=r>R</b></div><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
               i.sets.map((x) => x.imgs.map((m) =>
                 cell("shot", x.key + " " + m.opt, "https://auras.guide/image/" + m.img,
                      i.name, x.step + " " + m.opt)).join("")).join("")
@@ -6547,7 +6555,7 @@ async function processCommand(line, env, isOp) {
             : "") + "</span></h2><div class=g>" +
           s.items.map((i) =>
             (i.url ? cell("redo", i.name, i.url, i.name, "tile", i.fresh)
-                   : "<figure class=gap data-e=\"1\" data-t=redo data-a=\"" + eW(i.name) + "\"><b class=r>R</b><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
+                   : "<figure class=gap data-e=\"1\" data-t=redo data-a=\"" + eW(i.name) + "\"><div class=chips><b class=r>R</b></div><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
             i.sets.map((x) => x.imgs.map((m) =>
               // ══ THE PATH IS WHY TWO PICTURES SHARE A LABEL ═══════════════════════════════
               // Owl showed "expression sleepy" twice and it looked like a duplicate. It is two

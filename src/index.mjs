@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.108.0-2026-09-03-h-tap-a-tile-opens-a-new-tab-fixed";
+const BUILD = "aura-core-v9.109.0-2026-09-03-i-walk-all-rebuilds-every-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6177,6 +6177,50 @@ async function processCommand(line, env, isOp) {
       // Grouped stays the default - it is the right view for reviewing one step at a time.
       const tightW = /\s--tight\b/i.test(" " + String(rest || ""));
       const askW = String(rest || "").replace(/\s*--tight\b/ig, "").trim();
+      // ══ EVERY PAGE IS A SNAPSHOT, SO EVERY PAGE NEEDS REBUILDING (2026-09-03) ═══════════
+      // A stored page never notices a deploy. Fifty-six categories meant fifty-six pastes every
+      // time the page builder changed - and the INDEX is worse: it reads `walk:count:<cat>`,
+      // which only exists once a category has been walked, so it says "not built" for anything
+      // untouched. The numbers on the index are therefore a map of what has been walked, not of
+      // what has been drawn, which is why most of it reads "not built" while the tiles exist.
+      // `WALK ALL` walks the lot. Resumable on a time budget like PROFILE and FACES: it banks
+      // the slug of every category it finishes so a second paste picks up where the first
+      // stopped, and it rebuilds the index at the end of each pass so the numbers are true as
+      // far as it has got.
+      if (/^all$/i.test(askW)) {
+        const tightA = /\s--tight\b/i.test(" " + String(rest || ""));
+        const treeA = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+        const catsA = Object.keys((treeA && treeA.subjects) || {});
+        if (!catsA.length) return { cmd: "WALK", payload: { ok: false, error: "NO_TREE" } };
+        let doneA = [];
+        try { doneA = JSON.parse(await env.AURA_KV.get("walk:all:done") || "[]"); } catch {}
+        const todoA = catsA.filter((c) => !doneA.includes(tatSlug(c)));
+        const startA = Date.now(), budgetA = 80000;
+        const builtA = [], failA = [];
+        for (const c of todoA) {
+          if (Date.now() - startA > budgetA) break;
+          try {
+            const rA = await processCommand("WALK " + c + (tightA ? " --tight" : ""), env, true);
+            if (rA && rA.payload && rA.payload.ok) { builtA.push(c); doneA.push(tatSlug(c)); }
+            else failA.push(c + ": " + String((rA && rA.payload && rA.payload.error) || "?"));
+          } catch (e) { failA.push(c + ": " + String(e && e.message || e).slice(0, 60)); }
+        }
+        const remainA = catsA.filter((c) => !doneA.includes(tatSlug(c)));
+        // The list is the resume cursor. Cleared the moment the sweep completes, so the next
+        // `WALK ALL` after a deploy starts from the top rather than believing it is finished.
+        await env.AURA_KV.put("walk:all:done", JSON.stringify(remainA.length ? doneA : []))
+          .catch(() => {});
+        // Rebuild the index with whatever counts now exist.
+        try { await processCommand("WALK", env, true); } catch {}
+        return { cmd: "WALK", payload: { ok: true, mode: "all",
+          categories: catsA.length, built_this_pass: builtA.length, built: builtA,
+          ...(failA.length ? { failed: failA } : {}),
+          remaining: remainA.length,
+          index: "https://auras.guide/walk",
+          next: remainA.length
+            ? 'RUN "WALK ALL' + (tightA ? " --tight" : "") + '"   -- ' + remainA.length + " left, paste again"
+            : "every category rebuilt - the index numbers are now true" } };
+      }
       const eW = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (x) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[x]));
       // The tree stores kind names, not slugs, so match the way every other reader does.

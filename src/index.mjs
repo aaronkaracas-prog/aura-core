@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.107.0-2026-09-03-g-tap-a-tile-opens-a-new-tab";
+const BUILD = "aura-core-v9.108.0-2026-09-03-h-tap-a-tile-opens-a-new-tab-fixed";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6401,7 +6401,6 @@ async function processCommand(line, env, isOp) {
         "<figure" + (fresh ? " class=fresh" : "") + " data-t=" + t + " data-a=\"" + eW(a) +
         "\"><a href=\"" + eW(src) + "\" target=_blank rel=noopener>" +
         "<img loading=lazy src='" + eW(src) + "'></a><b class=r>R</b><b class=d>D</b>" +
-        "<figcaption>" + eW(name) + "<br><i>" + eW(sub2) + "</i></figcaption></figure>";
         "<figcaption>" + eW(name) + "<br><i>" + eW(sub2) + "</i></figcaption></figure>";
       const htmlW =
         '<!doctype html><html lang=en><head><meta charset=utf-8>' +

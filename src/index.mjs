@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.102.0-2026-09-03-b-a-gap-card-has-no-d-chip";
+const BUILD = "aura-core-v9.103.0-2026-09-03-c-say-which-dial-styled-the-tile";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5682,6 +5682,11 @@ async function processCommand(line, env, isOp) {
           const bldR = await tatBuildFor(env, nm);
           const askR = (bldR || nm) + (ctxR ? ", " + ctxR : "") + (rndR || await tatRenderDefault(env));
           one.drew = askR;
+          // Where the style actually came from. Reading the `asked` line tells you WHAT was sent;
+          // this tells you WHY, which is the half that was missing every time a tile came back in
+          // the wrong register and the dials all read correct.
+          const infoR = await tatOwnerInfo(env, nm);
+          one.style_from = tatStyleNote(infoR, !!ctxR);
           const r = await showIt(askR,
             env, { model, raw: true, source: "redo", subject: nm,
                    seed: Math.floor(Math.random() * 900000) + 1000 });
@@ -5706,6 +5711,9 @@ async function processCommand(line, env, isOp) {
         // What it was actually asked for. When a redraw comes back wrong again, this is the first
         // thing to read - and it is the difference between a bad model and a bad prompt.
         asked: out.map((o) => o.name + "  ::  " + (o.drew || "-")),
+        // One line per tile: which dial styled it, and a shout when it fell back to the category
+        // because the kind is empty. `asked` says WHAT was sent; this says WHY it looks like that.
+        style_from: out.map((o) => o.name + "  ::  " + (o.style_from || "-")),
         note: "Drawn with a fresh seed, so it is a new picture and not the cached one. " +
               "Re-run REVIEW to see them in place." } };
     }
@@ -6459,6 +6467,14 @@ async function processCommand(line, env, isOp) {
           .replace("__CAT__", String(catW).replace(/[\\\"]/g, ""))
           .replace("__TIGHT__", tightW ? " --tight" : "") + "</script>" +
         "</body></html>";
+      // ══ AN EMPTY KIND IS A GUARANTEED WRONG-STYLE TILE (2026-09-03) ═══════════════════════
+      // A kind with no leaves is its own leaf, so `tatOwnerOf` finds it in `subjects` and returns
+      // the CATEGORY - and the tile draws in the category register instead of the kind's own.
+      // Silent every time. Naming them here means the walk page reply says so before a single
+      // image is paid for.
+      const emptyKindsW = (secs || []).filter((s2) => !(s2.items || []).length ||
+        ((s2.items || []).length === 1 && tatSlug(s2.items[0].name) === tatSlug(s2.kind)))
+        .map((s2) => s2.kind);
       await env.AURA_KV.put("page:auras.guide/walk/" + tatSlug(catW), htmlW);
       // ══ THE INDEX CANNOT COUNT, SO THE CATEGORY COUNTS FOR IT ═════════════════════════════
       // The index has never shown pictures because counting them there is 1,831 reads in one
@@ -6478,6 +6494,10 @@ async function processCommand(line, env, isOp) {
         things: secs.reduce((n, s) => n + s.items.length, 0),
         no_tile: missing.length, no_wall: noWall.length,
         missing: missing.slice(0, 40),
+        // Kinds with no leaves. These WILL draw in the category register, not their own -
+        // give them leaves or drop them, but do not expect their dials to fire.
+        ...(emptyKindsW.length ? { empty_kinds: emptyKindsW,
+          empty_kinds_note: "a kind with no leaves is its own leaf, so it resolves to the CATEGORY and draws in context:" + tatSlug(catW) } : {}),
         view: tightW ? "tight - one grid, kind on each tile" : "grouped by kind",
         note: "Nothing was drawn. Red dashed = no tile. Amber = tile but no variation wall." +
               (tightW ? "" : '  Add --tight for one grid that fits a screen.') } };
@@ -55081,6 +55101,52 @@ async function tatContextFor(env, leaf) {
   if (!owner) return null;
   const c = await env.AURA_KV.get("context:" + tatSlug(owner)).catch(() => null);
   return c && String(c).trim() ? String(c).trim() : null;
+}
+
+// ══ A SILENT FALLBACK DRAWS A PLAUSIBLE PICTURE IN THE WRONG STYLE (2026-09-03) ═══════════
+// MEASURED: `REDO Zodiac Couple Hearts` came back as a plain white outline in a register
+// nobody asked for. Both of that kind's dials were correct in KV and neither fired.
+// `tatOwnerOf` runs four passes: a leaf under a kind returns THE KIND, and a kind under a
+// category returns THE CATEGORY. `Zodiac Couple Hearts` is a kind with NO LEAVES, so pass 1
+// missed and pass 2 hit - the owner came back as the category, and the draw used
+// `context:zodiac-astrology` instead of `context:zodiac-couple-hearts`.
+// Nothing there is broken; the resolution is doing exactly what it is written to do. The fault
+// is that it says nothing. `tatContextFor` returns a string, so no caller can tell whether it
+// came from the leaf's own kind or from a category-wide default two levels up - and the only
+// symptom is a picture that looks slightly off.
+// This is NOT a zodiac problem. Every empty kind in the catalogue resolves this way, and so
+// does every near-miss caught by the singular pass (`cherry-blossoms` matching the flower
+// `Cherry Blossom` across two categories, which cost an afternoon).
+// So: report the level. Same move as surfacing Cloudflare's real error instead of `3043` -
+// the behaviour is unchanged, the reason becomes readable.
+async function tatOwnerInfo(env, leaf) {
+  try {
+    const t = await env.AURA_KV.get("card:tree", "json");
+    if (!t) return { owner: null, level: "none" };
+    const n = tatSlug(leaf);
+    for (const [kind, leaves] of Object.entries(t.specific || {}))
+      if ((leaves || []).some((x) => tatSlug(x) === n)) return { owner: kind, level: "kind" };
+    for (const [cat, kinds] of Object.entries(t.subjects || {}))
+      if ((kinds || []).some((x) => tatSlug(x) === n)) return { owner: cat, level: "category" };
+    const ns = tatSingular(n).toLowerCase();
+    const hit = (x) => tatSingular(tatSlug(x)).toLowerCase() === ns;
+    for (const [kind, leaves] of Object.entries(t.specific || {}))
+      if ((leaves || []).some(hit)) return { owner: kind, level: "kind (singular match)" };
+    for (const [cat, kinds] of Object.entries(t.subjects || {}))
+      if ((kinds || []).some(hit)) return { owner: cat, level: "category (singular match)" };
+  } catch {}
+  return { owner: null, level: "none" };
+}
+
+// One line a human can read: where the style came from, and whether that is what they meant.
+function tatStyleNote(info, hadCtx) {
+  if (!info.owner) return "NO OWNER - this leaf is not in the tree, so it drew with the DEFAULT render";
+  if (!hadCtx) return "owner " + info.owner + " (" + info.level + ") has no context: dial - drew on the default";
+  if (info.level.startsWith("category")) {
+    return "FELL BACK TO THE CATEGORY: styled by context:" + tatSlug(info.owner) +
+      " because no kind claims this leaf. An empty kind does this - give it leaves, or expect the category register.";
+  }
+  return "styled by context:" + tatSlug(info.owner);
 }
 
 async function tatParentOf(env, leaf) {

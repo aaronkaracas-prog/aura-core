@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.113.0-2026-09-03-m-a-bare-review-names-the-categories";
+const BUILD = "aura-core-v9.114.0-2026-09-03-n-twenty-writes-the-shape-walk-reads";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7718,6 +7718,7 @@ async function processCommand(line, env, isOp) {
       const ctxT = await tatContextFor(env, what);
       const ownT = await tatOwnerOf(env, what);
       const rndT = ownT ? await tatRenderFor(env, ownT) : null;
+      const shotAccT = {};
       for (const t of treatments) {
         const one = { treatment: t.id, say: t.say || null, image: null, why: null, cost_usd: null };
         try {
@@ -7725,17 +7726,34 @@ async function processCommand(line, env, isOp) {
             (rndT || await tatRenderDefault(env)),
             env, { model, raw: true, source: "twenty", subject: what + " " + t.id });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
-                       spend += (r.cost_usd || 0); }
+                       spend += (r.cost_usd || 0);
+            // ══ ONE RECORD PER STEP, NOT ONE PER OPTION (ported 2026-09-03) ═══════════════
+            // The identical bug POSES had, fixed there on 2026-09-01 and never carried across.
+            // This wrote a SEPARATE record per treatment, keyed `shot:v1:<leaf>:treatment:<option>`
+            // with a flat `{id,url}` - putting the OPTION where the PATH belongs. `tatShoot` and
+            // the walk both expect ONE record per (leaf, step, path) with every option inside
+            // `imgs: { <option>: { img } }`, so a TWENTY sheet read back as N sets containing
+            // nothing: the pictures were on disk and invisible, exactly as with lotus.
+            // The rule from that fix, which is what actually matters: there is ONE writer of a
+            // shape. Accumulate here, write once below, and merge with whatever is already there
+            // so a second run with different options never deletes the first.
+            shotAccT[t.id] = { img: r.id, cached: !!r.cached };
+          }
           else one.why = String(r?.error || "did not draw").slice(0, 120);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
-        if (one.image) {
-          // Treatments are a wall too - same shape, different step, so the walk can offer them
-          // wherever a design has no poses.
-          await env.AURA_KV.put("shot:v1:" + tatSlug(what) + ":treatment:" + tatSlug(t.id),
-            JSON.stringify({ id: one.id || null, url: one.image, say: t.say || null,
-                             at: new Date().toISOString(), by: "TWENTY", model })).catch(() => {});
-        }
         made.push(one);
+      }
+
+      // Merged, never replaced - same as POSES.
+      if (Object.keys(shotAccT).length) {
+        const shotKeyT = "shot:v1:" + tatSlug(what) + ":treatment:bare";
+        let prevT = null;
+        try { prevT = await env.AURA_KV.get(shotKeyT, "json"); } catch {}
+        const recT = (prevT && typeof prevT === "object") ? prevT
+          : { leaf: what, step: "treatment", ctx: "bare" };
+        recT.imgs = Object.assign({}, recT.imgs || {}, shotAccT);
+        recT.at = new Date().toISOString(); recT.by = cmd;
+        try { await env.AURA_KV.put(shotKeyT, JSON.stringify(recT)); } catch {}
       }
       const distinct = new Set(made.filter((m) => m.image).map((m) => m.image)).size;
 

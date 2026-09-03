@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.100.0-2026-09-02-c-no-model-string-above-the-dials";
+const BUILD = "aura-core-v9.101.0-2026-09-03-a-the-walk-page-buttons-actually-work";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6107,27 +6107,48 @@ async function processCommand(line, env, isOp) {
       const spD = argD.indexOf(" ");
       const keyD = (spD < 0 ? argD : argD.slice(0, spD)).trim();
       const optD = spD < 0 ? "" : argD.slice(spD + 1).trim();
-      if (!/^(shot|face|wall):/.test(keyD)) return { cmd: "DROP", payload: { ok: false,
-        error: "NOT_A_PICTURE_KEY", asked: keyD,
-        why: "DROP only touches shot:, face: and wall: records, never the tree." } };
-      if (!optD) {
-        const had = await env.AURA_KV.get(keyD).catch(() => null);
-        if (!had) return { cmd: "DROP", payload: { ok: false, error: "NO_SUCH_KEY", asked: keyD } };
-        await env.AURA_KV.delete(keyD);
-        return { cmd: "DROP", payload: { ok: true, key: keyD, dropped: "the whole record",
-          note: keyD.startsWith("shot:")
+      // ══ THE WALK PAGE WRITES A LEAF NAME, NOT A KEY (2026-09-03) ═══════════════════════
+      // MEASURED: every D chip on the walk page produced `DROP Stained Glass Leo Lion`, which
+      // this guard refused with NOT_A_PICTURE_KEY - so the delete button on the page has never
+      // worked once. The comment two lines up says "the walk page writes these for you"; it
+      // writes the display name because that is what the figure's data attribute holds, and the
+      // page has no slug function to build a key with.
+      // Resolving here rather than teaching the page to slugify: one place instead of one per
+      // page type, and it matches REDO, PROFILE and every other command, all of which take the
+      // leaf name a human can actually read off the screen.
+      // A real key still passes through untouched, so nothing that worked before changes.
+      let keyResolved = keyD, keyWasName = false;
+      if (!/^(shot|face|wall):/.test(keyD)) {
+        // The whole argument is the name - a leaf name has spaces, so the earlier split on the
+        // first space would have cut it in half.
+        const nameD = argD.trim();
+        const tryD = "face:v1:" + tatSlug(nameD);
+        const hasD = await env.AURA_KV.get(tryD).catch(() => null);
+        if (!hasD) return { cmd: "DROP", payload: { ok: false, error: "NO_SUCH_PICTURE",
+          asked: nameD, looked_for: tryD,
+          why: "No tile is banked under that name. Check the spelling on the walk page." } };
+        keyResolved = tryD; keyWasName = true;
+      }
+      const keyDx = keyResolved;
+      const optDx = keyWasName ? "" : optD;
+      if (!optDx) {
+        const had = await env.AURA_KV.get(keyDx).catch(() => null);
+        if (!had) return { cmd: "DROP", payload: { ok: false, error: "NO_SUCH_KEY", asked: keyDx } };
+        await env.AURA_KV.delete(keyDx);
+        return { cmd: "DROP", payload: { ok: true, key: keyDx, dropped: "the whole record",
+          note: keyDx.startsWith("shot:")
             ? "It refills on the next walk down that path, in the style set today."
             : "Gone. Nothing refills a face record automatically - REDO it when you want it back." } };
       }
-      const recD = await env.AURA_KV.get(keyD, "json").catch(() => null);
+      const recD = await env.AURA_KV.get(keyDx, "json").catch(() => null);
       if (!recD || !recD.imgs) return { cmd: "DROP", payload: { ok: false, error: "NO_SUCH_RECORD",
-        asked: keyD, what_to_do: "Drop the whole key, or check the name on the walk page." } };
-      const hitD = Object.keys(recD.imgs).find((o) => tatSlug(o) === tatSlug(optD));
+        asked: keyDx, what_to_do: "Drop the whole key, or check the name on the walk page." } };
+      const hitD = Object.keys(recD.imgs).find((o) => tatSlug(o) === tatSlug(optDx));
       if (!hitD) return { cmd: "DROP", payload: { ok: false, error: "NO_SUCH_OPTION",
-        asked: optD, key: keyD, options: Object.keys(recD.imgs) } };
+        asked: optDx, key: keyDx, options: Object.keys(recD.imgs) } };
       delete recD.imgs[hitD];
-      await env.AURA_KV.put(keyD, JSON.stringify(recD));
-      return { cmd: "DROP", payload: { ok: true, key: keyD, dropped: hitD,
+      await env.AURA_KV.put(keyDx, JSON.stringify(recD));
+      return { cmd: "DROP", payload: { ok: true, key: keyDx, dropped: hitD,
         left: Object.keys(recD.imgs).length,
         note: "That one option is now a hole. The next walk down this path draws it again with " +
               "the context and render set today - the rest are untouched and cost nothing." } };
@@ -6406,7 +6427,7 @@ async function processCommand(line, env, isOp) {
           // nothing is lost, and the eye can cross the whole category in one screen.
           ? "<div class=g>" + secs.map((s) => s.items.map((i) =>
               (i.url ? cell("redo", i.name, i.url, i.name, s.kind)
-                     : "<figure class=gap><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
+                     : "<figure class=gap data-e=\"1\" data-t=redo data-a=\"" + eW(i.name) + "\"><b class=r>R</b><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
               i.sets.map((x) => x.imgs.map((m) =>
                 cell("shot", x.key + " " + m.opt, "https://auras.guide/image/" + m.img,
                      i.name, x.step + " " + m.opt)).join("")).join("")
@@ -6420,7 +6441,7 @@ async function processCommand(line, env, isOp) {
             : "") + "</span></h2><div class=g>" +
           s.items.map((i) =>
             (i.url ? cell("redo", i.name, i.url, i.name, "tile")
-                   : "<figure class=gap><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
+                   : "<figure class=gap data-e=\"1\" data-t=redo data-a=\"" + eW(i.name) + "\"><b class=r>R</b><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
             i.sets.map((x) => x.imgs.map((m) =>
               // ══ THE PATH IS WHY TWO PICTURES SHARE A LABEL ═══════════════════════════════
               // Owl showed "expression sleepy" twice and it looked like a duplicate. It is two
@@ -6435,7 +6456,8 @@ async function processCommand(line, env, isOp) {
         "<span><button id=go>go</button> <button id=clr>clear</button></span></div>" +
         "<pre id=out>R redraws a tile \u00b7 D or \u00d7 drops it so it comes back</pre></div>" +
         "<script>" + WALK_TAG_JS.replace("__KEY__", tatSlug(catW))
-          .replace("__CAT__", String(catW).replace(/[\\"]/g, "")) + "</script>" +
+          .replace("__CAT__", String(catW).replace(/[\\\"]/g, ""))
+          .replace("__TIGHT__", tightW ? " --tight" : "") + "</script>" +
         "</body></html>";
       await env.AURA_KV.put("page:auras.guide/walk/" + tatSlug(catW), htmlW);
       // ══ THE INDEX CANNOT COUNT, SO THE CATEGORY COUNTS FOR IT ═════════════════════════════
@@ -54930,17 +54952,27 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 const WALK_TAG_JS = [
   "(function(){var K='tag:__KEY__',T={};",
   "try{T=JSON.parse(localStorage.getItem(K)||'{}')}catch(e){}",
-  "function build(){var R=[],S=[],D=[];",
+  "function build(){var R=[],S=[],D=[],E=[];",
   "document.querySelectorAll('figure[data-a]').forEach(function(f){",
   "var a=f.dataset.a,v=T[a];if(!v)return;",
-  "if(v==='r'){(f.dataset.t==='redo'?R:S).push(a)}else{D.push(a)}});",
-  "var o=[];if(R.length)o.push('RUN \"REDO '+R.join(', ')+'\"');",
+  // == A HOLE SHOULD FILL WITH ONE CLICK (2026-09-03) =====================================
+  // A no-tile card carried the same two chips as a drawn one, so filling a hole meant tagging
+  // R, copying the block and pasting it - for a card whose only possible action is "draw this".
+  // Those cards are marked data-e="1"; they collect separately and are emitted FIRST, so the
+  // holes are the first thing that runs when the block is pasted.
+  "if(v==='r'){(f.dataset.e==='1'?E:(f.dataset.t==='redo'?R:S)).push(a)}else{D.push(a)}});",
+  "var o=[];if(E.length)o.push('RUN \"REDO '+E.join(', ')+'\"');",
+  "if(R.length)o.push('RUN \"REDO '+R.join(', ')+'\"');",
   "S.forEach(function(a){o.push('RUN \"SHOT '+a+'\"')});",
   "D.forEach(function(a){o.push('RUN \"DROP '+a+'\"')});",
   // The page is a stored snapshot, so a fix you just pasted is invisible until it is rebuilt.
   // Ending the block with its own WALK means the last line of the paste redraws the page - one
   // copy, one paste, and what you are looking at is what is actually there.
-  "if(o.length)o.push('RUN \"WALK __CAT__\"');return o}",
+  // == THE REBUILD MUST LAND ON THE PAGE YOU WERE ON (2026-09-03) =========================
+  // This wrote a bare `WALK <cat>`, so a sweep begun on the --tight one-grid view rebuilt the
+  // WIDE grouped view and dropped you somewhere else. __TIGHT__ carries the flag the page was
+  // actually built with, so the last line of the paste redraws THIS page.
+  "if(o.length)o.push('RUN \"WALK __CAT____TIGHT__\"');return o}",
   "function paint(){document.querySelectorAll('figure[data-a]').forEach(function(f){",
   "var v=T[f.dataset.a];",
   "var br=f.querySelector('b.r');if(br)br.classList.toggle('on',v==='r');",

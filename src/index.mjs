@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.128.0-2026-09-04-b-one-run-one-page";
+const BUILD = "aura-core-v9.129.0-2026-09-04-c-show-last-merges-the-sweep";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18887,12 +18887,39 @@ async function successionGate(env) {
     // one FACES run drew, in one grid, with the same R / E / D chips as the walk page - so a batch
     // can be judged and fixed without scrolling past everything that was already fine.
     case "SHOW": {
-      const idW = String(rest || "").trim();
-      if (!idW) return { cmd: "SHOW", payload: { ok: false, error: "NEED_A_RUN_ID",
-        what_to_do: 'SHOW <id> - the id every FACES reply hands back.' } };
-      const recW = await env.AURA_KV.get("run:v1:" + idW, "json").catch(() => null);
-      if (!recW) return { cmd: "SHOW", payload: { ok: false, error: "NO_SUCH_RUN", asked: idW,
-        note: "Runs are kept for two weeks. Older ones have expired." } };
+      const argW = String(rest || "").trim();
+      if (!argW) return { cmd: "SHOW", payload: { ok: false, error: "NEED_A_RUN_ID",
+        what_to_do: 'SHOW <id>, or SHOW LAST for every run in the last few hours on one page.' } };
+      let recW = null, idW = argW;
+      // ══ A SWEEP IS ONE REVIEW, NOT NINE (2026-09-04) ═══════════════════════════════════════
+      // Nine kinds means nine FACES runs means nine ids, and reviewing a sweep one page at a time
+      // is the same problem the green outline had - the work is scattered across pages that each
+      // show a fraction. `SHOW LAST` merges every run from the last twelve hours into one grid,
+      // newest first, which is how a batch is actually judged.
+      if (/^last$/i.test(argW)) {
+        const l = await env.AURA_KV.list({ prefix: "run:v1:", limit: 200 }).catch(() => null);
+        const recs = [];
+        for (const k of ((l && l.keys) || [])) {
+          const r = await env.AURA_KV.get(k.name, "json").catch(() => null);
+          if (r && r.at) recs.push(r);
+        }
+        const cutoff = Date.now() - 12 * 60 * 60 * 1000;
+        const recent = recs.filter((r) => Date.parse(r.at) > cutoff)
+                           .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+        if (!recent.length) return { cmd: "SHOW", payload: { ok: false, error: "NO_RECENT_RUNS",
+          note: "Nothing banked in the last twelve hours. Runs before v9.128.0 have no record." } };
+        idW = "last";
+        recW = { id: "last", category: recent.length + " runs",
+          at: recent[0].at,
+          drew: recent.flatMap((r) => r.drew || []),
+          failed: recent.flatMap((r) => r.failed || []),
+          // Named so the page header says which kinds are on it rather than a bare count.
+          kinds: recent.map((r) => r.category) };
+      } else {
+        recW = await env.AURA_KV.get("run:v1:" + idW, "json").catch(() => null);
+        if (!recW) return { cmd: "SHOW", payload: { ok: false, error: "NO_SUCH_RUN", asked: idW,
+          note: "Runs are kept for two weeks. Older ones have expired." } };
+      }
       const namesW = (recW.drew || []);
       if (!namesW.length) return { cmd: "SHOW", payload: { ok: true, id: idW,
         category: recW.category, drew: 0, note: "That run drew nothing." } };
@@ -18929,9 +18956,11 @@ async function successionGate(env) {
         "#out{background:#141821;padding:10px;border-radius:8px;margin-top:16px;" +
           "white-space:pre-wrap;font:12px ui-monospace,monospace;color:#8b93a7}" +
         "</style></head><body>" +
-        "<p><a href=\"/walk/" + eS(tatSlug(recW.category)) + "\" style=\"color:#7aa2ff\">&larr; " +
-          eS(recW.category) + "</a></p>" +
-        "<h1>" + eS(recW.category) + " &middot; one run</h1>" +
+        (recW.kinds ? "<p><a href=\"/walk\" style=\"color:#7aa2ff\">&larr; walk</a></p>"
+                    : "<p><a href=\"/walk/" + eS(tatSlug(recW.category)) + "\" style=\"color:#7aa2ff\">&larr; " +
+                      eS(recW.category) + "</a></p>") +
+        "<h1>" + eS(recW.kinds ? recW.kinds.join(" &middot; ") : recW.category) +
+          (recW.kinds ? "" : " &middot; one run") + "</h1>" +
         "<p class=s>" + namesW.length + " drawn" +
           ((recW.failed || []).length ? " &middot; " + recW.failed.length + " failed" : "") +
           " &middot; " + eS(String(recW.at || "").slice(0, 16).replace("T", " ")) + "</p>" +

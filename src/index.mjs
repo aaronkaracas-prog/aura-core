@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.132.0-2026-09-04-f-the-leaf-profile-is-optional";
+const BUILD = "aura-core-v9.133.0-2026-09-04-g-shot-reads-the-same-dials-as-redo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6114,7 +6114,22 @@ async function processCommand(line, env, isOp) {
         asked: optsS, options: wallS.opts.map((o) => o.id) } };
 
       const kindS = String((profS.resolved && profS.resolved.subject) || leafS).trim();
-      const frameS = await tatFrameFor(env, kindS, leafS, stepS);
+      // ══ SHOT NEVER ASKED FOR THE DIALS (2026-09-04) ════════════════════════════════════════
+      // MEASURED: `SHOT shot:v1:elf:expression:bare fierce scowl` produced
+      //   "Elf, brows pulled low and together, mouth pressed thin, the complete design filling the
+      //    frame, isolated on a solid pure black background"
+      // - the leaf, the expression, and frame:shape. No context, no render. So every wall card in
+      // every category draws on the global photoreal default no matter what its dials say, which is
+      // why setting context:fantasy changed the tiles and left thirty-six expression cards as
+      // photographs of people with pointed ears.
+      // `ctxPhrases` is the customer's prior wall choices and is empty on a `:bare` shot, so nothing
+      // else was ever going to carry the register. REDO reads both dials; this read neither. Same
+      // split as FACE, and the third time today one command has been fixed while its siblings were
+      // left behind - so this now uses the SAME two resolvers REDO uses, not a private copy.
+      const ctxDialS = await tatContextFor(env, leafS);
+      const rndDialS = await tatRenderFor(env, leafS);
+      if (ctxDialS) ctxPhrases.unshift(ctxDialS);
+      const frameS = (rndDialS || "") + (await tatFrameFor(env, kindS, leafS, stepS) || "");
       const headS = profS.say || tatName(leafS, profS.resolved);
       // tatShoot records `drew` only the FIRST time a record is ever drawn, so reporting it back
       // reports the oldest prompt on the record - a redraw of "black and grey" answered with the

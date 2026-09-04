@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.131.0-2026-09-04-e-r-on-a-wall-card-redraws-the-shot";
+const BUILD = "aura-core-v9.132.0-2026-09-04-f-the-leaf-profile-is-optional";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6057,9 +6057,15 @@ async function processCommand(line, env, isOp) {
       if (!shotS) return { cmd: "SHOT", payload: { ok: false, error: "NO_SUCH_RECORD", asked: keyS } };
       const bitsS = keyS.split(":");
       const leafSlug = bitsS[2], stepS = bitsS[3], ctxS = bitsS.slice(4).join(":") || "bare";
-      const profS = await env.AURA_KV.get("leaf:v1:" + leafSlug, "json").catch(() => null);
-      if (!profS) return { cmd: "SHOT", payload: { ok: false, error: "NO_LEAF_PROFILE",
-        asked: leafSlug, why: "The walk writes this the first time a leaf is opened." } };
+      // ══ THE PROFILE IS ENRICHMENT, NOT A DEPENDENCY (2026-09-04) ═══════════════════════════
+      // MEASURED: R on an expression card returned NO_LEAF_PROFILE. `leaf:v1:<leaf>` is written the
+      // first time a CUSTOMER opens a leaf on the walk - but every tile in the catalogue was drawn
+      // by FACES, which never writes one. So this refused on the majority of wall cards in the
+      // majority of categories, for a record that is optional.
+      // All three uses below already fall back: `shotS.leaf` carries the name, `tatName` builds the
+      // phrase, and the kind resolves from the leaf. The guard was stricter than the code that
+      // follows it. An absent profile now means less enrichment, not a refusal.
+      const profS = (await env.AURA_KV.get("leaf:v1:" + leafSlug, "json").catch(() => null)) || {};
       const leafS = shotS.leaf || profS.leaf || leafSlug;
 
       // The options for this step: the fixed vocabularies are code, everything else was written

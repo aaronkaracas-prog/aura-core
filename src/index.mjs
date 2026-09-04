@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.127.0-2026-09-04-a-3030-is-a-false-positive";
+const BUILD = "aura-core-v9.128.0-2026-09-04-b-one-run-one-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18879,6 +18879,74 @@ async function successionGate(env) {
           detail: String(e && e.message || e).slice(0, 300),
           stack: String(e && e.stack || "").split("\n").slice(0, 3).join(" | ").slice(0, 300) } };
       }
+    }
+
+    // ══ ONE RUN, ONE PAGE (2026-09-04) ═══════════════════════════════════════════════════════
+    // Reviewing a batch meant hunting green outlines in a category grid of 126 tiles, where three
+    // separate runs and a half hour of unrelated work all look the same. This shows exactly what
+    // one FACES run drew, in one grid, with the same R / E / D chips as the walk page - so a batch
+    // can be judged and fixed without scrolling past everything that was already fine.
+    case "SHOW": {
+      const idW = String(rest || "").trim();
+      if (!idW) return { cmd: "SHOW", payload: { ok: false, error: "NEED_A_RUN_ID",
+        what_to_do: 'SHOW <id> - the id every FACES reply hands back.' } };
+      const recW = await env.AURA_KV.get("run:v1:" + idW, "json").catch(() => null);
+      if (!recW) return { cmd: "SHOW", payload: { ok: false, error: "NO_SUCH_RUN", asked: idW,
+        note: "Runs are kept for two weeks. Older ones have expired." } };
+      const namesW = (recW.drew || []);
+      if (!namesW.length) return { cmd: "SHOW", payload: { ok: true, id: idW,
+        category: recW.category, drew: 0, note: "That run drew nothing." } };
+      const bkW = await env.AURA_KV.get("config:build:key").catch(() => null);
+      const opW = (await env.AURA_KV.get("config:owner:pta").catch(() => null) || "").trim();
+      const eS = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const host = await imageHost(env);
+      const cells = [];
+      for (const nm of namesW) {
+        const f = await env.AURA_KV.get("face:v1:" + tatSlug(nm), "json").catch(() => null);
+        const u = f ? tatFaceUrl(f) : null;
+        cells.push("<figure data-t=redo data-a=\"" + eS(nm) + "\">" +
+          (u ? "<a href=\"" + eS(u) + "\" target=_blank rel=noopener><img loading=lazy src='" +
+               eS(u) + "'></a>" : "<div class=gap></div>") +
+          "<div class=chips><b class=r>R</b><b class=e>E</b><b class=d>D</b></div>" +
+          "<figcaption>" + eS(nm) + "</figcaption></figure>");
+      }
+      const htmlW = "<!doctype html><html lang=en><head><meta charset=utf-8>" +
+        "<meta name=viewport content=\"width=device-width,initial-scale=1\">" +
+        "<title>" + eS(recW.category) + " - one run</title><style>" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.4 system-ui;margin:0;padding:16px}" +
+        "h1{font-size:18px;margin:0 0 4px}p.s{color:#8b93a7;margin:0 0 16px}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}" +
+        "figure{margin:0;background:#141821;border-radius:8px;overflow:hidden;position:relative}" +
+        "figure img{width:100%;display:block;aspect-ratio:1;object-fit:cover}" +
+        "figure .gap{width:100%;aspect-ratio:1;background:#1a1f2e}" +
+        "figure .chips{display:flex;gap:3px;padding:3px 4px 0}" +
+        "figure b{width:20px;height:18px;border-radius:5px;background:#1a1f2e;color:#8b93a7;" +
+          "font:600 10px/18px system-ui;text-align:center;cursor:pointer;flex:0 0 auto}" +
+        "figure b.e{background:#1d4ed8;color:#fff}" +
+        "figure.fresh{outline:2px solid #35d07f;outline-offset:1px}" +
+        "figcaption{padding:4px 6px 8px;font-size:11px;color:#c7cede}" +
+        "#out{background:#141821;padding:10px;border-radius:8px;margin-top:16px;" +
+          "white-space:pre-wrap;font:12px ui-monospace,monospace;color:#8b93a7}" +
+        "</style></head><body>" +
+        "<p><a href=\"/walk/" + eS(tatSlug(recW.category)) + "\" style=\"color:#7aa2ff\">&larr; " +
+          eS(recW.category) + "</a></p>" +
+        "<h1>" + eS(recW.category) + " &middot; one run</h1>" +
+        "<p class=s>" + namesW.length + " drawn" +
+          ((recW.failed || []).length ? " &middot; " + recW.failed.length + " failed" : "") +
+          " &middot; " + eS(String(recW.at || "").slice(0, 16).replace("T", " ")) + "</p>" +
+        "<div class=g>" + cells.join("") + "</div>" +
+        "<pre id=out>R redraws &middot; E evolves &middot; D drops</pre>" +
+        "<script>" + WALK_TAG_JS.replace(/__KEY__/g, "run-" + idW)
+          .replace(/__CAT__/g, String(recW.category).replace(/["\\]/g, ""))
+          .replace(/__TIGHT__/g, " --tight")
+          .replace(/__SESSION__/g, (bkW && opW) ? (bkW + "." + opW) : "") + "</script>" +
+        "</body></html>";
+      await env.AURA_KV.put("page:auras.guide/show/" + idW, htmlW);
+      return { cmd: "SHOW", payload: { ok: true, id: idW, category: recW.category,
+        drew: namesW.length, failed: (recW.failed || []).length,
+        url: "https://" + host + "/show/" + idW,
+        note: "Just this run. Same R / E / D chips as the walk page." } };
     }
 
     case "SECURESPEND": {
@@ -57790,7 +57858,24 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         if (n % REST_EVERY === 0) await step.sleep("rest-" + n, REST);
         else await step.sleep("gap-" + n, "2 seconds");
       }
+      // ══ A BATCH IS THE UNIT OF REVIEW, NOT HALF AN HOUR (2026-09-04) ═══════════════════════
+      // The walk page marks anything drawn in the last 30 minutes green. Aaron, after a nine-kind
+      // run across a 126-tile category: "the green images show everything run and most are not
+      // good, it's hard to determine what's good or bad". Thirty minutes is a clock, not a batch -
+      // it mixes three separate runs together and hides the one you actually want to judge.
+      // `drawn` has always held exactly what THIS run produced and was counted and discarded.
+      // Banking it under the workflow's own id makes the run reviewable as a run:
+      //   RUN "SHOW <id>"   ->  a page of just those tiles
+      // Same id the FACES reply already hands back, so nothing new has to be remembered.
+      try {
+        await this.env.AURA_KV.put("run:v1:" + event.instanceId, JSON.stringify({
+          id: event.instanceId, mode: "faces", category: only || "ALL",
+          at: new Date().toISOString(),
+          drew: drawn, failed: broke.slice(0, 40)
+        }), { expirationTtl: 60 * 60 * 24 * 14 });
+      } catch {}
       return { ok: true, mode: "faces", category: only || "ALL",
+        review: 'RUN "SHOW ' + event.instanceId + '"',
         leaves: leaves.length, attempted: n,
         drew: drawn.length, skipped: skipped.length, failed: broke.length, halted,
         // What it did NOT do, named. A batch that quietly becomes a shorter batch is a sample

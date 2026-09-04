@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.129.0-2026-09-04-c-show-last-merges-the-sweep";
+const BUILD = "aura-core-v9.130.0-2026-09-04-d-a-kind-inherits-its-category";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55519,6 +55519,13 @@ async function tatBuildFor(env, leaf) {
 async function tatRenderFor(env, kindOrLeaf) {
   const r = await env.AURA_KV.get("render:" + tatSlug(kindOrLeaf)).catch(() => null);
   if (r && String(r).trim()) return ". " + String(r).trim();
+  // Same inheritance as the context dial - a kind with no render of its own takes its category's
+  // rather than the photoreal default. See tatContextFor for why.
+  const cat = await tatCategoryOf(env, kindOrLeaf);
+  if (cat) {
+    const rc = await env.AURA_KV.get("render:" + tatSlug(cat)).catch(() => null);
+    if (rc && String(rc).trim()) return ". " + String(rc).trim();
+  }
   return null;
 }
 
@@ -55555,11 +55562,39 @@ async function tatOwnerOf(env, leaf) {
   return null;
 }
 
+// ══ A KIND WITHOUT A DIAL SHOULD FALL TO ITS CATEGORY, NOT TO PHOTOREAL (2026-09-04) ══════
+// MEASURED across three categories in one day: Horror needed eleven context/render pairs, Anime
+// needed seventeen, Comics thirteen - one per KIND - because this looked up the kind and then
+// gave up. `context:anime-manga` existed the whole time and never fired once.
+// The global default is photographic realism, so an unset kind does not draw plainly, it draws a
+// PHOTOGRAPH: stock-photo men wearing anime masks, a real cat where an anime creature belongs, a
+// 3D figurine instead of cel shading. Every one of those was diagnosed as a wording problem first.
+// With ~53 categories still to set up, one pair per kind is several hundred commands and several
+// hundred chances to miss one. One pair per CATEGORY is 53, and a kind that wants its own register
+// still overrides by simply having its own key - nothing already set changes behaviour.
+// Two lookups instead of one, and the second only runs when the first misses.
 async function tatContextFor(env, leaf) {
   const owner = await tatOwnerOf(env, leaf);
   if (!owner) return null;
   const c = await env.AURA_KV.get("context:" + tatSlug(owner)).catch(() => null);
-  return c && String(c).trim() ? String(c).trim() : null;
+  if (c && String(c).trim()) return String(c).trim();
+  const cat = await tatCategoryOf(env, owner);
+  if (!cat) return null;
+  const cc = await env.AURA_KV.get("context:" + tatSlug(cat)).catch(() => null);
+  return cc && String(cc).trim() ? String(cc).trim() : null;
+}
+
+// The category a kind sits under. Returns null when the name IS a category, so a category dial
+// never looks itself up twice.
+async function tatCategoryOf(env, kind) {
+  try {
+    const t = await env.AURA_KV.get("card:tree", "json");
+    if (!t) return null;
+    const n = tatSlug(kind);
+    for (const [cat, kinds] of Object.entries(t.subjects || {}))
+      if ((kinds || []).some((x) => tatSlug(x) === n)) return cat;
+  } catch {}
+  return null;
 }
 
 // ══ A SILENT FALLBACK DRAWS A PLAUSIBLE PICTURE IN THE WRONG STYLE (2026-09-03) ═══════════
@@ -55601,6 +55636,9 @@ async function tatOwnerInfo(env, leaf) {
 function tatStyleNote(info, hadCtx) {
   if (!info.owner) return "NO OWNER - this leaf is not in the tree, so it drew with the DEFAULT render";
   if (!hadCtx) return "owner " + info.owner + " (" + info.level + ") has no context: dial - drew on the default";
+  // Inheritance is legitimate now, so this no longer reads as a fault - but it still has to be
+  // visible, because a kind drawing in its category's register when it wanted its own is exactly
+  // the confusion this whole line was added to end.
   if (info.level.startsWith("category")) {
     return "FELL BACK TO THE CATEGORY: styled by context:" + tatSlug(info.owner) +
       " because no kind claims this leaf. An empty kind does this - give it leaves, or expect the category register.";

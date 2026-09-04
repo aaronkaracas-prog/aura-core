@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.125.0-2026-09-03-y-styles-bank-where-the-walk-looks";
+const BUILD = "aura-core-v9.126.0-2026-09-03-z-capture-inside-the-try";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8193,7 +8193,10 @@ async function processCommand(line, env, isOp) {
             { source: "style_transfer", refs: [srcUrl], parent: sid0, raw: true,
               subject: name + " of " + sid0 });
           if (r?.ok) { one.image = r.image_url || null; one.cost_usd = r.cost_usd || 0;
-                       one.cached = !!r.cached; }
+                       one.cached = !!r.cached;
+            // Captured HERE, inside the try, because `r` does not exist outside it. The first
+            // version of this line sat below the catch and threw "r is not defined" on every run.
+            if (r.id) shotAccS[name] = { img: r.id, cached: !!r.cached }; }
           else one.why = String(r?.error || "no image returned").slice(0, 140);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 140); }
         // ══ A STYLE CHILD THE CATALOGUE CANNOT SEE (2026-09-03) ═══════════════════════════
@@ -8204,7 +8207,6 @@ async function processCommand(line, env, isOp) {
         // nothing to find. Every style made today lived in one place and it was not the catalogue.
         // Accumulate and write once: the shape POSES was corrected to on 2026-09-01 and TWENTY was
         // ported to today. One record per (leaf, step, path), every option inside `imgs`.
-        if (one.image && r && r.id) shotAccS[name] = { img: r.id, cached: !!one.cached };
         out.push(one);
       }
 

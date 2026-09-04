@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.130.0-2026-09-04-d-a-kind-inherits-its-category";
+const BUILD = "aura-core-v9.131.0-2026-09-04-e-r-on-a-wall-card-redraws-the-shot";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55464,11 +55464,23 @@ const WALK_TAG_JS = [
   "var isD=e.target.classList.contains('d');",
   "var cf=e.target.closest('figure[data-a]');if(!cf)return;",
   "var cl=cf.dataset.a;",
+  // ══ R ON A WALL CARD INVENTED A LEAF (2026-09-04) ══════════════════════════════════════
+  // MEASURED on Fantasy, which is "36 expression - 30 pose - 9 tile": redrawing an expression
+  // card returned `NO OWNER - this leaf is not in the tree, so it drew with the DEFAULT render`.
+  // A tile card carries a LEAF in data-a; a wall card carries `shot:v1:<leaf>:<step>:<path>
+  // <option>`. This handler sent both to REDO, so every wall card asked for a leaf named after a
+  // caption, found nothing, and drew photoreal - which read as the category dials failing when
+  // the dials were never consulted.
+  // Most cards on most walk pages are wall cards, so this was wrong far more often than right.
+  // `data-t` has said which kind of card it is since the page was built. Read it.
+  "var isShot=(cf.dataset.t==='shot');",
   "if(!'__SESSION__'){alert('No operator session. Arm config:build:key first.');return}",
   "if(isD&&!confirm('Drop the tile for '+cl+'?'))return;",
   "var ot=e.target.textContent;e.target.textContent='..';",
   "fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},",
-  "body:JSON.stringify({action:isD?'drop':'redraw',session:'__SESSION__',leaf:cl})})",
+  "body:JSON.stringify(isShot&&!isD",
+  "?{action:'shot',session:'__SESSION__',shot:cl}",
+  ":{action:isD?'drop':'redraw',session:'__SESSION__',leaf:cl})})",
   ".then(function(r){return r.json()}).then(function(d){",
   "e.target.textContent=ot;",
   // Rendered, never swallowed - the D chip failed silently for weeks before it said why.
@@ -59274,6 +59286,29 @@ export class PublicEntry extends WorkerEntrypoint {
       // session and never on a passkey one, so a customer on mytattoo cannot reach these even
       // though they share the method. When Aaron runs DELKV config:build:key both verbs close
       // with the door, which is the behaviour we want from a bypass.
+      // Redrawing one card on a variation wall. `shot` carries the full key plus the option, the
+      // exact string the page's own command block was already composing - so this runs the command
+      // that was always correct for these cards instead of the one meant for tiles.
+      if (action === "shot") {
+        const whoS2 = b.session ? await this._whoIs(String(b.session)) : null;
+        if (!whoS2 || whoS2.signed_in_via !== "build key") return { ok: false, error: "OPERATOR_ONLY",
+          say: "This is an operator action." };
+        const askS2 = String(b.shot || "").trim();
+        if (!askS2) return { ok: false, error: "NEED_SHOT" };
+        try {
+          const r = await processCommand("SHOT " + askS2, this.env, true);
+          const pay = (r && r.payload) || {};
+          if (!pay.ok) return { ok: false, error: pay.error || "COMMAND_FAILED" };
+          // SHOT answers with a list of urls; the page sent one option, so hand back the one image.
+          const one = (pay.urls && pay.urls[0]) || "";
+          const url = String(one).split("  ->  ")[1] || null;
+          return { ok: true, action: "shot", shot: askS2, image: url,
+                   prompt: pay.prompt || null, drew: pay.drew || 0 };
+        } catch (e) {
+          return { ok: false, error: "THREW", detail: String(e && e.message || e).slice(0, 200) };
+        }
+      }
+
       if (action === "redraw" || action === "drop") {
         const who = b.session ? await this._whoIs(String(b.session)) : null;
         if (!who || who.signed_in_via !== "build key") return { ok: false, error: "OPERATOR_ONLY",

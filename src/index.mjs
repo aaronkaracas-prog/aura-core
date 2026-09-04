@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.123.0-2026-09-03-w-chips-below-the-artwork";
+const BUILD = "aura-core-v9.124.0-2026-09-03-x-the-link-follows-the-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55317,7 +55317,12 @@ const WALK_TAG_JS = [
   "e.target.textContent='E';",
   // The reply is rendered, never swallowed. A silent failure here is how the D chip went
   // unnoticed for weeks.
-  "if(d&&d.ok&&d.image){eim.src=d.image;ef.classList.add('fresh');",
+    // ══ THE THUMBNAIL MOVED AND THE LINK DID NOT (2026-09-03) ═══════════════════════════
+  // MEASURED: evolving a tile updated the <img> and left the <a href> pointing at the PARENT,
+  // so the grid showed the child and clicking it opened the old picture. The full-size view is
+  // how a tile is actually judged, so the one control that matters was showing the wrong file.
+  "if(d&&d.ok&&d.image){eim.src=d.image;var ea=ef.querySelector('a');if(ea)ea.href=d.image;",
+  "ef.classList.add('fresh');",
   "document.getElementById('out').textContent='evolved '+em[1]+' -> '+d.design+'  ::  '+ec}",
   "else{document.getElementById('out').textContent='evolve failed: '+((d&&(d.error||d.say))||'no reply')}",
   "}).catch(function(x){e.target.textContent='E';",
@@ -55342,7 +55347,9 @@ const WALK_TAG_JS = [
   // Rendered, never swallowed - the D chip failed silently for weeks before it said why.
   "if(d&&d.ok){if(isD){cf.classList.add('gap');var gi=cf.querySelector('img');if(gi)gi.remove();",
   "document.getElementById('out').textContent='dropped '+cl}",
-  "else{var ri=cf.querySelector('img');if(ri&&d.image)ri.src=d.image+'?t='+Date.now();",
+    // Same for a redraw: the link has to follow the picture.
+  "else{var ri=cf.querySelector('img');var ra=cf.querySelector('a');",
+  "if(ri&&d.image)ri.src=d.image+'?t='+Date.now();if(ra&&d.image)ra.href=d.image;",
   "cf.classList.add('fresh');document.getElementById('out').textContent='redrew '+cl}}",
   "else{document.getElementById('out').textContent=(isD?'drop':'redraw')+' failed: '+((d&&(d.error||d.say))||'no reply')}",
   "}).catch(function(x){e.target.textContent=ot;",

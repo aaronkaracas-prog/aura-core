@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.126.0-2026-09-03-z-capture-inside-the-try";
+const BUILD = "aura-core-v9.127.0-2026-09-04-a-3030-is-a-false-positive";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -56452,8 +56452,23 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         // of them. A prompt that fails twice is a naming problem, and that is a human decision.
         const cfTransient = /\b3043\b|internal server error/i;
         const cfFlagged = /\b3030\b|output has been flagged/i;
+        // ══ 3030 IS A KNOWN FALSE POSITIVE, NOT A VERDICT (2026-09-04) ═══════════════════════
+        // MEASURED over a long session: "wings spread standing" flagged on two different parents,
+        // and every Comics hero flagged across four rewordings and two naming schemes - while a
+        // full human face in the same style drew clean minutes later. Hours went into prompt
+        // archaeology on the theory that the filter objected to capes, then to costumes, then to
+        // published characters. All three were wrong.
+        // Cloudflare's own issue tracker: 3030 fires on "hamburger" and on "a man in his late 50s
+        // wearing a suit". Their SDK tests acknowledge intermittent false positives on innocuous
+        // prompts; the community thread has been open since October 2024 with no resolution and
+        // there is no parameter to tune or disable it. Adding context helps sometimes and is
+        // explicitly unreliable.
+        // So the correct response to 3030 is the same as to 3043: roll again. One extra attempt
+        // was not enough to clear an intermittent filter - a refusal that fires at random needs
+        // the same three tries a transient error gets, and the cost of a wasted roll is 1.5c
+        // against a leaf that otherwise has to be renamed by hand.
         let lastCfErr = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
+        for (let attempt = 0; attempt < 4; attempt++) {
           try { out = await runOnce(); lastCfErr = null; break; }
           catch (e) {
             lastCfErr = e;
@@ -56477,9 +56492,11 @@ async function auraGenerateImage(prompt, env, opts = {}) {
             const isTransient = cfTransient.test(msg);
             const isFlagged = cfFlagged.test(msg);
             if (!isTransient && !isFlagged) throw e;
-            // The flagged case gets exactly one more roll; the transient case keeps its three.
-            if (isFlagged && attempt >= 1) throw e;
-            if (attempt < 2) await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
+            // Both classes now get the full run of attempts. A longer backoff on the flagged
+            // case because the filter appears to be sampling - rolling straight back at it tends
+            // to catch the same verdict.
+            if (attempt < 3) await new Promise((res) =>
+              setTimeout(res, (isFlagged ? 1400 : 800) * (attempt + 1)));
           }
         }
         if (lastCfErr) throw lastCfErr;

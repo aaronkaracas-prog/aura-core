@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.134.0-2026-09-04-h-render-resolves-like-context";
+const BUILD = "aura-core-v9.135.0-2026-09-04-i-purge-the-stale-leaf-renders";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18997,6 +18997,53 @@ async function successionGate(env) {
         drew: namesW.length, failed: (recW.failed || []).length,
         url: "https://" + host + "/show/" + idW,
         note: "Just this run. Same R / E / D chips as the walk page." } };
+    }
+
+    // ══ 286 LEAF RENDERS QUIETLY OVERRODE EVERY CATEGORY (2026-09-04) ════════════════════════
+    // MEASURED: `render:elf`, `render:anchor` and `render:atom` all hold the same string -
+    // "Full colour photographic realism, crisp detail, rim lighting, on a solid pure black
+    // background." An earlier session wrote one per leaf across the catalogue. `tatRenderFor`
+    // checks the leaf's own key first and returns on a hit, so every one of these wins over the
+    // category dial beneath it.
+    // That is why setting `render:fantasy` changed the tiles and left the walls photographic, and
+    // why the catalogue has looked like stock photography no matter what was configured. It was
+    // never a wording problem; it was 286 keys nobody could see.
+    // Deleting by VALUE, not by prefix: only keys holding that exact photoreal string go. Anything
+    // written deliberately - anime, comics, horror, fantasy - has a different value and survives.
+    // Dry by default. `PURGE render --apply` is the only thing that removes anything.
+    case "PURGE": {
+      const argP = String(rest || "").trim();
+      const applyP = /--apply\b/i.test(argP);
+      const whichP = argP.replace(/--apply\b/ig, "").trim().toLowerCase();
+      if (whichP !== "render") return { cmd: "PURGE", payload: { ok: false, error: "NOTHING_NAMED",
+        what_to_do: 'PURGE render   (dry run)   then   PURGE render --apply' } };
+      const DEAD = "Full colour photographic realism, crisp detail, rim lighting, on a solid pure black background.";
+      let cursor = null, scanned = 0;
+      const hits = [], kept = [];
+      for (let page = 0; page < 20; page++) {
+        const l = await env.AURA_KV.list({ prefix: "render:", limit: 1000, cursor }).catch(() => null);
+        if (!l) break;
+        for (const k of (l.keys || [])) {
+          scanned++;
+          const v = await env.AURA_KV.get(k.name).catch(() => null);
+          if (v && String(v).trim() === DEAD) hits.push(k.name);
+          else if (v) kept.push(k.name);
+        }
+        if (l.list_complete || !l.cursor) break;
+        cursor = l.cursor;
+      }
+      let removed = 0;
+      if (applyP) for (const k of hits) {
+        try { await env.AURA_KV.delete(k); removed++; } catch {}
+      }
+      return { cmd: "PURGE", payload: { ok: true, scanned,
+        matching: hits.length, keeping: kept.length,
+        ...(applyP ? { removed } : { dry_run: true,
+          what_to_do: 'Nothing was deleted. Run PURGE render --apply to remove them.' }),
+        sample_removing: hits.slice(0, 12),
+        sample_keeping: kept.slice(0, 12),
+        note: "Only keys holding the exact photoreal default are matched. Everything else stays, " +
+              "and each of those leaves then inherits its category render." } };
     }
 
     case "SECURESPEND": {

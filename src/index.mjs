@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.124.0-2026-09-03-x-the-link-follows-the-picture";
+const BUILD = "aura-core-v9.125.0-2026-09-03-y-styles-bank-where-the-walk-looks";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8131,6 +8131,11 @@ async function processCommand(line, env, isOp) {
       // for `let`/`const` hoisting rules, not for reachability: BAKEOFF returns before STYLES
       // ever runs, so the declaration never executed.
       const SCB2 = await tatStyleCards(env);
+      const shotAccS = {};
+      // `--leaf <name>` names the catalogue leaf these children belong to so the walk page can find
+      // them. Optional - without it STYLES behaves exactly as before and writes only its own page.
+      const leafM = String(rest || "").match(/\s--leaf\s+(.+?)(?:\s--|$)/i);
+      const leafS = leafM ? leafM[1].trim() : null;
       const raw = String(rest || "").trim();
       // Declared here because the usage branch below returns before the main body runs.
       const OFFERED_HINT = "photorealism, black and grey realism, color realism, fine line, " +
@@ -8191,7 +8196,30 @@ async function processCommand(line, env, isOp) {
                        one.cached = !!r.cached; }
           else one.why = String(r?.error || "no image returned").slice(0, 140);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 140); }
+        // ══ A STYLE CHILD THE CATALOGUE CANNOT SEE (2026-09-03) ═══════════════════════════
+        // MEASURED: 44 treatments of one Baphomet and five transformations of one vampire, and the
+        // Horror walk page still read "61 tile - 2 pose". It counted the two POSES children and
+        // none of the styles, because this command wrote ONE thing: its own page. No `shot:v1:`
+        // record, so WALK - which reads `face:v1:` for tiles and `shot:v1:` for children - had
+        // nothing to find. Every style made today lived in one place and it was not the catalogue.
+        // Accumulate and write once: the shape POSES was corrected to on 2026-09-01 and TWENTY was
+        // ported to today. One record per (leaf, step, path), every option inside `imgs`.
+        if (one.image && r && r.id) shotAccS[name] = { img: r.id, cached: !!one.cached };
         out.push(one);
+      }
+
+      // The leaf cannot be recovered from an image id - `imagemeta:` stores the prompt and the
+      // model, never the leaf that asked for it. Named explicitly with `--leaf`; banking is
+      // skipped when absent rather than guessed at and filed under the wrong subject.
+      if (leafS && Object.keys(shotAccS).length) {
+        const shotKeyS = "shot:v1:" + tatSlug(leafS) + ":style:bare";
+        let prevS2 = null;
+        try { prevS2 = await env.AURA_KV.get(shotKeyS, "json"); } catch {}
+        const recS2 = (prevS2 && typeof prevS2 === "object") ? prevS2
+          : { leaf: leafS, step: "style", ctx: "bare" };
+        recS2.imgs = Object.assign({}, recS2.imgs || {}, shotAccS);
+        recS2.at = new Date().toISOString(); recS2.by = "STYLES";
+        try { await env.AURA_KV.put(shotKeyS, JSON.stringify(recS2)); } catch {}
       }
 
       const escS = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.133.0-2026-09-04-g-shot-reads-the-same-dials-as-redo";
+const BUILD = "aura-core-v9.134.0-2026-09-04-h-render-resolves-like-context";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55552,9 +55552,20 @@ async function tatBuildFor(env, leaf) {
 async function tatRenderFor(env, kindOrLeaf) {
   const r = await env.AURA_KV.get("render:" + tatSlug(kindOrLeaf)).catch(() => null);
   if (r && String(r).trim()) return ". " + String(r).trim();
-  // Same inheritance as the context dial - a kind with no render of its own takes its category's
-  // rather than the photoreal default. See tatContextFor for why.
-  const cat = await tatCategoryOf(env, kindOrLeaf);
+  // ══ THIS RESOLVED ONE LEVEL LESS THAN ITS TWIN (2026-09-04) ══════════════════════════════
+  // MEASURED: `SHOT ... elf` produced a prompt carrying `context:fantasy` and the GLOBAL photoreal
+  // render. Both dials were set, both were asked for, one arrived.
+  // `tatContextFor` calls `tatOwnerOf` first, so a LEAF resolves to its kind and then to its
+  // category. This started at the name it was handed - fine for a kind, useless for a leaf, because
+  // `tatCategoryOf` only searches categories-to-kinds and a leaf is never in that map. So a leaf got
+  // `render:<leaf>`, a miss, and nothing else.
+  // Same resolution as its twin now: the owner first, then that owner's category.
+  const owner = await tatOwnerOf(env, kindOrLeaf);
+  if (owner && tatSlug(owner) !== tatSlug(kindOrLeaf)) {
+    const ro = await env.AURA_KV.get("render:" + tatSlug(owner)).catch(() => null);
+    if (ro && String(ro).trim()) return ". " + String(ro).trim();
+  }
+  const cat = await tatCategoryOf(env, owner || kindOrLeaf);
   if (cat) {
     const rc = await env.AURA_KV.get("render:" + tatSlug(cat)).catch(() => null);
     if (rc && String(rc).trim()) return ". " + String(rc).trim();

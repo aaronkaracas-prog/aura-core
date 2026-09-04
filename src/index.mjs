@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.135.0-2026-09-04-i-purge-the-stale-leaf-renders";
+const BUILD = "aura-core-v9.136.0-2026-09-04-j-shot-hands-back-the-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6151,6 +6151,18 @@ async function processCommand(line, env, isOp) {
           const h = Object.keys(outS.imgs || {}).find((x) => tatSlug(x) === tatSlug(o));
           const w = h && outS.imgs[h] ? outS.imgs[h].why : null;
           return w ? o + ": " + String(w).slice(0, 120) : o;
+        }),
+        // ══ THE PICTURE WAS DRAWN AND NEVER HANDED BACK (2026-09-04) ══════════════════════
+        // MEASURED: the walk page reported `redrew shot:v1:wizard:expression:bare eyes closed`,
+        // marked the tile fresh, and went on showing an image id from a previous session. The
+        // redraw had run; this reply had no url in it, so the page had nothing to swap in and the
+        // operator was judging the OLD picture against the new prompt. Three rounds of "no change"
+        // came from that, not from the prompt - which was correct by then.
+        // `outS.imgs` has held the new ids the whole time. Return them.
+        urls: (want || []).map((o) => {
+          const h = Object.keys(outS.imgs || {}).find((x) => tatSlug(x) === tatSlug(o));
+          const im = h && outS.imgs[h] ? outS.imgs[h].img : null;
+          return o + "  ->  " + (im ? "https://auras.guide/image/" + im : "not drawn");
         }),
         prompt: outS.drew || null,
         note: "Redrawn with the context and render set today. Re-run WALK to see them - the page " +

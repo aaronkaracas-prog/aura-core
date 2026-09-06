@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.139.0-2026-09-06-c-variations-and-leafless-kinds";
+const BUILD = "aura-core-v9.140.0-2026-09-06-d-counts-that-match-the-walk-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6720,8 +6720,17 @@ async function processCommand(line, env, isOp) {
             if (cover) break;
           }
         }
+        // The count WALK banked, carried into the index so the front page can total the whole
+        // catalogue without counting anything itself. Null where a category has never been
+        // walked - which is the honest answer, and the walk index says "not built" for the
+        // same reason rather than claiming zero.
+        let picsB = null;
+        try {
+          const cB = await env.AURA_KV.get("walk:count:" + tatSlug(c), "json");
+          if (cB && typeof cB.pics === "number") picsB = cB.pics;
+        } catch {}
         haveB[tatSlug(c)] = { value: tatSlug(c), label: c, image: cover,
-                              kinds: kindsB.length, things };
+                              kinds: kindsB.length, things, pictures: picsB };
         doneB.push(tatSlug(c));
         didB++;
       }
@@ -60356,13 +60365,29 @@ export class PublicEntry extends WorkerEntrypoint {
           const items = await Promise.all(kinds.map(async (k) => {
             const lv = leavesOf(k);
             // A kind with no leaves IS its own leaf - the same rule WALK reports on. Look for
-            // its own tile rather than reporting it as empty.
+            // its own tile rather than reporting it as empty, and count it as ONE thing rather
+            // than zero, or the per-kind numbers cannot sum to the category's own total.
             const tryList = (lv.length ? lv : [k]).slice(0, COVER_TRIES);
             let image = null;
             for (const lf of tryList) { image = await faceOf(lf); if (image) break; }
-            return { value: tatSlug(k), label: String(k), image, things: lv.length };
+            return { value: tatSlug(k), label: String(k), image,
+                     things: lv.length || 1, self: !lv.length };
           }));
+          // ══ THE SAME NUMBERS THE WALK PAGE PRINTS ══════════════════════════════════════
+          // Aaron, on the category screen: "it's hard for me to decipher if it's all there."
+          // Without a total there is nothing to check the tiles against.
+          // BANKED, NOT COMPUTED. WALK already worked this out and put it in `walk:count:` on
+          // its way past - and its own comment records why: counting live was 1,831 reads and
+          // the worker timed out. This is one read of a number that is already true.
+          // The cost of that choice, stated: a category redrawn since its last WALK reads
+          // slightly stale. That is the right trade - a stale number that MATCHES the walk page
+          // is checkable; a live number that disagrees with it is two sources of truth.
+          const cnt = await env.AURA_KV.get("walk:count:" + tatSlug(catName), "json").catch(() => null);
           return { ok: true, type: "row", category: catName, label: catName, items,
+                   kinds: items.length,
+                   things: items.reduce((n, x) => n + x.things, 0),
+                   banked: cnt ? { pictures: cnt.pics, things: cnt.things,
+                                   no_tile: cnt.no_tile, no_wall: cnt.no_wall, at: cnt.at } : null,
                    pictures: items.filter((x) => x.image).length };
         }
 
@@ -60380,7 +60405,10 @@ export class PublicEntry extends WorkerEntrypoint {
                    what_to_do: 'RUN "BROWSE" - it banks a cover per category and draws nothing.' };
         }
         return { ok: true, type: "row", label: "Browse", items: idx.items, built: true,
-                 at: idx.at || null, pictures: idx.items.filter((x) => x.image).length };
+                 at: idx.at || null,
+                 categories: idx.items.length,
+                 things: idx.items.reduce((n, x) => n + (x.things || 0), 0),
+                 pictures: idx.items.reduce((n, x) => n + (x.pictures || 0), 0) };
       }
 
       if (action === "row") {

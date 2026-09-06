@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.149.0-2026-09-06-m-she-can-find-things";
+const BUILD = "aura-core-v9.150.0-2026-09-06-n-she-knows-her-shelf";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58701,21 +58701,62 @@ async function auraTalk(env, me, stage, saidIn, history) {
       // changes.
       const talkPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
       const talkModel = talkPin && talkPin.trim() ? talkPin.trim() : undefined;
-      const [r, g, iRes] = await Promise.all([
-      callBrain({
-        model: talkModel,
-        system:
+
+      // ══ SHE KNOWS WHERE SHE IS STANDING (2026-09-06) ═══════════════════════════════════════
+      // MEASURED on the live shell: somebody said their mum had died and they wanted a memorial,
+      // and she went straight to "where are you thinking of placing it". Correct to her brief -
+      // draw it out, ask placement and size - and wrong for the moment, because she had no idea
+      // that 89 categories and 7,080 already-drawn pictures were sitting behind her on the same
+      // screen. She cannot offer to show somebody a thing she does not know exists.
+      // ONE READ of the index BROWSE already banks. Names and counts only, not every leaf: the
+      // point is that she knows the shape of what she has, so she can say "there is a whole
+      // Family Roots section" instead of interviewing somebody who is grieving.
+      let shelf = "";
+      try {
+        const idx = await env.AURA_KV.get("browse:v1:index", "json");
+        const items = (idx && idx.items) || [];
+        if (items.length) {
+          shelf = "\n\nWHAT IS ALREADY DRAWN AND WAITING (" + items.length + " categories, " +
+            items.reduce((n, x) => n + (x.pictures || 0), 0) + " pictures). These are REAL and " +
+            "already made - showing somebody one costs them nothing and takes one tap:\n" +
+            items.filter((x) => x.pictures).map((x) => x.label + " (" + x.pictures + ")").join(", ") +
+            "\n\nWhen what they want is in that list, SAY SO and offer to show them. Do not " +
+            "interview somebody about placement when you could put the pictures in front of them.";
+        }
+      } catch {}
+
+      // ══ HER BRIEF IS A DIAL, NOT A DEPLOY ══════════════════════════════════════════════════
+      // Every other prompt in this file goes through `loadPrompt` with the in-code string as the
+      // floor - this was the one still hardcoded, so teaching her anything meant a deploy. She has
+      // to learn the product (what the $9.99 buys, how the drawing reaches the parlor, that she can
+      // answer questions before anybody pays), and that is a thing to tune repeatedly rather than
+      // ship once. `cognition:prompts` -> `tattoo_talk` overrides it live; blank falls back here.
+      const TATTOO_TALK_FLOOR =
           "You are Aura, helping somebody work out the tattoo they want. You are not a prompt " +
           "engineer and you never talk about prompts, models or images as technology.\n\n" +
           "HOW YOU HELP: a tattoo is permanent and most people arrive with a feeling rather than " +
           "a picture. Draw it out. Ask about placement, size, what it is FOR, whether they want " +
           "linework or colour or black and grey, whether it should read from across a room or " +
           "reward being close. One question at a time, never a list.\n\n" +
+          "READ THE ROOM FIRST. If somebody has just told you something heavy - a death, a loss, " +
+          "an illness - answer the person before you answer the tattoo. Never follow grief with " +
+          "a logistics question.\n\n" +
           "WHEN THEY HAVE ENOUGH: say so plainly and offer to show them. Do not drag it out - " +
           "two or three exchanges is usually enough, and somebody who arrives knowing exactly " +
           "what they want should be shown it immediately.\n\n" +
+          "ANSWERING QUESTIONS IS PART OF THE JOB. If they ask how any of this works, answer " +
+          "plainly and for free. GROUND IN TRUTH: only state something about how the product " +
+          "works if it is written below. If it is not, say you will find out rather than " +
+          "inventing an answer - a confident wrong answer about somebody's money or their " +
+          "artist is the worst thing you can do here.\n\n" +
           "NEVER invent that you have already made something. You have not drawn anything yet.\n" +
-          "Keep replies short - three sentences at most. This is a phone.",
+          "Keep replies short - three sentences at most. This is a phone.";
+      const talkSys = (await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR)) + shelf;
+
+      const [r, g, iRes] = await Promise.all([
+      callBrain({
+        model: talkModel,
+        system: talkSys,
         messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
                                        content: String(h.said || "").slice(0, 1500) })),
                    { role: "user", content: said }],

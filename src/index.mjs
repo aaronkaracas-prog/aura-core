@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.138.0-2026-09-06-b-catalog-door-onto-the-tree";
+const BUILD = "aura-core-v9.139.0-2026-09-06-c-variations-and-leafless-kinds";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60263,13 +60263,79 @@ export class PublicEntry extends WorkerEntrypoint {
 
         const askKind = String(b.kind || "").trim();
         const askCat = String(b.category || "").trim();
+        const askLeaf = String(b.leaf || "").trim();
+
+        // ── one leaf: every VARIATION already banked for it ────────────────────────────────
+        // MEASURED 2026-09-06. Angels & Demons reports "112 tile - 56 expression - 45 pose": of
+        // its 213 banked pictures, 101 are variations and the consumer surface could reach none
+        // of them. They sit in `shot:v1:<leaf>:<step>:<path>` as `{ imgs: { option: { img } } }`
+        // and were only ever readable from a walk page.
+        // Every one is drawn and paid for, so a person swapping pose or expression here spends
+        // nothing. That matters beyond the bill: it moves the free part of the flow further
+        // along, so the first thing anyone pays for is later and more deliberate.
+        //
+        // ONE ROW PER STEP, PATHS MERGED. The key carries the whole path taken to reach it, so a
+        // leaf holds several sets for the same question - Labrador has `pose:bare` AND
+        // `pose:style-realism__crop-full-body`. Correct for the engine, confusing on a customer
+        // screen, which would show two near-identical pose rows. First banked picture wins per
+        // option id.
+        if (askLeaf) {
+          let keys = [];
+          try {
+            const l = await env.AURA_KV.list({ prefix: "shot:v1:" + tatSlug(askLeaf) + ":", limit: 200 });
+            keys = (l.keys || []).map((k) => k.name);
+          } catch {}
+          const byStep = {};
+          for (const kn of keys) {
+            const bits = kn.split(":");
+            const st = bits[3] || "";
+            if (!st) continue;
+            let rec = null;
+            try { rec = await env.AURA_KV.get(kn, "json"); } catch {}
+            const imgs = (rec && rec.imgs) || {};
+            byStep[st] = byStep[st] || {};
+            for (const o of Object.keys(imgs)) {
+              const im = imgs[o];
+              if (im && im.img && !byStep[st][o]) byStep[st][o] = im.img;
+            }
+          }
+          // The order a person would actually be asked these, not the order KV lists them.
+          // Anything unrecognised keeps its place at the end rather than being dropped - a step
+          // this list has not heard of is still a wall of real pictures.
+          const ORDER = ["pose", "expression", "crop", "style"];
+          const names = Object.keys(byStep).sort((a2, b3) => {
+            const ia = ORDER.indexOf(a2), ib = ORDER.indexOf(b3);
+            return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a2.localeCompare(b3);
+          });
+          const sets = names.map((st) => ({
+            step: st,
+            label: st.charAt(0).toUpperCase() + st.slice(1),
+            items: Object.keys(byStep[st]).map((o) => ({
+              value: o,
+              label: String(o).replace(/[-_]+/g, " "),
+              image: "https://auras.guide/image/" + byStep[st][o]
+            }))
+          })).filter((x) => x.items.length);
+          return { ok: true, leaf: askLeaf, image: await faceOf(askLeaf), sets,
+                   pictures: sets.reduce((n, x) => n + x.items.length, 0) };
+        }
 
         // ── one kind: the leaves and their pictures ────────────────────────────────────────
         if (askKind) {
           const kindName = Object.keys(spec).find((x) => tatSlug(x) === tatSlug(askKind)) || askKind;
           const leaves = leavesOf(askKind);
-          if (!leaves.length) return { ok: true, kind: kindName, items: [],
-            say: "That kind has no leaves yet." };
+          // ══ A KIND WITH NO LEAVES IS ITS OWN LEAF ══════════════════════════════════════
+          // WALK's rule, and this branch did not honour it: it returned an empty list and
+          // "that kind has no leaves yet". MEASURED on Angels & Demons - 27 kinds and only two
+          // of them carry leaves, so twenty-five of its tiles led to an empty question. The
+          // tile the person just tapped IS the thing; there is no narrower choice to make.
+          // `self` tells the caller to skip the question rather than draw one with one answer.
+          if (!leaves.length) {
+            const own = await faceOf(kindName);
+            return { ok: true, type: "row", kind: kindName, label: kindName, self: true,
+                     items: [{ value: tatSlug(kindName), label: kindName, image: own }],
+                     pictures: own ? 1 : 0 };
+          }
           const items = [];
           // Batched. Forty at a time is what SIGN uses on the same records; serially this is
           // forty round trips and a visible pause on a phone.

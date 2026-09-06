@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.144.0-2026-09-06-h-reach-audit";
+const BUILD = "aura-core-v9.145.0-2026-09-06-i-nothing-is-unreachable";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60509,12 +60509,14 @@ export class PublicEntry extends WorkerEntrypoint {
             const bits = kn.split(":");
             const st = bits[3] || "";
             if (!st) continue;
-            // ══ THE BANKED STYLE WALL IS NOT THE STYLE SHEET ═══════════════════════════════
-            // Aaron: "we ran them while we were building out, they're wrong - it should bring up
-            // the style sheet that actually generates." Styles come from `finishes` and `finish`,
-            // which is one list maintained in one place. A half-built wall offering the same
-            // choice with worse pictures is a second answer to a settled question.
-            if (st === "style") continue;
+            // ══ NOTHING IS DROPPED HERE ANY MORE (2026-09-06) ══════════════════════════════
+            // This skipped every `style` wall, because Aaron said the ANIMAL ones were built
+            // wrong. MEASURED on Birds: Peacock and Falcon each carry twelve good style
+            // variants - realism, japanese, blackwork, ornamental, watercolour - and the shell
+            // showed none of them. The exclusion was right for dogs and wrong for birds.
+            // Aaron: "for a tattoo there's no bad image." So every banked wall comes back and
+            // the SURFACE decides what to lead with. Dropping a picture here makes it
+            // unreachable everywhere; marking it leaves the choice open.
             const ctx = bits.slice(4).join(":");
             const needs = {};
             for (const tok of String(ctx || "").split("__")) {
@@ -60548,6 +60550,10 @@ export class PublicEntry extends WorkerEntrypoint {
               step: g.step,
               label: g.step.charAt(0).toUpperCase() + g.step.slice(1),
               needs: g.needs,
+              // `guided: false` means the walked chain skips it - the banked style walls, which
+              // the style sheet answers better. It is still returned, still free, and still
+              // reachable from the everything view. A flag, not a deletion.
+              guided: g.step !== "style",
               items: Object.keys(g.imgs).map((o) => ({
                 value: o, label: String(o).replace(/[-_]+/g, " "),
                 image: "https://auras.guide/image/" + g.imgs[o]

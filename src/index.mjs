@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.145.0-2026-09-06-i-nothing-is-unreachable";
+const BUILD = "aura-core-v9.146.0-2026-09-06-j-the-whole-category-at-once";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60610,6 +60610,31 @@ export class PublicEntry extends WorkerEntrypoint {
         if (askCat) {
           const catName = Object.keys(subj).find((x) => tatSlug(x) === tatSlug(askCat)) || null;
           if (!catName) return { ok: false, error: "NO_SUCH_CATEGORY", asked: askCat };
+
+          // ══ THE WHOLE CATEGORY AT ONCE (2026-09-06) ═══════════════════════════════════
+          // Aaron: "it's just so difficult to see what's there." The kinds screen shows 44
+          // covers for a category holding 224 pictures - the walk page can show all of them
+          // and mytattoo could not, which is what made the catalogue hard to read from the
+          // consumer side. Same reads WALK already does for its own page, batched the same way.
+          // DRAWS NOTHING.
+          if (b.all) {
+            const flat = [];
+            for (const k of (subj[catName] || [])) {
+              const lv = leavesOf(k);
+              for (const lf of (lv.length ? lv : [k])) flat.push({ leaf: lf, kind: k });
+            }
+            const items = [];
+            for (let i = 0; i < flat.length; i += 40) {
+              const part = await Promise.all(flat.slice(i, i + 40).map(async (x) => ({
+                value: tatSlug(x.leaf), label: String(x.leaf), kind: String(x.kind),
+                image: await faceOf(x.leaf)
+              })));
+              items.push(...part);
+            }
+            return { ok: true, type: "row", category: catName, label: catName, all: true,
+                     items, things: items.length,
+                     pictures: items.filter((x) => x.image).length };
+          }
           const kinds = subj[catName] || [];
           const items = await Promise.all(kinds.map(async (k) => {
             const lv = leavesOf(k);

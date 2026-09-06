@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.137.0-2026-09-06-a-rewalk-is-a-button-not-a-paste";
+const BUILD = "aura-core-v9.138.0-2026-09-06-b-catalog-door-onto-the-tree";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6662,6 +6662,88 @@ async function processCommand(line, env, isOp) {
         view: tightW ? "tight - one grid, kind on each tile" : "grouped by kind",
         note: "Nothing was drawn. Red dashed = no tile. Amber = tile but no variation wall." +
               (tightW ? "" : '  Add --tight for one grid that fits a screen.') } };
+    }
+
+    // ══ BROWSE — BANK THE FRONT PAGE SO IT COSTS ONE READ ═══════════════════════════════════
+    // The index is 89 categories, each needing a cover picture found by walking into its kinds
+    // and its leaves. Computed live that is hundreds of KV reads on the first screen somebody
+    // sees, which is the exact shape that timed WALK's index out at 1,831 reads and five minutes.
+    // WALK's answer was to bank the number on the way out. This banks the whole payload.
+    //
+    // DRAWS NOTHING. It reads `card:tree` and `face:v1:` and writes one key. A category whose
+    // leaves are all undrawn is banked with `image: null` and shows as words - it is never a
+    // reason to make a picture.
+    //
+    // Resumable on a time budget, the same way WALK ALL and PROFILE are: it banks the slugs it
+    // has finished, so a second paste continues rather than starting over. The cursor clears
+    // itself on the pass that completes.
+    case "BROWSE": {
+      const treeB = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeB) return { cmd: "BROWSE", payload: { ok: false, error: "NO_TREE" } };
+      const subjB = treeB.subjects || {}, specB = treeB.specific || {};
+      const catsB = Object.keys(subjB).sort((a, b2) =>
+        a.localeCompare(b2, undefined, { sensitivity: "base" }));
+      if (!catsB.length) return { cmd: "BROWSE", payload: { ok: false, error: "NO_TREE" } };
+
+      const leavesB = (k) => {
+        const hit = Object.keys(specB).find((x) => tatSlug(x) === tatSlug(k));
+        return hit ? (specB[hit] || []) : [];
+      };
+      const faceB = async (n) => {
+        const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
+        return r ? tatFaceUrl(r) : null;
+      };
+
+      // What is already banked carries over, so a resumed pass keeps the covers it found.
+      let haveB = {};
+      try {
+        const prev = await env.AURA_KV.get("browse:v1:index", "json");
+        for (const it of ((prev && prev.items) || [])) haveB[it.value] = it;
+      } catch {}
+      let doneB = [];
+      try { doneB = JSON.parse(await env.AURA_KV.get("browse:index:done") || "[]"); } catch {}
+
+      const startB = Date.now(), budgetB = 20000;
+      let didB = 0, stoppedB = false;
+      for (const c of catsB) {
+        if (doneB.includes(tatSlug(c))) continue;
+        if (Date.now() - startB > budgetB) { stoppedB = true; break; }
+        const kindsB = subjB[c] || [];
+        let cover = null, tried = 0, things = 0;
+        for (const k of kindsB) {
+          const lv = leavesB(k);
+          things += lv.length || 1;
+          if (cover) continue;
+          for (const lf of (lv.length ? lv : [k])) {
+            if (tried++ >= COVER_TRIES) break;
+            cover = await faceB(lf);
+            if (cover) break;
+          }
+        }
+        haveB[tatSlug(c)] = { value: tatSlug(c), label: c, image: cover,
+                              kinds: kindsB.length, things };
+        doneB.push(tatSlug(c));
+        didB++;
+      }
+
+      // Alphabetical, because somebody arriving at this screen is looking for a name and not for
+      // the order the categories happened to be created in. Same reasoning as the walk index.
+      const itemsB = catsB.map((c) => haveB[tatSlug(c)]).filter(Boolean);
+      await env.AURA_KV.put("browse:v1:index", JSON.stringify({
+        at: new Date().toISOString(), items: itemsB })).catch(() => {});
+      await env.AURA_KV.put("browse:index:done", JSON.stringify(stoppedB ? doneB : []))
+        .catch(() => {});
+
+      const remainB = catsB.filter((c) => !doneB.includes(tatSlug(c))).length;
+      return { cmd: "BROWSE", payload: { ok: true,
+        categories: catsB.length, built_this_pass: didB, banked: itemsB.length,
+        with_cover: itemsB.filter((x) => x.image).length,
+        no_cover: itemsB.filter((x) => !x.image).map((x) => x.label),
+        remaining: remainB,
+        note: "Nothing was drawn. A category with no cover has no banked tile in its first " +
+              COVER_TRIES + " leaves.",
+        next: remainB ? 'RUN "BROWSE"   -- ' + remainB + " categories left, paste again"
+                      : "the whole index is banked - Explore is one KV read now" } };
     }
 
     case "LIBRARY": {
@@ -54709,6 +54791,12 @@ function tatFaceUrl(rec) {
   return null;
 }
 
+// How many leaves to try before giving a kind or a category up as having no cover. Bounded on
+// purpose: unbounded, one category of 300 leaves with nothing drawn is 300 KV reads for a single
+// thumbnail. Most covers are found on the first try, so this costs almost nothing in the normal
+// case and puts a ceiling on the bad one.
+const COVER_TRIES = 6;
+
 // A stated quantity drops the singular default. Written once - three copies of this rule
 // disagreed with each other and one of them turned every bouquet into a single flower.
 const TAT_PLURAL = /\b(bouquet|cluster|bundle|two|three|four|several|many|multiple|pair|group|wreath|frame|scattered|vine|climbing|arrangement|with (another|owner|their))\b/i;
@@ -60137,6 +60225,96 @@ export class PublicEntry extends WorkerEntrypoint {
           model: r.model || null, cost_usd: r.cost_usd,
           say: "Here it is. Tell me anything you want moved or changed.",
           check: "Read the words before you take this to a shop." };
+      }
+
+      // ══ CATALOG — THE BROWSE SURFACE, READ-ONLY (2026-09-06) ═══════════════════════════════
+      // MEASURED 2026-09-06. mytattoo's browse rails read `card:row:`, which holds 35 rows, 33 of
+      // them on one style. The CATALOGUE - 89 categories, 8,706 banked pictures - lives in
+      // `card:tree` and `face:v1:`, and nothing the consumer page can call has ever read it. Two
+      // libraries built against each other and never introduced. That is why Explore had nothing
+      // to show while the pictures sat right there, already drawn and already paid for.
+      //
+      // NOTHING HERE CAN DRAW. It reads the tree and the face records and hands back URLs, the
+      // same way WALK does. A leaf with no banked picture comes back with `image: null` and the
+      // page renders its words - it does not become a request to make one. That is the whole
+      // point of this door: browsing is free, and generation waits until somebody has chosen.
+      //
+      // Three depths, one action:
+      //   {}                     -> the banked index: every category with a cover
+      //   { category }           -> the kinds in it, each with a cover
+      //   { kind }               -> the leaves, each with its picture
+      //
+      // No session gate, the same as `row`. Browsing is public; a person has not become anybody
+      // yet at this point and should not have to in order to look.
+      if (action === "catalog") {
+        const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+        if (!tree) return { ok: false, error: "NO_TREE" };
+        const subj = tree.subjects || {}, spec = tree.specific || {};
+        // The tree stores NAMES, not slugs. Every other reader matches by slug and so does this -
+        // matching on the raw string means "Space & Universe" from a URL never finds itself.
+        const leavesOf = (k) => {
+          const hit = Object.keys(spec).find((x) => tatSlug(x) === tatSlug(k));
+          return hit ? (spec[hit] || []) : [];
+        };
+        const faceOf = async (n) => {
+          const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
+          return r ? tatFaceUrl(r) : null;
+        };
+
+        const askKind = String(b.kind || "").trim();
+        const askCat = String(b.category || "").trim();
+
+        // ── one kind: the leaves and their pictures ────────────────────────────────────────
+        if (askKind) {
+          const kindName = Object.keys(spec).find((x) => tatSlug(x) === tatSlug(askKind)) || askKind;
+          const leaves = leavesOf(askKind);
+          if (!leaves.length) return { ok: true, kind: kindName, items: [],
+            say: "That kind has no leaves yet." };
+          const items = [];
+          // Batched. Forty at a time is what SIGN uses on the same records; serially this is
+          // forty round trips and a visible pause on a phone.
+          for (let i = 0; i < leaves.length; i += 40) {
+            const part = await Promise.all(leaves.slice(i, i + 40).map(async (lf) => ({
+              value: tatSlug(lf), label: String(lf), image: await faceOf(lf) })));
+            items.push(...part);
+          }
+          return { ok: true, type: "row", kind: kindName, label: kindName, items,
+                   pictures: items.filter((x) => x.image).length };
+        }
+
+        // ── one category: its kinds, each with a cover ─────────────────────────────────────
+        if (askCat) {
+          const catName = Object.keys(subj).find((x) => tatSlug(x) === tatSlug(askCat)) || null;
+          if (!catName) return { ok: false, error: "NO_SUCH_CATEGORY", asked: askCat };
+          const kinds = subj[catName] || [];
+          const items = await Promise.all(kinds.map(async (k) => {
+            const lv = leavesOf(k);
+            // A kind with no leaves IS its own leaf - the same rule WALK reports on. Look for
+            // its own tile rather than reporting it as empty.
+            const tryList = (lv.length ? lv : [k]).slice(0, COVER_TRIES);
+            let image = null;
+            for (const lf of tryList) { image = await faceOf(lf); if (image) break; }
+            return { value: tatSlug(k), label: String(k), image, things: lv.length };
+          }));
+          return { ok: true, type: "row", category: catName, label: catName, items,
+                   pictures: items.filter((x) => x.image).length };
+        }
+
+        // ── the front page: the banked index ───────────────────────────────────────────────
+        // Read, never computed here. Building it live is 89 categories x a cover hunt each, which
+        // is the same shape as the count that timed WALK's index out at 1,831 reads. `BROWSE`
+        // banks it; this reads one key.
+        const idx = await env.AURA_KV.get("browse:v1:index", "json").catch(() => null);
+        if (!idx || !Array.isArray(idx.items)) {
+          // Honest, and it says the fix. A page that silently shows nothing looks broken; a page
+          // that says the index has not been built yet is a page somebody can act on.
+          return { ok: true, type: "row", label: "Browse", items: [], built: false,
+                   categories: Object.keys(subj).length,
+                   say: "The browse index has not been built yet.",
+                   what_to_do: 'RUN "BROWSE" - it banks a cover per category and draws nothing.' };
+        }
+        return { ok: true, type: "row", label: "Browse", items: idx.items, built: true,
+                 at: idx.at || null, pictures: idx.items.filter((x) => x.image).length };
       }
 
       if (action === "row") {

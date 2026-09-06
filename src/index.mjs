@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.147.0-2026-09-06-k-the-conversation-is-their-record";
+const BUILD = "aura-core-v9.148.0-2026-09-06-l-one-conversation-two-doors";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6950,6 +6950,38 @@ async function processCommand(line, env, isOp) {
         note: "Nothing was drawn. Key names only - these are RECORDS, not pictures: one tile " +
               "record is one picture, one set record is a whole wall. Orphans are banked under " +
               "a slug that is not in card:tree, so nothing can walk to them." } };
+    }
+
+    // ══ TALK — THE SHIPPING CONVERSATION, FROM THE TERMINAL ══════════════════════════════════
+    // The same `auraTalk` the mytattoo surface calls. Not a test harness that approximates it -
+    // literally the same function, so what passes here is what a customer gets.
+    //
+    //   TALK <pta_id> ::: <what they said>
+    //
+    // The PTA is named rather than resolved from a session, because there is no session in a
+    // terminal. That makes this operator-only and it must stay that way: taking an arbitrary
+    // person's id and speaking as them is exactly the thing a session exists to prevent.
+    // `stage` is derived the same way `design()` derives it, so consent behaves identically -
+    // a `pta_` id keeps the round on their chain, anything else stays in the buffer.
+    // COSTS A MODEL CALL. Three, in parallel: her reply, the next-step read, and the facts.
+    case "TALK": {
+      if (!isOp) return { cmd: "TALK", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tkRaw = String(rest || "").trim();
+      const tkSplit = tkRaw.indexOf(":::");
+      if (tkSplit < 0) return { cmd: "TALK", payload: { ok: false,
+        error: "Usage: TALK <pta_id> ::: <what they said>" } };
+      const tkId = tkRaw.slice(0, tkSplit).trim();
+      const tkSaid = tkRaw.slice(tkSplit + 3).trim();
+      if (!tkId || !tkSaid) return { cmd: "TALK", payload: { ok: false,
+        error: "Usage: TALK <pta_id> ::: <what they said>" } };
+      const tkStage = /^pta_/.test(tkId) ? "pta" : "contacted";
+      try {
+        const tkOut = await auraTalk(env, tkId, tkStage, tkSaid.slice(0, 2000), []);
+        return { cmd: "TALK", payload: { ...tkOut, pta: tkId, stage: tkStage } };
+      } catch (e) {
+        return { cmd: "TALK", payload: { ok: false, error: "THREW",
+          detail: String(e && e.message || e).slice(0, 300) } };
+      }
     }
 
     case "LIBRARY": {
@@ -58613,6 +58645,322 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
   }
 }
 
+
+// ══ ONE CONVERSATION, TWO DOORS (2026-09-06) ═══════════════════════════════════════════════════
+// This was the body of `design.talk` - a method on the RPC class, reachable ONLY by aura-host.
+// So the one surface that ships could not be driven from PowerShell, and the only way to test a
+// change to it was to deploy, open a browser and type. Aaron tests the back end first, on purpose:
+// "talk to Aura on the back end via PowerShell commands, get her responses, and that's how we'll
+// know it's working."
+//
+// EXTRACTED, NOT COPIED. A second implementation would agree on the day it was written and drift
+// the first time one side was edited - which is the failure this file records more often than any
+// other. `design.talk` and the `TALK` command now call THIS, so there is one conversation and two
+// ways in, and a terminal test proves the thing the customer will actually get.
+//
+// `me` is the person (a PTA id), `stage` is "pta" or "contacted" and decides whether the round is
+// kept on their chain, `said` is what they typed, `history` is the fallback when nothing is banked.
+async function auraTalk(env, me, stage, saidIn, history) {
+  // The body below is the extracted method, byte for byte. It reads `b.said` and `b.history`, so
+  // the arguments are handed back in that shape rather than editing three hundred proven lines.
+  const b = { said: saidIn, history };
+      const said = String(b.said || "").trim().slice(0, 2000);
+      if (!said) return { ok: false, error: "NOTHING_SAID" };
+
+      // ══ SHE REMEMBERS THE PERSON NOW (2026-09-06) ══════════════════════════════════════
+      // This read `b.history` - twelve turns held by the BROWSER - and wrote nothing anywhere.
+      // So every word somebody said while designing the most permanent thing they will ever
+      // own was discarded when the tab closed, and PTA_LEARN, which pairs an outcome with what
+      // was said by reading the chain, could never see a real customer conversation.
+      // Nothing new is invented here. `PTA_TALK` established the pattern on the console in
+      // August and its reasoning is the right one: the KV timeline is the fast per-turn buffer,
+      // the chain is their record. This surface was built before the chain existed and simply
+      // never got connected.
+      // THE STORED TIMELINE WINS over what the page sends. A browser can be reloaded, opened on
+      // a second device, or lie; the timeline is what was actually said and it is hers to read.
+      let hist = Array.isArray(b.history) ? b.history.slice(-12) : [];
+      let tline = [];
+      if (me) {
+        try {
+          const raw = await env.AURA_KV.get("pta:timeline:" + me);
+          if (raw) tline = JSON.parse(raw) || [];
+        } catch {}
+        const spoken = tline.filter((e) => e && e.said && e.role);
+        if (spoken.length) {
+          hist = spoken.slice(-12).map((e) => ({ role: e.role, said: e.said }));
+        }
+      }
+      // ══ TWO CALLS, ONE WAIT (2026-08-24) ═══════════════════════════════════════════════
+      // MEASURED: about a minute for a reply. `talk` makes two model calls - her answer, then a
+      // cheap read of whether they are ready - and they ran ONE AFTER THE OTHER, on the floor
+      // rung, which is the same model that took 109 seconds on the wall before it got its own
+      // lane. Two sequential calls on the slowest model is a minute of somebody staring at a
+      // screen, and it takes longer to ANSWER than it does to draw.
+      // They do not depend on each other: both read the same conversation. So they go together,
+      // and `config:talk:model` gives the lane a faster model without a deploy. Unset, nothing
+      // changes.
+      const talkPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
+      const talkModel = talkPin && talkPin.trim() ? talkPin.trim() : undefined;
+      const [r, g, iRes] = await Promise.all([
+      callBrain({
+        model: talkModel,
+        system:
+          "You are Aura, helping somebody work out the tattoo they want. You are not a prompt " +
+          "engineer and you never talk about prompts, models or images as technology.\n\n" +
+          "HOW YOU HELP: a tattoo is permanent and most people arrive with a feeling rather than " +
+          "a picture. Draw it out. Ask about placement, size, what it is FOR, whether they want " +
+          "linework or colour or black and grey, whether it should read from across a room or " +
+          "reward being close. One question at a time, never a list.\n\n" +
+          "WHEN THEY HAVE ENOUGH: say so plainly and offer to show them. Do not drag it out - " +
+          "two or three exchanges is usually enough, and somebody who arrives knowing exactly " +
+          "what they want should be shown it immediately.\n\n" +
+          "NEVER invent that you have already made something. You have not drawn anything yet.\n" +
+          "Keep replies short - three sentences at most. This is a phone.",
+        messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
+                                       content: String(h.said || "").slice(0, 1500) })),
+                   { role: "user", content: said }],
+        max_tokens: 400
+      }, env),
+      callBrain({
+        model: talkModel,
+        // A separate, cheap read of "are they ready" - kept apart from her reply so she
+        // never has to emit machine syntax in the middle of a human sentence. Runs BESIDE
+        // her answer rather than after it.
+          // ══ SHE DECIDES WHEN TO SHOW, NOT AN IF-STATEMENT (2026-08-24) ═══════════════
+          // The page had been made to send every typed sentence straight to a picture search,
+          // which meant somebody who wrote "my mum passed away and she loved cats" was answered
+          // with "I can't find a picture of yours on the internet". A grieving person got a
+          // vending machine, and the conversation that was already here never ran at all.
+          // Showing real work is a good move at the right moment - and knowing WHICH moment is
+          // exactly the judgement a model has and a regex does not. So this one cheap read now
+          // has three answers instead of two, and she picks.
+          system: "Read the conversation and decide what should happen next. Reply with ONE line, " +
+            "in one of exactly three shapes and nothing else:\n\n" +
+            "DRAW: <one line describing the tattoo - subject, style, placement that changes the " +
+            "composition>\n" +
+            "   Use this when they have described it concretely enough to draw, or have asked " +
+            "to see it.\n\n" +
+            "SHOW: <two to five words naming the subject to look for>\n" +
+            "   Use this when they have named something they want but have not settled the " +
+            "details, and seeing real work on real people would move them along faster than " +
+            "another question. A cat, a dragon, a rose. NEVER use SHOW for something personal " +
+            "that no search could find - their own pet, a relative, somebody's handwriting - " +
+            "and never immediately after somebody has told you something sad. Talk to them " +
+            "first.\n\n" +
+            "NOT_YET\n" +
+            "   Use this when the conversation itself is the right next step - they are working " +
+            "out what they want, or they have just said something that deserves a human " +
+            "response before anything is shown to them.",
+          messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
+                                         content: String(h.said || "").slice(0, 1500) })),
+                     { role: "user", content: said }],
+          max_tokens: 120
+        }, env).catch(() => null),
+        // ══ THE THIRD READ: THE FACTS, AS FIELDS ═════════════════════════════════════════
+        // Beside her reply rather than after it. It reads the same conversation the other two
+        // read and depends on neither, so it costs no extra wait.
+        // She is told the SHAPE and told to leave out what she does not know. A model that
+        // guesses a placement nobody mentioned would tick a stage the person never answered,
+        // and they would never be asked - which is worse than asking twice.
+        callBrain({
+          model: talkModel,
+          system:
+            "Read the conversation and return the FACTS about the tattoo being designed, as JSON.\n\n" +
+            "Return ONLY the JSON object. No preamble, no markdown fence.\n\n" +
+            "{\n" +
+            '  "subject": "what the tattoo is OF, in their words - a labrador, a japanese dragon, ' +
+            'Clifford the Big Red Dog surfing in Malibu",\n' +
+            '  "subject_path": ["animals","dogs","labrador"],\n' +
+            '  "job": "new | cover | add | rework",\n' +
+            '  "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
+            '  "colour": "full_colour | black_and_grey | muted",\n' +
+            '  "composition": "what the picture is OF - head portrait, head and chest, ' +
+            'full body sitting, coiled, flying, single bloom, a bouquet",\n' +
+            '  "character": "what it should feel like - happy, loving, fierce, majestic, delicate, menacing",\n' +
+            '  "detail": "bold | balanced | intricate | ultra",\n' +
+            '  "elements": ["cherry blossoms","waves"],\n' +
+            '  "meaning": "why they are getting it - who it is for, what happened",\n' +
+            '  "brief": "one paragraph, at most 60 words, describing the tattoo for a tattoo artist to read"\n' +
+            "}\n\n" +
+            "RULES:\n" +
+            "- OMIT ANY FIELD THEY HAVE NOT SETTLED. Do not guess and do not fill a field with " +
+            "a sensible default. An empty field means she asks; a wrong one means she never does.\n" +
+            "- A CORRECTION REPLACES what it corrects. Three legs then one leg is ONE leg, and " +
+            "three is never mentioned again.\n" +
+            "- Leave out anything YOU suggested that they did not take up.\n" +
+            "- `subject_path` only when they arrived through the categories. Omit it when they " +
+            "simply said what they wanted.\n" +
+            "- `meaning` is the most important field at the far end. If they told you somebody " +
+            "died, or who it is for, or what they have been through, it goes here in plain words.\n" +
+            "- `brief` describes the TATTOO, never the conversation.",
+          messages: [
+            ...(b.brief ? [{ role: "assistant", content: "Brief so far: " + String(b.brief).slice(0, 400) }] : []),
+            ...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
+                                content: String(h.said || "").slice(0, 1500) })),
+            { role: "user", content: said }],
+          max_tokens: 500
+        }, env).catch(() => null)
+      ]);
+      if (!r?.ok) return { ok: false, error: "COULD_NOT_ANSWER", detail: r?.error || null };
+      let ready = null, show = null;
+      const t = String(g?.text || "").trim();
+      if (g?.ok && t) {
+        const mDraw = t.match(/^DRAW:\s*(.+)$/is);
+        const mShow = t.match(/^SHOW:\s*(.+)$/is);
+        if (mDraw) ready = mDraw[1].trim().slice(0, 400);
+        else if (mShow) show = mShow[1].trim().replace(/[."]+$/, "").slice(0, 80);
+        // Anything else - NOT_YET, or a model that ignored the shape - means keep talking, which
+        // is the safe default and the one that was right before today.
+      }
+      // ══ THE BRIEF — FACTS, NOT TURNS ═══════════════════════════════════════════════════
+      // "One leg." "Green eyes." "It's for my mum." Those are FACTS about what is being made,
+      // and they lived in a conversation window that scrolls - so somebody had to keep repeating
+      // that his dog has one leg.
+      // CORRECTIONS REPLACE, THEY DO NOT STACK. "Three legs" then "no, one leg" must leave ONE
+      // fact behind. A brief that accumulates both is worse than no brief at all - the same
+      // shape as a calibration that scales its own output, which this file has already paid for
+      // once.
+      //
+      // ══ AND NOW IT IS AN OBJECT, NOT A PARAGRAPH (2026-08-25) ══════════════════════════
+      //
+      // THE CHECKLIST IS A KEYBOARD. Tapping Animals -> Dogs -> Labrador is the same sentence as
+      // typing "labrador"; tapping Japanese is typing "japanese". Both doors say the same thing
+      // and both have to land in the same place. A 60-word paragraph cannot be that place:
+      //   - you cannot tick a checkbox into a paragraph
+      //   - you cannot show a stage as already resolved
+      //   - you cannot let somebody tap a chip and change ONE fact
+      //   - you cannot hand an artist structured intent
+      // So the fields are canonical and the paragraph is a VIEW of them. Both come back from one
+      // call, because asking twice would let them disagree - and two readers of one fact is the
+      // most expensive recurring bug in this codebase.
+      //
+      // ADDITIVE ON PURPOSE. `make`, `evolve` and `interest` still receive `brief` as the same
+      // prose string they receive today. Nothing reads `intent` yet. If the JSON fails entirely
+      // the reply falls back to the raw text as prose, which is exactly the old behaviour.
+      //
+      // IT RUNS ON EVERY TURN NOW, AND IN PARALLEL. It used to fire only once she was ready to
+      // draw, and SEQUENTIALLY after the other two - so the fields did not exist while somebody
+      // was still deciding (which is precisely when the screens need them), and it added its own
+      // latency to every ready turn. The three calls do not depend on each other; they all read
+      // the same conversation. So they go together.
+      //
+      // MEANING IS A FIELD, and it is the one that matters most at the far end. A brief that
+      // says "dragon, japanese, full back, large" has thrown away the only thing that lets an
+      // artist open with "I'm sorry about your mum - sit down" instead of "what are you after".
+      let brief = null, intent = null;
+      try {
+        const it = iRes;
+        if (it?.ok && it.text) {
+          let parsed = null;
+          try { parsed = JSON.parse(it.text); }
+          // `repairJson` RETURNS A PARSED OBJECT, not a string - wrapping it in JSON.parse
+          // stringifies it to "[object Object]" and throws, which silently killed both repair
+          // paths and left every fenced or truncated reply with no fields at all. Caught by the
+          // test, not by reading.
+          catch { try { parsed = repairJson(it.text); } catch {} }
+          if (parsed) parsed = unwrapSchema(parsed);
+          if (parsed && typeof parsed === "object") {
+            // One value per field, trimmed and capped. A model that answers a field with an
+            // object or an array where a string belongs has destroyed six correct names on two
+            // live businesses before - coerce at the boundary, or drop it.
+            const str = (v, n) => (typeof v === "string" && v.trim()) ? v.trim().slice(0, n) : null;
+            const one = (v, allowed) => {
+              const s = str(v, 40); if (!s) return null;
+              const k = s.toLowerCase().replace(/[\s_-]+/g, "_");
+              return allowed.includes(k) ? k : null;
+            };
+            intent = {
+              // WHAT THEY ARE HERE FOR. Cover-up and add-to start from their own photo, which
+              // is a different opening move, so this is worth knowing early.
+              job:         one(parsed.job, ["new", "cover", "add", "rework"]),
+              // THE ONLY REQUIRED FIELD. Everything else is optional and she only stops for
+              // what she does not already have.
+              subject:     str(parsed.subject, 200),
+              // Where they are in the tree, when they got here by tapping rather than typing:
+              // ["animals","dogs","labrador"]. Null when they typed - and that is fine, the
+              // subject is the fact and the path is only how they reached it.
+              subject_path: Array.isArray(parsed.subject_path)
+                ? parsed.subject_path.map(x => str(x, 40)).filter(Boolean).slice(0, 4) : null,
+              style:       str(parsed.style, 60),
+              placement:   str(parsed.placement, 60),
+              size:        str(parsed.size, 40),
+              colour:      one(parsed.colour ?? parsed.color, ["full_colour", "full_color", "black_and_grey", "black_and_gray", "muted"]),
+              // FORM and CHARACTER are FREE STRINGS, not enums. Their vocabulary is generated
+              // per subject and cached, so there is no fixed list to validate against - and a
+              // person who says "head and chest" or "goofy" must have that survive verbatim.
+              // Validating them against a table would silently drop the ones we did not think
+              // of, which is the whole reason they are contextual in the first place.
+              composition: str(parsed.composition, 60),
+              character:   str(parsed.character, 60),
+              detail:      one(parsed.detail, ["bold", "balanced", "intricate", "ultra"]),
+              elements:    Array.isArray(parsed.elements)
+                ? parsed.elements.map(x => str(x, 40)).filter(Boolean).slice(0, 6) : null,
+              meaning:     str(parsed.meaning, 300)
+            };
+            // The paragraph, from the same answer. A shop reads this; the fields are for us.
+            brief = str(parsed.brief, 400);
+            // WHAT IS STILL MISSING, computed here so one place decides it. The screens read
+            // this to know which stage to stop at, and she reads it to know what to ask. It is
+            // DERIVED, never stored - a stored copy would drift from the fields the moment one
+            // changed.
+            // The design ladder, and only it. Placement and size are read out of a sentence
+            // when somebody offers them, but they are NOT design stages any more - they are
+            // on-body decisions made after the artwork exists - so they do not count toward
+            // what is resolved or missing here.
+            const order = ["subject", "style", "composition", "character", "colour", "detail"];
+            intent.resolved = order.filter(k => intent[k] != null &&
+              (!Array.isArray(intent[k]) || intent[k].length));
+            intent.missing = order.filter(k => !intent.resolved.includes(k));
+          }
+          // JSON failed completely: use what came back as the paragraph, which is what this
+          // returned before today. A worse answer beats a dead field.
+          if (!brief) brief = String(it.text).trim().slice(0, 400);
+        }
+      } catch {}
+      // ══ THE ROUND GOES ON THE RECORD ═══════════════════════════════════════════════════
+      // Two stores, the split `PTA_TALK` already settled: KV is the fast buffer that makes the
+      // next turn continuous, the chain is the sealed, append-only record that is THEIRS.
+      // NOT waitUntil - `design()` has no ctx, and referencing one here would throw on every
+      // turn and take the whole conversation surface down. It runs inline and swallows its own
+      // failures, because a memory write that fails must never cost somebody their reply.
+      if (me) {
+        const tsNow = new Date().toISOString();
+        try {
+          tline.push({ ts: tsNow, role: "them", said: said.slice(0, 600) });
+          tline.push({ ts: tsNow, role: "aura", said: String(r.text || "").slice(0, 600) });
+          // Bounded. This is a cache, not the archive - the chain holds the whole history and
+          // an unbounded KV value eventually stops being writable at all.
+          if (tline.length > 60) tline = tline.slice(-60);
+          await env.AURA_KV.put("pta:timeline:" + me, JSON.stringify(tline)).catch(() => {});
+        } catch {}
+
+        // ══ NO GRANT MEANS NO RECORD, AND THAT IS CORRECT ══════════════════════════════
+        // `PTA_REMEMBER` refuses without an existing entity AND an open `can_remember` grant.
+        // A CONTACTED LEAD - somebody who has tapped a tile and nothing more - has neither, by
+        // design: they have not agreed to be remembered, so the conversation happens and is not
+        // kept beyond the buffer above. `stage` already distinguishes the two at the top of this
+        // method, so a lead costs no wasted D1 read and no wasted Durable Object fetch, and the
+        // refusal is never something anybody has to see.
+        if (stage === "pta") {
+          for (const [who, text] of [["them", said], ["aura", String(r.text || "")]]) {
+            const line = String(text || "").trim();
+            if (!line) continue;
+            try {
+              await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
+                said: line.slice(0, 600), who, channel: "chat", mode: "tattoo", at: tsNow,
+              }), env, true);
+            } catch {}
+          }
+        }
+      }
+
+      return { ok: true, said: r.text, ready_to_draw: ready, show_me: show, brief, intent,
+               // What she is actually working from, so a surface can say "we have talked before"
+               // rather than pretending every visit is the first one.
+               remembering: me ? tline.length : 0,
+               kept: stage === "pta" };
+}
+
 export class PublicEntry extends WorkerEntrypoint {
 
   // ══ WHO IS ASKING — THE SESSION IS THE PROOF, NOT AN OPERATOR TOKEN (v4.9.772) ═══════════════
@@ -59286,301 +59634,11 @@ export class PublicEntry extends WorkerEntrypoint {
       // fractions of a cent and it is the whole reason somebody trusts the thing that follows.
       // She is drawing the idea OUT of them, not writing prompts at them.
       if (action === "talk") {
-        const said = String(b.said || "").trim().slice(0, 2000);
-        if (!said) return { ok: false, error: "NOTHING_SAID" };
-
-        // ══ SHE REMEMBERS THE PERSON NOW (2026-09-06) ══════════════════════════════════════
-        // This read `b.history` - twelve turns held by the BROWSER - and wrote nothing anywhere.
-        // So every word somebody said while designing the most permanent thing they will ever
-        // own was discarded when the tab closed, and PTA_LEARN, which pairs an outcome with what
-        // was said by reading the chain, could never see a real customer conversation.
-        // Nothing new is invented here. `PTA_TALK` established the pattern on the console in
-        // August and its reasoning is the right one: the KV timeline is the fast per-turn buffer,
-        // the chain is their record. This surface was built before the chain existed and simply
-        // never got connected.
-        // THE STORED TIMELINE WINS over what the page sends. A browser can be reloaded, opened on
-        // a second device, or lie; the timeline is what was actually said and it is hers to read.
-        let hist = Array.isArray(b.history) ? b.history.slice(-12) : [];
-        let tline = [];
-        if (me) {
-          try {
-            const raw = await env.AURA_KV.get("pta:timeline:" + me);
-            if (raw) tline = JSON.parse(raw) || [];
-          } catch {}
-          const spoken = tline.filter((e) => e && e.said && e.role);
-          if (spoken.length) {
-            hist = spoken.slice(-12).map((e) => ({ role: e.role, said: e.said }));
-          }
-        }
-        // ══ TWO CALLS, ONE WAIT (2026-08-24) ═══════════════════════════════════════════════
-        // MEASURED: about a minute for a reply. `talk` makes two model calls - her answer, then a
-        // cheap read of whether they are ready - and they ran ONE AFTER THE OTHER, on the floor
-        // rung, which is the same model that took 109 seconds on the wall before it got its own
-        // lane. Two sequential calls on the slowest model is a minute of somebody staring at a
-        // screen, and it takes longer to ANSWER than it does to draw.
-        // They do not depend on each other: both read the same conversation. So they go together,
-        // and `config:talk:model` gives the lane a faster model without a deploy. Unset, nothing
-        // changes.
-        const talkPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
-        const talkModel = talkPin && talkPin.trim() ? talkPin.trim() : undefined;
-        const [r, g, iRes] = await Promise.all([
-        callBrain({
-          model: talkModel,
-          system:
-            "You are Aura, helping somebody work out the tattoo they want. You are not a prompt " +
-            "engineer and you never talk about prompts, models or images as technology.\n\n" +
-            "HOW YOU HELP: a tattoo is permanent and most people arrive with a feeling rather than " +
-            "a picture. Draw it out. Ask about placement, size, what it is FOR, whether they want " +
-            "linework or colour or black and grey, whether it should read from across a room or " +
-            "reward being close. One question at a time, never a list.\n\n" +
-            "WHEN THEY HAVE ENOUGH: say so plainly and offer to show them. Do not drag it out - " +
-            "two or three exchanges is usually enough, and somebody who arrives knowing exactly " +
-            "what they want should be shown it immediately.\n\n" +
-            "NEVER invent that you have already made something. You have not drawn anything yet.\n" +
-            "Keep replies short - three sentences at most. This is a phone.",
-          messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
-                                         content: String(h.said || "").slice(0, 1500) })),
-                     { role: "user", content: said }],
-          max_tokens: 400
-        }, env),
-        callBrain({
-          model: talkModel,
-          // A separate, cheap read of "are they ready" - kept apart from her reply so she
-          // never has to emit machine syntax in the middle of a human sentence. Runs BESIDE
-          // her answer rather than after it.
-            // ══ SHE DECIDES WHEN TO SHOW, NOT AN IF-STATEMENT (2026-08-24) ═══════════════
-            // The page had been made to send every typed sentence straight to a picture search,
-            // which meant somebody who wrote "my mum passed away and she loved cats" was answered
-            // with "I can't find a picture of yours on the internet". A grieving person got a
-            // vending machine, and the conversation that was already here never ran at all.
-            // Showing real work is a good move at the right moment - and knowing WHICH moment is
-            // exactly the judgement a model has and a regex does not. So this one cheap read now
-            // has three answers instead of two, and she picks.
-            system: "Read the conversation and decide what should happen next. Reply with ONE line, " +
-              "in one of exactly three shapes and nothing else:\n\n" +
-              "DRAW: <one line describing the tattoo - subject, style, placement that changes the " +
-              "composition>\n" +
-              "   Use this when they have described it concretely enough to draw, or have asked " +
-              "to see it.\n\n" +
-              "SHOW: <two to five words naming the subject to look for>\n" +
-              "   Use this when they have named something they want but have not settled the " +
-              "details, and seeing real work on real people would move them along faster than " +
-              "another question. A cat, a dragon, a rose. NEVER use SHOW for something personal " +
-              "that no search could find - their own pet, a relative, somebody's handwriting - " +
-              "and never immediately after somebody has told you something sad. Talk to them " +
-              "first.\n\n" +
-              "NOT_YET\n" +
-              "   Use this when the conversation itself is the right next step - they are working " +
-              "out what they want, or they have just said something that deserves a human " +
-              "response before anything is shown to them.",
-            messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
-                                           content: String(h.said || "").slice(0, 1500) })),
-                       { role: "user", content: said }],
-            max_tokens: 120
-          }, env).catch(() => null),
-          // ══ THE THIRD READ: THE FACTS, AS FIELDS ═════════════════════════════════════════
-          // Beside her reply rather than after it. It reads the same conversation the other two
-          // read and depends on neither, so it costs no extra wait.
-          // She is told the SHAPE and told to leave out what she does not know. A model that
-          // guesses a placement nobody mentioned would tick a stage the person never answered,
-          // and they would never be asked - which is worse than asking twice.
-          callBrain({
-            model: talkModel,
-            system:
-              "Read the conversation and return the FACTS about the tattoo being designed, as JSON.\n\n" +
-              "Return ONLY the JSON object. No preamble, no markdown fence.\n\n" +
-              "{\n" +
-              '  "subject": "what the tattoo is OF, in their words - a labrador, a japanese dragon, ' +
-              'Clifford the Big Red Dog surfing in Malibu",\n' +
-              '  "subject_path": ["animals","dogs","labrador"],\n' +
-              '  "job": "new | cover | add | rework",\n' +
-              '  "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
-              '  "colour": "full_colour | black_and_grey | muted",\n' +
-              '  "composition": "what the picture is OF - head portrait, head and chest, ' +
-              'full body sitting, coiled, flying, single bloom, a bouquet",\n' +
-              '  "character": "what it should feel like - happy, loving, fierce, majestic, delicate, menacing",\n' +
-              '  "detail": "bold | balanced | intricate | ultra",\n' +
-              '  "elements": ["cherry blossoms","waves"],\n' +
-              '  "meaning": "why they are getting it - who it is for, what happened",\n' +
-              '  "brief": "one paragraph, at most 60 words, describing the tattoo for a tattoo artist to read"\n' +
-              "}\n\n" +
-              "RULES:\n" +
-              "- OMIT ANY FIELD THEY HAVE NOT SETTLED. Do not guess and do not fill a field with " +
-              "a sensible default. An empty field means she asks; a wrong one means she never does.\n" +
-              "- A CORRECTION REPLACES what it corrects. Three legs then one leg is ONE leg, and " +
-              "three is never mentioned again.\n" +
-              "- Leave out anything YOU suggested that they did not take up.\n" +
-              "- `subject_path` only when they arrived through the categories. Omit it when they " +
-              "simply said what they wanted.\n" +
-              "- `meaning` is the most important field at the far end. If they told you somebody " +
-              "died, or who it is for, or what they have been through, it goes here in plain words.\n" +
-              "- `brief` describes the TATTOO, never the conversation.",
-            messages: [
-              ...(b.brief ? [{ role: "assistant", content: "Brief so far: " + String(b.brief).slice(0, 400) }] : []),
-              ...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
-                                  content: String(h.said || "").slice(0, 1500) })),
-              { role: "user", content: said }],
-            max_tokens: 500
-          }, env).catch(() => null)
-        ]);
-        if (!r?.ok) return { ok: false, error: "COULD_NOT_ANSWER", detail: r?.error || null };
-        let ready = null, show = null;
-        const t = String(g?.text || "").trim();
-        if (g?.ok && t) {
-          const mDraw = t.match(/^DRAW:\s*(.+)$/is);
-          const mShow = t.match(/^SHOW:\s*(.+)$/is);
-          if (mDraw) ready = mDraw[1].trim().slice(0, 400);
-          else if (mShow) show = mShow[1].trim().replace(/[."]+$/, "").slice(0, 80);
-          // Anything else - NOT_YET, or a model that ignored the shape - means keep talking, which
-          // is the safe default and the one that was right before today.
-        }
-        // ══ THE BRIEF — FACTS, NOT TURNS ═══════════════════════════════════════════════════
-        // "One leg." "Green eyes." "It's for my mum." Those are FACTS about what is being made,
-        // and they lived in a conversation window that scrolls - so somebody had to keep repeating
-        // that his dog has one leg.
-        // CORRECTIONS REPLACE, THEY DO NOT STACK. "Three legs" then "no, one leg" must leave ONE
-        // fact behind. A brief that accumulates both is worse than no brief at all - the same
-        // shape as a calibration that scales its own output, which this file has already paid for
-        // once.
-        //
-        // ══ AND NOW IT IS AN OBJECT, NOT A PARAGRAPH (2026-08-25) ══════════════════════════
-        //
-        // THE CHECKLIST IS A KEYBOARD. Tapping Animals -> Dogs -> Labrador is the same sentence as
-        // typing "labrador"; tapping Japanese is typing "japanese". Both doors say the same thing
-        // and both have to land in the same place. A 60-word paragraph cannot be that place:
-        //   - you cannot tick a checkbox into a paragraph
-        //   - you cannot show a stage as already resolved
-        //   - you cannot let somebody tap a chip and change ONE fact
-        //   - you cannot hand an artist structured intent
-        // So the fields are canonical and the paragraph is a VIEW of them. Both come back from one
-        // call, because asking twice would let them disagree - and two readers of one fact is the
-        // most expensive recurring bug in this codebase.
-        //
-        // ADDITIVE ON PURPOSE. `make`, `evolve` and `interest` still receive `brief` as the same
-        // prose string they receive today. Nothing reads `intent` yet. If the JSON fails entirely
-        // the reply falls back to the raw text as prose, which is exactly the old behaviour.
-        //
-        // IT RUNS ON EVERY TURN NOW, AND IN PARALLEL. It used to fire only once she was ready to
-        // draw, and SEQUENTIALLY after the other two - so the fields did not exist while somebody
-        // was still deciding (which is precisely when the screens need them), and it added its own
-        // latency to every ready turn. The three calls do not depend on each other; they all read
-        // the same conversation. So they go together.
-        //
-        // MEANING IS A FIELD, and it is the one that matters most at the far end. A brief that
-        // says "dragon, japanese, full back, large" has thrown away the only thing that lets an
-        // artist open with "I'm sorry about your mum - sit down" instead of "what are you after".
-        let brief = null, intent = null;
-        try {
-          const it = iRes;
-          if (it?.ok && it.text) {
-            let parsed = null;
-            try { parsed = JSON.parse(it.text); }
-            // `repairJson` RETURNS A PARSED OBJECT, not a string - wrapping it in JSON.parse
-            // stringifies it to "[object Object]" and throws, which silently killed both repair
-            // paths and left every fenced or truncated reply with no fields at all. Caught by the
-            // test, not by reading.
-            catch { try { parsed = repairJson(it.text); } catch {} }
-            if (parsed) parsed = unwrapSchema(parsed);
-            if (parsed && typeof parsed === "object") {
-              // One value per field, trimmed and capped. A model that answers a field with an
-              // object or an array where a string belongs has destroyed six correct names on two
-              // live businesses before - coerce at the boundary, or drop it.
-              const str = (v, n) => (typeof v === "string" && v.trim()) ? v.trim().slice(0, n) : null;
-              const one = (v, allowed) => {
-                const s = str(v, 40); if (!s) return null;
-                const k = s.toLowerCase().replace(/[\s_-]+/g, "_");
-                return allowed.includes(k) ? k : null;
-              };
-              intent = {
-                // WHAT THEY ARE HERE FOR. Cover-up and add-to start from their own photo, which
-                // is a different opening move, so this is worth knowing early.
-                job:         one(parsed.job, ["new", "cover", "add", "rework"]),
-                // THE ONLY REQUIRED FIELD. Everything else is optional and she only stops for
-                // what she does not already have.
-                subject:     str(parsed.subject, 200),
-                // Where they are in the tree, when they got here by tapping rather than typing:
-                // ["animals","dogs","labrador"]. Null when they typed - and that is fine, the
-                // subject is the fact and the path is only how they reached it.
-                subject_path: Array.isArray(parsed.subject_path)
-                  ? parsed.subject_path.map(x => str(x, 40)).filter(Boolean).slice(0, 4) : null,
-                style:       str(parsed.style, 60),
-                placement:   str(parsed.placement, 60),
-                size:        str(parsed.size, 40),
-                colour:      one(parsed.colour ?? parsed.color, ["full_colour", "full_color", "black_and_grey", "black_and_gray", "muted"]),
-                // FORM and CHARACTER are FREE STRINGS, not enums. Their vocabulary is generated
-                // per subject and cached, so there is no fixed list to validate against - and a
-                // person who says "head and chest" or "goofy" must have that survive verbatim.
-                // Validating them against a table would silently drop the ones we did not think
-                // of, which is the whole reason they are contextual in the first place.
-                composition: str(parsed.composition, 60),
-                character:   str(parsed.character, 60),
-                detail:      one(parsed.detail, ["bold", "balanced", "intricate", "ultra"]),
-                elements:    Array.isArray(parsed.elements)
-                  ? parsed.elements.map(x => str(x, 40)).filter(Boolean).slice(0, 6) : null,
-                meaning:     str(parsed.meaning, 300)
-              };
-              // The paragraph, from the same answer. A shop reads this; the fields are for us.
-              brief = str(parsed.brief, 400);
-              // WHAT IS STILL MISSING, computed here so one place decides it. The screens read
-              // this to know which stage to stop at, and she reads it to know what to ask. It is
-              // DERIVED, never stored - a stored copy would drift from the fields the moment one
-              // changed.
-              // The design ladder, and only it. Placement and size are read out of a sentence
-              // when somebody offers them, but they are NOT design stages any more - they are
-              // on-body decisions made after the artwork exists - so they do not count toward
-              // what is resolved or missing here.
-              const order = ["subject", "style", "composition", "character", "colour", "detail"];
-              intent.resolved = order.filter(k => intent[k] != null &&
-                (!Array.isArray(intent[k]) || intent[k].length));
-              intent.missing = order.filter(k => !intent.resolved.includes(k));
-            }
-            // JSON failed completely: use what came back as the paragraph, which is what this
-            // returned before today. A worse answer beats a dead field.
-            if (!brief) brief = String(it.text).trim().slice(0, 400);
-          }
-        } catch {}
-        // ══ THE ROUND GOES ON THE RECORD ═══════════════════════════════════════════════════
-        // Two stores, the split `PTA_TALK` already settled: KV is the fast buffer that makes the
-        // next turn continuous, the chain is the sealed, append-only record that is THEIRS.
-        // NOT waitUntil - `design()` has no ctx, and referencing one here would throw on every
-        // turn and take the whole conversation surface down. It runs inline and swallows its own
-        // failures, because a memory write that fails must never cost somebody their reply.
-        if (me) {
-          const tsNow = new Date().toISOString();
-          try {
-            tline.push({ ts: tsNow, role: "them", said: said.slice(0, 600) });
-            tline.push({ ts: tsNow, role: "aura", said: String(r.text || "").slice(0, 600) });
-            // Bounded. This is a cache, not the archive - the chain holds the whole history and
-            // an unbounded KV value eventually stops being writable at all.
-            if (tline.length > 60) tline = tline.slice(-60);
-            await env.AURA_KV.put("pta:timeline:" + me, JSON.stringify(tline)).catch(() => {});
-          } catch {}
-
-          // ══ NO GRANT MEANS NO RECORD, AND THAT IS CORRECT ══════════════════════════════
-          // `PTA_REMEMBER` refuses without an existing entity AND an open `can_remember` grant.
-          // A CONTACTED LEAD - somebody who has tapped a tile and nothing more - has neither, by
-          // design: they have not agreed to be remembered, so the conversation happens and is not
-          // kept beyond the buffer above. `stage` already distinguishes the two at the top of this
-          // method, so a lead costs no wasted D1 read and no wasted Durable Object fetch, and the
-          // refusal is never something anybody has to see.
-          if (stage === "pta") {
-            for (const [who, text] of [["them", said], ["aura", String(r.text || "")]]) {
-              const line = String(text || "").trim();
-              if (!line) continue;
-              try {
-                await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
-                  said: line.slice(0, 600), who, channel: "chat", mode: "tattoo", at: tsNow,
-                }), env, true);
-              } catch {}
-            }
-          }
-        }
-
-        return { ok: true, said: r.text, ready_to_draw: ready, show_me: show, brief, intent,
-                 // What she is actually working from, so a surface can say "we have talked before"
-                 // rather than pretending every visit is the first one.
-                 remembering: me ? tline.length : 0,
-                 kept: stage === "pta" };
+        // The conversation itself lives in `auraTalk` so the TALK command and this door run the
+        // same code. See the note above that function.
+        return await auraTalk(env, me, stage,
+          String(b.said || "").trim().slice(0, 2000),
+          Array.isArray(b.history) ? b.history : []);
       }
 
       // ── MAKE. The first version. SHOW_IT births it as a PTA, so from this moment the design

@@ -1,0 +1,91 @@
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Claim your business \u2014 cityguide.world</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#030712;color:#f1f5f9;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:32rem;margin:0 auto;padding:0 20px}
+header{padding:1rem 0;border-bottom:1px solid rgba(59,130,246,.15)}
+.logo{font-size:1.25rem;font-weight:800;letter-spacing:-.03em;display:block;text-align:center}
+.logo b{color:#fbbf24}
+h1{font-size:1.9rem;font-weight:800;letter-spacing:-.03em;margin:2.5rem 0 .4rem;line-height:1.2}
+.sub{color:#94a3b8;margin-bottom:2rem}
+.step{background:#0b1220;border:1px solid rgba(59,130,246,.2);border-radius:14px;padding:1.4rem;margin-bottom:1rem}
+.step h2{font-size:1rem;font-weight:700;margin-bottom:.5rem}
+.step p{color:#94a3b8;font-size:.92rem}
+label{display:block;color:#64748b;font-size:.85rem;margin:1rem 0 .4rem}
+input{width:100%;background:#030712;border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:.75rem 1rem;color:#f1f5f9;font-size:1rem;outline:none}
+input:focus{border-color:#38bdf8}
+button{width:100%;background:#1d4ed8;border:0;border-radius:10px;color:#fff;padding:.85rem;font-size:1rem;font-weight:700;cursor:pointer;margin-top:1rem}
+button:disabled{opacity:.5;cursor:default}
+.opt{display:block;width:100%;text-align:left;background:#030712;border:1px solid rgba(59,130,246,.3);border-radius:10px;padding:.85rem 1rem;margin-top:.6rem;color:#f1f5f9;font-size:.95rem;cursor:pointer}
+.opt:hover{border-color:#38bdf8}
+.msg{padding:1rem;border-radius:10px;margin-top:1rem;font-size:.92rem}
+.ok{background:rgba(22,163,74,.15);border:1px solid rgba(74,222,128,.3);color:#bbf7d0}
+.bad{background:rgba(220,38,38,.12);border:1px solid rgba(248,113,113,.3);color:#fecaca}
+.qrfin{text-align:center;padding:1.5rem 0}
+.qrfin img{width:200px;height:200px;background:#fff;padding:12px;border-radius:14px}
+footer{text-align:center;color:#475569;font-size:.82rem;padding:2.5rem 0}
+</style></head><body>
+<header><a href="/" class=logo>cityguide<b>.world</b></a></header>
+<div class=wrap>
+  <h1>Is this your business?</h1>
+  <p class=sub>Claim it to get your QR code and your own page. We verify against a contact already on
+  the listing \u2014 that is how we know it is really you.</p>
+  <div id=stage class=step><p>Loading\u2026</p></div>
+  <footer>Claiming creates your record. Nothing is remembered about you until you say so.</footer>
+</div>
+<script>
+var PID = location.pathname.split('/').filter(Boolean)[1] || '';
+var stage = document.getElementById('stage');
+function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML}
+function post(action, arg){
+  return fetch('/_claim?action='+action+'&id='+encodeURIComponent(PID)+'&arg='+encodeURIComponent(arg||''))
+    .then(function(r){return r.json()});
+}
+function choose(){
+  post('start','').then(function(d){
+    if(!d||d.ok===false){stage.innerHTML='<div class="msg bad">'+esc((d&&d.what_to_say)||(d&&d.error)||'Something went wrong.')+'</div>';return}
+    if(d.mode==='choose'){
+      var h='<h2>'+esc(d.business||'This business')+'</h2><p>Where should we send your code?</p>';
+      (d.options||[]).forEach(function(o){
+        if(o.kind!=='phone')return;
+        h+='<button class=opt data-k="'+esc(o.kind)+'">Text '+esc(o.masked)+'</button>';
+      });
+      stage.innerHTML=h;
+      Array.prototype.forEach.call(stage.querySelectorAll('.opt'),function(b){
+        b.onclick=function(){send(b.getAttribute('data-k'))};
+      });
+    }
+  });
+}
+function send(kind){
+  stage.innerHTML='<p>Sending\u2026</p>';
+  post('start',kind).then(function(d){
+    var h='<h2>Enter your code</h2><p>'+esc((d&&d.what_to_say)||'')+'</p>'+
+      '<label>Six-digit code</label><input id=code inputmode=numeric maxlength=6 autocomplete=one-time-code>'+
+      '<button id=go>Verify</button>';
+    stage.innerHTML=h;
+    document.getElementById('go').onclick=verify;
+  });
+}
+function verify(){
+  var c=(document.getElementById('code')||{}).value||'';
+  if(c.length<6)return;
+  post('finish',c).then(function(d){
+    if(d&&d.ok){
+      stage.innerHTML='<div class="msg ok">'+esc(d.what_to_say||'Verified.')+'</div>'+
+        '<div class=qrfin><img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data='+
+        encodeURIComponent(d.qr||'')+'" alt="Your QR"><p style="color:#94a3b8;font-size:.9rem;margin-top:1rem">'+
+        'This is your code. Put it in your window, on a card, anywhere.</p></div>'+
+        '<p style="color:#64748b;font-size:.85rem">'+esc(d.note||'')+'</p>';
+    } else {
+      stage.innerHTML='<div class="msg bad">'+esc((d&&d.what_to_say)||(d&&d.error)||'That code did not match.')+
+        '</div><button id=again>Try again</button>';
+      document.getElementById('again').onclick=choose;
+    }
+  });
+}
+choose();
+</script></body></html>

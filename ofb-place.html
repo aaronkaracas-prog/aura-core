@@ -1,0 +1,61 @@
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>openforbusiness.world</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#07090f;color:#f8fafc;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:44rem;margin:0 auto;padding:0 20px}
+header{padding:1rem 0;border-bottom:1px solid rgba(251,191,36,.18)}
+.bar{display:flex;align-items:center;gap:1rem;max-width:44rem;margin:0 auto;padding:0 20px}
+.logo{font-size:1.05rem;font-weight:800;letter-spacing:-.02em;white-space:nowrap}
+.logo b{color:#fbbf24}
+form{flex:1;display:flex;gap:.5rem}
+input{flex:1;background:#0f1420;border:1px solid rgba(251,191,36,.25);border-radius:10px;padding:.55rem .9rem;color:#f8fafc;font-size:.92rem;outline:none;min-width:0}
+input:focus{border-color:#fbbf24}
+form button{background:#b45309;border:0;border-radius:10px;color:#fff;padding:.55rem 1rem;font-size:.88rem;font-weight:600;cursor:pointer;white-space:nowrap}
+.hero{padding:2.5rem 0 1rem}
+.hero h1{font-size:clamp(1.8rem,5.5vw,2.7rem);font-weight:800;letter-spacing:-.03em;line-height:1.15}
+.meta{display:flex;gap:1rem;flex-wrap:wrap;margin-top:.6rem;color:#94a3b8;font-size:.95rem}
+.meta .open{color:#4ade80;font-weight:700}
+.meta .shut{color:#f87171;font-weight:700}
+.about{color:#cbd5e1;margin-top:.9rem}
+.acts{display:flex;gap:.6rem;flex-wrap:wrap;margin:1.4rem 0}
+.act{padding:.7rem 1.3rem;border-radius:10px;background:#b45309;color:#fff;font-weight:700;font-size:.95rem}
+.act:not(:first-child){background:#0f1420;border:1px solid rgba(251,191,36,.25);color:#e2e8f0}
+.act.claim{background:#fbbf24;color:#0b0d12}
+.shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.8rem;padding:1rem 0 1.5rem}
+.shots img{width:100%;height:170px;object-fit:cover;border-radius:12px;background:#0f172a}
+section{padding:1.3rem 0;border-top:1px solid rgba(251,191,36,.12)}
+section h2{font-size:1.05rem;font-weight:700;margin-bottom:.6rem}
+ul{list-style:none;color:#94a3b8;font-size:.95rem}
+li{padding:.15rem 0}
+section p{color:#94a3b8;font-size:.95rem;margin-bottom:.8rem}
+footer{text-align:center;color:#475569;font-size:.82rem;padding:2.5rem 0}
+footer b{color:#94a3b8}
+</style></head><body data-source="ofb">
+<header><div class=bar>
+  <a href="https://cityguide.world" class=logo>openforbusiness<b>.world</b></a>
+  <form onsubmit="return go(event)"><input id=q placeholder="Find anywhere" autocomplete=off><button>Search</button></form>
+</div></header>
+<div class=wrap>
+  <div class=hero>
+    <h1 data-ofb=name>Business</h1>
+    <div class=meta data-ofb=meta></div>
+    <p class=about data-ofb=about></p>
+    <div class=acts data-ofb=actions></div>
+  </div>
+  <div class=shots data-ofb=photos></div>
+  <section data-ofb=offerings></section>
+  <section data-ofb=hours></section>
+  <section data-ofb=claim></section>
+  <footer>Listed on <a href="https://cityguide.world"><b>cityguide.world</b></a> \u2014 the guide to
+  every business on the planet.</footer>
+</div>
+<script>
+// A QR in a window is scanned by a stranger. Give them somewhere to go next - otherwise the page is
+// a dead end and the guide behind it stays invisible.
+function go(e){e.preventDefault();var v=document.getElementById('q').value.trim();
+if(v)location.href='https://cityguide.world/'+v.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+return false}
+</script></body></html>

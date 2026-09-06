@@ -1,0 +1,60 @@
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>cityguide.world</title>
+<style>*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#030712;color:#f1f5f9;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow-x:hidden;padding-bottom:env(safe-area-inset-bottom)}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1140px;margin:0 auto;padding:0 20px}
+header{padding:1rem 0;border-bottom:1px solid rgba(59,130,246,.15);position:sticky;top:0;background:rgba(3,7,18,.92);backdrop-filter:blur(14px);z-index:60}
+.bar{display:flex;align-items:center;gap:1rem;max-width:1140px;margin:0 auto;padding:0 20px}
+.logo{font-size:1.25rem;font-weight:800;letter-spacing:-.03em;white-space:nowrap}
+.logo b{color:#fbbf24}
+form{flex:1;display:flex;gap:.5rem}
+input{flex:1;background:#0b1220;border:1px solid rgba(59,130,246,.25);border-radius:10px;padding:.6rem .9rem;color:#f1f5f9;font-size:.95rem;outline:none;min-width:0}
+input:focus{border-color:#38bdf8}
+button{background:#1d4ed8;border:0;border-radius:10px;color:#fff;padding:.6rem 1rem;font-size:.9rem;font-weight:600;cursor:pointer;white-space:nowrap}
+footer{border-top:1px solid rgba(59,130,246,.15);padding:2rem 0 3rem;text-align:center;color:#475569;font-size:.85rem}
+footer b{color:#94a3b8}
+.hero{padding:2.5rem 0 1rem}
+.hero h1{font-size:clamp(1.8rem,5.5vw,2.8rem);font-weight:800;letter-spacing:-.03em;line-height:1.15}
+.pmeta{display:flex;gap:1rem;flex-wrap:wrap;margin-top:.6rem;color:#94a3b8;font-size:.95rem}
+.pmeta .open{color:#4ade80;font-weight:700}
+.pmeta .shut{color:#f87171;font-weight:700}
+.about{color:#cbd5e1;margin-top:.8rem;max-width:42rem}
+.acts{display:flex;gap:.6rem;flex-wrap:wrap;margin:1.4rem 0 .5rem}
+.act{padding:.65rem 1.2rem;border-radius:10px;background:#1d4ed8;color:#fff;font-weight:600;font-size:.95rem}
+.act:not(:first-child){background:#0b1220;border:1px solid rgba(59,130,246,.3);color:#cbd5e1}
+.shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.8rem;padding:1.5rem 0}
+.shots img{width:100%;height:180px;object-fit:cover;border-radius:12px;background:#0f172a}
+section{padding:1.2rem 0;border-top:1px solid rgba(59,130,246,.12)}
+section h2{font-size:1.1rem;font-weight:700;margin-bottom:.7rem}
+ul{list-style:none;color:#94a3b8;font-size:.95rem}
+li{padding:.2rem 0}
+blockquote{background:#0b1220;border:1px solid rgba(59,130,246,.15);border-radius:12px;padding:1rem 1.2rem;margin-bottom:.8rem}
+blockquote p{color:#cbd5e1;font-size:.95rem}
+cite{display:block;margin-top:.5rem;color:#64748b;font-size:.85rem;font-style:normal}
+.qrbox{text-align:center;padding:2rem 0}
+.qrbox img{width:180px;height:180px;background:#fff;padding:10px;border-radius:14px}
+.qrbox p{color:#64748b;font-size:.85rem;margin-top:.8rem}
+</style></head><body data-source="place">
+<header><div class=bar>
+  <a href="/" class=logo>cityguide<b>.world</b></a>
+  <form onsubmit="return go(event)"><input id=q placeholder="Any city, anywhere" autocomplete=off><button>Search</button></form>
+</div></header>
+<div class=wrap>
+  <div class=hero>
+    <h1 data-place=name>Business</h1>
+    <div class=pmeta data-place=meta></div>
+    <p class=about data-place=about></p>
+    <div class=acts data-place=actions></div>
+  </div>
+  <div class=shots data-place=photos></div>
+  <section data-place=hours></section>
+  <section data-place=reviews></section>
+  <section class=qrbox data-place=qr></section>
+  <footer>This QR is the same code this business uses on its window. Powered by <b>openforbusiness.world</b>.</footer>
+</div>
+<script>
+function go(e){e.preventDefault();var v=document.getElementById('q').value.trim();
+if(v)location.href='/'+v.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');return false}
+</script></body></html>

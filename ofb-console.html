@@ -1,0 +1,781 @@
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Open For Business</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#0a0b0f;color:#e9edf5;font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;height:100dvh;overflow:hidden}
+a{color:inherit;text-decoration:none}
+/* ══ THE PATTERN EVERY AI CONSOLE CONVERGED ON (2026-08-18) ═══════════════════════════════
+   Aaron: "just like ChatGPT, just like Grok, just like Meta - the same exact way." It has a name
+   and a documented shape: a LEFT RAIL, a CENTER STREAM capped around 720-768px, and an optional
+   RIGHT ARTIFACT PANEL. Claude.ai, ChatGPT and Perplexity all converge on it. Below ~1200px the
+   rail collapses; on a phone it becomes a SLIDE-IN DRAWER BEHIND A HAMBURGER.
+   The rule that matters most: the message stream "is the entire product. Every other element
+   exists to serve it." So chat is never a footer bar bolted under a grid - it is the main area,
+   and sections render INTO it.
+   The artifact panel is the answer to "when I upload an image I'm able to see it": long output
+   renders in its own panel beside the thread instead of scrolling away inside it.
+   THIS IS THE SHAPE FOR EVERY SURFACE AARON BUILDS, and the home screen differs only by what the
+   business is - a tattoo parlor shows tattoo things, a restaurant shows restaurant things. */
+.app{display:grid;grid-template-columns:248px 1fr;height:100dvh}
+aside{background:#0d0f15;border-right:1px solid rgba(148,163,184,.12);display:flex;flex-direction:column;min-height:0}
+/* ── the drawer, its scrim, and the hamburger ─────────────────────────────────────────── */
+.burger{display:none;background:none;border:0;color:#e9edf5;font-size:1.35rem;line-height:1;
+  padding:.15rem .45rem;cursor:pointer;border-radius:8px}
+.burger:active{background:rgba(148,163,184,.14)}
+.scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:45}
+.scrim.on{display:block}
+.brand{padding:1.1rem 1.2rem;border-bottom:1px solid rgba(148,163,184,.1)}
+.brand b{display:block;font-size:.95rem;font-weight:700;letter-spacing:-.01em}
+.brand span{display:block;font-size:.75rem;color:#64748b;margin-top:.15rem}
+nav{flex:1;overflow-y:auto;padding:.7rem .6rem}
+nav a{display:block;padding:.5rem .7rem;border-radius:8px;font-size:.9rem;color:#94a3b8;margin-bottom:.1rem;cursor:pointer}
+nav a:hover{background:rgba(148,163,184,.08);color:#e9edf5}
+nav a.on{background:rgba(59,130,246,.16);color:#dbeafe;font-weight:600}
+.foot{padding:.8rem 1.2rem;border-top:1px solid rgba(148,163,184,.1);font-size:.72rem;color:#475569}
+main{display:flex;flex-direction:column;min-height:0;min-width:0}
+.top{padding:.85rem 1.4rem;border-bottom:1px solid rgba(148,163,184,.12);display:flex;align-items:center;gap:.8rem}
+.top h1{font-size:.95rem;font-weight:600}
+.top .who{margin-left:auto;font-size:.8rem;color:#64748b}
+/* 720-768px is what Claude.ai, ChatGPT and Perplexity all settled on. 46rem is ~736px. */
+.stream{flex:1;overflow-y:auto;padding:1.4rem}
+.wrap{max-width:46rem;margin:0 auto}
+.msg{margin-bottom:1.3rem;font-size:.95rem;line-height:1.65}
+.msg .lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:.3rem}
+.msg.me .bub{background:#1e3a8a;padding:.7rem 1rem;border-radius:12px;display:inline-block;max-width:85%}
+.msg.me{text-align:right}
+.card{background:#11141c;border:1px solid rgba(148,163,184,.14);border-radius:14px;padding:1.1rem 1.3rem;margin-bottom:1rem}
+.card h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:.6rem}
+.card p{color:#cbd5e1;font-size:.92rem}
+.card ul{list-style:none;color:#cbd5e1;font-size:.92rem}
+.card li{padding:.18rem 0}
+.row{display:flex;justify-content:space-between;gap:1rem;padding:.4rem 0;border-bottom:1px solid rgba(148,163,184,.07);font-size:.9rem}
+.row:last-child{border:0}
+.row span{color:#64748b}
+.acts{display:flex;gap:.4rem;flex-wrap:wrap}
+.act{background:#1e293b;border:1px solid rgba(148,163,184,.2);border-radius:8px;color:#cbd5e1;
+padding:.42rem .8rem;font-size:.82rem;cursor:pointer;font-weight:600}
+.act:hover{border-color:#3b82f6;color:#fff}
+.card input{width:100%;background:#0a0d14;border:1px solid rgba(148,163,184,.2);border-radius:8px;
+padding:.6rem .8rem;color:#e9edf5;font-size:.92rem;outline:none}
+.card input:focus{border-color:#3b82f6}
+.qrc{text-align:center}
+.qrc img{width:180px;height:180px;background:#fff;padding:10px;border-radius:12px}
+.qrc p{color:#64748b;font-size:.82rem;margin-top:.7rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(9rem,1fr));gap:.7rem}
+.grid figure{margin:0}
+.grid img{width:100%;height:9rem;object-fit:cover;border-radius:10px;background:#0a0d14;display:block}
+.grid figcaption{color:#64748b;font-size:.78rem;margin-top:.35rem}
+.card select,select.as{background:#0a0d14;border:1px solid rgba(148,163,184,.2);border-radius:8px;
+padding:.5rem .7rem;color:#e9edf5;font-size:.88rem;outline:none}
+.card select{flex:1}
+.pill{font-size:.7rem;font-weight:700;letter-spacing:.05em;padding:.2rem .55rem;border-radius:999px}
+.pill.confirmed{background:rgba(22,163,74,.2);color:#86efac}
+.pill.tentative{background:rgba(245,158,11,.16);color:#fcd34d}
+.pill.cancelled{background:rgba(220,38,38,.16);color:#fca5a5}
+.mvbox{margin-top:.7rem}
+.days{display:flex;gap:.4rem;overflow-x:auto;padding-bottom:.3rem;margin-bottom:.6rem}
+.day{flex:0 0 auto;background:#0a0d14;border:1px solid rgba(148,163,184,.2);border-radius:10px;
+padding:.45rem .7rem;text-align:center;cursor:pointer;min-width:3.6rem}
+.day.on{background:#1d4ed8;border-color:#1d4ed8}
+.day span{display:block;font-size:.65rem;color:#64748b;text-transform:uppercase}
+.day.on span{color:rgba(255,255,255,.7)}
+.day b{display:block;font-size:1rem}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(5rem,1fr));gap:.4rem}
+.slot{background:#0a0d14;border:1px solid rgba(148,163,184,.2);border-radius:8px;color:#e2e8f0;
+padding:.5rem;font-size:.85rem;cursor:pointer;font-weight:600}
+.slot:hover{border-color:#3b82f6;color:#fff}
+.bar{padding:1rem 1.4rem;border-top:1px solid rgba(148,163,184,.12);background:#0d0f15}
+.bar form{max-width:46rem;margin:0 auto;display:flex;gap:.6rem}
+input{flex:1;background:#11141c;border:1px solid rgba(148,163,184,.2);border-radius:11px;padding:.75rem 1rem;color:#e9edf5;font-size:.95rem;outline:none;min-width:0}
+input:focus{border-color:#3b82f6}
+button{background:#1d4ed8;border:0;border-radius:11px;color:#fff;padding:.75rem 1.3rem;font-weight:600;font-size:.9rem;cursor:pointer}
+.gate{height:100dvh;display:grid;place-items:center;padding:2rem}
+.gate div{max-width:26rem;text-align:center}
+.gate h1{font-size:1.5rem;font-weight:700;margin-bottom:.5rem}
+.gate p{color:#94a3b8;font-size:.95rem;margin-bottom:1.4rem}
+/* ══ THE NAV WAS HIDDEN ON A PHONE AND NOTHING REPLACED IT (fixed 2026-08-18) ═════════════
+   `aside{display:none}` below 820px meant Designs, Artists and Deposits were simply unreachable
+   on the device this product is used on - a shop phone. The sidebar is a desktop shape; phones
+   put navigation at the BOTTOM, in thumb reach, which is also where 2026 patterns put primary
+   actions ("the primary interaction surface is below the screen's midpoint").
+   Scrollable, so a seven-item nav does not have to shrink to fit, and it sits above the chat bar
+   rather than replacing it. */
+/* ══ THE DRAWER IS FOR A THUMB, NOT FOR A NARROW WINDOW (fixed 2026-08-18) ════════════════
+   Keying the drawer to width alone hid the rail on a DESKTOP, because Aaron runs his browser in a
+   narrow window beside other windows - so a mouse user had to re-open the menu after every click.
+   `pointer:coarse` is the honest test: a finger gets the drawer, a mouse keeps the rail. A narrow
+   desktop window gets a SLIMMER rail rather than none, which is what the AI consoles do too - the
+   rail collapses as the window narrows, it does not vanish. */
+@media (max-width:900px) and (pointer:coarse){
+  /* The rail becomes an off-canvas drawer. It is the SAME <aside> - one nav, one handler, no
+     second list to drift out of step (the bottom-tab version had exactly that problem). */
+  .app{grid-template-columns:1fr}
+  aside{position:fixed;top:0;bottom:0;left:0;width:270px;max-width:82vw;z-index:50;
+    transform:translateX(-102%);transition:transform .22s ease;box-shadow:0 0 40px rgba(0,0,0,.6)}
+  aside.open{transform:translateX(0)}
+  .burger{display:block}
+  .stream{padding:1rem}
+  .wrap{max-width:100%}
+}
+/* Narrow window, mouse: keep the rail, just make it take less room. */
+@media (max-width:900px) and (pointer:fine){
+  .app{grid-template-columns:170px 1fr}
+  .brand{padding:.8rem .9rem}
+  nav a{padding:.45rem .55rem;font-size:.85rem}
+  .stream{padding:1rem}
+  .top{padding:.75rem 1rem}
+}
+/* Touch on a big screen - a tablet - still gets a thumb-sized drawer. */
+@media (min-width:901px) and (pointer:coarse){
+  .burger{display:none}
+}
+</style></head><body>
+<div id=root class=gate><div><h1>Loading</h1><p>One moment.</p></div></div>
+<script>
+var S={data:null,section:null};
+function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML}
+function gate(h,p,extra){document.getElementById('root').className='gate';
+document.getElementById('root').innerHTML='<div><h1>'+esc(h)+'</h1><p>'+esc(p)+'</p>'+(extra||'')+'</div>'}
+
+fetch('/_console',{credentials:'include'}).then(function(r){return r.json()}).then(function(d){
+  if(!d||d.error==='NOT_SIGNED_IN'){
+    gate('Sign in','This is your business console. Sign in with the device you set up.',
+      '<button onclick="location.href=\'/signin\'">Sign in</button>');return;
+  }
+  if(!d.ok){gate('Not available',d.what_to_say||d.error||'Something went wrong.');return}
+  if(!d.businesses||!d.businesses.length){
+    gate('Nothing here yet',d.what_to_say||'No business is attached to you.');return}
+  S.data=d;S.section=(d.nav&&d.nav[0])||'Today';draw();
+}).catch(function(){gate('Offline','Could not reach the server.')});
+
+function draw(){
+  var d=S.data,r=document.getElementById('root');
+  r.className='app';
+  r.innerHTML=
+   '<aside><div class=brand><b>'+esc(d.name||'')+'</b><span>openforbusiness.world</span></div>'+
+   '<nav id=nav>'+(d.nav||[]).map(function(n){
+     return '<a data-s="'+esc(n)+'"'+(n===S.section?' class=on':'')+'>'+esc(n)+'</a>'}).join('')+
+   '</nav><div class=foot>'+(d.paid?'Active':'Not active yet')+'</div></aside>'+
+   '<div class=scrim id=scrim></div>'+
+   '<main><div class=top><button class=burger id=burger aria-label="Menu">&#9776;</button>'+
+   '<h1>'+esc(S.section)+'</h1><div class=who>'+esc(d.name||'')+'</div></div>'+
+   '<div class=stream><div class=wrap id=stream></div></div>'+
+   '<div class=bar><form onsubmit="return say(event)">'+
+   '<input id=q placeholder="Ask Aura anything about your business" autocomplete=off>'+
+   '<button>Send</button></form></div>'+
+   // Same sections, same data-s hook, so one click handler drives both. A second list would drift.
+   '</main>';
+  // ONE nav, one handler. Selecting a section closes the drawer, because a drawer that stays open
+  // over the thing you just asked for is the classic off-canvas mistake.
+  Array.prototype.forEach.call(r.querySelectorAll('nav a'),function(a){
+    a.onclick=function(){S.section=a.getAttribute('data-s');closeDrawer();draw()}});
+  var bg=document.getElementById('burger'), sc=document.getElementById('scrim');
+  if(bg) bg.onclick=function(){
+    var as=document.querySelector('aside');
+    var open=as.classList.toggle('open');
+    if(sc) sc.classList.toggle('on',open);
+  };
+  if(sc) sc.onclick=closeDrawer;
+  paint();
+  wire();
+}
+
+function when(t){if(!t)return '';var d=new Date(t);if(isNaN(d))return String(t);
+  return d.toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
+
+function paint(){
+  var d=S.data,el=document.getElementById('stream'),h='',s=d.sections||{};
+  if(S.section==='Today'){
+    // Not a recap. A greeting and whatever actually needs them - the understanding lives on the
+    // chain and is hers to use when she answers, not the front page of their own shop.
+    var t=d.today||{};
+    h+='<div style="font-size:1.35rem;font-weight:700;letter-spacing:-.02em;margin:.2rem 0 1.3rem">'+
+       esc(t.greeting||'Ready when you are.')+'</div>';
+    if(t.nothing_pending){
+      h+=card('Nothing waiting','<p>No bookings ahead and nothing owed. Ask me anything below.</p>');
+    }
+    (t.needs_you||[]).forEach(function(n){
+      // ══ A WARNING WITH NOTHING TO PRESS IS A COMPLAINT (2026-08-21) ══════════════════
+      // The shop is being told an artist quit and still holds a booking. The decision is
+      // reassign or cancel, so those are the two buttons - on the card that raised it, not
+      // three tabs away.
+      if(n.kind==='artist_left'){
+        h+='<div class="card" style="border-color:rgba(245,158,11,.5)">'+
+          '<h2 style="color:#fbbf24">'+esc(n.headline)+'</h2>'+
+          '<p style="color:#94a3b8;margin-bottom:.6rem">'+esc(n.what_to_do||'')+'</p>'+
+          (n.all||[]).map(function(b){
+            return '<div class=row><span>'+esc(when(b.when))+'</span><div>'+esc(b.who||'someone')+
+              ' with '+esc(b.artist_name||'them')+'</div></div>'+
+              '<div class=acts style="margin:.4rem 0 .8rem">'+assignPicker(b)+
+              '<button class="act cx" data-b="'+esc(b.uid)+'">Cancel it</button></div>'}).join('')+
+          '</div>';
+      } else if(n.kind==='booked'){
+        h+=card(n.headline,(n.all||[]).map(function(b){
+          // Who is coming AND who is doing it. A day with no artist on it is not a day a
+          // shop can run.
+          return '<div class="row day" data-b="'+esc(b.uid||'')+'" style="cursor:pointer">'+
+            '<span>'+esc(when(b.when))+'</span><div>'+
+            esc(b.who||'someone')+(b.artist_name?' · '+esc(b.artist_name):'')+
+            (b.artist_left?' <span style="color:#f59e0b">(left)</span>':'')+
+            (b.deposit_held?' <span style="color:#4ade80">deposit held</span>':'')+
+            '</div></div>'}).join(''));
+      } else if(n.kind==='deposits'){
+        h+=card('Deposits','<p>'+esc(n.headline)+'</p>');
+      } else if(n.kind==='owed'){
+        h+=card(n.headline,ul(n.said||[]));
+      }
+    });
+  } else if(S.section==='Appointments'){
+    var a=s.appointments;
+    h+='<div class=card><h2>Book somebody in</h2>'+
+      '<input id=bn placeholder="Their name" style="margin-bottom:.5rem">'+
+      '<input id=bc placeholder="Email or phone" style="margin-bottom:.5rem">'+
+      '<input id=bs placeholder="What for - half sleeve, touch up" style="margin-bottom:.5rem">'+
+      '<div style="display:flex;gap:.5rem;margin-bottom:.5rem">'+
+      artistSelect('bwith','Anyone')+durSelect('bmin')+'</div>'+
+      '<button class=act id=bpick>Pick a time</button>'+
+      '<div id=bslots></div></div>';
+    h+=a&&a.count?(a.list||[]).map(function(b){
+      var st=(b.status||'TENTATIVE');
+      return '<div class=card><div class=row><span>'+esc(when(b.start))+
+        (b.minutes?' &middot; '+b.minutes+' min':'')+'</span><div>'+
+        esc(b.who||'someone')+'</div></div>'+
+        '<div class=row><span>'+esc(b.summary||'')+'</span><div>'+
+        '<span class="pill '+st.toLowerCase()+'">'+esc(st)+'</span>'+
+        (b.sequence?' <span style="color:#475569;font-size:.75rem">v'+b.sequence+'</span>':'')+
+        '</div></div>'+
+        (b.description?'<p style="color:#cbd5e1;font-size:.9rem;margin:.5rem 0">'+esc(b.description)+'</p>':'')+
+        (b.attendees?'<p style="color:#475569;font-size:.78rem">'+
+          Object.keys(b.attendees).map(function(k){return nameOf(k)+': '+b.attendees[k]}).join(' &middot; ')+'</p>':'')+
+        '<div class=acts style="margin-top:.7rem">'+
+        '<button class="act mv" data-b="'+esc(b.uid)+'" data-a="'+esc(b.artist||'')+'" data-m="'+(b.minutes||120)+'">Move</button>'+
+        assignPicker(b)+
+        // A CANCELLED booking offered Confirm, and the path behind it works - so pressing it
+        // brought a cancelled appointment back to life. The command is right; the button
+        // should not be there. Confirm is for something still waiting.
+        (st!=='CONFIRMED'&&st!=='CANCELLED'?'<button class="act st" data-b="'+esc(b.uid)+'">Confirm</button>':'')+
+        (st!=='CANCELLED'?'<button class="act cx" data-b="'+esc(b.uid)+'">Cancel</button>':'')+
+        '<button class="act ic" data-b="'+esc(b.uid)+'">Calendar file</button>'+
+        '</div><div class="mvbox" id="mv_'+esc(b.uid)+'"></div></div>'
+    }).join(''):card('Nothing booked','<p>Add one above, or ask me below.</p>');
+  } else if(S.section==='Artists'){
+    var ar=s.artists;
+    h+='<div class=card><h2>Add an artist</h2>'+
+      '<input id=an placeholder="Their name" style="margin-bottom:.5rem">'+
+      '<input id=ac placeholder="Email - so they can sign in" style="margin-bottom:.5rem">'+
+      '<button class=act id=ago>Add them</button></div>';
+    h+=ar&&(ar.list||[]).length?(ar.list||[]).map(function(x){
+      // THE SHOP IS NOT A SEAT. It was listed with Remove and a sign-in link, and removing
+      // the shop from itself is not a thing. The backend now says `removable: false`.
+      var isShop=x.is_shop||x.removable===false;
+      return '<div class=card><div class=row><span>'+esc(x.name||x.pta)+
+        (isShop?' <span style="color:#64748b;font-size:.8rem">— the shop itself</span>':'')+
+        '</span><div>'+(x.since?'since '+esc((x.since||'').slice(0,10)):'')+'</div></div>'+
+        (isShop?'<p style="color:#475569;font-size:.8rem;margin-top:.4rem">'+
+          'Work uploaded here belongs to the shop rather than to any one artist.</p>'
+         :'<div class=acts style="margin-top:.6rem">'+
+          '<button class="act hrs" data-p="'+esc(x.pta)+'">Their hours</button>'+
+          '<button class="act iv" data-p="'+esc(x.pta)+'">Send them a sign-in link</button>'+
+          '<button class="act rm" data-p="'+esc(x.pta)+'">Remove</button></div>'+
+          '<div class=hrsbox data-for="'+esc(x.pta)+'" style="display:none"></div>')+
+        '</div>'
+    }).join('')+(ar.billing?'<p style="color:#475569;font-size:.8rem;padding:0 .2rem">'+
+      esc(ar.billing.monthly)+' a month. '+esc(ar.billing.how)+'</p>':''):'';
+  } else if(S.section==='Customers'){
+    // A NAME IS NOT A REPORT. Every row opens the bookings that person has, from the
+    // appointments this console already holds - no second fetch, no second reader.
+    var c=s.customers;
+    h+=c&&c.count?card(c.count+(c.count===1?' customer':' customers'),(c.list||[]).map(function(x){
+      var mine=((s.appointments||{}).list||[]).filter(function(b){return b.who===x.name});
+      var open=mine.filter(function(b){return b.status!=='CANCELLED'});
+      return '<div class="row cust" data-c="'+esc(x.pta)+'" style="cursor:pointer">'+
+        '<span>'+esc(x.name||x.pta)+'</span><div>'+
+        (x.upcoming?'<b style="color:#4ade80">'+x.upcoming+' ahead</b> · ':'')+
+        x.visits+(x.visits===1?' booking':' bookings')+
+        ' <span style="color:#64748b">&rsaquo;</span></div></div>'+
+        '<div class=custbox data-for="'+esc(x.pta)+'" style="display:none;padding:.2rem 0 .8rem">'+
+        (open.length?open.map(function(b){
+          return '<div class=row style="padding-left:.8rem"><span>'+esc(when(b.start))+'</span><div>'+
+            esc(b.summary||'')+' · '+esc(nameOf(b.artist))+' · '+esc(b.status||'')+'</div></div>'
+        }).join(''):'<div class=row style="padding-left:.8rem"><span>Nothing booked</span><div></div></div>')+
+        '</div>'}).join(''))
+      :card('Customers','<p>Nobody yet. They appear here the first time somebody books.</p>');
+  } else if(S.section==='Deposits'){
+    // `total` never existed - the backend sends held_total and open_total, because money you
+    // are holding and money you were promised are not the same number and a shop adding them
+    // together would be wrong about what it has.
+    var dp=s.deposits||{};
+    var hasAny=(dp.list||[]).length;
+    h+=hasAny?card(
+      '$'+(dp.held_total||0)+' held'+(dp.open_total?' · $'+dp.open_total+' promised':''),
+      (dp.list||[]).map(function(x){
+        return '<div class=row><span>'+esc(x.who||x.what||'someone')+
+          (x.when?' - '+esc(when(x.when)):'')+'</span><div>$'+esc(String(x.amount==null?'?':x.amount))+
+          (x.held?' <span style="color:#4ade80">held</span>'
+                 :' <span style="color:#f59e0b">not held</span>'+
+                   (x.uid?' <button class="act took" data-b="'+esc(x.uid)+'">Mark taken</button>':''))+
+          '</div></div>'}).join(''))
+      :card('Deposits','<p>Nothing yet. Ask for one when you book somebody in, and it shows here '+
+        'whether it has been taken.</p>');
+  } else if(S.section==='Your page'){
+    // Their page, and the things they can change about it. No source, no learned_at, no event_type -
+    // that was my plumbing printed at a business owner.
+    var u=d.understanding||{};
+    h+='<div class="card qrc"><h2>Your code</h2>'+
+      // Ours, from /qr.svg - the sweep missed this one because it lives in a KV page, not in a
+      // worker. Sixth call site.
+      '<img src="/qr.svg?d='+encodeURIComponent(location.origin)+'" alt="QR" width=200 height=200>'+
+      '<p>'+esc(location.origin)+'</p>'+
+      '<p style="margin-top:.6rem">Window, cards, email, anywhere. It does not change.</p></div>';
+
+    // ══ THE GALLERY LIVES ON THEIR PAGE (2026-08-18) ═════════════════════════════════════
+    // Designs was a separate tab, so a shop edited a RECORD in one place and its PICTURES in
+    // another. It is one page and it is theirs - the pictures belong here, beside the phone
+    // number and the code, not behind a second door.
+    // An artist's work. Photograph it on the shop phone, it lands on the artist's own record.
+    var list=((s.artists||{}).list)||[];
+    h+='<div class=card><h2>Add a piece</h2>'+
+      '<select id=pw style="width:100%;background:#0a0d14;border:1px solid rgba(148,163,184,.2);'+
+      'border-radius:8px;padding:.6rem .8rem;color:#e9edf5;margin-bottom:.5rem">'+
+      list.map(function(a){return '<option value="'+esc(a.pta)+'">'+esc(a.name)+'</option>'}).join('')+
+      '</select>'+
+      '<input id=pc placeholder="What is it - koi sleeve, back piece" style="margin-bottom:.5rem">'+
+      '<input type=file id=pf accept="image/*" style="margin-bottom:.5rem">'+
+      '<button class=act id=pgo>Upload</button>'+
+      '<p style="color:#475569;font-size:.78rem;margin-top:.6rem">It goes on their record, not the '+
+      'shop\'s. If they move on, their work moves with them.</p></div>'+
+      '<div id=pieces></div>';
+    h+='<div class=card><h2>What people see</h2>'+
+      ed('about','What you do',u.what_it_is||u.offers||'')+
+      // ══ HOURS ARE SEVEN ROWS, NOT A TEXT FIELD (2026-08-21) ═══════════════════════════
+      // It was ONE box that prefilled readable text and saved a STRING into a field whose
+      // stored form is minutes-from-midnight. A shop typing "11-7" wrote a string where an
+      // array belongs and their availability would have quietly stopped working.
+      // Grok: "prefill is readable; save is a lie."
+      // A day at a time, in the words they would write on their own door. "closed" is a day
+      // off; "11-2, 3-7" is a lunch break. The backend converts and hands back what it stored.
+      weekRows('shop',null,d.hours_read||{})+
+
+      ed('phone','Phone',u.phone||'')+
+      ed('address','Address',u.where||u.address||'')+'</div>';
+  } else {
+    h+=card(S.section,'<p>Ask me below and I will handle it.</p>');
+  }
+  el.innerHTML=h;
+}
+function card(t,b){return '<div class=card><h2>'+esc(t)+'</h2>'+b+'</div>'}
+var DAYS=[['mon','Monday'],['tue','Tuesday'],['wed','Wednesday'],['thu','Thursday'],
+          ['fri','Friday'],['sat','Saturday'],['sun','Sunday']];
+// One row a day. `who` is null for the shop, an artist's pta for a person - the same editor
+// either way, because a week is a week.
+function weekRows(tag,who,reads){
+  return '<label style="display:block;color:#64748b;font-size:.78rem;margin:1.1rem 0 .3rem">Hours</label>'+
+    '<div class=wk data-tag="'+esc(tag)+'"'+(who?' data-who="'+esc(who)+'"':'')+'>'+
+    DAYS.map(function(dd){
+      var v=reads&&reads[dd[0]]?reads[dd[0]]:'';
+      if(v==='closed')v='closed';
+      return '<div class=row style="align-items:center"><span style="min-width:5.5rem">'+dd[1]+'</span>'+
+        '<input class=wkd data-d="'+dd[0]+'" value="'+esc(v)+'" placeholder="11-7, or closed" '+
+        'style="flex:1;margin:.15rem 0"></div>'}).join('')+
+    '<button class="act wksv" style="margin-top:.6rem">Save hours</button>'+
+    '<p style="color:#475569;font-size:.78rem;margin-top:.4rem">'+
+    'Write it how you would on the door - 11-7, or 10:30-6, or closed. '+
+    'Two sittings in a day with a break between: 11-2, 3-7.</p></div>';
+}
+function artistList(){return (((S.data||{}).sections||{}).artists||{}).list||[]}
+function nameOf(pta){var a=artistList().find(function(x){return x.pta===pta});return a?a.name:'client'}
+function artistSelect(id,any){return '<select id="'+id+'"><option value="">'+esc(any)+'</option>'+
+  artistList().map(function(a){return '<option value="'+esc(a.pta)+'">'+esc(a.name)+'</option>'}).join('')+'</select>'}
+function durSelect(id){return '<select id="'+id+'">'+[60,90,120,180,240,360].map(function(m){
+  return '<option value="'+m+'"'+(m===120?' selected':'')+'>'+(m<60?m+' min':(m/60)+(m===60?' hour':' hours'))+'</option>'
+}).join('')+'</select>'}
+function assignPicker(b){
+  var l=artistList();if(!l.length)return '';
+  return '<select class="as" data-b="'+esc(b.uid)+'"><option value="">Reassign...</option>'+
+    l.map(function(a){return '<option value="'+esc(a.pta)+'"'+(b.artist===a.pta?' disabled':'')+'>'+
+      esc(a.name)+'</option>'}).join('')+'</select>';
+}
+// Times come from AVAILABILITY - the same list a client sees, so an owner cannot book a slot that
+// is already held or an hour the shop is shut.
+function slotPicker(box,artist,minutes,onPick){
+  box.innerHTML='<p class=none style="color:#64748b;font-size:.85rem">Finding open times...</p>';
+  act('slots',{artist:artist||null,minutes:minutes||120,days:21}).then(function(d){
+    if(!d||!d.ok||!d.open_days||!d.open_days.length){
+      box.innerHTML='<p style="color:#f59e0b;font-size:.85rem">'+
+        esc((d&&(d.what_to_say||d.error))||'Nothing free.')+'</p>';return}
+    box.innerHTML='<div class=days>'+d.open_days.map(function(x,i){
+      var dd=new Date(x.date+'T12:00:00Z');
+      return '<div class="day'+(i===0?' on':'')+'" data-i="'+i+'"><span>'+
+        dd.toLocaleDateString(undefined,{weekday:'short'})+'</span><b>'+dd.getUTCDate()+'</b></div>'
+    }).join('')+'</div><div class=slots id=sl></div>';
+    var show=function(i){
+      var day=d.open_days[i];
+      document.getElementById('sl').innerHTML=day.slots.map(function(sl){
+        return '<button class=slot data-at="'+esc(sl.at)+'">'+esc(sl.local||sl.at)+'</button>'}).join('');
+      Array.prototype.forEach.call(box.querySelectorAll('.slot'),function(el){
+        el.onclick=function(){onPick(el.getAttribute('data-at'))}});
+    };
+    Array.prototype.forEach.call(box.querySelectorAll('.day'),function(el){
+      el.onclick=function(){
+        Array.prototype.forEach.call(box.querySelectorAll('.day'),function(o){o.className='day'});
+        el.className='day on';show(Number(el.getAttribute('data-i')))}});
+    show(0);
+  });
+}
+function ed(f,label,val){return '<label style="display:block;color:#64748b;font-size:.78rem;margin:.8rem 0 .3rem">'+
+  esc(label)+'</label><div style="display:flex;gap:.5rem"><input class=fld data-f="'+esc(f)+'" value="'+
+  esc(val)+'"><button class="act sv" data-f="'+esc(f)+'">Save</button></div>'}
+function act(what,args){return fetch('/_act',{method:'POST',credentials:'include',
+  headers:{'Content-Type':'application/json'},body:JSON.stringify({what:what,args:args})})
+  .then(function(r){return r.json()})}
+function after(d){
+  if(d&&d.ok){reload()}
+  else{alert((d&&(d.what_to_do||d.say||d.error))||'That did not work.')}
+}
+function reload(){fetch('/_console',{credentials:'include'}).then(function(r){return r.json()})
+  .then(function(d){if(d&&d.ok){S.data=d;draw()}})}
+function ul(a){return '<ul>'+a.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>'}
+function list(rows){return rows.filter(function(r){return r[1]}).map(function(r){
+  return '<div class=row><span>'+esc(r[0])+'</span><div>'+esc(r[1])+'</div></div>'}).join('')}
+
+function wire(){
+  var q=function(sel){return Array.prototype.slice.call(document.querySelectorAll(sel))};
+  // A customer row opens what they have booked. Nothing is fetched - the appointments are
+  // already in this payload, so the only thing that changes is whether they are on screen.
+  q('.cust').forEach(function(r){r.onclick=function(){
+    var b=document.querySelector('.custbox[data-for="'+r.getAttribute('data-c')+'"]');
+    if(b)b.style.display=b.style.display==='none'?'block':'none'}});
+  // "Mark taken" is the money half of the promise, and the shop is the one who knows it
+  // arrived - cash, card, Venmo, we never see it. This records that it did.
+  // A day row opens the appointment it names, on the tab that can change it.
+  q('.day').forEach(function(r){r.onclick=function(){
+    var uid=r.getAttribute('data-b');if(!uid)return;
+    S.section='Appointments';draw();
+    setTimeout(function(){
+      var el=document.querySelector('[data-b="'+uid+'"]');
+      if(el&&el.scrollIntoView)el.scrollIntoView({block:'center'});},60)}});
+  // An artist's shifts, as their own hours rather than the shop's. Read-only for now - the
+  // clickable grid is the next piece, and a wrong guess about a person's week is worse than
+  // showing them what is stored.
+  q('.hrs').forEach(function(b){b.onclick=function(){
+    var box=document.querySelector('.hrsbox[data-for="'+b.getAttribute('data-p')+'"]');
+    if(!box)return;
+    if(box.style.display!=='none'){box.style.display='none';return}
+    box.style.display='block';
+    box.innerHTML='<p style="color:#64748b;font-size:.85rem;padding:.4rem 0">Reading...</p>';
+    act('seat_hours',{artist:b.getAttribute('data-p')}).then(function(d){
+      var r=d&&(d.reads_as||(d.payload||{}).reads_as);
+      if(!r){box.innerHTML='<p style="color:#64748b;font-size:.85rem;padding:.4rem 0">'+
+        'They follow the shop\'s hours.</p>';return}
+      box.innerHTML=Object.keys(r).map(function(k){
+        return '<div class=row><span>'+k.charAt(0).toUpperCase()+k.slice(1)+'</span><div>'+
+          esc(r[k])+'</div></div>'}).join('')})}});
+  q('.wksv').forEach(function(b){b.onclick=function(){
+    var box=b.closest('.wk');if(!box)return;
+    var days={};Array.prototype.forEach.call(box.querySelectorAll('.wkd'),function(i){
+      days[i.getAttribute('data-d')]=i.value});
+    b.disabled=true;b.textContent='Saving...';
+    act('set_hours',{artist:box.getAttribute('data-who')||null,days:days}).then(function(d){
+      b.disabled=false;b.textContent='Save hours';
+      // A day it could not read is named, and nothing is saved - better than storing six days
+      // and silently dropping the seventh.
+      if(d&&d.ok){reload()}else{alert((d&&(d.say||d.error))||'That did not save.')}})}});
+  q('.took').forEach(function(b){b.onclick=function(){
+    if(!confirm('Record that this deposit has been taken?'))return;
+    b.disabled=true;b.textContent='Recording...';
+    act('deposit_taken',{booking:b.getAttribute('data-b')}).then(after)}});
+  q('.mv').forEach(function(b){b.onclick=function(){
+    var box=document.getElementById('mv_'+b.getAttribute('data-b'));
+    slotPicker(box,b.getAttribute('data-a'),Number(b.getAttribute('data-m')),function(at){
+      act('move',{booking:b.getAttribute('data-b'),when:at}).then(after)})}});
+  q('select.as').forEach(function(sel){sel.onchange=function(){
+    if(sel.value)act('assign',{booking:sel.getAttribute('data-b'),artist:sel.value}).then(after)}});
+  q('.st').forEach(function(b){b.onclick=function(){
+    act('state',{booking:b.getAttribute('data-b'),state:'CONFIRMED'}).then(after)}});
+  q('.cx').forEach(function(b){b.onclick=function(){
+    if(confirm('Cancel this appointment?'))
+      act('state',{booking:b.getAttribute('data-b'),state:'CANCELLED'}).then(after)}});
+  q('.ic').forEach(function(b){b.onclick=function(){
+    act('ics',{booking:b.getAttribute('data-b')}).then(function(d){
+      if(!d||!d.ok)return alert('Could not build it.');
+      var a=document.createElement('a');
+      a.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(d.ics);
+      a.download=d.filename||'appointment.ics';a.click();
+    })}});
+  var bpick=document.getElementById('bpick');
+  if(bpick)bpick.onclick=function(){
+    var g=function(id){return (document.getElementById(id)||{}).value||''};
+    if(!g('bn'))return alert('Their name at least.');
+    var box=document.getElementById('bslots');
+    slotPicker(box,g('bwith'),Number(g('bmin'))||120,function(at){
+      act('find_or_make',{name:g('bn'),contact:g('bc')}).then(function(p){
+        var who=p&&p.entity&&p.entity.id;
+        if(!who)return alert((p&&p.error)||'Could not add them.');
+        act('book',{customer:who,when:at,artist:g('bwith')||null,service:g('bs'),
+          notes:g('bs'),minutes:Number(g('bmin'))||120}).then(after);
+      })});
+  };
+  var pgo=document.getElementById('pgo');
+  if(pgo){
+    showPieces();
+    var sel=document.getElementById('pw');
+    if(sel)sel.onchange=showPieces;
+    pgo.onclick=function(){
+      var fi=document.getElementById('pf');
+      // ══ UPLOAD DEFAULTS TO THE SHOP (2026-08-17) ═════════════════════════════════════════
+      // Grok's hard stop: with nothing chosen this sent an empty target and the server answered
+      // "That person does not work here" - a dead end on the first thing an owner tries. The shop
+      // is the sensible default; a real artist is a deliberate choice from the picker.
+      var who=(document.getElementById('pw')||{}).value||shopPta()||'';
+      var cap=(document.getElementById('pc')||{}).value||'';
+      if(!who)return alert('Pick who this belongs to first.');
+      if(!fi||!fi.files||!fi.files[0])return alert('Pick a picture first.');
+      var file=fi.files[0];
+      if(file.size>6*1024*1024)return alert('That is over six megabytes - most phone photos are well under.');
+      pgo.disabled=true;pgo.textContent='Uploading...';
+      var r=new FileReader();
+      r.onload=function(){
+        fetch('/_upload',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({artist:who,caption:cap,type:file.type,data:String(r.result).split(',')[1]})})
+         .then(function(x){return x.json()}).then(function(d){
+          pgo.disabled=false;pgo.textContent='Upload';
+          if(d&&d.ok){fi.value='';document.getElementById('pc').value='';showPieces()}
+          else alert((d&&(d.say||d.what_to_do||d.error))||'Did not upload');
+        }).catch(function(){pgo.disabled=false;pgo.textContent='Upload';alert('Could not reach the server.')});
+      };
+      r.readAsDataURL(file);
+    };
+  }
+  var ago=document.getElementById('ago');
+  if(ago)ago.onclick=function(){
+    var n=(document.getElementById('an')||{}).value||'';
+    var c=(document.getElementById('ac')||{}).value||'';
+    if(!n)return alert('Their name at least.');
+    act('seat_add',{name:n,contact:c}).then(after)};
+}
+
+// The shop's own PTA, from the console payload. "The shop" is listed first in the picker, so it
+// is also the right default for anything that has not been told otherwise.
+function shopPta(){
+  try{
+    var l=((S.data&&S.data.artists)||{}).list||[];
+    var shop=l.find(function(x){return x.is_shop});
+    return (shop&&shop.pta)|| (l[0]&&l[0].pta) || '';
+  }catch(e){return ''}
+}
+
+function closeDrawer(){
+  var as=document.querySelector('aside'); if(as)as.classList.remove('open');
+  var sc=document.getElementById('scrim'); if(sc)sc.classList.remove('on');
+}
+
+function showPieces(){
+  // ══ LONG-PRESS AND DRAG, NOT ARROWS (2026-08-17) ═══════════════════════════════════════════
+  // The first version put four buttons on every tile. Aaron: "if I'm in Facebook I can hold an
+  // image and delete it - there's no more delete button." He is right, and the research agrees:
+  // Instagram shipped grid reorder GLOBALLY in June 2026 as long-press -> drag, iOS Photos and
+  // Google Photos use long-press -> multi-select -> drag, and per-tile chrome is legacy admin UI.
+  //
+  // AND GESTURE-ONLY IS NOW A DEFECT, not a purity win: drag reordering "requires precise motor
+  // control that many users lack" and switch-control users cannot swipe at all. So the sheet that
+  // long-press opens carries REAL BUTTONS - Make hero, Move, Delete - and that is the accessible
+  // path, not a fallback nobody can find.
+  //
+  // Pointer events, not HTML5 drag: HTML5 drag-and-drop does not fire on touch.
+  if(!document.getElementById('pfstyle')){
+    var st=document.createElement('style'); st.id='pfstyle';
+    st.textContent=
+      '.pf{position:relative;touch-action:manipulation;user-select:none;-webkit-user-select:none;'+
+        '-webkit-touch-callout:none;transition:transform .12s,opacity .12s}'+
+      '.pf img{width:100%;height:130px;object-fit:cover;border-radius:10px;display:block;background:#0f172a;pointer-events:none}'+
+      '.pf figcaption{font-size:.75rem;color:#94a3b8;margin-top:.25rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'+
+      '.pf.lift{transform:scale(1.06);opacity:.92;z-index:30;box-shadow:0 12px 30px rgba(0,0,0,.55)}'+
+      '.pf.slot{outline:2px dashed rgba(251,191,36,.6);outline-offset:2px;border-radius:12px}'+
+      '.pf .pfhero{position:absolute;top:6px;left:6px;background:#b45309;color:#fff;font-size:.6rem;'+
+        'font-weight:800;letter-spacing:.04em;padding:.1rem .4rem;border-radius:5px}'+
+      '.pf .pfck{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;'+
+        'border:2px solid rgba(255,255,255,.85);background:rgba(0,0,0,.35)}'+
+      '.pf.on .pfck{background:#b45309;border-color:#b45309}'+
+      '.pfsheet{position:fixed;left:0;right:0;bottom:0;z-index:60;background:#0f1420;'+
+        'border-top:1px solid rgba(251,191,36,.25);border-radius:18px 18px 0 0;padding:1rem 1.1rem 1.6rem;'+
+        'box-shadow:0 -10px 40px rgba(0,0,0,.6)}'+
+      '.pfsheet h4{font-size:.95rem;font-weight:700;margin-bottom:.15rem}'+
+      '.pfsheet p{color:#64748b;font-size:.78rem;margin-bottom:.9rem}'+
+      '.pfsheet button{display:block;width:100%;text-align:left;background:#161b28;border:1px solid rgba(148,163,184,.18);'+
+        'color:#e2e8f0;border-radius:11px;padding:.8rem 1rem;font-size:.95rem;margin-bottom:.45rem;cursor:pointer}'+
+      '.pfsheet button.danger{color:#fca5a5}'+
+      '.pfsheet button.cancel{background:transparent;border-color:transparent;color:#64748b;text-align:center}'+
+      '.pfbar{position:fixed;left:0;right:0;bottom:0;z-index:60;background:#0f1420;padding:.8rem 1rem;'+
+        'border-top:1px solid rgba(251,191,36,.25);display:flex;gap:.5rem;align-items:center}'+
+      '.pfbar span{color:#94a3b8;font-size:.85rem;margin-right:auto}'+
+      '.pfbar button{background:#161b28;border:1px solid rgba(148,163,184,.2);color:#e2e8f0;'+
+        'border-radius:9px;padding:.5rem .9rem;font-size:.88rem;cursor:pointer}'+
+      '.pfbar button.danger{color:#fca5a5;border-color:rgba(248,113,113,.35)}'+
+      '.pfhint{color:#475569;font-size:.78rem;margin-top:.6rem}';
+    document.head.appendChild(st);
+  }
+  var who=(document.getElementById('pw')||{}).value||'';
+  var box=document.getElementById('pieces');
+  if(!who||!box)return;
+  fetch('/_portfolio?who='+encodeURIComponent(who)).then(function(r){return r.json()}).then(function(d){
+    if(!d||!d.ok||!d.pieces||!d.pieces.length){box.innerHTML=card('Nothing yet','<p>No work on their record.</p>');return}
+    var pieces=d.pieces.slice();
+    var picked={};   // multi-select
+    var mode='view';
+
+    function paint(){
+      var n=Object.keys(picked).length;
+      box.innerHTML='<div class=card><h2>'+pieces.length+(pieces.length===1?' piece':' pieces')+'</h2>'+
+        '<div class=grid id=pfgrid>'+pieces.map(function(p,i){
+          return '<figure class="pf'+(picked[p.id]?' on':'')+'" data-id="'+esc(p.id)+'">'+
+            '<img src="'+esc(p.url)+'" alt="" draggable=false>'+
+            (i===0?'<span class=pfhero>HERO</span>':'')+
+            (mode==='select'?'<span class=pfck></span>':'')+
+            '<figcaption>'+esc(p.caption||'')+'</figcaption></figure>';
+        }).join('')+'</div>'+
+        '<p class=pfhint>Hold a picture to move it or change it. The first one is what people see '+
+        'first on your page.</p></div>';
+      wire();
+      if(mode==='select') bar(n); else killBar();
+    }
+
+    // ── long-press opens the sheet, drag moves the tile ─────────────────────────────────────
+    function wire(){
+      var grid=document.getElementById('pfgrid'); if(!grid)return;
+      Array.prototype.forEach.call(grid.querySelectorAll('.pf'),function(fig){
+        var timer=null, dragging=false, startX=0, startY=0, from=-1;
+        function idx(el){return Array.prototype.indexOf.call(grid.children,el)}
+        function down(e){
+          var pt=e.touches?e.touches[0]:e;
+          startX=pt.clientX; startY=pt.clientY; from=idx(fig);
+          if(mode==='select'){toggle(fig);return}
+          timer=setTimeout(function(){
+            dragging=true; fig.classList.add('lift');
+            if(navigator.vibrate)navigator.vibrate(12);   // the feedback layer - the thumb knows
+          },420);
+        }
+        function move(e){
+          var pt=e.touches?e.touches[0]:e;
+          if(!dragging){
+            // A real drag cancels the long press; a wobble does not.
+            if(Math.abs(pt.clientX-startX)>12||Math.abs(pt.clientY-startY)>12){clearTimeout(timer)}
+            return;
+          }
+          e.preventDefault();
+          var over=document.elementFromPoint(pt.clientX,pt.clientY);
+          var t=over&&over.closest?over.closest('.pf'):null;
+          if(t&&t!==fig&&t.parentNode===grid){
+            var to=idx(t);
+            grid.insertBefore(fig, to>from?t.nextSibling:t);
+            from=idx(fig);
+          }
+        }
+        function up(){
+          clearTimeout(timer);
+          if(dragging){
+            dragging=false; fig.classList.remove('lift');
+            var to=idx(fig);
+            commitMove(fig.getAttribute('data-id'),to);
+          } else if(mode!=='select'){
+            // A tap that was not a drag and not long enough for the sheet does nothing - a stray
+            // tap must never delete somebody's photograph.
+          }
+        }
+        function longSheet(e){ e.preventDefault(); sheet(fig.getAttribute('data-id')); }
+        fig.addEventListener('touchstart',down,{passive:true});
+        fig.addEventListener('touchmove',move,{passive:false});
+        fig.addEventListener('touchend',up);
+        fig.addEventListener('mousedown',down);
+        document.addEventListener('mousemove',move);
+        document.addEventListener('mouseup',up);
+        fig.addEventListener('contextmenu',longSheet);   // desktop right-click, same sheet
+      });
+    }
+
+    function toggle(fig){
+      var id=fig.getAttribute('data-id');
+      if(picked[id])delete picked[id]; else picked[id]=1;
+      fig.classList.toggle('on'); bar(Object.keys(picked).length);
+    }
+
+    function sheet(id){
+      killSheet();
+      var i=pieces.findIndex(function(x){return x.id===id});
+      var el=document.createElement('div'); el.className='pfsheet'; el.id='pfsheet';
+      el.innerHTML='<h4>'+esc(pieces[i]&&pieces[i].caption||'This picture')+'</h4>'+
+        '<p>Position '+(i+1)+' of '+pieces.length+'</p>'+
+        (i>0?'<button data-a=hero>Make it the first picture</button>':'')+
+        '<button data-a=select>Select several</button>'+
+        '<button class=danger data-a=del>Delete this picture</button>'+
+        '<button class=cancel data-a=x>Cancel</button>';
+      document.body.appendChild(el);
+      el.querySelectorAll('button').forEach(function(b){
+        b.onclick=function(){
+          var a=b.getAttribute('data-a'); killSheet();
+          if(a==='hero') commitMove(id,0);
+          else if(a==='del') commitDelete([id]);
+          else if(a==='select'){mode='select'; picked={}; picked[id]=1; paint()}
+        };
+      });
+    }
+    function killSheet(){var e=document.getElementById('pfsheet'); if(e)e.remove()}
+    function bar(n){
+      killBar();
+      if(mode!=='select')return;
+      var el=document.createElement('div'); el.className='pfbar'; el.id='pfbar';
+      el.innerHTML='<span>'+n+' selected</span>'+
+        '<button data-a=x>Done</button>'+
+        (n?'<button class=danger data-a=del>Delete '+n+'</button>':'');
+      document.body.appendChild(el);
+      el.querySelectorAll('button').forEach(function(b){
+        b.onclick=function(){
+          if(b.getAttribute('data-a')==='del'){commitDelete(Object.keys(picked))}
+          else {mode='view'; picked={}; paint()}
+        };
+      });
+    }
+    function killBar(){var e=document.getElementById('pfbar'); if(e)e.remove()}
+
+    // ── writes. The server owns the order; we re-read rather than guess. ────────────────────
+    function commitMove(id,to){
+      act('piece_move',{who:who,piece:id,to:to}).then(function(r){
+        if(r&&r.ok){showPieces()} else {alert((r&&(r.say||r.error))||'Could not move that.');showPieces()}
+      });
+    }
+    function commitDelete(ids){
+      if(!ids.length)return;
+      if(!confirm(ids.length===1?'Delete this picture?':'Delete '+ids.length+' pictures?'))return;
+      var next=function(k){
+        if(k>=ids.length){mode='view';picked={};showPieces();return}
+        act('piece_remove',{who:who,piece:ids[k]}).then(function(){next(k+1)});
+      };
+      next(0);
+    }
+
+    paint();
+  }).catch(function(){});
+}
+
+function say(e){
+  e.preventDefault();
+  var i=document.getElementById('q'),m=i.value.trim();if(!m)return false;
+  i.value='';
+  var st=document.getElementById('stream');
+  st.insertAdjacentHTML('beforeend','<div class="msg me"><div class=bub>'+esc(m)+'</div></div>');
+  st.insertAdjacentHTML('beforeend','<div class=msg id=think><div class=lbl>Aura</div>Thinking...</div>');
+  st.scrollTop=st.scrollHeight;
+  fetch('/_talk',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({said:m})}).then(function(r){return r.json()}).then(function(d){
+    var t=document.getElementById('think');
+    // Show what she said, or the plain-language reason, never a bare error code at a person.
+    t.outerHTML='<div class=msg><div class=lbl>Aura</div>'+
+      esc((d&&(d.say||d.reply||d.what_to_say))||
+          (d&&d.error?'Something went wrong ('+d.error+(d.at?' at '+d.at:'')+').':'Something went wrong.'))+
+      '</div>';
+    st.scrollTop=st.scrollHeight;
+  }).catch(function(){var t=document.getElementById('think');
+    if(t)t.outerHTML='<div class=msg><div class=lbl>Aura</div>Could not reach the server.</div>'});
+  return false;
+}
+</script></body></html>

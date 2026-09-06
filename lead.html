@@ -1,0 +1,102 @@
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Your shop &mdash; openforbusiness.world</title>
+<meta name=robots content="noindex">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#07090f;color:#f8fafc;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:60rem;margin:0 auto;padding:0 20px 5rem}
+header{padding:1rem 0;border-bottom:1px solid rgba(251,191,36,.18);margin-bottom:2rem}
+.logo{font-size:1.05rem;font-weight:800}.logo b{color:#fbbf24}
+h1{font-size:clamp(1.8rem,5vw,2.7rem);font-weight:800;letter-spacing:-.03em;line-height:1.1}
+.meta{color:#94a3b8;margin-top:.5rem;font-size:.95rem}
+.lede{color:#cbd5e1;margin-top:1rem;max-width:44rem}
+h2{font-size:.75rem;text-transform:uppercase;letter-spacing:.09em;color:#64748b;margin:2.5rem 0 .9rem;
+font-weight:700;border-top:1px solid rgba(251,191,36,.12);padding-top:1.5rem}
+.chips{display:flex;flex-wrap:wrap;gap:.45rem}
+.chip{background:#0f1420;border:1px solid rgba(251,191,36,.22);border-radius:999px;padding:.35rem .85rem;
+font-size:.85rem;color:#e2e8f0}
+.chip.on{background:#b45309;border-color:#b45309;color:#fff;font-weight:600}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:.7rem}
+.card{background:#0f1420;border:1px solid rgba(251,191,36,.15);border-radius:12px;padding:.9rem 1.1rem}
+.card b{display:block;color:#64748b;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.35rem}
+.card span,.card a{color:#f8fafc;font-size:.95rem;word-break:break-word;display:block;line-height:1.7}
+.card a{color:#fbbf24}
+.grp{margin-bottom:2rem}
+.grp h3{font-size:1.05rem;font-weight:700;margin-bottom:.6rem;text-transform:capitalize}
+.shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.55rem}
+.shots img{width:100%;height:160px;object-fit:cover;border-radius:10px;background:#0f172a;display:block}
+.note{color:#475569;font-size:.82rem;margin-top:.6rem;line-height:1.6}
+.bad{background:rgba(220,38,38,.12);border:1px solid rgba(248,113,113,.28);color:#fecaca;
+padding:1rem 1.2rem;border-radius:12px}
+.pill{display:inline-block;background:#052e16;border:1px solid #16a34a;color:#86efac;border-radius:999px;
+padding:.2rem .7rem;font-size:.75rem;font-weight:700;margin-left:.5rem;vertical-align:middle}
+footer{color:#475569;font-size:.82rem;padding:3rem 0 1rem;border-top:1px solid rgba(251,191,36,.12);margin-top:3rem}
+</style></head><body>
+<header><div class=wrap><span class=logo>openforbusiness<b>.world</b></span></div></header>
+<div class=wrap id=root><p style="color:#64748b">Loading&hellip;</p></div>
+<script>
+var id = (location.pathname.split('/').filter(Boolean)[1] || '');
+function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML}
+function chips(a,cls){return (a||[]).map(function(x){return '<span class="chip '+(cls||'')+'">'+esc(x)+'</span>'}).join('')}
+function card(label,html){return '<div class=card><b>'+esc(label)+'</b>'+html+'</div>'}
+
+fetch('/_lead?id='+encodeURIComponent(id)).then(function(r){return r.json()}).then(function(d){
+  var el=document.getElementById('root');
+  if(!d||!d.ok){el.innerHTML='<div class=bad>'+esc((d&&d.error)||'Could not load this record.')+'</div>';return}
+
+  var yes=function(v){return v===true?'Yes':v===false?'No':'Not stated'};
+  var h='';
+  h+='<h1>'+esc(d.name||'')+(d.claimed?'<span class=pill>CLAIMED</span>':'')+'</h1>';
+  h+='<div class=meta>'+esc([d.street,d.where].filter(Boolean).join(' &middot; '))+'</div>';
+  if(d.notable) h+='<p class=lede>'+esc(d.notable)+'</p>';
+
+  // ── Contact. Every address and number, because gathering is not deciding.
+  h+='<h2>How to reach them</h2><div class=kv>';
+  if((d.emails||[]).length) h+=card('Email ('+d.emails.length+')',
+      d.emails.map(function(e){return '<a href="mailto:'+esc(e)+'">'+esc(e)+'</a>'}).join(''));
+  if((d.phones||[]).length) h+=card('Phone ('+d.phones.length+')',
+      d.phones.map(function(p){return '<span>'+esc(p)+'</span>'}).join(''));
+  if(d.website) h+=card('Website','<a href="'+esc(d.website)+'" target=_blank rel=noopener>'+esc(d.website)+'</a>');
+  if((d.socials||[]).length) h+=card('Social',
+      d.socials.map(function(s){return '<a href="'+esc(s)+'" target=_blank rel=noopener>'+esc(s)+'</a>'}).join(''));
+  h+='</div>';
+
+  // ── Booking. The field that decides which calendar connector has to exist.
+  h+='<h2>How they book today</h2><div class=kv>';
+  h+=card('Platform',(d.booking_platforms||[]).length
+      ? '<span>'+esc(d.booking_platforms.join(', '))+'</span>'
+      : '<span>None detected &mdash; nothing to migrate</span>');
+  if(d.booking_method) h+=card('Method','<span>'+esc(d.booking_method)+'</span>');
+  h+=card('Deposit required','<span>'+yes(d.deposit_required)+'</span>');
+  h+=card('Walk-ins','<span>'+yes(d.walk_ins)+'</span>');
+  h+=card('Consultations','<span>'+yes(d.consultations)+'</span>');
+  if((d.own_booking_urls||[]).length) h+=card('Their booking page',
+      d.own_booking_urls.map(function(u){return '<a href="'+esc(u)+'" target=_blank rel=noopener>'+esc(u)+'</a>'}).join(''));
+  h+='</div>';
+
+  if((d.artists||[]).length){h+='<h2>Artists ('+d.artists.length+')</h2><div class=chips>'+chips(d.artists,'on')+'</div>'}
+  if((d.styles||[]).length){h+='<h2>Styles ('+d.styles.length+')</h2><div class=chips>'+chips(d.styles)+'</div>'}
+
+  // ── Their work, grouped by whoever the site says it belongs to. Hotlinked from their own CDN:
+  // nothing of theirs is stored or served here. Copies happen at claim, not at lead.
+  if((d.image_groups||[]).length){
+    h+='<h2>Their work ('+d.image_count+' images from their site)</h2>';
+    d.image_groups.forEach(function(g){
+      h+='<div class=grp><h3>'+esc(g.subject)+'</h3><div class=shots>'+
+         g.urls.map(function(u){return '<img loading=lazy src="'+esc(u)+'" alt="">'}).join('')+
+         '</div></div>';
+    });
+    h+='<p class=note>Images load directly from their own site. Nothing is copied or stored here.</p>';
+  }
+
+  h+='<footer>Assembled from public data'+(d.source?' via '+esc(d.source):'')+
+     (d.license?' ('+esc(d.license)+')':'')+
+     (d.crawled_at?' and their own website, read '+esc(String(d.crawled_at).slice(0,10)):'')+
+     '.<br>Nothing has been recorded about anyone who opens this page.</footer>';
+  el.innerHTML=h;
+}).catch(function(){
+  document.getElementById('root').innerHTML='<div class=bad>Could not reach the server.</div>';
+});
+</script></body></html>

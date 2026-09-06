@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.136.0-2026-09-04-j-shot-hands-back-the-picture";
+const BUILD = "aura-core-v9.137.0-2026-09-06-a-rewalk-is-a-button-not-a-paste";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6608,7 +6608,15 @@ async function processCommand(line, env, isOp) {
         // and a string-argument .replace does one and stops. Global regex, so every copy is
         // filled however many handlers end up using them.
         "<script>" + WALK_TAG_JS.replace(/__KEY__/g, tatSlug(catW))
-          .replace(/__CAT__/g, String(catW).replace(/[\\\"]/g, ""))
+          // The name lands inside a SINGLE-quoted JS string, so an apostrophe would end that
+          // string and take the whole page script down with it - the counter, the chips and the
+          // command block all die together. Stripping it is safe rather than lossy: WALK matches
+          // categories through `tatSlug`, which drops apostrophes anyway, so "Nature's Kin" and
+          // "Natures Kin" resolve to the same category.
+          .replace(/__CAT__/g, String(catW).replace(/[\\\"']/g, ""))
+          // The boolean form, for the re-walk fetch. Substituted BEFORE __TIGHT__ so there is no
+          // question of one pattern eating the other.
+          .replace(/__TIGHTB__/g, tightW ? "true" : "false")
           .replace(/__TIGHT__/g, tightW ? " --tight" : "")
           // ══ THE OPERATOR PAGE SIGNS IN THE WAY EVERY OTHER SURFACE DOES (2026-09-03) ══════
           // `design` refuses every action but `hello` without a resolved person, and the walk page
@@ -19000,7 +19008,10 @@ async function successionGate(env) {
         "<div class=g>" + cells.join("") + "</div>" +
         "<pre id=out>R redraws &middot; E evolves &middot; D drops</pre>" +
         "<script>" + WALK_TAG_JS.replace(/__KEY__/g, "run-" + idW)
-          .replace(/__CAT__/g, String(recW.category).replace(/["\\]/g, ""))
+          .replace(/__CAT__/g, String(recW.category).replace(/["\\']/g, ""))
+          // This page has no re-walk button, so the handler never fires here - but a placeholder
+          // that ships unsubstituted is a live grenade the day somebody adds the button.
+          .replace(/__TIGHTB__/g, "true")
           .replace(/__TIGHT__/g, " --tight")
           .replace(/__SESSION__/g, (bkW && opW) ? (bkW + "." + opW) : "") + "</script>" +
         "</body></html>";
@@ -55494,16 +55505,27 @@ const WALK_TAG_JS = [
   // 56 categories until each one is walked again by hand. This puts that one command on the
   // page itself: no tags needed, no sweep needed - press it, paste it, and the page you are
   // looking at is rebuilt with whatever the worker does today.
-  "if(e.target.id==='rw'){var rc='RUN \"WALK __CAT____TIGHT__\"';",
-  "document.getElementById('out').textContent=rc;",
-  "var rd=0;try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(rc);rd=1}}catch(x){}",
-  "if(!rd){try{var rt=document.createElement('textarea');rt.value=rc;rt.style.position='fixed';",
-  "rt.style.opacity='0';document.body.appendChild(rt);rt.select();rd=document.execCommand('copy');",
-  "document.body.removeChild(rt)}catch(x){}}",
-  "var rr=document.createRange();rr.selectNodeContents(document.getElementById('out'));",
-  "var rs=window.getSelection();rs.removeAllRanges();rs.addRange(rr);",
-  "e.target.textContent=rd?'copied':'select + Ctrl-C';",
-  "setTimeout(function(){e.target.textContent='re-walk'},1400);return}",
+  // It calls `/_design` action `walk` - the same door and the same build-key gate R, E and D use -
+  // and reloads when the write comes back. `servePage` serves these pages `cache-control: no-store`
+  // and looks up by pathname alone, so a plain reload gets the HTML that was just written; no
+  // cache-busting query and no hard-refresh.
+  // TAGS ARE NOT CLEARED. A rebuild is not a sweep - it acts on nothing tagged, and the tags are
+  // keyed on leaf names that survive the rebuild, so paint() re-lights them after the reload.
+  "if(e.target.id==='rw'){",
+  "if(!'__SESSION__'){alert('No operator session. Arm config:build:key first.');return}",
+  "e.target.textContent='..';",
+  "document.getElementById('out').textContent='rebuilding this page from what is in KV';",
+  "fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},",
+  "body:JSON.stringify({action:'walk',session:'__SESSION__',category:'__CAT__',tight:__TIGHTB__})})",
+  ".then(function(r){return r.json()}).then(function(d){",
+  "if(d&&d.ok){e.target.textContent='rebuilt';",
+  "document.getElementById('out').textContent='rebuilt '+(d.category||'')+' \\u00b7 '+(d.things||0)+' things \\u00b7 reloading';",
+  "setTimeout(function(){location.reload()},400)}",
+  // Rendered, never swallowed - the D chip failed silently for weeks before it said why.
+  "else{e.target.textContent='re-walk';",
+  "document.getElementById('out').textContent='re-walk failed: '+((d&&(d.error||d.say))||'no reply')}",
+  "}).catch(function(x){e.target.textContent='re-walk';",
+  "document.getElementById('out').textContent='re-walk failed: '+x});return}",
   "if(e.target.id==='clr'){T={};localStorage.setItem(K,'{}');paint();return}",
   // ══ E CALLS THE SAME LOOP THE DESIGN PAGE CALLS (2026-09-03) ══════════════════════════
   // Not a new door. `/_design` with action `evolve` is what mytattoo already does when a customer
@@ -59395,6 +59417,39 @@ export class PublicEntry extends WorkerEntrypoint {
           const url = String(one).split("  ->  ")[1] || null;
           return { ok: true, action: "shot", shot: askS2, image: url,
                    prompt: pay.prompt || null, drew: pay.drew || 0 };
+        } catch (e) {
+          return { ok: false, error: "THREW", detail: String(e && e.message || e).slice(0, 200) };
+        }
+      }
+
+      // ══ RE-WALK IS A BUTTON, NOT A COMMAND TO PASTE (2026-09-06) ═══════════════════════════
+      // R, E and D were wired to this endpoint on 2026-09-03. `re-walk` was left behind - it still
+      // composed `RUN "WALK <cat> --tight"` into the out pre and copied it to the clipboard, so the
+      // one action needed after EVERY sweep was the only one that still required a terminal.
+      // MEASURED 2026-09-06 on Family Roots and Bonds: R redrew tile 8, the picture changed in
+      // place, and a refresh showed the old one again. Nothing was broken - REDO banks the new
+      // picture in `face:v1:` before it answers, and `tatFaceUrl` reads it - but the page is HTML
+      // stored at `page:auras.guide/walk/<slug>` and WALK is the only thing that ever rewrites it.
+      // So the page could not show its own work without a trip to PowerShell.
+      // THE CATEGORY TRAVELS IN THE REQUEST rather than being re-derived from the URL slug. The
+      // page knows which category it IS and which view it was built with; re-deriving either here
+      // is how a --tight sweep gets rebuilt as the wide grouped view and drops you somewhere else.
+      if (action === "walk") {
+        const whoW2 = b.session ? await this._whoIs(String(b.session)) : null;
+        if (!whoW2 || whoW2.signed_in_via !== "build key") return { ok: false, error: "OPERATOR_ONLY",
+          say: "This is an operator action.",
+          why: "Only a session opened with config:build:key may rebuild a catalogue page." };
+        const catW2 = String(b.category || "").trim();
+        if (!catW2) return { ok: false, error: "NEED_CATEGORY" };
+        try {
+          const r = await processCommand("WALK " + catW2 + (b.tight ? " --tight" : ""), this.env, true);
+          const pay = (r && r.payload) || {};
+          if (!pay.ok) return { ok: false, error: pay.error || "COMMAND_FAILED",
+                                detail: pay.what_to_do || pay.asked || null };
+          // WALK draws nothing - it reads `face:v1:` and rewrites the stored page. The counts come
+          // back so the button can say what it rebuilt rather than just claiming success.
+          return { ok: true, action: "walk", category: pay.category || catW2, url: pay.url || null,
+                   things: pay.things || 0, no_tile: pay.no_tile || 0 };
         } catch (e) {
           return { ok: false, error: "THREW", detail: String(e && e.message || e).slice(0, 200) };
         }

@@ -1,0 +1,68 @@
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>cityguide.world</title>
+<meta name=description content="Find anything, anywhere. Every business on the planet.">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#030712;color:#f1f5f9;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow-x:hidden;padding-bottom:env(safe-area-inset-bottom)}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1140px;margin:0 auto;padding:0 20px}
+header{padding:1rem 0;border-bottom:1px solid rgba(59,130,246,.15);position:sticky;top:0;background:rgba(3,7,18,.92);backdrop-filter:blur(14px);z-index:60}
+.bar{display:flex;align-items:center;gap:1rem;max-width:1140px;margin:0 auto;padding:0 20px}
+.logo{font-size:1.25rem;font-weight:800;letter-spacing:-.03em;white-space:nowrap}
+.logo b{color:#fbbf24}
+form{flex:1;display:flex;gap:.5rem}
+input{flex:1;background:#0b1220;border:1px solid rgba(59,130,246,.25);border-radius:10px;padding:.6rem .9rem;color:#f1f5f9;font-size:.95rem;outline:none;min-width:0}
+input:focus{border-color:#38bdf8}
+button{background:#1d4ed8;border:0;border-radius:10px;color:#fff;padding:.6rem 1rem;font-size:.9rem;font-weight:600;cursor:pointer;white-space:nowrap}
+.profile{padding:2.2rem 0 1rem;text-align:center;background:radial-gradient(900px 380px at 50% -140px,rgba(37,99,235,.35),transparent 70%)}
+.profile h1{font-size:clamp(1.9rem,6vw,3.2rem);font-weight:800;letter-spacing:-.03em;line-height:1.1}
+.meta{color:#94a3b8;margin-top:.5rem;font-size:.95rem;display:flex;gap:1.2rem;justify-content:center;flex-wrap:wrap}
+.meta span{white-space:nowrap}
+nav.cats{display:flex;gap:.5rem;overflow-x:auto;padding:1.2rem 0 .4rem;scrollbar-width:none}
+nav.cats::-webkit-scrollbar{display:none}
+nav.cats a{padding:.5rem 1.1rem;border-radius:999px;border:1px solid rgba(59,130,246,.25);font-size:.9rem;font-weight:600;white-space:nowrap;color:#94a3b8;transition:.15s}
+nav.cats a:hover{border-color:#38bdf8;color:#f1f5f9}
+nav.cats a.on{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
+section{padding:1.2rem 0 2.5rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1rem}
+.card{background:#0b1220;border:1px solid rgba(59,130,246,.15);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;transition:transform .18s,border-color .18s}
+.card:hover{transform:translateY(-2px);border-color:rgba(56,189,248,.45)}
+.card img{width:100%;height:150px;object-fit:cover;display:block;background:#0f172a}
+.card .body{padding:.85rem 1rem 1rem;display:flex;flex-direction:column;gap:.35rem;flex:1}
+.card h3{font-size:1rem;font-weight:700;line-height:1.3}
+.rating{color:#fbbf24;font-size:.85rem;font-weight:600}
+.addr{color:#64748b;font-size:.8rem;line-height:1.4}
+.qr{margin-top:auto;padding-top:.7rem;display:flex;justify-content:flex-end}
+.qr img{width:60px;height:60px;border-radius:8px;background:#fff;padding:4px}
+.empty{color:#475569;font-size:.9rem}
+footer{border-top:1px solid rgba(59,130,246,.15);padding:2rem 0 3rem;text-align:center;color:#475569;font-size:.85rem}
+footer b{color:#94a3b8}
+</style></head><body data-source="city">
+<header><div class=bar>
+  <a href="/" class=logo>cityguide<b>.world</b></a>
+  <form onsubmit="return go(event)">
+    <input id=q placeholder="Any city, anywhere" autocomplete=off>
+    <button type=submit>Search</button>
+  </form>
+</div></header>
+<div class=wrap>
+  <div class=profile><h1 data-city>City</h1><div class=meta data-meta></div></div>
+  <nav class=cats data-cats></nav>
+  <section><div class=grid data-section></div></section>
+  <footer>Every listing carries a QR that opens its business on <b>openforbusiness.world</b>.<br>
+  Scan it, share it, or put it in your window \u2014 it is the same code either way.</footer>
+</div>
+<script>
+function go(e){e.preventDefault();var v=document.getElementById('q').value.trim();
+if(v)location.href='/'+v.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');return false}
+// Nearby first - the default of every serious city guide. Only on the root; a named city is a
+// deliberate choice and must not be overridden by where the phone happens to be.
+if(location.pathname==='/'&&navigator.geolocation){
+  navigator.geolocation.getCurrentPosition(function(p){
+    fetch('/_near?lat='+p.coords.latitude+'&lng='+p.coords.longitude)
+      .then(function(r){return r.json()}).then(function(d){if(d&&d.slug)location.href='/'+d.slug})
+      .catch(function(){});
+  },function(){},{timeout:6000,maximumAge:600000});
+}
+</script></body></html>

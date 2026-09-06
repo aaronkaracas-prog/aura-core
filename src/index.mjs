@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.148.0-2026-09-06-l-one-conversation-two-doors";
+const BUILD = "aura-core-v9.149.0-2026-09-06-m-she-can-find-things";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60588,6 +60588,65 @@ export class PublicEntry extends WorkerEntrypoint {
           const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
           return r ? tatFaceUrl(r) : null;
         };
+
+        // ══ SHE CAN FIND THINGS NOW (2026-09-06) ══════════════════════════════════════════
+        // `talk` already returns `show_me` - two to five words naming a subject somebody wants to
+        // see - and it was built to drive a Grok web image search: external, paid, and somebody
+        // else's pictures. Pointed here instead it is free, instant, and it is YOUR catalogue, so
+        // "where is the rose tattoo" is answered by taking them to the rose rather than describing
+        // one. The judgement of WHEN to show was always hers; this gives her somewhere to point.
+        // Matches leaves first because a leaf is a design somebody can actually pick, then kinds,
+        // then categories - narrowest thing that fits, which is what "where is X" is asking for.
+        const askFind = String(b.find || "").trim().toLowerCase();
+        if (askFind) {
+          const words = askFind.split(/\s+/).filter((w) => w.length > 2);
+          const hit = (name) => {
+            const n = String(name).toLowerCase();
+            if (n === askFind) return 3;                              // exact
+            if (n.includes(askFind)) return 2;                        // whole phrase
+            return words.some((w) => n.includes(w)) ? 1 : 0;          // any word
+          };
+          const found = [];
+          for (const kindName of Object.keys(spec)) {
+            for (const lf of (spec[kindName] || [])) {
+              const sc = hit(lf);
+              if (sc) found.push({ score: sc, level: "leaf", label: String(lf), kind: kindName });
+            }
+          }
+          for (const kindName of Object.keys(spec)) {
+            const sc = hit(kindName);
+            if (sc) found.push({ score: sc, level: "kind", label: String(kindName) });
+          }
+          for (const c of Object.keys(subj)) {
+            const sc = hit(c);
+            if (sc) found.push({ score: sc, level: "category", label: String(c) });
+          }
+          // A leaf beats a kind beats a category at the same score - narrowest wins.
+          const rank = { leaf: 0, kind: 1, category: 2 };
+          found.sort((a2, b3) => b3.score - a2.score || rank[a2.level] - rank[b3.level]);
+          const top = found.slice(0, 12);
+          const items = await Promise.all(top.map(async (x) => ({
+            value: tatSlug(x.label), label: x.label, level: x.level,
+            kind: x.kind || null,
+            // A category's cover comes from the index rather than a hunt - the leaf's own tile
+            // otherwise. Either way it is a read, and either way it can be null.
+            image: x.level === "category" ? null : await faceOf(x.label)
+          })));
+          // The category of each leaf, so a caller can walk somebody there rather than just show
+          // them a picture with no way back into the tree.
+          for (const it of items) {
+            if (it.level === "leaf" && it.kind) {
+              it.category = Object.keys(subj).find((c) =>
+                (subj[c] || []).some((k) => tatSlug(k) === tatSlug(it.kind))) || null;
+            } else if (it.level === "kind") {
+              it.category = Object.keys(subj).find((c) =>
+                (subj[c] || []).some((k) => tatSlug(k) === tatSlug(it.label))) || null;
+            }
+          }
+          return { ok: true, type: "row", find: askFind, items,
+                   matched: found.length,
+                   say: items.length ? null : "Nothing in the catalogue matches that." };
+        }
 
         const askKind = String(b.kind || "").trim();
         const askCat = String(b.category || "").trim();

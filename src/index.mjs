@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.150.0-2026-09-06-n-she-knows-her-shelf";
+const BUILD = "aura-core-v9.151.0-2026-09-06-o-she-answers-as-herself";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58753,6 +58753,47 @@ async function auraTalk(env, me, stage, saidIn, history) {
           "Keep replies short - three sentences at most. This is a phone.";
       const talkSys = (await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR)) + shelf;
 
+      // ══ SHE ANSWERS AS HERSELF, NOT AS A PROMPT I TYPED (2026-09-06) ═══════════════════════
+      //
+      // Everything below was a raw `callBrain` - one model call with a system prompt written by
+      // hand, sitting beside a full Project Think agent that already has thirteen context blocks,
+      // a self-distilling core memory, four advisor minds, a governed browser, a capability bus
+      // onto every command in aura-core, and the ability to author its own tools.
+      // Aaron, correctly: "make sure we're not putting wrappers around something that's already
+      // big." The shelf and the brief added an hour earlier were hand-assembled context blocks
+      // beside a system that maintains its own. `cognition:prompts` came back null - nothing had
+      // ever needed it, because the intelligence was never on this path.
+      //
+      // `proxyToAgent` was already built: service binding, operator token on the private side, and
+      // `agentInstanceFor` gives every PTA its own instance - `pta-<their id>`, own Durable Object,
+      // own memory, own continuity. Not a shared brain with a name on it.
+      //
+      // WHY ROUTING A CUSTOMER THERE IS SAFE: `getActions()` returns {} for a non-operator.
+      // spend_money, change_dns and edit_myself are not gated for them, they are ABSENT. Her own
+      // note on that line: absent beats gated.
+      //
+      // THE CLASSIFIER STAYS. `show_me`, `ready_to_draw` and `intent` are three cheap parallel
+      // reads and the ladder is wired to them, so they run beside the agent exactly as they ran
+      // beside callBrain and nothing on the surface changes shape.
+      //
+      // AND THE LOCAL CALL STAYS AS THE FLOOR. If the binding is missing or the turn fails, it
+      // answers. A conversation that dies because the clever path is down is worse than one that
+      // is briefly less clever.
+      let agentSaid = null, agentVia = null;
+      if (me && stage === "pta") {
+        try {
+          const ask =
+            "[A person is designing a tattoo with you on mytattoo.world. This is their own " +
+            "conversation - answer as yourself, from what you know about them and what you have.]\n\n" +
+            talkSys + "\n\nTHEY SAID: " + said;
+          const proxied = await proxyToAgent(env, ask, false, me);
+          if (proxied && proxied.reply && !proxied.failed) {
+            agentSaid = String(proxied.reply).trim();
+            agentVia = proxied.instance || "agent";
+          }
+        } catch {}
+      }
+
       const [r, g, iRes] = await Promise.all([
       callBrain({
         model: talkModel,
@@ -58968,7 +59009,7 @@ async function auraTalk(env, me, stage, saidIn, history) {
         const tsNow = new Date().toISOString();
         try {
           tline.push({ ts: tsNow, role: "them", said: said.slice(0, 600) });
-          tline.push({ ts: tsNow, role: "aura", said: String(r.text || "").slice(0, 600) });
+          tline.push({ ts: tsNow, role: "aura", said: String(agentSaid || r.text || "").slice(0, 600) });
           // Bounded. This is a cache, not the archive - the chain holds the whole history and
           // an unbounded KV value eventually stops being writable at all.
           if (tline.length > 60) tline = tline.slice(-60);
@@ -58983,7 +59024,7 @@ async function auraTalk(env, me, stage, saidIn, history) {
         // method, so a lead costs no wasted D1 read and no wasted Durable Object fetch, and the
         // refusal is never something anybody has to see.
         if (stage === "pta") {
-          for (const [who, text] of [["them", said], ["aura", String(r.text || "")]]) {
+          for (const [who, text] of [["them", said], ["aura", String(agentSaid || r.text || "")]]) {
             const line = String(text || "").trim();
             if (!line) continue;
             try {
@@ -58995,11 +59036,15 @@ async function auraTalk(env, me, stage, saidIn, history) {
         }
       }
 
-      return { ok: true, said: r.text, ready_to_draw: ready, show_me: show, brief, intent,
+      // Her own answer wins. The local call still ran - it is the floor, and it costs a fraction of
+      // a cent - so a failed turn is invisible to the person rather than fatal to the conversation.
+      return { ok: true, said: agentSaid || r.text, ready_to_draw: ready, show_me: show, brief, intent,
                // What she is actually working from, so a surface can say "we have talked before"
                // rather than pretending every visit is the first one.
                remembering: me ? tline.length : 0,
-               kept: stage === "pta" };
+               kept: stage === "pta",
+               // Which Aura answered: her own instance, or the local floor beneath it.
+               via: agentVia || "local" };
 }
 
 export class PublicEntry extends WorkerEntrypoint {

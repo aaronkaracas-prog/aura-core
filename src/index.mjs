@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.143.0-2026-09-06-g-walls-survey";
+const BUILD = "aura-core-v9.144.0-2026-09-06-h-reach-audit";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6846,6 +6846,110 @@ async function processCommand(line, env, isOp) {
                     .map((x) => x.category + "  " + x.with_walls + "/" + x.leaves + "  " + x.steps),
         note: "Nothing was drawn. Key names only - no record was fetched. " +
               'RUN "WALLS <category>" for the leaf-by-leaf list.' } };
+    }
+
+    // ══ REACH — WHAT THE CONSUMER SURFACE CAN AND CANNOT GET TO ══════════════════════════════
+    // Aaron's question, exactly: "is the catalog wired to hit all the images that we have."
+    // Two pictures can both be banked and only one be reachable, because mytattoo walks
+    // `card:tree` - so anything whose leaf was later renamed, merged away or dropped is still in
+    // KV and no longer has a path to it. The merges alone (fourteen Fantasy categories, Love &
+    // Relationships, Music) make that likely, and guessing at the number is worthless.
+    //
+    // KEY NAMES ONLY, like WALLS. It reports RECORDS, not pictures: a `face:v1:` key is one tile,
+    // but a `shot:v1:` key holds a whole wall, and counting those would mean fetching every one.
+    // Reachability is the question; the record is the unit that answers it.
+    //
+    // DRAWS NOTHING.
+    case "REACH": {
+      const treeR = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeR) return { cmd: "REACH", payload: { ok: false, error: "NO_TREE" } };
+      const subjR = treeR.subjects || {}, specR = treeR.specific || {};
+
+      // Everything the shell can currently walk to, and what kind of thing each slug is.
+      const role = {};   // slug -> "category" | "kind" | "kind-with-leaves" | "leaf"
+      const nameOf = {};
+      for (const c of Object.keys(subjR)) {
+        role[tatSlug(c)] = "category"; nameOf[tatSlug(c)] = c;
+        for (const k of (subjR[c] || [])) {
+          const hit = Object.keys(specR).find((x) => tatSlug(x) === tatSlug(k));
+          const lv = hit ? (specR[hit] || []) : [];
+          role[tatSlug(k)] = lv.length ? "kind-with-leaves" : "kind";
+          nameOf[tatSlug(k)] = k;
+          for (const lf of lv) { role[tatSlug(lf)] = "leaf"; nameOf[tatSlug(lf)] = lf; }
+        }
+      }
+
+      const sweep = async (prefix) => {
+        const out = [];
+        let cur = null;
+        for (let page = 0; page < 25; page++) {
+          const l = await env.AURA_KV.list({ prefix, limit: 1000, cursor: cur }).catch(() => null);
+          if (!l) break;
+          for (const k of (l.keys || [])) out.push(k.name);
+          if (l.list_complete || !l.cursor) break;
+          cur = l.cursor;
+        }
+        return out;
+      };
+
+      const faceKeys = await sweep("face:v1:");
+      const shotKeys = await sweep("shot:v1:");
+
+      // ── tiles ─────────────────────────────────────────────────────────────────────────
+      const tiles = { leaf: [], kindAlone: [], kindHidden: [], category: [], orphan: [] };
+      for (const kn of faceKeys) {
+        const slug = kn.slice("face:v1:".length);
+        const r = role[slug];
+        if (r === "leaf") tiles.leaf.push(slug);
+        else if (r === "kind") tiles.kindAlone.push(slug);
+        // A kind that HAS leaves is only ever a thumbnail on the grid - its own tile is never
+        // something a person can select. Banked, drawn, paid for, and unreachable.
+        else if (r === "kind-with-leaves") tiles.kindHidden.push(nameOf[slug] || slug);
+        else if (r === "category") tiles.category.push(slug);
+        else tiles.orphan.push(slug);
+      }
+
+      // ── variation sets ────────────────────────────────────────────────────────────────
+      const sets = { reachable: 0, style: 0, orphan: [] };
+      const orphanSeen = {};
+      for (const kn of shotKeys) {
+        const bits = kn.split(":");
+        const slug = bits[2] || "", st = bits[3] || "";
+        const r = role[slug];
+        if (!r || r === "category") {
+          if (!orphanSeen[slug]) { orphanSeen[slug] = 1; sets.orphan.push(slug); }
+          continue;
+        }
+        // Excluded on Aaron's instruction 2026-09-06 - the banked style walls were built during
+        // the experiments and the style sheet replaced them. Counted so the number is visible
+        // rather than quietly absent.
+        if (st === "style") { sets.style++; continue; }
+        sets.reachable++;
+      }
+
+      const leavesTotal = Object.keys(role).filter((x) => role[x] === "leaf" || role[x] === "kind").length;
+      return { cmd: "REACH", payload: { ok: true,
+        tile_records: faceKeys.length,
+        set_records: shotKeys.length,
+        reachable_tiles: tiles.leaf.length + tiles.kindAlone.length,
+        reachable_sets: sets.reachable,
+        things_in_tree: leavesTotal,
+        things_with_a_tile: tiles.leaf.length + tiles.kindAlone.length,
+        // Everything the surface cannot get to, and why it cannot.
+        hidden_kind_tiles: tiles.kindHidden.length,
+        hidden_kind_tiles_note: tiles.kindHidden.length
+          ? "these kinds have their own tile AND leaves, so the tile is only a thumbnail: " +
+            tiles.kindHidden.slice(0, 25).join(", ")
+          : undefined,
+        style_sets_excluded: sets.style,
+        category_tiles: tiles.category.length,
+        orphan_tiles: tiles.orphan.length,
+        orphan_tiles_sample: tiles.orphan.slice(0, 40),
+        orphan_sets: sets.orphan.length,
+        orphan_sets_sample: sets.orphan.slice(0, 40),
+        note: "Nothing was drawn. Key names only - these are RECORDS, not pictures: one tile " +
+              "record is one picture, one set record is a whole wall. Orphans are banked under " +
+              "a slug that is not in card:tree, so nothing can walk to them." } };
     }
 
     case "LIBRARY": {

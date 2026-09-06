@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.146.0-2026-09-06-j-the-whole-category-at-once";
+const BUILD = "aura-core-v9.147.0-2026-09-06-k-the-conversation-is-their-record";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59288,7 +59288,30 @@ export class PublicEntry extends WorkerEntrypoint {
       if (action === "talk") {
         const said = String(b.said || "").trim().slice(0, 2000);
         if (!said) return { ok: false, error: "NOTHING_SAID" };
-        const hist = Array.isArray(b.history) ? b.history.slice(-12) : [];
+
+        // ══ SHE REMEMBERS THE PERSON NOW (2026-09-06) ══════════════════════════════════════
+        // This read `b.history` - twelve turns held by the BROWSER - and wrote nothing anywhere.
+        // So every word somebody said while designing the most permanent thing they will ever
+        // own was discarded when the tab closed, and PTA_LEARN, which pairs an outcome with what
+        // was said by reading the chain, could never see a real customer conversation.
+        // Nothing new is invented here. `PTA_TALK` established the pattern on the console in
+        // August and its reasoning is the right one: the KV timeline is the fast per-turn buffer,
+        // the chain is their record. This surface was built before the chain existed and simply
+        // never got connected.
+        // THE STORED TIMELINE WINS over what the page sends. A browser can be reloaded, opened on
+        // a second device, or lie; the timeline is what was actually said and it is hers to read.
+        let hist = Array.isArray(b.history) ? b.history.slice(-12) : [];
+        let tline = [];
+        if (me) {
+          try {
+            const raw = await env.AURA_KV.get("pta:timeline:" + me);
+            if (raw) tline = JSON.parse(raw) || [];
+          } catch {}
+          const spoken = tline.filter((e) => e && e.said && e.role);
+          if (spoken.length) {
+            hist = spoken.slice(-12).map((e) => ({ role: e.role, said: e.said }));
+          }
+        }
         // ══ TWO CALLS, ONE WAIT (2026-08-24) ═══════════════════════════════════════════════
         // MEASURED: about a minute for a reply. `talk` makes two model calls - her answer, then a
         // cheap read of whether they are ready - and they ran ONE AFTER THE OTHER, on the floor
@@ -59516,7 +59539,48 @@ export class PublicEntry extends WorkerEntrypoint {
             if (!brief) brief = String(it.text).trim().slice(0, 400);
           }
         } catch {}
-        return { ok: true, said: r.text, ready_to_draw: ready, show_me: show, brief, intent };
+        // ══ THE ROUND GOES ON THE RECORD ═══════════════════════════════════════════════════
+        // Two stores, the split `PTA_TALK` already settled: KV is the fast buffer that makes the
+        // next turn continuous, the chain is the sealed, append-only record that is THEIRS.
+        // NOT waitUntil - `design()` has no ctx, and referencing one here would throw on every
+        // turn and take the whole conversation surface down. It runs inline and swallows its own
+        // failures, because a memory write that fails must never cost somebody their reply.
+        if (me) {
+          const tsNow = new Date().toISOString();
+          try {
+            tline.push({ ts: tsNow, role: "them", said: said.slice(0, 600) });
+            tline.push({ ts: tsNow, role: "aura", said: String(r.text || "").slice(0, 600) });
+            // Bounded. This is a cache, not the archive - the chain holds the whole history and
+            // an unbounded KV value eventually stops being writable at all.
+            if (tline.length > 60) tline = tline.slice(-60);
+            await env.AURA_KV.put("pta:timeline:" + me, JSON.stringify(tline)).catch(() => {});
+          } catch {}
+
+          // ══ NO GRANT MEANS NO RECORD, AND THAT IS CORRECT ══════════════════════════════
+          // `PTA_REMEMBER` refuses without an existing entity AND an open `can_remember` grant.
+          // A CONTACTED LEAD - somebody who has tapped a tile and nothing more - has neither, by
+          // design: they have not agreed to be remembered, so the conversation happens and is not
+          // kept beyond the buffer above. `stage` already distinguishes the two at the top of this
+          // method, so a lead costs no wasted D1 read and no wasted Durable Object fetch, and the
+          // refusal is never something anybody has to see.
+          if (stage === "pta") {
+            for (const [who, text] of [["them", said], ["aura", String(r.text || "")]]) {
+              const line = String(text || "").trim();
+              if (!line) continue;
+              try {
+                await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
+                  said: line.slice(0, 600), who, channel: "chat", mode: "tattoo", at: tsNow,
+                }), env, true);
+              } catch {}
+            }
+          }
+        }
+
+        return { ok: true, said: r.text, ready_to_draw: ready, show_me: show, brief, intent,
+                 // What she is actually working from, so a surface can say "we have talked before"
+                 // rather than pretending every visit is the first one.
+                 remembering: me ? tline.length : 0,
+                 kept: stage === "pta" };
       }
 
       // ── MAKE. The first version. SHOW_IT births it as a PTA, so from this moment the design

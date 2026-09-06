@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.140.0-2026-09-06-d-counts-that-match-the-walk-page";
+const BUILD = "aura-core-v9.141.0-2026-09-06-e-crop-leads-the-variations";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60311,7 +60311,11 @@ export class PublicEntry extends WorkerEntrypoint {
           // The order a person would actually be asked these, not the order KV lists them.
           // Anything unrecognised keeps its place at the end rather than being dropped - a step
           // this list has not heard of is still a wall of real pictures.
-          const ORDER = ["pose", "expression", "crop", "style"];
+          // CROP LEADS. Aaron's own description of the flow: "you decide what do you want -
+          // full body, bust, face - and then it goes to the expression for the face, and if
+          // it's full body you get the pose." How much of the thing you see decides which
+          // question can even be asked next, so it cannot come second.
+          const ORDER = ["crop", "expression", "pose", "quantity", "arrangement", "treatment", "style"];
           const names = Object.keys(byStep).sort((a2, b3) => {
             const ia = ORDER.indexOf(a2), ib = ORDER.indexOf(b3);
             return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a2.localeCompare(b3);

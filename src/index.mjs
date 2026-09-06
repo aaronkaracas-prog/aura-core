@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.141.0-2026-09-06-e-crop-leads-the-variations";
+const BUILD = "aura-core-v9.142.0-2026-09-06-f-the-path-is-the-dependency";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60294,42 +60294,84 @@ export class PublicEntry extends WorkerEntrypoint {
             const l = await env.AURA_KV.list({ prefix: "shot:v1:" + tatSlug(askLeaf) + ":", limit: 200 });
             keys = (l.keys || []).map((k) => k.name);
           } catch {}
-          const byStep = {};
+
+          // ══ THE PATH IS THE DEPENDENCY, NOT NOISE (2026-09-06) ═══════════════════════════
+          // MEASURED on the live shell: choosing "full body" for a golden retriever offered a row
+          // of HEADSHOT expressions. The key says why -
+          //   shot:v1:golden-retriever:pose:style-realism__crop-full-body
+          // - those poses were drawn FOR the full-body crop. An earlier pass here merged every
+          // path for a step into one row, which threw that away and made a conditional wall look
+          // unconditional. Aaron, from the product side: "full body should bring up poses, we only
+          // built expressions for if they chose the headshot."
+          // So the ctx is PARSED and travels with the set. Sets that share a step AND the same
+          // conditions still merge; sets conditioned differently stay apart, because they are
+          // answers to different questions.
+          const VARS = ["crop", "pose", "expression", "quantity", "arrangement", "treatment"];
+          const bySig = {};
           for (const kn of keys) {
             const bits = kn.split(":");
             const st = bits[3] || "";
             if (!st) continue;
+            // ══ THE BANKED STYLE WALL IS NOT THE STYLE SHEET ═══════════════════════════════
+            // Aaron: "we ran them while we were building out, they're wrong - it should bring up
+            // the style sheet that actually generates." Styles come from `finishes` and `finish`,
+            // which is one list maintained in one place. A half-built wall offering the same
+            // choice with worse pictures is a second answer to a settled question.
+            if (st === "style") continue;
+            const ctx = bits.slice(4).join(":");
+            const needs = {};
+            for (const tok of String(ctx || "").split("__")) {
+              if (!tok || tok === "bare") continue;
+              const v = VARS.find((x) => tok === x || tok.startsWith(x + "-"));
+              if (!v || v === st) continue;
+              needs[v] = tok.slice(v.length + 1);
+            }
+            const sig = st + "|" + Object.keys(needs).sort().map((k) => k + "=" + needs[k]).join(",");
             let rec = null;
             try { rec = await env.AURA_KV.get(kn, "json"); } catch {}
             const imgs = (rec && rec.imgs) || {};
-            byStep[st] = byStep[st] || {};
+            bySig[sig] = bySig[sig] || { step: st, needs, imgs: {} };
             for (const o of Object.keys(imgs)) {
               const im = imgs[o];
-              if (im && im.img && !byStep[st][o]) byStep[st][o] = im.img;
+              if (im && im.img && !bySig[sig].imgs[o]) bySig[sig].imgs[o] = im.img;
             }
           }
-          // The order a person would actually be asked these, not the order KV lists them.
-          // Anything unrecognised keeps its place at the end rather than being dropped - a step
-          // this list has not heard of is still a wall of real pictures.
-          // CROP LEADS. Aaron's own description of the flow: "you decide what do you want -
-          // full body, bust, face - and then it goes to the expression for the face, and if
-          // it's full body you get the pose." How much of the thing you see decides which
-          // question can even be asked next, so it cannot come second.
-          const ORDER = ["crop", "expression", "pose", "quantity", "arrangement", "treatment", "style"];
-          const names = Object.keys(byStep).sort((a2, b3) => {
-            const ia = ORDER.indexOf(a2), ib = ORDER.indexOf(b3);
-            return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a2.localeCompare(b3);
-          });
-          const sets = names.map((st) => ({
-            step: st,
-            label: st.charAt(0).toUpperCase() + st.slice(1),
-            items: Object.keys(byStep[st]).map((o) => ({
-              value: o,
-              label: String(o).replace(/[-_]+/g, " "),
-              image: "https://auras.guide/image/" + byStep[st][o]
-            }))
-          })).filter((x) => x.items.length);
-          return { ok: true, leaf: askLeaf, image: await faceOf(askLeaf), sets,
+
+          // CROP LEADS. How much of the thing you see decides which question can even be asked
+          // next, so it cannot come second. Anything unrecognised keeps its place at the end
+          // rather than being dropped - a step this list has not heard of is still real pictures.
+          const ORDER = ["crop", "expression", "pose", "quantity", "arrangement", "treatment"];
+          const sets = Object.keys(bySig).map((k) => bySig[k])
+            .filter((g) => Object.keys(g.imgs).length)
+            .sort((a2, b3) => {
+              const ia = ORDER.indexOf(a2.step), ib = ORDER.indexOf(b3.step);
+              return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a2.step.localeCompare(b3.step);
+            })
+            .map((g) => ({
+              step: g.step,
+              label: g.step.charAt(0).toUpperCase() + g.step.slice(1),
+              needs: g.needs,
+              items: Object.keys(g.imgs).map((o) => ({
+                value: o, label: String(o).replace(/[-_]+/g, " "),
+                image: "https://auras.guide/image/" + g.imgs[o]
+              }))
+            }));
+
+          // ══ THE RULE THAT IS NOT IN THE DATA ════════════════════════════════════════════
+          // Some walls were drawn before crop existed and carry no condition at all - golden
+          // retriever's expressions are `bare` - so ctx alone still offers headshot expressions
+          // to somebody looking at a whole dog. The intent is Aaron's and it is a product rule,
+          // not a fact about a key, so it lives where a product rule belongs: a KV dial, with
+          // his stated version as the default. `config:variation:gate` overrides it without a
+          // deploy, and it is a visible lever rather than a line in a handler.
+          let gate = { expression: { crop: ["face", "bust", "head", "headshot", "portrait"] },
+                       pose:       { crop: ["full-body", "half-body", "body", "full"] } };
+          try {
+            const raw = await env.AURA_KV.get("config:variation:gate");
+            if (raw && raw.trim()) gate = JSON.parse(raw);
+          } catch {}
+
+          return { ok: true, leaf: askLeaf, image: await faceOf(askLeaf), sets, gate,
                    pictures: sets.reduce((n, x) => n + x.items.length, 0) };
         }
 

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.142.0-2026-09-06-f-the-path-is-the-dependency";
+const BUILD = "aura-core-v9.143.0-2026-09-06-g-walls-survey";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6753,6 +6753,99 @@ async function processCommand(line, env, isOp) {
               COVER_TRIES + " leaves.",
         next: remainB ? 'RUN "BROWSE"   -- ' + remainB + " categories left, paste again"
                       : "the whole index is banked - Explore is one KV read now" } };
+    }
+
+    // ══ WALLS — WHICH LEAVES HAVE VARIATIONS, AND WHICH DO NOT ═══════════════════════════════
+    // Aaron, after probing one animal at a time: "if you wanna do a bigger KV search right now
+    // for all the different pets you can instead of guessing." Right - two lookups told us Tabby
+    // has pose and expression and Lion has nothing, and there are 89 categories.
+    //
+    // KEY NAMES ONLY. This reads the LIST and never fetches a record, so surveying the whole
+    // catalogue is a handful of list calls rather than thousands of gets. A key's existence is
+    // the fact being asked about; its contents are not.
+    //
+    //   WALLS              -> every category: leaves, how many have walls, which steps exist
+    //   WALLS <category>   -> leaf by leaf, and exactly what is missing
+    //
+    // DRAWS NOTHING.
+    case "WALLS": {
+      const treeK = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeK) return { cmd: "WALLS", payload: { ok: false, error: "NO_TREE" } };
+      const subjK = treeK.subjects || {}, specK = treeK.specific || {};
+      const leavesK = (k) => {
+        const hit = Object.keys(specK).find((x) => tatSlug(x) === tatSlug(k));
+        return hit ? (specK[hit] || []) : [];
+      };
+      // slug -> Set of steps. Built from key names in one sweep over the prefix.
+      const have = {};
+      let cursorK = null, scanned = 0;
+      for (let page = 0; page < 20; page++) {
+        const l = await env.AURA_KV.list({ prefix: "shot:v1:", limit: 1000, cursor: cursorK })
+          .catch(() => null);
+        if (!l) break;
+        for (const k of (l.keys || [])) {
+          scanned++;
+          const bits = k.name.split(":");
+          const slug = bits[2] || "", st = bits[3] || "";
+          if (!slug || !st) continue;
+          (have[slug] = have[slug] || new Set()).add(st);
+        }
+        if (l.list_complete || !l.cursor) break;
+        cursorK = l.cursor;
+      }
+
+      const askK = String(rest || "").trim();
+      const catsK = Object.keys(subjK).sort((a, b2) =>
+        a.localeCompare(b2, undefined, { sensitivity: "base" }));
+
+      // ── one category, leaf by leaf ────────────────────────────────────────────────────
+      if (askK) {
+        const catName = catsK.find((c) => tatSlug(c) === tatSlug(askK));
+        if (!catName) return { cmd: "WALLS", payload: { ok: false, error: "NO_SUCH_CATEGORY",
+          asked: askK } };
+        const rows = [];
+        for (const k of (subjK[catName] || [])) {
+          const lv = leavesK(k);
+          for (const lf of (lv.length ? lv : [k])) {
+            const st = have[tatSlug(lf)];
+            rows.push({ leaf: String(lf), kind: String(k),
+                        steps: st ? [...st].sort() : [] });
+          }
+        }
+        return { cmd: "WALLS", payload: { ok: true, category: catName,
+          leaves: rows.length,
+          with_walls: rows.filter((r) => r.steps.length).length,
+          bare: rows.filter((r) => !r.steps.length).map((r) => r.leaf),
+          rows: rows.filter((r) => r.steps.length)
+                    .map((r) => r.leaf + "  ::  " + r.steps.join(", ")),
+          note: "Nothing was drawn. `bare` are leaves with no variation wall of any kind." } };
+      }
+
+      // ── the whole catalogue ───────────────────────────────────────────────────────────
+      const out = catsK.map((c) => {
+        let total = 0, withW = 0;
+        const steps = {};
+        for (const k of (subjK[c] || [])) {
+          const lv = leavesK(k);
+          for (const lf of (lv.length ? lv : [k])) {
+            total++;
+            const st = have[tatSlug(lf)];
+            if (st && st.size) { withW++; for (const x of st) steps[x] = (steps[x] || 0) + 1; }
+          }
+        }
+        return { category: c, leaves: total, with_walls: withW,
+                 steps: Object.keys(steps).sort().map((x) => x + ":" + steps[x]).join(" ") };
+      });
+      return { cmd: "WALLS", payload: { ok: true,
+        keys_scanned: scanned,
+        leaves: out.reduce((n, x) => n + x.leaves, 0),
+        with_walls: out.reduce((n, x) => n + x.with_walls, 0),
+        full: out.filter((x) => x.leaves && x.with_walls === x.leaves).map((x) => x.category),
+        none: out.filter((x) => !x.with_walls).map((x) => x.category),
+        partial: out.filter((x) => x.with_walls && x.with_walls < x.leaves)
+                    .map((x) => x.category + "  " + x.with_walls + "/" + x.leaves + "  " + x.steps),
+        note: "Nothing was drawn. Key names only - no record was fetched. " +
+              'RUN "WALLS <category>" for the leaf-by-leaf list.' } };
     }
 
     case "LIBRARY": {

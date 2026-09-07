@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.157.0-2026-09-07-it-could-not-see-the-screen";
+const BUILD = "aura-core-v9.158.0-2026-09-07-she-stops-asking-permission";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58842,10 +58842,18 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           "WHEN THEY HAVE ENOUGH: say so plainly and offer to show them. Do not drag it out - " +
           "two or three exchanges is usually enough, and somebody who arrives knowing exactly " +
           "what they want should be shown it immediately.\n\n" +
-          "WHEN THEY NAME A THING, YOU CAN DRAW IT. Mount Rushmore, a dragon, their dog - if they " +
-          "asked for a thing, the answer is a picture of that thing, made for them. One short " +
-          "useful beat first if there is a real fork worth naming, then offer to draw. NEVER " +
-          "answer a request for a thing with a list of other things that share a word with it.\n\n" +
+          "WHEN THEY NAME A THING, DRAW IT - DO NOT ASK PERMISSION. Mount Rushmore, a dragon, " +
+          "their dog - if they asked for a thing, the answer is a picture of it. Say what you " +
+          "are making, in a few words, and it appears alongside your reply. NEVER answer a " +
+          "request for a thing with a list of other things that share a word with it.\n" +
+          // MEASURED 2026-09-07: "make it meaner" three times gave a redraw, a redraw, then
+          // NOTHING. She replied "Want me to draw it?" and the reader of that conversation saw an
+          // unanswered question and waited. She asked permission, the machine waited for the
+          // answer, and the turn died between them. A person who said "make it meaner" has
+          // already asked; asking again is a toll booth, not manners.
+          "\"Want me to draw it?\" IS NOT A REPLY. They already asked. Say \"here it is, " +
+          "meaner\" and let the picture do the rest. Ask a question only when you genuinely " +
+          "cannot draw without the answer.\n\n" +
           "ANSWERING QUESTIONS IS PART OF THE JOB. If they ask how any of this works, answer " +
           "plainly and for free. GROUND IN TRUTH: only state something about how the product " +
           "works if it is written below. If it is not, say you will find out rather than " +
@@ -59016,7 +59024,12 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
             "NOT_YET\n" +
             "   Use this when the conversation itself is the right next step - they are working " +
             "out what they want, or they have just said something that deserves a human " +
-            "response before anything is shown to them.",
+            "response before anything is shown to them.\n\n" +
+            // The other half of the same deadlock: she asks "want me to draw it?", this reads the
+            // unanswered question and waits. Two halves of one system waiting for each other.
+            "JUDGE WHAT *THEY* SAID, NOT WHAT AURA SAID. If Aura offered to draw and they have " +
+            "already named the thing or the change, that is a DRAW or a CHANGE - do not wait for " +
+            "them to answer a question Aura asked itself. Their last message is the instruction.",
           messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
                                          content: String(h.said || "").slice(0, 1500) })),
                      { role: "user", content: said }],

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.156.0-2026-09-07-a-show-nobody-can-fulfil-is-a-draw";
+const BUILD = "aura-core-v9.157.0-2026-09-07-it-could-not-see-the-screen";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58873,6 +58873,11 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
             .map((k) => "  " + k + ": " + JSON.stringify(carriedObj[k])).join("\n")
         : "";
 
+      // The last thing she drew for this person - the body a change is applied to. Read BEFORE the
+      // classifier, because the classifier has to be TOLD whether a picture exists.
+      let lastDrawn = null;
+      if (me) { try { lastDrawn = await env.AURA_KV.get("talk:last:" + me, "json"); } catch {} }
+
       let hits = [];
       if (!noBook) { try { hits = await catalogFind(env, said, 8); } catch {} }
       const withPics = hits.filter((h) => h.image);
@@ -58959,7 +58964,17 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           // Showing real work is a good move at the right moment - and knowing WHICH moment is
           // exactly the judgement a model has and a regex does not. So this one cheap read now
           // has three answers instead of two, and she picks.
-          system: "Read the conversation and decide what should happen next. Reply with ONE line, " +
+          // ══ IT COULD NOT SEE THE SCREEN (2026-09-07) ═══════════════════════════════════════
+          // MEASURED: "make it meaner" returned DRAW and produced a brand new dragon, when a
+          // piece was already on screen and CHANGE was the whole point of the branch. The
+          // instruction said "if nothing has been drawn yet, this is a DRAW" - and nothing ever
+          // told it whether anything had been drawn. It read a transcript and guessed.
+          // A rule about the state of the world is worthless to something that cannot see it.
+          system: (lastDrawn && lastDrawn.design
+            ? "THERE IS ALREADY A PIECE ON SCREEN that you drew for them. Anything that modifies " +
+              "it - a mood, a colour, an addition, a removal, \"that but X\" - is a CHANGE.\n\n"
+            : "NOTHING HAS BEEN DRAWN FOR THEM YET, so CHANGE is not available this turn.\n\n") +
+            "Read the conversation and decide what should happen next. Reply with ONE line, " +
             "in one of exactly three shapes and nothing else:\n\n" +
             "DRAW: <one line, USING ONLY WHAT THEY HAVE ACTUALLY SAID>\n" +
             "   Use this when they have described it concretely enough to draw, or have asked " +
@@ -59233,11 +59248,6 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // uses - one image engine, one store, one address. Not a second path that agrees today.
       // COSTS MONEY, and only here: everything above this line is reads. The gate is her
       // judgement that they actually asked, which is the one thing a regex could not do.
-      // The last thing she drew for this person - the body a change is applied to. Read before
-      // the branch so a CHANGE with nothing to change falls back to drawing.
-      let lastDrawn = null;
-      if (me) { try { lastDrawn = await env.AURA_KV.get("talk:last:" + me, "json"); } catch {} }
-
       let drew = null;
       // ══ A CHANGE STACKS ON THE PICTURE, NOT ON THE WORDS ══════════════════════════════════
       // `IMAGE EVOLVE` builds the new subject as parent + change, so the piece on screen is the

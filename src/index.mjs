@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.166.0-2026-09-07-coverage-layout-style";
+const BUILD = "aura-core-v9.167.0-2026-09-07-a-tap-replaces-what-came-before";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -54753,9 +54753,23 @@ async function findReference(query, env, opts = {}) {
       // A YouTube thumbnail, a Getty photo on a magazine, a celebrity story - these rank well and
       // are worthless to somebody deciding what to put on their body. Only ever applied when
       // enough good ones remain, because six mediocre photographs still beat two.
-      const JUNK = /(ytimg\.com|youtube\.com|gettyimages|shutterstock|istockphoto|adobe\.com|dreamstime|alamy|123rf|depositphotos|pinimg\.com\/\d+x)/i;
+      // ══ TWO KINDS OF JUNK, AND THEY ARE NOT THE SAME (2026-09-07) ═══════════════════════
+      // MEASURED on `WALL geometric mandala leg sleeve`: two results, and the wall kept the
+      // YouTube thumbnail with "AMAZING 3/4 LEG SLEEVE" typed across it while the good Bloodline
+      // studio photograph was in the same list only by accident.
+      // One regex held both, and `pinimg\.com/\d+x` matched that Bloodline photo - a REAL
+      // photograph at thumbnail resolution. So the clean list emptied, the fallback returned the
+      // raw list, and the video thumbnail came back with it. The filter deleted the good one and
+      // then handed back the bad one.
+      // NEVER: video thumbnails and stock libraries - burnt-in titles, watermarks, no use to
+      // anybody choosing what to put on their body.
+      // ONLY IF THE WALL IS FULL: a Pinterest thumbnail is a real photograph, just small. Worth
+      // dropping when there are better ones, worth keeping over an empty wall.
+      const JUNK = /(ytimg\.com|youtube\.com|gettyimages|shutterstock|istockphoto|adobe\.com|dreamstime|alamy|123rf|depositphotos)/i;
+      const LOWRES = /(pinimg\.com\/\d+x)/i;
       const NEWSY = /(gq-magazine|vogue|cosmopolitan|elle\.|buzzfeed|dailymail|people\.com|preview\.ph|lemon8|popsugar)/i;
-      const clean = found.filter(f => !JUNK.test(f.image) && !NEWSY.test(f.image + " " + (f.source || "")));
+      const clean = found.filter(f => !JUNK.test(f.image) && !LOWRES.test(f.image) &&
+                                      !NEWSY.test(f.image + " " + (f.source || "")));
 
       // ══ A NUDGE TOWARD THE HOSTS THAT KEEP EARNING IT ═══════════════════════════════════
       // A SOFT ranking preference, never an allow-list: a shop nobody has heard of can post the
@@ -58962,7 +58976,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // becomes the subject, and the drawing is an ORIGINAL born under their PTA.
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
-      let refSaw = null, refUrl = null;
+      let refSaw = null, refUrl = null, refDesign = null;
       const wantRef = String((opts && opts.ref) || "").trim();
       if (wantRef && me && /^https?:\/\//i.test(wantRef)) {
         try {
@@ -58972,11 +58986,21 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           const ir = await processCommand("IMAGE IMPORT " + wantRef + " " + JSON.stringify({
             context: "a reference somebody pointed at while designing a tattoo", by: me }), env, true);
           const ip = (ir && ir.payload) ? ir.payload : ir;
-          if (ip?.ok) { refSaw = ip.saw || null; refUrl = ip.image_url || wantRef; }
+          if (ip?.ok) { refSaw = ip.saw || null; refUrl = ip.image_url || wantRef;
+                        refDesign = ip.entity || null; }
         } catch {}
       }
 
-      const pickFrom = String((opts && opts.from) || "").trim();
+      // ══ A TAP REPLACES WHAT CAME BEFORE (2026-09-07) ══════════════════════════════════════
+      // MEASURED: somebody pointed at a two-leg mandala and said "I love this, in colour" - and
+      // she recoloured a DRAGON from an hour earlier, because the banked brief still said dragon
+      // and the parent was still the last thing she drew. She said "here it is in colour" as
+      // though she had recoloured the thing they tapped.
+      // Pointing at a picture is the strongest statement of intent in this whole flow. It is a
+      // new subject and a new parent, and everything that described the old one goes with it.
+      if (refDesign) { carriedObj = null; }
+
+      const pickFrom = String((opts && opts.from) || "").trim() || refDesign || "";
       if (pickFrom && me) {
         // Their own graph decides whether it is theirs - a design id from a caller is a claim,
         // not a fact, and a composite of somebody else's picture is the failure `onme` already
@@ -58986,7 +59010,13 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
             "SELECT e.id, e.name FROM pta_entities e JOIN pta_edges g ON g.to_id = e.id " +
             "WHERE e.id = ? AND g.from_id = ? AND g.edge_type IN ('created','contributed_to') LIMIT 1"
           ).bind(pickFrom, me).first().catch(() => null);
-          if (own) lastDrawn = { design: pickFrom, subject: (lastDrawn && lastDrawn.subject) || null };
+          if (own) lastDrawn = { design: pickFrom,
+          // A tapped reference carries its OWN subject. Inheriting the previous one is how a
+          // mandala became a dragon.
+          subject: refDesign ? null : ((lastDrawn && lastDrawn.subject) || null) };
+        // The import is theirs the moment it lands, so a graph read that has not caught up yet
+        // must not cost them the parent they just chose.
+        else if (refDesign && pickFrom === refDesign) lastDrawn = { design: refDesign, subject: null };
         } catch {}
       }
 

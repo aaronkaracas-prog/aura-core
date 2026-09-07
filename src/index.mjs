@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.164.0-2026-09-07-the-wall-tells-the-truth";
+const BUILD = "aura-core-v9.165.0-2026-09-07-they-pointed-at-one";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6979,12 +6979,15 @@ async function processCommand(line, env, isOp) {
       const tkNoBook = /^NOBOOK\b/i.test(tkId.split(/\s+/).slice(1).join(" ")) ||
                        /\bNOBOOK\s*$/i.test(tkId);
       const tkPta = tkId.split(/\s+/)[0];
+      // `TALK <pta> REF <url> ::: <msg>` is a tap on the wall, from a terminal.
+      const tkRef = (tkId.match(/\bREF\s+(https?:\/\/\S+)/i) || [])[1] || null;
       try {
         const tkOut = await auraTalk(env, tkPta, /^pta_/.test(tkPta) ? "pta" : "contacted",
-                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook });
+                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, ref: tkRef });
         return { cmd: "TALK", payload: { ...tkOut, pta: tkPta,
                  stage: /^pta_/.test(tkPta) ? "pta" : "contacted",
-                 book: tkNoBook ? "closed" : "open" } };
+                 book: tkNoBook ? "closed" : "open",
+                 ...(tkRef ? { ref: tkRef } : {}) } };
       } catch (e) {
         return { cmd: "TALK", payload: { ok: false, error: "THREW",
           detail: String(e && e.message || e).slice(0, 300) } };
@@ -58935,6 +58938,26 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // than a history display.
       let lastDrawn = null;
       if (me) { try { lastDrawn = await env.AURA_KV.get("talk:last:" + me, "json"); } catch {} }
+      // ══ THEY POINTED AT ONE (2026-09-07) ══════════════════════════════════════════════════
+      // The wall is a fork, not the tattoo. When somebody taps a photograph, what travels is not
+      // the picture - it is what SHE SAW IN IT. `import` describes it in a sentence, that sentence
+      // becomes the subject, and the drawing is an ORIGINAL born under their PTA.
+      // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
+      // whole reason this path was built rather than passing pixels through.
+      let refSaw = null, refUrl = null;
+      const wantRef = String((opts && opts.ref) || "").trim();
+      if (wantRef && me && /^https?:\/\//i.test(wantRef)) {
+        try {
+          // The URL is POSITIONAL - `IMAGE IMPORT <url> {json}` - not a field in the payload.
+          // Sending it as `{url}` would have parsed, imported nothing, and returned a usage error
+          // that nobody would have read.
+          const ir = await processCommand("IMAGE IMPORT " + wantRef + " " + JSON.stringify({
+            context: "a reference somebody pointed at while designing a tattoo", by: me }), env, true);
+          const ip = (ir && ir.payload) ? ir.payload : ir;
+          if (ip?.ok) { refSaw = ip.saw || null; refUrl = ip.image_url || wantRef; }
+        } catch {}
+      }
+
       const pickFrom = String((opts && opts.from) || "").trim();
       if (pickFrom && me) {
         // Their own graph decides whether it is theirs - a design id from a caller is a claim,
@@ -59025,7 +59048,14 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
         : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.";
 
-      const fullSys = talkSys + stateNote + CONTRACT;
+      const refNote = refSaw
+        ? "\n\nTHEY JUST POINTED AT A PHOTOGRAPH and this is what is in it:\n  " + refSaw +
+          "\nThat is a REFERENCE, not the design. Ask what they like about it - the subject, the " +
+          "way it is drawn, the whole feeling - or if that is already obvious, draw them their " +
+          "own version of it. Never describe it as though you made it, and never copy it."
+        : "";
+
+      const fullSys = talkSys + stateNote + refNote + CONTRACT;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
       // Both get the same contract, so the shape of the answer does not depend on which replied.
@@ -59323,9 +59353,12 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
             "The artwork alone, centred on a plain background, nothing else in frame. Not on " +
             "skin, not on a person, not a photograph of a tattoo.";
           const dr = await processCommand("SHOW_IT " + JSON.stringify({
-            subject: askLine + ". " + reg + " " + frm,
+            subject: askLine + ". " + reg + " " + frm +
+              (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
+                        "the way it sits - but draw a NEW original piece rather than copying it." : ""),
             context: "a tattoo somebody is designing for themselves: " + askLine,
             name: askLine.slice(0, 60),
+            ...(refUrl ? { refs: [refUrl] } : {}),
             creator: me
           }), env, true);
           const dp = (dr && dr.payload) ? dr.payload : dr;

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.158.0-2026-09-07-she-stops-asking-permission";
+const BUILD = "aura-core-v9.159.0-2026-09-07-derived-not-decided";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58978,11 +58978,16 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           // instruction said "if nothing has been drawn yet, this is a DRAW" - and nothing ever
           // told it whether anything had been drawn. It read a transcript and guessed.
           // A rule about the state of the world is worthless to something that cannot see it.
-          system: (lastDrawn && lastDrawn.design
-            ? "THERE IS ALREADY A PIECE ON SCREEN that you drew for them. Anything that modifies " +
-              "it - a mood, a colour, an addition, a removal, \"that but X\" - is a CHANGE.\n\n"
-            : "NOTHING HAS BEEN DRAWN FOR THEM YET, so CHANGE is not available this turn.\n\n") +
-            "Read the conversation and decide what should happen next. Reply with ONE line, " +
+          // ══ FEWER RULES, NOT BETTER ONES (2026-09-07) ══════════════════════════════════════
+          // This had a fourth answer, CHANGE, and three runs of "make it meaner" produced a
+          // redraw, a redraw, and silence. Each failure got another paragraph of caveats, and the
+          // next run found a new way through them. Asking one cheap model to pick among four
+          // shapes with prose about which is which is the failure, not the wording.
+          // SO IT NO LONGER DECIDES. Draw-or-change is not a judgement, it is a FACT we already
+          // hold: she has drawn something, and the brief says whether the subject moved. That is
+          // derived below in code, deterministically, and the model is left with the one question
+          // it answers well - is this a moment for a picture at all.
+          system: "Read the conversation and decide what should happen next. Reply with ONE line, " +
             "in one of exactly three shapes and nothing else:\n\n" +
             "DRAW: <one line, USING ONLY WHAT THEY HAVE ACTUALLY SAID>\n" +
             "   Use this when they have described it concretely enough to draw, or have asked " +
@@ -58997,22 +59002,6 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
             "   A PLAIN REQUEST IS A DRAW. \"can you do mount rushmore\", \"I want a wolf\", " +
             "\"do a koi\" - they asked. Draw it. Do not wait to be asked again.\n\n" +
 
-            // ══ A CHANGE IS NOT A NEW DRAWING (2026-09-07) ══════════════════════════════════
-            // "make it meaner" produced a brand new Western wyvern with no relationship to the
-            // dragon on screen - three drawings, three orphans, no lineage. The brief is the
-            // memory; the PARENT IMAGE is the body. Which of the two a message is asking for is
-            // a judgement, so it is hers to make rather than something a regex guesses at.
-            "CHANGE: <the one thing to change, in their words>\n" +
-            "   Use this when they are modifying the piece ALREADY DRAWN rather than asking for " +
-            "a different one. \"meaner\", \"more colour\", \"lose the flowers\", \"the head " +
-            "from number 1\", \"that but bigger\". The picture they are looking at is the " +
-            "starting point and only the named thing moves.\n" +
-            "   If nothing has been drawn yet, this is a DRAW, not a CHANGE.\n" +
-            // MEASURED 2026-09-07: "can you do mount rushmore" returned NOT_YET on three separate
-            // runs. She then SAID "want me to draw one?" in prose while the field that actually
-            // triggers a drawing stayed empty - ready in her words, not ready in the machine.
-            // A person naming a thing they want IS the ask. Waiting for a second, more formal
-            // request is a machine's idea of consent, not a person's.
             (noBook ? "" :
             "SHOW: <two to five words naming the subject to look for>\n" +
             "   Use this when they have named something they want but have not settled the " +
@@ -59100,10 +59089,8 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       const t = String(g?.text || "").trim();
       if (g?.ok && t) {
         const mDraw = t.match(/^DRAW:\s*(.+)$/is);
-        const mChange = t.match(/^CHANGE:\s*(.+)$/is);
         const mShow = t.match(/^SHOW:\s*(.+)$/is);
         if (mDraw) ready = mDraw[1].trim().slice(0, 400);
-        else if (mChange) change = mChange[1].trim().slice(0, 400);
         else if (mShow) show = mShow[1].trim().replace(/[."]+$/, "").slice(0, 80);
         // Anything else - NOT_YET, or a model that ignored the shape - means keep talking, which
         // is the safe default and the one that was right before today.
@@ -59261,6 +59248,21 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // uses - one image engine, one store, one address. Not a second path that agrees today.
       // COSTS MONEY, and only here: everything above this line is reads. The gate is her
       // judgement that they actually asked, which is the one thing a regex could not do.
+      // ══ DRAW OR CHANGE IS DERIVED, NOT DECIDED ════════════════════════════════════════════
+      // She has drawn them something, and the subject in the brief has not moved since. Then a
+      // request for a picture is a request to change THAT picture - there is nothing to weigh.
+      // If the subject HAS moved - a dragon, then Mount Rushmore - it is a new piece, and the old
+      // one stays where it is rather than being mutated into something it is not.
+      // The comparison is on the brief's own subject, which is already cumulative and already
+      // correct; it survived three builds of the classifier getting this wrong.
+      if (ready && me && lastDrawn && lastDrawn.design) {
+        const wasSubj = String(lastDrawn.subject || "").trim().toLowerCase();
+        const nowSubj = String((intent && intent.subject) || "").trim().toLowerCase();
+        const sameSubject = wasSubj && nowSubj && (wasSubj === nowSubj ||
+          wasSubj.includes(nowSubj) || nowSubj.includes(wasSubj));
+        if (sameSubject) { change = said.slice(0, 400); ready = null; }
+      }
+
       let drew = null;
       // ══ A CHANGE STACKS ON THE PICTURE, NOT ON THE WORDS ══════════════════════════════════
       // `IMAGE EVOLVE` builds the new subject as parent + change, so the piece on screen is the
@@ -59321,7 +59323,9 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       if (me && drew && drew.image && !drew.failed) {
         try {
           await env.AURA_KV.put("talk:last:" + me,
-            JSON.stringify({ design: drew.design, image: drew.image, at: new Date().toISOString() }),
+            JSON.stringify({ design: drew.design, image: drew.image,
+                             subject: (intent && intent.subject) || null,
+                             at: new Date().toISOString() }),
             { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
         } catch {}
       }

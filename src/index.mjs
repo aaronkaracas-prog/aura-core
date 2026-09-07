@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.154.0-2026-09-07-she-draws-what-they-asked-for";
+const BUILD = "aura-core-v9.155.0-2026-09-07-a-change-stacks-on-the-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58961,19 +58961,35 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           // has three answers instead of two, and she picks.
           system: "Read the conversation and decide what should happen next. Reply with ONE line, " +
             "in one of exactly three shapes and nothing else:\n\n" +
-            "DRAW: <one line describing the tattoo - subject, style, placement that changes the " +
-            "composition>\n" +
+            "DRAW: <one line, USING ONLY WHAT THEY HAVE ACTUALLY SAID>\n" +
             "   Use this when they have described it concretely enough to draw, or have asked " +
             "to see it.\n" +
+            // MEASURED 2026-09-07: "I want a dragon tattoo" produced "dragon tattoo, traditional
+            // style, on forearm". They said neither. The invented placement then put the drawing
+            // ON SKIN, so one invention cost both the style and the format.
+            "   INVENT NOTHING. No style they did not name, no placement they did not name, no " +
+            "size, no colour. A bare subject is a fine DRAW line - the blanks are what the next " +
+            "question is for. If they did not say where it goes, say nothing about where it " +
+            "goes: it is a piece of flash on paper, not a photograph of an arm.\n" +
+            "   A PLAIN REQUEST IS A DRAW. \"can you do mount rushmore\", \"I want a wolf\", " +
+            "\"do a koi\" - they asked. Draw it. Do not wait to be asked again.\n\n" +
+
+            // ══ A CHANGE IS NOT A NEW DRAWING (2026-09-07) ══════════════════════════════════
+            // "make it meaner" produced a brand new Western wyvern with no relationship to the
+            // dragon on screen - three drawings, three orphans, no lineage. The brief is the
+            // memory; the PARENT IMAGE is the body. Which of the two a message is asking for is
+            // a judgement, so it is hers to make rather than something a regex guesses at.
+            "CHANGE: <the one thing to change, in their words>\n" +
+            "   Use this when they are modifying the piece ALREADY DRAWN rather than asking for " +
+            "a different one. \"meaner\", \"more colour\", \"lose the flowers\", \"the head " +
+            "from number 1\", \"that but bigger\". The picture they are looking at is the " +
+            "starting point and only the named thing moves.\n" +
+            "   If nothing has been drawn yet, this is a DRAW, not a CHANGE.\n" +
             // MEASURED 2026-09-07: "can you do mount rushmore" returned NOT_YET on three separate
             // runs. She then SAID "want me to draw one?" in prose while the field that actually
             // triggers a drawing stayed empty - ready in her words, not ready in the machine.
             // A person naming a thing they want IS the ask. Waiting for a second, more formal
             // request is a machine's idea of consent, not a person's.
-            "   A PLAIN REQUEST IS A DRAW. \"can you do mount rushmore\", \"I want a wolf\", " +
-            "\"do a koi\" - they asked. Draw it. Do not wait to be asked again.\n" +
-            "   A DELTA IS ALSO A DRAW. \"meaner\", \"more colour\", \"the head from number 1\" - " +
-            "carry everything settled so far and change the one thing they named.\n\n" +
             "SHOW: <two to five words naming the subject to look for>\n" +
             "   Use this when they have named something they want but have not settled the " +
             "details, and seeing real work on real people would move them along faster than " +
@@ -59051,12 +59067,14 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         }, env).catch(() => null)
       ]);
       if (!r?.ok) return { ok: false, error: "COULD_NOT_ANSWER", detail: r?.error || null };
-      let ready = null, show = null;
+      let ready = null, show = null, change = null;
       const t = String(g?.text || "").trim();
       if (g?.ok && t) {
         const mDraw = t.match(/^DRAW:\s*(.+)$/is);
+        const mChange = t.match(/^CHANGE:\s*(.+)$/is);
         const mShow = t.match(/^SHOW:\s*(.+)$/is);
         if (mDraw) ready = mDraw[1].trim().slice(0, 400);
+        else if (mChange) change = mChange[1].trim().slice(0, 400);
         else if (mShow) show = mShow[1].trim().replace(/[."]+$/, "").slice(0, 80);
         // Anything else - NOT_YET, or a model that ignored the shape - means keep talking, which
         // is the safe default and the one that was right before today.
@@ -59214,8 +59232,35 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // uses - one image engine, one store, one address. Not a second path that agrees today.
       // COSTS MONEY, and only here: everything above this line is reads. The gate is her
       // judgement that they actually asked, which is the one thing a regex could not do.
+      // The last thing she drew for this person - the body a change is applied to. Read before
+      // the branch so a CHANGE with nothing to change falls back to drawing.
+      let lastDrawn = null;
+      if (me) { try { lastDrawn = await env.AURA_KV.get("talk:last:" + me, "json"); } catch {} }
+
       let drew = null;
-      if (ready && me) {
+      // ══ A CHANGE STACKS ON THE PICTURE, NOT ON THE WORDS ══════════════════════════════════
+      // `IMAGE EVOLVE` builds the new subject as parent + change, so the piece on screen is the
+      // starting point and only the named thing moves. Redrawing from a sentence produced three
+      // unrelated dragons and no lineage.
+      if (change && me && lastDrawn && lastDrawn.design) {
+        try {
+          const cr = await processCommand("IMAGE EVOLVE " + lastDrawn.design + " " +
+            JSON.stringify({ prompt: change, by: me }), env, true);
+          const cp = (cr && cr.payload) ? cr.payload : cr;
+          if (cp?.ok && cp.image_url) {
+            drew = { design: cp.child, image: cp.image_url, changed: change,
+                     from: lastDrawn.design };
+          } else {
+            // Falling through to a fresh draw would silently discard the lineage, which is the
+            // thing this branch exists to protect. Say it failed instead.
+            drew = { failed: cp?.error || "COULD_NOT_CHANGE", changed: change,
+                     from: lastDrawn.design };
+          }
+        } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160), changed: change }; }
+      }
+      // A change with nothing drawn yet is just a first drawing.
+      if (change && !drew) ready = ready || change;
+      if (ready && !drew && me) {
         try {
           const askLine = String(ready).trim().slice(0, 600);
           const dr = await processCommand("SHOW_IT " + JSON.stringify({
@@ -59234,6 +59279,14 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         } catch (e) {
           drew = { failed: String(e?.message ?? e).slice(0, 160) };
         }
+      }
+
+      if (me && drew && drew.image && !drew.failed) {
+        try {
+          await env.AURA_KV.put("talk:last:" + me,
+            JSON.stringify({ design: drew.design, image: drew.image, at: new Date().toISOString() }),
+            { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+        } catch {}
       }
 
       // ══ THE BRIEF IS CUMULATIVE ═══════════════════════════════════════════════════════════
@@ -59261,7 +59314,8 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         } catch {}
       }
 
-      return { ok: true, said: agentSaid || r.text, ready_to_draw: ready, show_me: show, brief, intent,
+      return { ok: true, said: agentSaid || r.text, ready_to_draw: ready, show_me: show,
+               ...(change ? { change } : {}), brief, intent,
                // The picture, when she decided to make one. `image` is a real URL to open.
                ...(drew ? { drew } : {}),
                // What she was looking at when she answered - numbered, so "the second one" means

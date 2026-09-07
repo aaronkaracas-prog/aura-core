@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.169.0-2026-09-07-say-what-you-see-first";
+const BUILD = "aura-core-v9.170.0-2026-09-07-say-what-it-actually-looks-like";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -17701,9 +17701,25 @@ async function successionGate(env) {
                     "both legs front and back, a full back\n" +
                     "LAYOUT: how it is arranged - what sits where, whether it is symmetrical, " +
                     "which motifs occupy which part of the limb, how it flows\n" +
-                    "STYLE: the visual language - japanese irezumi, black and grey realism, " +
-                    "ornamental blackwork with negative space, dotwork, fine line, neo-traditional\n" +
-                    "INK: the condition of it, if that is visible\n" +
+                    // ══ A MENU IS AN INVITATION TO PICK FROM IT (2026-09-07) ══════════════
+                    // MEASURED on a pastel cartoon fish: this listed six style names and got back
+                    // "Neo-traditional with fine line and dotwork, incorporating Japanese irezumi
+                    // techniques. The ink is black and grey" - for a blue and pink cartoon. It
+                    // contradicted its own layout line, which had just said blue and pink.
+                    // Handed a list, a small model chooses from the list. The names are examples
+                    // now, and the honest answers - amateur, cheap flash, a home job - are named
+                    // explicitly, because on a cover-up photograph that IS usually the answer and
+                    // a model will not volunteer an unflattering word it was never offered.
+                    "STYLE: the visual language, in your own words. It might be japanese irezumi, " +
+                    "black and grey realism, ornamental blackwork, dotwork, fine line, " +
+                    "neo-traditional, old school - or it might be amateur work, cheap flash, a " +
+                    "home job, or a cartoon. Say what it actually looks like, not the nearest " +
+                    "respectable name. If it is badly done, say so plainly.\n" +
+                    "COLOUR: what colours are actually in it, or 'black and grey' if there are none\n" +
+                    "INK: the condition of it - faded, solid, blown out, patchy - if that is visible\n" +
+                    // The fields ran together and "black and grey" from INK ended up inside STYLE,
+                    // asserting the opposite of what COLOUR would have said.
+                    "Each label on its own line. Do not merge them, and do not add commentary.\n" +
                     "If it is not a tattoo, say what it is instead and skip the rest." }, env);
           if (sm.ok) iSaw = sm.saw;
         }

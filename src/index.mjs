@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.153.0-2026-09-07-the-book-is-behind-her";
+const BUILD = "aura-core-v9.154.0-2026-09-07-she-draws-what-they-asked-for";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6975,9 +6975,16 @@ async function processCommand(line, env, isOp) {
       if (!tkId || !tkSaid) return { cmd: "TALK", payload: { ok: false,
         error: "Usage: TALK <pta_id> ::: <what they said>" } };
       const tkStage = /^pta_/.test(tkId) ? "pta" : "contacted";
+      // `TALK <pta> NOBOOK ::: <msg>` closes the flash book for that turn.
+      const tkNoBook = /^NOBOOK\b/i.test(tkId.split(/\s+/).slice(1).join(" ")) ||
+                       /\bNOBOOK\s*$/i.test(tkId);
+      const tkPta = tkId.split(/\s+/)[0];
       try {
-        const tkOut = await auraTalk(env, tkId, tkStage, tkSaid.slice(0, 2000), []);
-        return { cmd: "TALK", payload: { ...tkOut, pta: tkId, stage: tkStage } };
+        const tkOut = await auraTalk(env, tkPta, /^pta_/.test(tkPta) ? "pta" : "contacted",
+                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook });
+        return { cmd: "TALK", payload: { ...tkOut, pta: tkPta,
+                 stage: /^pta_/.test(tkPta) ? "pta" : "contacted",
+                 book: tkNoBook ? "closed" : "open" } };
       } catch (e) {
         return { cmd: "TALK", payload: { ok: false, error: "THREW",
           detail: String(e && e.message || e).slice(0, 300) } };
@@ -55093,7 +55100,14 @@ async function catalogFind(env, query, limit) {
     const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
     return r ? tatFaceUrl(r) : null;
   };
-  const top = found.slice(0, Math.max(1, Math.min(24, limit || 12)));
+  // ══ ONE WORD OF TWO IS NOT A MATCH (2026-09-07) ═══════════════════════════════════════════
+  // MEASURED: "can you do mount rushmore" returned SHINTO MOUNT FUJI - a red shrine, no faces, no
+  // monument. `mount` is a whole word in both, so whole-word matching did not help. When somebody
+  // names a thing in two words they mean the thing, not either half of it.
+  // Below the bar there is nothing, and nothing is the correct input: she draws instead.
+  const floor = words.length > 1 ? 2 : 1;
+  const top = found.filter((x) => x.score >= floor)
+                   .slice(0, Math.max(1, Math.min(24, limit || 12)));
   const items = await Promise.all(top.map(async (x) => ({
     value: tatSlug(x.label), label: x.label, level: x.level, kind: x.kind || null,
     score: x.score,
@@ -58736,7 +58750,12 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
 //
 // `me` is the person (a PTA id), `stage` is "pta" or "contacted" and decides whether the round is
 // kept on their chain, `said` is what they typed, `history` is the fallback when nothing is banked.
-async function auraTalk(env, me, stage, saidIn, history) {
+async function auraTalk(env, me, stage, saidIn, history, opts) {
+  // `noBook: true` runs the conversation with the flash book closed. Aaron, testing the asset
+  // rather than the catalogue: "let's just have her have a conversation with someone, not catalog
+  // reference." It is also the honest experiment - if she is better without it on a given kind of
+  // turn, that is worth knowing rather than assuming.
+  const noBook = !!(opts && opts.noBook);
   // The body below is the extracted method, byte for byte. It reads `b.said` and `b.history`, so
   // the arguments are handed back in that shape rather than editing three hundred proven lines.
   const b = { said: saidIn, history };
@@ -58788,16 +58807,19 @@ async function auraTalk(env, me, stage, saidIn, history) {
       // point is that she knows the shape of what she has, so she can say "there is a whole
       // Family Roots section" instead of interviewing somebody who is grieving.
       let shelf = "";
-      try {
+      if (!noBook) try {
         const idx = await env.AURA_KV.get("browse:v1:index", "json");
         const items = (idx && idx.items) || [];
         if (items.length) {
-          shelf = "\n\nWHAT IS ALREADY DRAWN AND WAITING (" + items.length + " categories, " +
-            items.reduce((n, x) => n + (x.pictures || 0), 0) + " pictures). These are REAL and " +
-            "already made - showing somebody one costs them nothing and takes one tap:\n" +
-            items.filter((x) => x.pictures).map((x) => x.label + " (" + x.pictures + ")").join(", ") +
-            "\n\nWhen what they want is in that list, SAY SO and offer to show them. Do not " +
-            "interview somebody about placement when you could put the pictures in front of them.";
+          // MEASURED 2026-09-07: given the counts she opened with "We have 225 dragons already
+          // drawn in the flash book. Want to see them?" - a sales pitch for a catalogue, to
+          // somebody who came to design a tattoo. The counts made the book feel like the offer.
+          // She gets the SHAPE of what exists, not the inventory, and no instruction to pitch it.
+          shelf = "\n\nTHE FLASH BOOK BEHIND YOU covers: " +
+            items.filter((x) => x.pictures).map((x) => x.label).join(", ") +
+            ".\nNever recite this list, never quote counts, and never offer the book as though it " +
+            "were the product. What they came for is THEIR tattoo. Reach for a page only when it " +
+            "is genuinely the thing they asked for.";
         }
       } catch {}
 
@@ -58852,7 +58874,7 @@ async function auraTalk(env, me, stage, saidIn, history) {
         : "";
 
       let hits = [];
-      try { hits = await catalogFind(env, said, 8); } catch {}
+      if (!noBook) { try { hits = await catalogFind(env, said, 8); } catch {} }
       const withPics = hits.filter((h) => h.image);
       // ══ A FLASH BOOK BEHIND HER, NOT THE ANSWER (2026-09-07) ══════════════════════════════
       // The first version of this said "if they are a good answer, SHOW THEM - do not ask another
@@ -58942,7 +58964,16 @@ async function auraTalk(env, me, stage, saidIn, history) {
             "DRAW: <one line describing the tattoo - subject, style, placement that changes the " +
             "composition>\n" +
             "   Use this when they have described it concretely enough to draw, or have asked " +
-            "to see it.\n\n" +
+            "to see it.\n" +
+            // MEASURED 2026-09-07: "can you do mount rushmore" returned NOT_YET on three separate
+            // runs. She then SAID "want me to draw one?" in prose while the field that actually
+            // triggers a drawing stayed empty - ready in her words, not ready in the machine.
+            // A person naming a thing they want IS the ask. Waiting for a second, more formal
+            // request is a machine's idea of consent, not a person's.
+            "   A PLAIN REQUEST IS A DRAW. \"can you do mount rushmore\", \"I want a wolf\", " +
+            "\"do a koi\" - they asked. Draw it. Do not wait to be asked again.\n" +
+            "   A DELTA IS ALSO A DRAW. \"meaner\", \"more colour\", \"the head from number 1\" - " +
+            "carry everything settled so far and change the one thing they named.\n\n" +
             "SHOW: <two to five words naming the subject to look for>\n" +
             "   Use this when they have named something they want but have not settled the " +
             "details, and seeing real work on real people would move them along faster than " +
@@ -58991,9 +59022,16 @@ async function auraTalk(env, me, stage, saidIn, history) {
             // MEASURED 2026-09-07: "can you do mount rushmore" wiped `subject: a dragon` to null,
             // because each extraction read the conversation cold. A brief that forgets its own
             // subject cannot support "meaner" or "the head from number 1" two turns later.
-            "- THE SUBJECT PERSISTS. A new noun is usually a DETAIL of the thing being designed, " +
-            "not a replacement for it. Only change `subject` when they plainly say they want " +
-            "something else instead.\n" +
+            // MEASURED 2026-09-07, twice, in opposite directions. First the subject wiped on any
+            // new noun; then this rule over-corrected and "can you do mount rushmore" left the
+            // subject as "a dragon" three turns running. The distinction is not how new the noun
+            // is - it is whether they ASKED FOR A THING or DESCRIBED THE THING THEY HAVE.
+            "- A PLAIN REQUEST FOR A THING REPLACES THE SUBJECT. \"can you do mount rushmore\", " +
+            "\"actually a koi\", \"do a wolf instead\" - that is a new subject, and everything " +
+            "that described the OLD subject (composition, elements) goes with it.\n" +
+            "- A DELTA MODIFIES IT. \"meaner\", \"more colour\", \"bigger\", \"the head from " +
+            "number 1\" describe the SAME subject - keep it and set the field they changed. " +
+            "\"meaner\" is `character`, not a new subject.\n" +
             "- OMIT ANY FIELD THEY HAVE NOT SETTLED. Do not guess and do not fill a field with " +
             "a sensible default. An empty field means she asks; a wrong one means she never does.\n" +
             "- A CORRECTION REPLACES what it corrects. Three legs then one leg is ONE leg, and " +
@@ -59167,6 +59205,37 @@ async function auraTalk(env, me, stage, saidIn, history) {
 
       // Her own answer wins. The local call still ran - it is the floor, and it costs a fraction of
       // a cent - so a failed turn is invisible to the person rather than fatal to the conversation.
+      // ══ SHE SAID SHE WOULD DRAW IT, SO DRAW IT (2026-09-07) ═══════════════════════════════
+      // `talk` has never drawn anything. It returned `ready_to_draw` - a line describing the
+      // tattoo - and something else was supposed to act on it. On the shell that was a chip
+      // nobody had built; from PowerShell it was nothing at all. Aaron: "this test never produced
+      // the user's tattoo. It only fetched flash."
+      // So when the classifier says DRAW, this draws, through the SAME `SHOW_IT` call `make`
+      // uses - one image engine, one store, one address. Not a second path that agrees today.
+      // COSTS MONEY, and only here: everything above this line is reads. The gate is her
+      // judgement that they actually asked, which is the one thing a regex could not do.
+      let drew = null;
+      if (ready && me) {
+        try {
+          const askLine = String(ready).trim().slice(0, 600);
+          const dr = await processCommand("SHOW_IT " + JSON.stringify({
+            subject: tatBuildAsk(askLine, [], {}, null),
+            context: "a tattoo somebody is designing for themselves: " + askLine,
+            name: askLine.slice(0, 60),
+            creator: me
+          }), env, true);
+          const dp = (dr && dr.payload) ? dr.payload : dr;
+          if (dp?.ok && dp.image_url) {
+            drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
+                     asked: askLine, cached: !!dp.cached };
+          } else {
+            drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
+          }
+        } catch (e) {
+          drew = { failed: String(e?.message ?? e).slice(0, 160) };
+        }
+      }
+
       // ══ THE BRIEF IS CUMULATIVE ═══════════════════════════════════════════════════════════
       // Banked so the next turn amends it instead of reading the conversation cold. Merged, not
       // replaced: a turn that mentions nothing about colour must not erase the colour they chose
@@ -59193,6 +59262,8 @@ async function auraTalk(env, me, stage, saidIn, history) {
       }
 
       return { ok: true, said: agentSaid || r.text, ready_to_draw: ready, show_me: show, brief, intent,
+               // The picture, when she decided to make one. `image` is a real URL to open.
+               ...(drew ? { drew } : {}),
                // What she was looking at when she answered - numbered, so "the second one" means
                // something on the next turn. The surface renders these; she decides whether to
                // mention them.

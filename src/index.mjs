@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.163.0-2026-09-07-branch-from-any-version";
+const BUILD = "aura-core-v9.164.0-2026-09-07-the-wall-tells-the-truth";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -54747,7 +54747,18 @@ async function findReference(query, env, opts = {}) {
         const sb = GOOD.test(b.image + " " + (b.source || "")) ? 1 : 0;
         return sb - sa;   // stable otherwise, so the model's own order survives inside each group
       });
-      const picked = (ranked.length >= Math.min(4, want) ? ranked : found).slice(0, want);
+      // ══ A THIN WALL IS NOT A REASON TO SHOW STOCK (2026-09-07) ══════════════════════════
+      // This fell back to the RAW list whenever the clean one dropped under four - "six mediocre
+      // photographs still beat two", which is true of a mediocre photograph and not of a
+      // Dreamstime watermark. MEASURED on `WALL tiger head neo traditional bold colour`: the same
+      // stock illustration appeared TWICE in four results, because four was not reached and every
+      // filter was discarded at once.
+      // The two lists are not equivalent. NEWSY is a preference - a magazine photo of a real
+      // tattoo is still a real tattoo, and worth having when the wall is thin. JUNK is stock,
+      // watermarks and video thumbnails, which are worth nothing at any width.
+      const noJunk = found.filter(f => !JUNK.test(f.image));
+      const picked = (ranked.length >= Math.min(4, want) ? ranked
+                     : (noJunk.length ? noJunk : found)).slice(0, want);
       // The prose with the embeds stripped out - what she can say about the wall.
       // Strip every embed from the prose - including the ones that were filtered out, or their
       // captions would describe pictures that are no longer on the wall.
@@ -54814,10 +54825,22 @@ async function findReference(query, env, opts = {}) {
           const seen = [];
           for (const c of picked.slice(0, 8)) {
             try {
-              const d = await seeMedia({ url: c.image, max_tokens: 60,
-                prompt: "In one short sentence: is this a photograph of a tattoo on real human " +
-                        "skin, and what is the tattoo OF? If it is a drawing, a graphic, a poster " +
-                        "or a photo of something that is not a tattoo, say that instead." }, env);
+              // ══ ASK TWO THINGS AND YOU GET ONE ANSWER (2026-09-07) ══════════════════════
+              // MEASURED on `WALL tiger tattoo`: four of six were dropped, and the recorded
+              // reason was the eyes' own sentence - "Yes, it is a photograph of a tattoo on real
+              // human skin." That is the RIGHT answer to the first half and silence on the
+              // second, so the judge could not confirm the subject and threw the picture away.
+              // The two that survived were both black-and-grey micro-realism heads; the
+              // traditional and irezumi pieces that would have given the wall its range died
+              // here, for answering correctly and incompletely.
+              // So the sentence is now dictated in a fixed shape. A field that is always present
+              // cannot be read as absent.
+              const d = await seeMedia({ url: c.image, max_tokens: 70,
+                prompt: "Answer in exactly this shape and nothing else:\n" +
+                        "TATTOO: yes | no  --  SUBJECT: <what the tattoo is of, a few words>  " +
+                        "--  LOOK: <the style, a few words>\n" +
+                        "TATTOO is yes only for ink on real human skin. A drawing, a graphic, a " +
+                        "poster, a design on paper, or a photo of the real animal is no." }, env);
               seen.push({ ...c, saw: d.ok ? d.saw : null });
             } catch { seen.push({ ...c, saw: null }); }
           }
@@ -54827,13 +54850,17 @@ async function findReference(query, env, opts = {}) {
               system:
                 "Each numbered line describes a picture. Somebody asked to see tattoos of: " + q +
                 "\n\n" + 'Return ONLY JSON: {"keep":[numbers]}\n\n' +
-                "Keep a number ONLY if the description says it is a tattoo on real skin AND the " +
-                "tattoo is of " + q + ".\n" +
-                "Leave out drawings, graphics, posters, logos, designs on paper, and photographs " +
-                "of the real thing rather than a tattoo of it.\n" +
-                "Leave out tattoos of a different subject, however good they look.\n" +
-                "This is a factual check, not a judgement of quality. If it is a real tattoo of " +
-                "the right thing, keep it.",
+                "Keep a number if TATTOO is yes and the SUBJECT is what they asked for.\n" +
+                "MATCH THE SUBJECT, NOT THE SENTENCE. They asked for \"" + q + "\" - a tiger " +
+                "portrait, a tiger head and a tiger sleeve are all tigers. Style words in their " +
+                "request are a preference, not a requirement: drop a picture only when the " +
+                "SUBJECT is a different thing.\n" +
+                "Leave out drawings, graphics, posters, logos, designs on paper, stock-photo " +
+                "compositions, and photographs of the real animal rather than a tattoo of it.\n" +
+                "IF THE SUBJECT IS UNCLEAR BUT TATTOO IS YES, KEEP IT. A search for tigers " +
+                "returned it; silence about the subject is not evidence against it, and an empty " +
+                "wall is worse than a loose one.\n" +
+                "This is a factual check, never a judgement of quality.",
               user: described.map((x, i) => (i + 1) + ". " + x.saw).join("\n"),
               model: route.model, max_tokens: 200 }, env);
             if (vr?.ok) {
@@ -54974,8 +55001,25 @@ async function findReference(query, env, opts = {}) {
         }
       }
 
+      // ══ THE CAPTIONS MUST DESCRIBE WHAT SURVIVED (2026-09-07) ═══════════════════════════
+      // MEASURED on `WALL tiger tattoo`: `said` carried SIX descriptions - a full-colour jungle
+      // sleeve, a pair of matching shoulder pieces - and `found` carried TWO black-and-grey
+      // heads. `said` is the model's prose from before the judge ran, so it describes the
+      // pictures that were thrown away. On a screen that is six captions under two images.
+      // The eyes already looked at each survivor and said what it is. Use that. One reader of
+      // one fact, which is the rule this file keeps paying to relearn.
+      const perPic = judged.map((x) => {
+        const line = String(x.saw || "").trim();
+        const m = line.match(/SUBJECT:\s*([^-]+?)\s*--\s*LOOK:\s*(.+)$/i);
+        if (m) return (m[2].trim().replace(/\.$/, "") + " " + m[1].trim()).trim();
+        return line.replace(/^TATTOO:\s*(yes|no)\s*--\s*/i, "").trim() || null;
+      }).filter(Boolean);
+
       return { ok: true, query: q, found: judged.map(({ fill, saw, ...rest }) => rest),
-        said: said || null, provider: "grok", model: route.model,
+        // Derived from the survivors when the eyes described them; the model's prose only when
+        // nothing looked, and then it is describing its own unfiltered list, which is honest.
+        said: perPic.length === judged.length && perPic.length ? perPic.join("\n\n") : (said || null),
+        provider: "grok", model: route.model,
         dropped: found.length - judged.length || undefined, why,
         ms: Date.now() - t0 };
     }

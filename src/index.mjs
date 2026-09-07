@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.165.0-2026-09-07-they-pointed-at-one";
+const BUILD = "aura-core-v9.166.0-2026-09-07-coverage-layout-style";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -17684,9 +17684,27 @@ async function successionGate(env) {
         // came from. That description is what a conversation about covering it starts from.
         let iSaw = null;
         if (ip.look !== false) {
-          const sm = await seeMedia({ bytes: iBytes, media_type: iType, max_tokens: 200,
-            prompt: "Describe this tattoo: subject, style, where on the body, and the condition of " +
-                    "the ink. If it is not a tattoo, say what it is instead." }, env);
+          // ══ NAME IT IN THE PARTS THAT CAN BE SWAPPED (2026-09-07) ═══════════════════════
+          // This asked for "subject, style, where on the body" - which works for a wolf on a
+          // shoulder and falls apart on body art. Aaron showed a pair of fully covered legs:
+          // ornamental blackwork, mandalas at the hip, flower-of-life on the thighs, lotus
+          // arches down the shins, symmetrical left to right. "Subject" has no answer there.
+          // What makes the next turn possible is naming COVERAGE, LAYOUT and STYLE separately -
+          // because the useful move is "same coverage, same layout, different style", and that
+          // sentence is only sayable if those were pulled apart in the first place.
+          // MEASURED against Grok on the same photograph: one line of recognition in exactly
+          // those terms, then a redraw in watercolour with the geometry intact.
+          const sm = await seeMedia({ bytes: iBytes, media_type: iType, max_tokens: 260,
+            prompt: "Describe this tattoo in exactly these parts, each on its own line:\n" +
+                    "SUBJECT: what it is OF, or 'ornamental' if it is pattern rather than a thing\n" +
+                    "COVERAGE: how much body it takes and where - a forearm piece, a half sleeve, " +
+                    "both legs front and back, a full back\n" +
+                    "LAYOUT: how it is arranged - what sits where, whether it is symmetrical, " +
+                    "which motifs occupy which part of the limb, how it flows\n" +
+                    "STYLE: the visual language - japanese irezumi, black and grey realism, " +
+                    "ornamental blackwork with negative space, dotwork, fine line, neo-traditional\n" +
+                    "INK: the condition of it, if that is visible\n" +
+                    "If it is not a tattoo, say what it is instead and skip the rest." }, env);
           if (sm.ok) iSaw = sm.saw;
         }
 
@@ -59349,9 +59367,25 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
             "Rendered tattoo artwork, finished and ready to wear rather than a stencil. Confident " +
             "linework with real depth in the shading, rich contrast, the detail an experienced " +
             "artist would put in. Full colour where the subject calls for it.";
-          const frm = (await env.AURA_KV.get("frame:talk").catch(() => null)) ||
-            "The artwork alone, centred on a plain background, nothing else in frame. Not on " +
-            "skin, not on a person, not a photograph of a tattoo.";
+          // ══ COVERAGE CANNOT BE JUDGED ON PAPER (2026-09-07) ═══════════════════════════
+          // "Not on skin, not on a person" is right for a dragon somebody will put on a forearm -
+          // they want the artwork, not a photograph of somebody else wearing it. It is WRONG for
+          // body art: a pattern running both legs hip to ankle is ABOUT how much body it takes and
+          // how it wraps, and flat on paper answers neither. Aaron's own rule from this morning -
+          // never on skin unless they are putting it on their own body - and a request for a leg
+          // sleeve IS that request.
+          // The switch is what SHE said, not a guess: `body` is set when the piece is defined by
+          // its coverage rather than its subject.
+          const wantsBody = acted.act === "draw" && /\b(sleeve|full leg|both legs|leg sleeve|body ?suit|back ?piece|full back|chest ?piece|coverage|wraps?|hip to ankle|shoulder to wrist)\b/i
+            .test(askLine + " " + String(refSaw || ""));
+          const frm = wantsBody
+            ? ((await env.AURA_KV.get("frame:body").catch(() => null)) ||
+               "Shown on a body so the coverage and the wrap read - a plain studio photograph of " +
+               "the tattooed limb against a neutral background, the whole piece in frame from end " +
+               "to end. No face, nothing else in shot.")
+            : ((await env.AURA_KV.get("frame:talk").catch(() => null)) ||
+               "The artwork alone, centred on a plain background, nothing else in frame. Not on " +
+               "skin, not on a person, not a photograph of a tattoo.");
           const dr = await processCommand("SHOW_IT " + JSON.stringify({
             subject: askLine + ". " + reg + " " + frm +
               (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +

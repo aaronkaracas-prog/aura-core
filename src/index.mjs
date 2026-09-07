@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.161.0-2026-09-07-one-call-her-words-and-her-act";
+const BUILD = "aura-core-v9.162.0-2026-09-07-she-writes-what-the-house-writes-how";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58941,12 +58941,20 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         "more colour, lose the flowers, that but bigger. `prompt` is then ONLY the change, in a " +
         "few words, because the picture itself is the starting point.\n" +
         "WHEN `do` IS `none`: the conversation is the right next step. `prompt` is empty.\n\n" +
-        "WRITING `prompt` FOR A DRAW - this is the part that decides whether it looks like " +
-        "something they would put on their body. Describe the finished piece the way an artist " +
-        "would brief it: what it is, how it is drawn, the linework and shading, the palette, how " +
-        "it sits in the frame. Use everything they have told you and nothing they have not - no " +
-        "style they did not name, no placement they did not name. Two or three sentences. Never " +
-        "just repeat their words back.\n" +
+        // ══ SHE WRITES WHAT, THE HOUSE WRITES HOW (2026-09-07) ═══════════════════════════════
+        // MEASURED: asked for a dragon she wrote "clean black linework with shading on the scales
+        // and wings" - and got a stencil. Nobody had told her what the house look is, so she
+        // invented one, and the frame tail pushed the same way. Two independent shoves toward a
+        // blueprint when they asked for a tattoo.
+        // A register is a house decision, tuned once and applied everywhere. Leaving it to a
+        // model to improvise per turn is how a product ends up with no look at all.
+        "WRITING `prompt` - DESCRIBE THE THING, NOT THE RENDERING. What it is, what it is doing, " +
+        "how it sits, what it should feel like. Use everything they have told you and nothing " +
+        "they have not - no placement they did not name.\n" +
+        "SAY NOTHING ABOUT LINEWORK, SHADING, COLOUR OR FINISH unless they asked for it by name. " +
+        "The house handles how it is drawn; you handle what is drawn. \"A dragon coiled tight, " +
+        "head low and jaws open\" is right. \"Clean black linework with shading\" is not yours " +
+        "to decide.\n" +
         "IF YOUR `say` CLAIMS YOU ARE SHOWING THEM SOMETHING, `do` MUST NOT BE `none`.";
 
       const stateNote = (lastDrawn && lastDrawn.design)
@@ -59235,8 +59243,24 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         // typed words to a diffusion model and hopes.
         try {
           const askLine = String(acted.prompt || said).trim().slice(0, 900);
+          // ══ THE HOUSE REGISTER, AND IT IS A DIAL ═══════════════════════════════════════
+          // `tatBuildAsk` ends every prompt with TAT_FRAME_INK - "flat tattoo artwork on white
+          // paper, like a design sheet in a studio". Correct for the catalogue, where a flash
+          // sheet SHOULD look like a flash sheet, and wrong for somebody who just said they want
+          // a tattoo: they want to see the piece, not the blueprint an artist works from.
+          // So the conversational path has its own register and its own frame, both in KV, both
+          // editable without a deploy - the same shape as `render:*` and `frame:*` on the
+          // catalogue side. The floor below is a starting point, not a decision: SETKV
+          // `render:talk` is how the house look actually gets chosen.
+          const reg = (await env.AURA_KV.get("render:talk").catch(() => null)) ||
+            "Rendered tattoo artwork, finished and ready to wear rather than a stencil. Confident " +
+            "linework with real depth in the shading, rich contrast, the detail an experienced " +
+            "artist would put in. Full colour where the subject calls for it.";
+          const frm = (await env.AURA_KV.get("frame:talk").catch(() => null)) ||
+            "The artwork alone, centred on a plain background, nothing else in frame. Not on " +
+            "skin, not on a person, not a photograph of a tattoo.";
           const dr = await processCommand("SHOW_IT " + JSON.stringify({
-            subject: tatBuildAsk(askLine, [], {}, null),
+            subject: askLine + ". " + reg + " " + frm,
             context: "a tattoo somebody is designing for themselves: " + askLine,
             name: askLine.slice(0, 60),
             creator: me

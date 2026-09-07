@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.168.0-2026-09-07-the-limb-and-the-artwork";
+const BUILD = "aura-core-v9.169.0-2026-09-07-say-what-you-see-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -17712,9 +17712,18 @@ async function successionGate(env) {
           prompt: ip.context || iSaw || "imported image", created: new Date().toISOString(),
           entity: iBy, source: "import", imported_from: ref, content_type: iType, url: iUrl })).catch(() => {});
 
+        // ══ WHAT SHE SAW BEATS WHAT THE CALLER CALLED IT (2026-09-07) ═══════════════════
+        // MEASURED: a photograph of a cartoon fish with a human face imported, and the record
+        // read "a reference somebody pointed at while designing a tattoo" - the CALLER'S note,
+        // because `ip.context` came first in this expression. Her own description was computed
+        // and then thrown away by an `||`.
+        // So the file had no idea what was in it, and every conversation about that picture
+        // started from a label rather than a look. The caller's context says WHY it arrived; only
+        // the description says WHAT it is, and the second is the fact.
+        const iSubject = iSaw || ip.context || "an imported image";
         const iReg = await registerSmartFile(env, { id: iId, filetype: "image",
-          name: (ip.context || iSaw || "imported image").slice(0, 80), url: iUrl,
-          subject: ip.context || iSaw || "an imported image", source: "import",
+          name: iSubject.slice(0, 80), url: iUrl,
+          subject: iSubject, source: "import",
           creator: iBy, parent: null, context: ip.context || null, access: "controlled" });
 
         return { cmd: "IMAGE", payload: { ok: true, id: iId, entity: (iReg && iReg.entity_id) || null,
@@ -59096,11 +59105,33 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
         : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.";
 
+      // ══ SAY WHAT YOU SEE BEFORE YOU ASK ANYTHING (2026-09-07) ═════════════════════════════
+      // MEASURED: somebody sent a photo of a cartoon fish with a human face on it and said "I hate
+      // this tattoo, what can I cover it with". She replied "What about this one feels wrong to
+      // you?" - a question about their feelings, to somebody who had just told her, about a
+      // picture she never mentioned.
+      // Aaron: "she needs to understand it. She has to talk to people like a human. I see you've
+      // got a fish with a head on it - what do you want to do with this?"
+      // Naming it is not decoration. It is the only proof that she actually looked, and it is
+      // what makes the next sentence worth trusting.
       const refNote = refSaw
-        ? "\n\nTHEY JUST POINTED AT A PHOTOGRAPH and this is what is in it:\n  " + refSaw +
-          "\nThat is a REFERENCE, not the design. Ask what they like about it - the subject, the " +
-          "way it is drawn, the whole feeling - or if that is already obvious, draw them their " +
-          "own version of it. Never describe it as though you made it, and never copy it."
+        ? "\n\nTHEY JUST SENT YOU A PHOTOGRAPH. This is what is in it:\n  " + refSaw +
+          "\n\nSAY WHAT YOU SEE FIRST, in your own words, before anything else - \"that's a " +
+          "cartoon fish with a face on it\", \"that's a full Japanese back piece, koi and " +
+          "lotus\". Plainly, like somebody looking at their arm. Never ask a question about a " +
+          "picture without first showing them you looked at it.\n" +
+          "It is a REFERENCE or their own tattoo - never something you made, and never something " +
+          "to copy.\n\n" +
+          // The three jobs are one flow with one difference: what happens to the ink already
+          // there. `job` in the brief already carries new | cover | add | rework.
+          "IF IT IS THEIR OWN TATTOO and they want it changed:\n" +
+          "  COVERING IT - the new piece must be BIGGER than the old one and dark enough to bury " +
+          "it. Old linework and lettering are the hard part; pale colours will not hide black. " +
+          "Say so plainly if what they are asking for will not work - somebody who books a " +
+          "cover-up that cannot be done finds out in the chair, and that is on you.\n" +
+          "  ADDING TO IT - the existing work is a neighbour, not a problem. Match its style and " +
+          "let the new piece flow with it.\n" +
+          "  REWORKING IT - same idea, done properly. Keep what they liked, fix what they did not."
         : "";
 
       const fullSys = talkSys + stateNote + refNote + CONTRACT;

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.151.0-2026-09-06-o-she-answers-as-herself";
+const BUILD = "aura-core-v9.152.0-2026-09-07-she-looks-before-she-answers";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55033,6 +55033,76 @@ function tatFaceUrl(rec) {
 // purpose: unbounded, one category of 300 leaves with nothing drawn is 300 KV reads for a single
 // thumbnail. Most covers are found on the first try, so this costs almost nothing in the normal
 // case and puts a ceiling on the bad one.
+
+// ══ CATALOG FIND — ONE IMPLEMENTATION, TWO CALLERS (2026-09-07) ══════════════════════════════════
+// The `catalog` action's find branch and `auraTalk` both need this. Extracted rather than copied:
+// a copy agrees the day it is written and drifts the first time one side is edited, which is the
+// failure this file records more than any other.
+//
+// Matches leaves first because a leaf is a design somebody can actually pick, then kinds, then
+// categories - narrowest thing that fits, which is what "where is X" is asking for.
+// READ ONLY. One KV get for the tree plus one face read per hit. It cannot draw.
+async function catalogFind(env, query, limit) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return [];
+  const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+  if (!tree) return [];
+  const subj = tree.subjects || {}, spec = tree.specific || {};
+  // Words the question is ABOUT. Two letters and under is noise, and so is the scaffolding of a
+  // sentence - without this, "what do you know about me" searches for "what" and "about".
+  const STOP = new Set(["the","and","for","with","that","this","have","want","like","some","just",
+    "about","what","when","where","which","would","could","looking","really","think","thinking",
+    "getting","from","into","your","you","are","was","but","not","can","get","its","it's","one",
+    "something","anything","maybe","kind","sort","idea","tattoo","tattoos","design","designs"]);
+  const words = q.split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
+  if (!words.length) return [];
+  const hit = (name) => {
+    const n = String(name).toLowerCase();
+    if (n === q) return 4;
+    if (n.includes(q)) return 3;
+    // Every content word present beats only one - "japanese dragon" should beat "dragon".
+    const all = words.every((w) => n.includes(w));
+    if (all && words.length > 1) return 2;
+    return words.some((w) => n.includes(w)) ? 1 : 0;
+  };
+  const found = [];
+  for (const kindName of Object.keys(spec)) {
+    for (const lf of (spec[kindName] || [])) {
+      const sc = hit(lf);
+      if (sc) found.push({ score: sc, level: "leaf", label: String(lf), kind: kindName });
+    }
+  }
+  for (const kindName of Object.keys(spec)) {
+    const sc = hit(kindName);
+    if (sc) found.push({ score: sc, level: "kind", label: String(kindName) });
+  }
+  for (const c of Object.keys(subj)) {
+    const sc = hit(c);
+    if (sc) found.push({ score: sc, level: "category", label: String(c) });
+  }
+  const rank = { leaf: 0, kind: 1, category: 2 };
+  found.sort((a, b) => b.score - a.score || rank[a.level] - rank[b.level]);
+
+  const faceOf = async (n) => {
+    const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
+    return r ? tatFaceUrl(r) : null;
+  };
+  const top = found.slice(0, Math.max(1, Math.min(24, limit || 12)));
+  const items = await Promise.all(top.map(async (x) => ({
+    value: tatSlug(x.label), label: x.label, level: x.level, kind: x.kind || null,
+    score: x.score,
+    image: x.level === "category" ? null : await faceOf(x.label)
+  })));
+  // The category each hit sits in, so a caller can walk somebody there rather than hand them a
+  // picture with no way back into the tree.
+  for (const it of items) {
+    const owner = it.level === "leaf" ? it.kind : (it.level === "kind" ? it.label : null);
+    if (owner) it.category = Object.keys(subj).find((c) =>
+      (subj[c] || []).some((k) => tatSlug(k) === tatSlug(owner))) || null;
+  }
+  return items;
+}
+
 const COVER_TRIES = 6;
 
 // A stated quantity drops the singular default. Written once - three copies of this rule
@@ -58751,7 +58821,31 @@ async function auraTalk(env, me, stage, saidIn, history) {
           "artist is the worst thing you can do here.\n\n" +
           "NEVER invent that you have already made something. You have not drawn anything yet.\n" +
           "Keep replies short - three sentences at most. This is a phone.";
-      const talkSys = (await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR)) + shelf;
+      // ══ SHE LOOKS BEFORE SHE ANSWERS, EVERY TIME ══════════════════════════════════════════
+      // MEASURED: asked for Mount Rushmore she generated a stained glass version - of a thing
+      // already in the catalogue. She had the 89 category names but no way to search them, so the
+      // only tool she had was making one.
+      // THE LOOKUP IS NOT HERS TO DECIDE. It is one KV read plus a handful of face reads, it is
+      // free, and a judgement about whether to bother looking is exactly the judgement that failed.
+      // What she DOES decide - whether these are any good, whether to show them, what to say about
+      // them, whether to reach further - stays entirely hers. Same shape as `world` and `body`:
+      // the facts arrive automatically, the thinking does not.
+      // NUMBERED, because the next thing a person says is "the second one".
+      let hits = [];
+      try { hits = await catalogFind(env, said, 8); } catch {}
+      const withPics = hits.filter((h) => h.image);
+      const found = withPics.length
+        ? "\n\nALREADY DRAWN, FOR WHAT THEY JUST SAID. These exist right now and showing one costs\n" +
+          "them nothing. If they are a good answer, SHOW THEM - do not ask another question you\n" +
+          "could answer with a picture. Refer to them by number if you mention one.\n" +
+          withPics.map((h, i) => "  " + (i + 1) + ". " + h.label +
+            (h.category ? "  (" + h.category + ")" : "")).join("\n") +
+          "\n\nIf these are not what they mean, say nothing about having looked. A search that " +
+          "found nothing useful is not a thing to report - it is a routing event, not a " +
+          "conversational one. Never tell them what we do not have."
+        : "";
+
+      const talkSys = (await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR)) + shelf + found;
 
       // ══ SHE ANSWERS AS HERSELF, NOT AS A PROMPT I TYPED (2026-09-06) ═══════════════════════
       //
@@ -59039,6 +59133,11 @@ async function auraTalk(env, me, stage, saidIn, history) {
       // Her own answer wins. The local call still ran - it is the floor, and it costs a fraction of
       // a cent - so a failed turn is invisible to the person rather than fatal to the conversation.
       return { ok: true, said: agentSaid || r.text, ready_to_draw: ready, show_me: show, brief, intent,
+               // What she was looking at when she answered - numbered, so "the second one" means
+               // something on the next turn. The surface renders these; she decides whether to
+               // mention them.
+               showing: withPics.map((h, i) => ({ n: i + 1, label: h.label, level: h.level,
+                        category: h.category || null, kind: h.kind || null, image: h.image })),
                // What she is actually working from, so a surface can say "we have talked before"
                // rather than pretending every visit is the first one.
                remembering: me ? tline.length : 0,
@@ -60683,54 +60782,10 @@ export class PublicEntry extends WorkerEntrypoint {
         // one. The judgement of WHEN to show was always hers; this gives her somewhere to point.
         // Matches leaves first because a leaf is a design somebody can actually pick, then kinds,
         // then categories - narrowest thing that fits, which is what "where is X" is asking for.
-        const askFind = String(b.find || "").trim().toLowerCase();
+        const askFind = String(b.find || "").trim();
         if (askFind) {
-          const words = askFind.split(/\s+/).filter((w) => w.length > 2);
-          const hit = (name) => {
-            const n = String(name).toLowerCase();
-            if (n === askFind) return 3;                              // exact
-            if (n.includes(askFind)) return 2;                        // whole phrase
-            return words.some((w) => n.includes(w)) ? 1 : 0;          // any word
-          };
-          const found = [];
-          for (const kindName of Object.keys(spec)) {
-            for (const lf of (spec[kindName] || [])) {
-              const sc = hit(lf);
-              if (sc) found.push({ score: sc, level: "leaf", label: String(lf), kind: kindName });
-            }
-          }
-          for (const kindName of Object.keys(spec)) {
-            const sc = hit(kindName);
-            if (sc) found.push({ score: sc, level: "kind", label: String(kindName) });
-          }
-          for (const c of Object.keys(subj)) {
-            const sc = hit(c);
-            if (sc) found.push({ score: sc, level: "category", label: String(c) });
-          }
-          // A leaf beats a kind beats a category at the same score - narrowest wins.
-          const rank = { leaf: 0, kind: 1, category: 2 };
-          found.sort((a2, b3) => b3.score - a2.score || rank[a2.level] - rank[b3.level]);
-          const top = found.slice(0, 12);
-          const items = await Promise.all(top.map(async (x) => ({
-            value: tatSlug(x.label), label: x.label, level: x.level,
-            kind: x.kind || null,
-            // A category's cover comes from the index rather than a hunt - the leaf's own tile
-            // otherwise. Either way it is a read, and either way it can be null.
-            image: x.level === "category" ? null : await faceOf(x.label)
-          })));
-          // The category of each leaf, so a caller can walk somebody there rather than just show
-          // them a picture with no way back into the tree.
-          for (const it of items) {
-            if (it.level === "leaf" && it.kind) {
-              it.category = Object.keys(subj).find((c) =>
-                (subj[c] || []).some((k) => tatSlug(k) === tatSlug(it.kind))) || null;
-            } else if (it.level === "kind") {
-              it.category = Object.keys(subj).find((c) =>
-                (subj[c] || []).some((k) => tatSlug(k) === tatSlug(it.label))) || null;
-            }
-          }
-          return { ok: true, type: "row", find: askFind, items,
-                   matched: found.length,
+          const items = await catalogFind(env, askFind, 12);
+          return { ok: true, type: "row", find: askFind, items, matched: items.length,
                    say: items.length ? null : "Nothing in the catalogue matches that." };
         }
 

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.162.0-2026-09-07-she-writes-what-the-house-writes-how";
+const BUILD = "aura-core-v9.163.0-2026-09-07-branch-from-any-version";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58883,8 +58883,27 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
 
       // The last thing she drew for this person - the body a change is applied to. Read BEFORE the
       // classifier, because the classifier has to be TOLD whether a picture exists.
+      // ══ WHICH PICTURE ARE WE CHANGING (2026-09-07) ════════════════════════════════════════
+      // The last thing she drew, UNLESS the caller names one. Aaron: "they'll need to be able to
+      // select the thumbnail they want to evolve, because it might go into multiple directions."
+      // Exactly right - a conversation is not a single line, and the version somebody wants to
+      // branch from is often three back. `from` makes the strip in the UI a real control rather
+      // than a history display.
       let lastDrawn = null;
       if (me) { try { lastDrawn = await env.AURA_KV.get("talk:last:" + me, "json"); } catch {} }
+      const pickFrom = String((opts && opts.from) || "").trim();
+      if (pickFrom && me) {
+        // Their own graph decides whether it is theirs - a design id from a caller is a claim,
+        // not a fact, and a composite of somebody else's picture is the failure `onme` already
+        // guards against.
+        try {
+          const own = await env.AURA_MEMORY.prepare(
+            "SELECT e.id, e.name FROM pta_entities e JOIN pta_edges g ON g.to_id = e.id " +
+            "WHERE e.id = ? AND g.from_id = ? AND g.edge_type IN ('created','contributed_to') LIMIT 1"
+          ).bind(pickFrom, me).first().catch(() => null);
+          if (own) lastDrawn = { design: pickFrom, subject: (lastDrawn && lastDrawn.subject) || null };
+        } catch {}
+      }
 
       let hits = [];
       if (!noBook) { try { hits = await catalogFind(env, said, 8); } catch {} }
@@ -60005,7 +60024,8 @@ export class PublicEntry extends WorkerEntrypoint {
         // same code. See the note above that function.
         return await auraTalk(env, me, stage,
           String(b.said || "").trim().slice(0, 2000),
-          Array.isArray(b.history) ? b.history : []);
+          Array.isArray(b.history) ? b.history : [],
+          { from: b.from || null });
       }
 
       // ── MAKE. The first version. SHOW_IT births it as a PTA, so from this moment the design

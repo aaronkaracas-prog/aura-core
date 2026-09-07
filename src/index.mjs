@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.167.0-2026-09-07-a-tap-replaces-what-came-before";
+const BUILD = "aura-core-v9.168.0-2026-09-07-the-limb-and-the-artwork";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59367,8 +59367,21 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         // is the starting point and only the named thing moves. Redrawing from a sentence is what
         // produced a bibliography of near-misses.
         try {
+          // ══ AN EDIT INHERITS THE PHOTOGRAPH, WATERMARK AND ALL (2026-09-07) ═══════════
+          // MEASURED: a two-leg mandala recoloured perfectly - and came back with the Bloodline
+          // Tattoo watermark, the studio chairs, the towel and the artist's hand still in frame.
+          // The frame dial only ever applied on a DRAW; an edit starts from the parent's pixels,
+          // so when the parent is somebody else's studio photo, their shop comes with it.
+          // What they want is the limb and the artwork. Somebody else's branding on a picture we
+          // hand a customer is worse than untidy - it is another shop's name on our work.
+          const fromRef = !!(refDesign && lastDrawn.design === refDesign);
+          const cleanUp = fromRef
+            ? ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +
+              "nothing else in frame - no studio, no furniture, no other people or hands, and no " +
+              "logo, watermark or text of any kind."
+            : "";
           const cr = await processCommand("IMAGE EVOLVE " + lastDrawn.design + " " +
-            JSON.stringify({ prompt: acted.prompt || said, by: me }), env, true);
+            JSON.stringify({ prompt: (acted.prompt || said) + cleanUp, by: me }), env, true);
           const cp = (cr && cr.payload) ? cr.payload : cr;
           if (cp?.ok && cp.image_url) {
             drew = { design: cp.child, image: cp.image_url, changed: acted.prompt || said,

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.155.0-2026-09-07-a-change-stacks-on-the-picture";
+const BUILD = "aura-core-v9.156.0-2026-09-07-a-show-nobody-can-fulfil-is-a-draw";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58990,13 +58990,14 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
             // triggers a drawing stayed empty - ready in her words, not ready in the machine.
             // A person naming a thing they want IS the ask. Waiting for a second, more formal
             // request is a machine's idea of consent, not a person's.
+            (noBook ? "" :
             "SHOW: <two to five words naming the subject to look for>\n" +
             "   Use this when they have named something they want but have not settled the " +
             "details, and seeing real work on real people would move them along faster than " +
             "another question. A cat, a dragon, a rose. NEVER use SHOW for something personal " +
             "that no search could find - their own pet, a relative, somebody's handwriting - " +
             "and never immediately after somebody has told you something sad. Talk to them " +
-            "first.\n\n" +
+            "first.\n\n") +
             "NOT_YET\n" +
             "   Use this when the conversation itself is the right next step - they are working " +
             "out what they want, or they have just said something that deserves a human " +
@@ -59260,6 +59261,19 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       }
       // A change with nothing drawn yet is just a first drawing.
       if (change && !drew) ready = ready || change;
+
+      // ══ A SHOW NOBODY CAN FULFIL IS A DRAW (2026-09-07) ═══════════════════════════════════
+      // MEASURED: "I want a dragon tattoo" returned SHOW on one run and DRAW on the next - the
+      // same sentence, a coin toss. On the SHOW run the turn produced NOTHING: `show_me` names a
+      // subject and nobody acts on it, so she decided to show somebody something and the screen
+      // stayed empty.
+      // The rule that fixes it is the doctrine already written down: a failed search is a routing
+      // event, not a conversational one. If there is nothing to show her, make them one. That is
+      // the product - the book is optional, the drawing is not.
+      if (show && !ready && !drew && !withPics.length) {
+        ready = show;
+        show = null;
+      }
       if (ready && !drew && me) {
         try {
           const askLine = String(ready).trim().slice(0, 600);

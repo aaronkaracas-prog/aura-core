@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.159.0-2026-09-07-derived-not-decided";
+const BUILD = "aura-core-v9.160.0-2026-09-07-the-brief-is-the-trigger";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59255,12 +59255,27 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // one stays where it is rather than being mutated into something it is not.
       // The comparison is on the brief's own subject, which is already cumulative and already
       // correct; it survived three builds of the classifier getting this wrong.
-      if (ready && me && lastDrawn && lastDrawn.design) {
+      // THE BRIEF IS THE TRIGGER, not the classifier. MEASURED: "make it meaner" produced a
+      // redraw, a redraw, silence, and silence again - four builds, each one a different route to
+      // the same dead end, because every version still asked a model to judge it. Meanwhile the
+      // brief was right every single time: `character: "menacing"` appeared on the turn they asked
+      // for it and did not exist the turn before.
+      // A NEW FACT ABOUT THE SAME SUBJECT, WITH A PICTURE ALREADY DRAWN, IS A CHANGE. That is not
+      // an opinion, it is a diff of two objects, and it does not need permission from anybody.
+      if (me && lastDrawn && lastDrawn.design && intent && typeof intent === "object") {
         const wasSubj = String(lastDrawn.subject || "").trim().toLowerCase();
-        const nowSubj = String((intent && intent.subject) || "").trim().toLowerCase();
+        const nowSubj = String(intent.subject || "").trim().toLowerCase();
         const sameSubject = wasSubj && nowSubj && (wasSubj === nowSubj ||
           wasSubj.includes(nowSubj) || nowSubj.includes(wasSubj));
-        if (sameSubject) { change = said.slice(0, 400); ready = null; }
+        // What they settled this turn that was not settled before.
+        const before = carriedObj || {};
+        const moved = ["style", "character", "composition", "colour", "detail", "elements",
+                       "placement", "size"].filter((k) => {
+          const a = intent[k] == null ? "" : String(intent[k]);
+          const b = before[k] == null ? "" : String(before[k]);
+          return a && a !== b;
+        });
+        if (sameSubject && moved.length) { change = said.slice(0, 400); ready = null; }
       }
 
       let drew = null;

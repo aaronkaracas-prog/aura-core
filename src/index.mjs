@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.152.0-2026-09-07-she-looks-before-she-answers";
+const BUILD = "aura-core-v9.153.0-2026-09-07-the-book-is-behind-her";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55056,14 +55056,20 @@ async function catalogFind(env, query, limit) {
     "something","anything","maybe","kind","sort","idea","tattoo","tattoos","design","designs"]);
   const words = q.split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
   if (!words.length) return [];
+  // ══ WHOLE WORDS ONLY (2026-09-07) ═════════════════════════════════════════════════════════
+  // MEASURED: "a tattoo of a dragon" ranked STAINED GLASS DRAGONFLY first, because `dragon` is a
+  // substring of `dragonfly`. She was then handed eight tiles and dutifully offered "the stained
+  // glass or faith ones" - I had made her hedge by giving her something to fall back on.
+  // A substring match will always find SOMETHING for any noun, which is worse than finding
+  // nothing: an empty shelf is a clean input, a wrong shelf is noise she has to reason around.
+  const wordIn = (n, w) => new RegExp("(^|[^a-z0-9])" + w + "(s|es)?([^a-z0-9]|$)", "i").test(n);
   const hit = (name) => {
     const n = String(name).toLowerCase();
     if (n === q) return 4;
     if (n.includes(q)) return 3;
     // Every content word present beats only one - "japanese dragon" should beat "dragon".
-    const all = words.every((w) => n.includes(w));
-    if (all && words.length > 1) return 2;
-    return words.some((w) => n.includes(w)) ? 1 : 0;
+    if (words.length > 1 && words.every((w) => wordIn(n, w))) return 2;
+    return words.some((w) => wordIn(n, w)) ? 1 : 0;
   };
   const found = [];
   for (const kindName of Object.keys(spec)) {
@@ -58814,6 +58820,10 @@ async function auraTalk(env, me, stage, saidIn, history) {
           "WHEN THEY HAVE ENOUGH: say so plainly and offer to show them. Do not drag it out - " +
           "two or three exchanges is usually enough, and somebody who arrives knowing exactly " +
           "what they want should be shown it immediately.\n\n" +
+          "WHEN THEY NAME A THING, YOU CAN DRAW IT. Mount Rushmore, a dragon, their dog - if they " +
+          "asked for a thing, the answer is a picture of that thing, made for them. One short " +
+          "useful beat first if there is a real fork worth naming, then offer to draw. NEVER " +
+          "answer a request for a thing with a list of other things that share a word with it.\n\n" +
           "ANSWERING QUESTIONS IS PART OF THE JOB. If they ask how any of this works, answer " +
           "plainly and for free. GROUND IN TRUTH: only state something about how the product " +
           "works if it is written below. If it is not, say you will find out rather than " +
@@ -58831,18 +58841,35 @@ async function auraTalk(env, me, stage, saidIn, history) {
       // them, whether to reach further - stays entirely hers. Same shape as `world` and `body`:
       // the facts arrive automatically, the thinking does not.
       // NUMBERED, because the next thing a person says is "the second one".
+      // The brief so far, so the extractor amends rather than re-reads from cold.
+      let carriedObj = null;
+      if (me) {
+        try { carriedObj = await env.AURA_KV.get("talk:brief:" + me, "json"); } catch {}
+      }
+      const carried = carriedObj && typeof carriedObj === "object"
+        ? Object.keys(carriedObj).filter((k) => carriedObj[k] != null && carriedObj[k] !== "")
+            .map((k) => "  " + k + ": " + JSON.stringify(carriedObj[k])).join("\n")
+        : "";
+
       let hits = [];
       try { hits = await catalogFind(env, said, 8); } catch {}
       const withPics = hits.filter((h) => h.image);
+      // ══ A FLASH BOOK BEHIND HER, NOT THE ANSWER (2026-09-07) ══════════════════════════════
+      // The first version of this said "if they are a good answer, SHOW THEM - do not ask another
+      // question you could answer with a picture." She obeyed, and it made her worse: asked for
+      // Mount Rushmore she offered seven mountains including Mount Fuji, when she would simply
+      // have DRAWN a Rushmore the day before. Handing her something to fall back on is how you
+      // teach an intelligent thing to hedge.
+      // Aaron: "my catalog is not strong enough for this product. I have AI - that's the product."
+      // So the book is available and ignorable. Drawing is the default, not the fallback.
       const found = withPics.length
-        ? "\n\nALREADY DRAWN, FOR WHAT THEY JUST SAID. These exist right now and showing one costs\n" +
-          "them nothing. If they are a good answer, SHOW THEM - do not ask another question you\n" +
-          "could answer with a picture. Refer to them by number if you mention one.\n" +
+        ? "\n\nIN THE FLASH BOOK, possibly relevant. These are already drawn, so showing one is\n" +
+          "instant and free - but they are a prompt for the eye, not the answer to their question.\n" +
+          "Use one ONLY if it is genuinely the thing they asked for. If it is close but not it, or\n" +
+          "if drawing them something of their own would be better, DRAW. Never offer a near-miss\n" +
+          "as though it were what they wanted.\n" +
           withPics.map((h, i) => "  " + (i + 1) + ". " + h.label +
-            (h.category ? "  (" + h.category + ")" : "")).join("\n") +
-          "\n\nIf these are not what they mean, say nothing about having looked. A search that " +
-          "found nothing useful is not a thing to report - it is a routing event, not a " +
-          "conversational one. Never tell them what we do not have."
+            (h.category ? "  (" + h.category + ")" : "")).join("\n")
         : "";
 
       const talkSys = (await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR)) + shelf + found;
@@ -58958,7 +58985,15 @@ async function auraTalk(env, me, stage, saidIn, history) {
             '  "meaning": "why they are getting it - who it is for, what happened",\n' +
             '  "brief": "one paragraph, at most 60 words, describing the tattoo for a tattoo artist to read"\n' +
             "}\n\n" +
+            (carried ? "WHAT IS ALREADY SETTLED - carry every one of these forward unless this " +
+              "message CHANGES it:\n" + carried + "\n\n" : "") +
             "RULES:\n" +
+            // MEASURED 2026-09-07: "can you do mount rushmore" wiped `subject: a dragon` to null,
+            // because each extraction read the conversation cold. A brief that forgets its own
+            // subject cannot support "meaner" or "the head from number 1" two turns later.
+            "- THE SUBJECT PERSISTS. A new noun is usually a DETAIL of the thing being designed, " +
+            "not a replacement for it. Only change `subject` when they plainly say they want " +
+            "something else instead.\n" +
             "- OMIT ANY FIELD THEY HAVE NOT SETTLED. Do not guess and do not fill a field with " +
             "a sensible default. An empty field means she asks; a wrong one means she never does.\n" +
             "- A CORRECTION REPLACES what it corrects. Three legs then one leg is ONE leg, and " +
@@ -59132,6 +59167,31 @@ async function auraTalk(env, me, stage, saidIn, history) {
 
       // Her own answer wins. The local call still ran - it is the floor, and it costs a fraction of
       // a cent - so a failed turn is invisible to the person rather than fatal to the conversation.
+      // ══ THE BRIEF IS CUMULATIVE ═══════════════════════════════════════════════════════════
+      // Banked so the next turn amends it instead of reading the conversation cold. Merged, not
+      // replaced: a turn that mentions nothing about colour must not erase the colour they chose
+      // three turns ago. Only a field this turn actually filled overwrites what was there.
+      if (me && intent && typeof intent === "object") {
+        try {
+          const merged = Object.assign({}, carriedObj || {});
+          for (const k of Object.keys(intent)) {
+            const v = intent[k];
+            if (v == null || v === "" || (Array.isArray(v) && !v.length)) continue;
+            merged[k] = v;
+          }
+          delete merged.resolved; delete merged.missing;
+          await env.AURA_KV.put("talk:brief:" + me, JSON.stringify(merged),
+            { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+          // What she answers from is the running brief, not this turn's slice of it.
+          for (const k of Object.keys(merged)) {
+            if (intent[k] == null || intent[k] === "") intent[k] = merged[k];
+          }
+          if (Array.isArray(intent.resolved)) {
+            intent.resolved = Object.keys(merged).filter((k) => merged[k] != null && merged[k] !== "");
+          }
+        } catch {}
+      }
+
       return { ok: true, said: agentSaid || r.text, ready_to_draw: ready, show_me: show, brief, intent,
                // What she was looking at when she answered - numbered, so "the second one" means
                // something on the next turn. The surface renders these; she decides whether to

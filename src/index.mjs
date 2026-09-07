@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.170.0-2026-09-07-say-what-it-actually-looks-like";
+const BUILD = "aura-core-v9.171.0-2026-09-07-hold-the-constraint";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59001,7 +59001,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // becomes the subject, and the drawing is an ORIGINAL born under their PTA.
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
-      let refSaw = null, refUrl = null, refDesign = null;
+      let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const wantRef = String((opts && opts.ref) || "").trim();
       if (wantRef && me && /^https?:\/\//i.test(wantRef)) {
         try {
@@ -59014,6 +59014,27 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           if (ip?.ok) { refSaw = ip.saw || null; refUrl = ip.image_url || wantRef;
                         refDesign = ip.entity || null; }
         } catch {}
+        // ══ THE PICTURE THEY SENT DOES NOT EXPIRE AFTER ONE TURN (2026-09-07) ══════════════
+        // MEASURED: they sent a photo of a tattoo to cover, she named it, and on the VERY NEXT
+        // turn - "something dark, maybe a raven" - she drew a raven on a plain background with no
+        // arm and nothing covered. The reference only existed on the turn it arrived, so by the
+        // second sentence she had forgotten there was a forearm involved at all.
+        // A tattoo somebody is covering is not a passing detail. It is the whole job, and it
+        // stays until they change it - the same rule the brief already follows.
+        if (me && (refSaw || refUrl)) {
+          try {
+            await env.AURA_KV.put("talk:ref:" + me, JSON.stringify({
+              saw: refSaw, url: refUrl, design: refDesign, at: new Date().toISOString()
+            }), { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+          } catch {}
+        }
+      } else if (me) {
+        // No new picture this turn - carry the one they already sent.
+        try {
+          const held = await env.AURA_KV.get("talk:ref:" + me, "json");
+          if (held) { refSaw = held.saw || null; refUrl = held.url || null;
+                      refDesign = held.design || null; refHeld = true; }
+        } catch {}
       }
 
       // ══ A TAP REPLACES WHAT CAME BEFORE (2026-09-07) ══════════════════════════════════════
@@ -59023,7 +59044,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // though she had recoloured the thing they tapped.
       // Pointing at a picture is the strongest statement of intent in this whole flow. It is a
       // new subject and a new parent, and everything that described the old one goes with it.
-      if (refDesign) { carriedObj = null; }
+      if (refDesign && !refHeld) { carriedObj = null; }
 
       const pickFrom = String((opts && opts.from) || "").trim() || refDesign || "";
       if (pickFrom && me) {
@@ -59130,8 +59151,16 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // got a fish with a head on it - what do you want to do with this?"
       // Naming it is not decoration. It is the only proof that she actually looked, and it is
       // what makes the next sentence worth trusting.
+      // A photograph arrived and the eyes could not read it. Silence made her behave as though
+      // nothing had been sent, which is worse than admitting it - they can see they sent it.
+      const refBlind = (refUrl && !refSaw)
+        ? "\n\nTHEY SENT YOU A PHOTOGRAPH AND YOU COULD NOT SEE IT. Say so plainly and ask them " +
+          "to tell you what is in it. Never pretend no picture arrived."
+        : "";
+
       const refNote = refSaw
-        ? "\n\nTHEY JUST SENT YOU A PHOTOGRAPH. This is what is in it:\n  " + refSaw +
+        ? "\n\n" + (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER, still what you are working on:"
+                             : "THEY JUST SENT YOU A PHOTOGRAPH. This is what is in it:") + "\n  " + refSaw +
           "\n\nSAY WHAT YOU SEE FIRST, in your own words, before anything else - \"that's a " +
           "cartoon fish with a face on it\", \"that's a full Japanese back piece, koi and " +
           "lotus\". Plainly, like somebody looking at their arm. Never ask a question about a " +
@@ -59147,10 +59176,24 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           "cover-up that cannot be done finds out in the chair, and that is on you.\n" +
           "  ADDING TO IT - the existing work is a neighbour, not a problem. Match its style and " +
           "let the new piece flow with it.\n" +
-          "  REWORKING IT - same idea, done properly. Keep what they liked, fix what they did not."
+          "  REWORKING IT - same idea, done properly. Keep what they liked, fix what they did not.\n\n" +
+          // MEASURED: asked to make a cover-up raven "light grey and delicate", she did it without
+          // a word. That design cannot be tattooed over dark linework, and the person finds out in
+          // the chair. She had the constraint in front of her, said it once, and dropped it the
+          // moment somebody asked for the opposite.
+          "HOLD THE CONSTRAINT WHEN THEY PUSH ON IT. If they ask for something that will not cover " +
+          "what is underneath - pale colour, fine linework, delicate, smaller than the old piece - " +
+          "SAY SO before you draw it, and offer the version that works. Not a lecture, one " +
+          "sentence: \"light grey will not hide those outlines - dark and solid will, and I can " +
+          "keep it elegant.\" Agreeing to something undoable is not kindness.\n\n" +
+          // MEASURED: the turn after she named the fish, she drew a raven on a plain background,
+          // no arm, nothing covered - because the picture had gone out of context.
+          "AND WHATEVER YOU DRAW, IT GOES OVER WHAT IS ALREADY THERE. Same body part, larger than " +
+          "the old piece, and described that way in `prompt`. Never a design floating on its own " +
+          "while they are asking you to cover something."
         : "";
 
-      const fullSys = talkSys + stateNote + refNote + CONTRACT;
+      const fullSys = talkSys + stateNote + refNote + refBlind + CONTRACT;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
       // Both get the same contract, so the shape of the answer does not depend on which replied.
@@ -59466,8 +59509,12 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           // sleeve IS that request.
           // The switch is what SHE said, not a guess: `body` is set when the piece is defined by
           // its coverage rather than its subject.
-          const wantsBody = acted.act === "draw" && /\b(sleeve|full leg|both legs|leg sleeve|body ?suit|back ?piece|full back|chest ?piece|coverage|wraps?|hip to ankle|shoulder to wrist)\b/i
-            .test(askLine + " " + String(refSaw || ""));
+          // A cover-up is by definition on a body - theirs, with the old piece under it. Flat
+          // artwork answers nothing they asked.
+          const isCover = String((intent && intent.job) || "").toLowerCase() === "cover";
+          const wantsBody = acted.act === "draw" && (isCover ||
+            /\b(sleeve|full leg|both legs|leg sleeve|body ?suit|back ?piece|full back|chest ?piece|coverage|wraps?|hip to ankle|shoulder to wrist)\b/i
+            .test(askLine + " " + String(refSaw || "")));
           const frm = wantsBody
             ? ((await env.AURA_KV.get("frame:body").catch(() => null)) ||
                "Shown on a body so the coverage and the wrap read - a plain studio photograph of " +

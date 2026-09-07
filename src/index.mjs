@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.160.0-2026-09-07-the-brief-is-the-trigger";
+const BUILD = "aura-core-v9.161.0-2026-09-07-one-call-her-words-and-her-act";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58909,192 +58909,140 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
 
       const talkSys = (await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR)) + shelf + found;
 
-      // ══ SHE ANSWERS AS HERSELF, NOT AS A PROMPT I TYPED (2026-09-06) ═══════════════════════
+      // ══ ONE CALL. HER WORDS AND HER ACT, TOGETHER. (2026-09-07) ═══════════════════════════
       //
-      // Everything below was a raw `callBrain` - one model call with a system prompt written by
-      // hand, sitting beside a full Project Think agent that already has thirteen context blocks,
-      // a self-distilling core memory, four advisor minds, a governed browser, a capability bus
-      // onto every command in aura-core, and the ability to author its own tools.
-      // Aaron, correctly: "make sure we're not putting wrappers around something that's already
-      // big." The shelf and the brief added an hour earlier were hand-assembled context blocks
-      // beside a system that maintains its own. `cognition:prompts` came back null - nothing had
-      // ever needed it, because the intelligence was never on this path.
+      // Five builds failed on one sentence - "make it meaner" gave a redraw, a redraw, then three
+      // turns of nothing at all. Every fix was locally right and every one left a new hole,
+      // because the shape was wrong: the model that WROTE her reply and the mechanism that
+      // decided what to DO were separate calls that never saw each other. She said "Here it is,
+      // even meaner" while a different call independently concluded nothing should happen.
+      // I was inferring her intent from side channels - a classifier, then a diff of the brief -
+      // and every inference had a hole, because the thing that knows what she meant is the thing
+      // that wrote the sentence.
       //
-      // `proxyToAgent` was already built: service binding, operator token on the private side, and
-      // `agentInstanceFor` gives every PTA its own instance - `pta-<their id>`, own Durable Object,
-      // own memory, own continuity. Not a shared brain with a name on it.
+      // `home_teammate` settled this months ago and I did not follow it: ONE object carrying the
+      // reply AND the act. They cannot disagree when they are one sentence.
       //
-      // WHY ROUTING A CUSTOMER THERE IS SAFE: `getActions()` returns {} for a non-operator.
-      // spend_money, change_dns and edit_myself are not gated for them, they are ABSENT. Her own
-      // note on that line: absent beats gated.
-      //
-      // THE CLASSIFIER STAYS. `show_me`, `ready_to_draw` and `intent` are three cheap parallel
-      // reads and the ladder is wired to them, so they run beside the agent exactly as they ran
-      // beside callBrain and nothing on the surface changes shape.
-      //
-      // AND THE LOCAL CALL STAYS AS THE FLOOR. If the binding is missing or the turn fails, it
-      // answers. A conversation that dies because the clever path is down is worse than one that
-      // is briefly less clever.
-      let agentSaid = null, agentVia = null;
+      // AND IT BUYS THE PROMPT. `prompt` is hers to write - she is holding the subject, the
+      // character, the style and the reason - so the image model receives a real description
+      // instead of the four words somebody typed. That is prompt expansion, which is the whole
+      // difference between a stencil and a finished piece, and it arrives here for free rather
+      // than as another call.
+      const CONTRACT =
+        "\n\nANSWER WITH ONE JSON OBJECT AND NOTHING ELSE. No preamble, no markdown fence.\n" +
+        "{\n" +
+        '  "say": "what you say to them - short, human, no machine words",\n' +
+        '  "do": "draw | change | none",\n' +
+        '  "prompt": "the image description, when do is draw or change"\n' +
+        "}\n\n" +
+        "WHEN `do` IS `draw`: they asked for a thing and nothing has been made yet, or they want " +
+        "something DIFFERENT from what is on screen.\n" +
+        "WHEN `do` IS `change`: a piece is already on screen and they are modifying it - meaner, " +
+        "more colour, lose the flowers, that but bigger. `prompt` is then ONLY the change, in a " +
+        "few words, because the picture itself is the starting point.\n" +
+        "WHEN `do` IS `none`: the conversation is the right next step. `prompt` is empty.\n\n" +
+        "WRITING `prompt` FOR A DRAW - this is the part that decides whether it looks like " +
+        "something they would put on their body. Describe the finished piece the way an artist " +
+        "would brief it: what it is, how it is drawn, the linework and shading, the palette, how " +
+        "it sits in the frame. Use everything they have told you and nothing they have not - no " +
+        "style they did not name, no placement they did not name. Two or three sentences. Never " +
+        "just repeat their words back.\n" +
+        "IF YOUR `say` CLAIMS YOU ARE SHOWING THEM SOMETHING, `do` MUST NOT BE `none`.";
+
+      const stateNote = (lastDrawn && lastDrawn.design)
+        ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
+          (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
+        : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.";
+
+      const fullSys = talkSys + stateNote + CONTRACT;
+
+      // Her own agent first - own instance, own memory, own continuity - then the local floor.
+      // Both get the same contract, so the shape of the answer does not depend on which replied.
+      const readAct = (txt) => {
+        let o = null;
+        try { o = JSON.parse(String(txt || "").trim()); }
+        catch { try { o = repairJson(String(txt || "")); } catch {} }
+        if (o) o = unwrapSchema(o);
+        if (!o || typeof o !== "object") return null;
+        const say = typeof o.say === "string" ? o.say.trim() : "";
+        if (!say) return null;
+        const act = String(o.do || "none").trim().toLowerCase();
+        return { say,
+                 act: ["draw", "change", "none"].includes(act) ? act : "none",
+                 prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "" };
+      };
+
+      let acted = null, agentVia = null;
       if (me && stage === "pta") {
         try {
-          const ask =
-            "[A person is designing a tattoo with you on mytattoo.world. This is their own " +
-            "conversation - answer as yourself, from what you know about them and what you have.]\n\n" +
-            talkSys + "\n\nTHEY SAID: " + said;
-          const proxied = await proxyToAgent(env, ask, false, me);
+          const proxied = await proxyToAgent(env,
+            "[A person is designing a tattoo with you on mytattoo.world. Answer as yourself, " +
+            "from what you know about them.]\n\n" + fullSys + "\n\nTHEY SAID: " + said,
+            false, me);
           if (proxied && proxied.reply && !proxied.failed) {
-            agentSaid = String(proxied.reply).trim();
-            agentVia = proxied.instance || "agent";
+            acted = readAct(proxied.reply);
+            if (acted) agentVia = proxied.instance || "agent";
           }
         } catch {}
       }
 
-      const [r, g, iRes] = await Promise.all([
-      callBrain({
-        model: talkModel,
-        system: talkSys,
-        messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
-                                       content: String(h.said || "").slice(0, 1500) })),
-                   { role: "user", content: said }],
-        max_tokens: 400
-      }, env),
-      callBrain({
-        model: talkModel,
-        // A separate, cheap read of "are they ready" - kept apart from her reply so she
-        // never has to emit machine syntax in the middle of a human sentence. Runs BESIDE
-        // her answer rather than after it.
-          // ══ SHE DECIDES WHEN TO SHOW, NOT AN IF-STATEMENT (2026-08-24) ═══════════════
-          // The page had been made to send every typed sentence straight to a picture search,
-          // which meant somebody who wrote "my mum passed away and she loved cats" was answered
-          // with "I can't find a picture of yours on the internet". A grieving person got a
-          // vending machine, and the conversation that was already here never ran at all.
-          // Showing real work is a good move at the right moment - and knowing WHICH moment is
-          // exactly the judgement a model has and a regex does not. So this one cheap read now
-          // has three answers instead of two, and she picks.
-          // ══ IT COULD NOT SEE THE SCREEN (2026-09-07) ═══════════════════════════════════════
-          // MEASURED: "make it meaner" returned DRAW and produced a brand new dragon, when a
-          // piece was already on screen and CHANGE was the whole point of the branch. The
-          // instruction said "if nothing has been drawn yet, this is a DRAW" - and nothing ever
-          // told it whether anything had been drawn. It read a transcript and guessed.
-          // A rule about the state of the world is worthless to something that cannot see it.
-          // ══ FEWER RULES, NOT BETTER ONES (2026-09-07) ══════════════════════════════════════
-          // This had a fourth answer, CHANGE, and three runs of "make it meaner" produced a
-          // redraw, a redraw, and silence. Each failure got another paragraph of caveats, and the
-          // next run found a new way through them. Asking one cheap model to pick among four
-          // shapes with prose about which is which is the failure, not the wording.
-          // SO IT NO LONGER DECIDES. Draw-or-change is not a judgement, it is a FACT we already
-          // hold: she has drawn something, and the brief says whether the subject moved. That is
-          // derived below in code, deterministically, and the model is left with the one question
-          // it answers well - is this a moment for a picture at all.
-          system: "Read the conversation and decide what should happen next. Reply with ONE line, " +
-            "in one of exactly three shapes and nothing else:\n\n" +
-            "DRAW: <one line, USING ONLY WHAT THEY HAVE ACTUALLY SAID>\n" +
-            "   Use this when they have described it concretely enough to draw, or have asked " +
-            "to see it.\n" +
-            // MEASURED 2026-09-07: "I want a dragon tattoo" produced "dragon tattoo, traditional
-            // style, on forearm". They said neither. The invented placement then put the drawing
-            // ON SKIN, so one invention cost both the style and the format.
-            "   INVENT NOTHING. No style they did not name, no placement they did not name, no " +
-            "size, no colour. A bare subject is a fine DRAW line - the blanks are what the next " +
-            "question is for. If they did not say where it goes, say nothing about where it " +
-            "goes: it is a piece of flash on paper, not a photograph of an arm.\n" +
-            "   A PLAIN REQUEST IS A DRAW. \"can you do mount rushmore\", \"I want a wolf\", " +
-            "\"do a koi\" - they asked. Draw it. Do not wait to be asked again.\n\n" +
-
-            (noBook ? "" :
-            "SHOW: <two to five words naming the subject to look for>\n" +
-            "   Use this when they have named something they want but have not settled the " +
-            "details, and seeing real work on real people would move them along faster than " +
-            "another question. A cat, a dragon, a rose. NEVER use SHOW for something personal " +
-            "that no search could find - their own pet, a relative, somebody's handwriting - " +
-            "and never immediately after somebody has told you something sad. Talk to them " +
-            "first.\n\n") +
-            "NOT_YET\n" +
-            "   Use this when the conversation itself is the right next step - they are working " +
-            "out what they want, or they have just said something that deserves a human " +
-            "response before anything is shown to them.\n\n" +
-            // The other half of the same deadlock: she asks "want me to draw it?", this reads the
-            // unanswered question and waits. Two halves of one system waiting for each other.
-            "JUDGE WHAT *THEY* SAID, NOT WHAT AURA SAID. If Aura offered to draw and they have " +
-            "already named the thing or the change, that is a DRAW or a CHANGE - do not wait for " +
-            "them to answer a question Aura asked itself. Their last message is the instruction.",
+      const [r, iRes] = await Promise.all([
+        acted ? Promise.resolve(null) : callBrain({
+          model: talkModel,
+          system: fullSys,
           messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
                                          content: String(h.said || "").slice(0, 1500) })),
                      { role: "user", content: said }],
-          max_tokens: 120
-        }, env).catch(() => null),
-        // ══ THE THIRD READ: THE FACTS, AS FIELDS ═════════════════════════════════════════
-        // Beside her reply rather than after it. It reads the same conversation the other two
-        // read and depends on neither, so it costs no extra wait.
-        // She is told the SHAPE and told to leave out what she does not know. A model that
-        // guesses a placement nobody mentioned would tick a stage the person never answered,
-        // and they would never be asked - which is worse than asking twice.
+          max_tokens: 500
+        }, env),
+
+        // The facts, read beside her answer rather than after it. Same conversation, no
+        // dependency between them, so they go together.
         callBrain({
           model: talkModel,
           system:
             "Read the conversation and return the FACTS about the tattoo being designed, as JSON.\n\n" +
             "Return ONLY the JSON object. No preamble, no markdown fence.\n\n" +
             "{\n" +
-            '  "subject": "what the tattoo is OF, in their words - a labrador, a japanese dragon, ' +
-            'Clifford the Big Red Dog surfing in Malibu",\n' +
-            '  "subject_path": ["animals","dogs","labrador"],\n' +
+            '  "subject": "what the tattoo is OF, in their words",\n' +
             '  "job": "new | cover | add | rework",\n' +
             '  "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
             '  "colour": "full_colour | black_and_grey | muted",\n' +
-            '  "composition": "what the picture is OF - head portrait, head and chest, ' +
-            'full body sitting, coiled, flying, single bloom, a bouquet",\n' +
-            '  "character": "what it should feel like - happy, loving, fierce, majestic, delicate, menacing",\n' +
+            '  "composition": "what the picture is OF - head portrait, coiled, flying, a bouquet",\n' +
+            '  "character": "what it should feel like - fierce, delicate, menacing, joyful",\n' +
             '  "detail": "bold | balanced | intricate | ultra",\n' +
+            '  "placement": "where on the body, only if they said",\n' +
+            '  "size": "how big, only if they said",\n' +
             '  "elements": ["cherry blossoms","waves"],\n' +
             '  "meaning": "why they are getting it - who it is for, what happened",\n' +
-            '  "brief": "one paragraph, at most 60 words, describing the tattoo for a tattoo artist to read"\n' +
+            '  "brief": "one paragraph, at most 60 words, for a tattoo artist to read"\n' +
             "}\n\n" +
             (carried ? "WHAT IS ALREADY SETTLED - carry every one of these forward unless this " +
               "message CHANGES it:\n" + carried + "\n\n" : "") +
             "RULES:\n" +
-            // MEASURED 2026-09-07: "can you do mount rushmore" wiped `subject: a dragon` to null,
-            // because each extraction read the conversation cold. A brief that forgets its own
-            // subject cannot support "meaner" or "the head from number 1" two turns later.
-            // MEASURED 2026-09-07, twice, in opposite directions. First the subject wiped on any
-            // new noun; then this rule over-corrected and "can you do mount rushmore" left the
-            // subject as "a dragon" three turns running. The distinction is not how new the noun
-            // is - it is whether they ASKED FOR A THING or DESCRIBED THE THING THEY HAVE.
             "- A PLAIN REQUEST FOR A THING REPLACES THE SUBJECT. \"can you do mount rushmore\", " +
-            "\"actually a koi\", \"do a wolf instead\" - that is a new subject, and everything " +
-            "that described the OLD subject (composition, elements) goes with it.\n" +
-            "- A DELTA MODIFIES IT. \"meaner\", \"more colour\", \"bigger\", \"the head from " +
-            "number 1\" describe the SAME subject - keep it and set the field they changed. " +
-            "\"meaner\" is `character`, not a new subject.\n" +
-            "- OMIT ANY FIELD THEY HAVE NOT SETTLED. Do not guess and do not fill a field with " +
-            "a sensible default. An empty field means she asks; a wrong one means she never does.\n" +
-            "- A CORRECTION REPLACES what it corrects. Three legs then one leg is ONE leg, and " +
-            "three is never mentioned again.\n" +
-            "- Leave out anything YOU suggested that they did not take up.\n" +
-            "- `subject_path` only when they arrived through the categories. Omit it when they " +
-            "simply said what they wanted.\n" +
-            "- `meaning` is the most important field at the far end. If they told you somebody " +
-            "died, or who it is for, or what they have been through, it goes here in plain words.\n" +
-            "- `brief` describes the TATTOO, never the conversation.",
-          messages: [
-            ...(b.brief ? [{ role: "assistant", content: "Brief so far: " + String(b.brief).slice(0, 400) }] : []),
-            ...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
-                                content: String(h.said || "").slice(0, 1500) })),
-            { role: "user", content: said }],
-          max_tokens: 500
-        }, env).catch(() => null)
+            "\"do a wolf instead\" - new subject, and everything describing the OLD subject goes " +
+            "with it.\n" +
+            "- A DELTA MODIFIES IT. \"meaner\", \"more colour\", \"bigger\" describe the SAME " +
+            "subject - keep it and set the field they changed.\n" +
+            "- OMIT ANY FIELD THEY HAVE NOT SETTLED. Do not guess and do not fill a field with a " +
+            "sensible default. An empty field means she asks; a wrong one means she never does.\n" +
+            "- A CORRECTION REPLACES what it corrects. Three legs then one leg is ONE leg.\n" +
+            "- Leave out anything YOU suggested that they did not take up.",
+          messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
+                                         content: String(h.said || "").slice(0, 1500) })),
+                     { role: "user", content: said }],
+          max_tokens: 700
+        }, env).catch(() => null),
       ]);
-      if (!r?.ok) return { ok: false, error: "COULD_NOT_ANSWER", detail: r?.error || null };
-      let ready = null, show = null, change = null;
-      const t = String(g?.text || "").trim();
-      if (g?.ok && t) {
-        const mDraw = t.match(/^DRAW:\s*(.+)$/is);
-        const mShow = t.match(/^SHOW:\s*(.+)$/is);
-        if (mDraw) ready = mDraw[1].trim().slice(0, 400);
-        else if (mShow) show = mShow[1].trim().replace(/[."]+$/, "").slice(0, 80);
-        // Anything else - NOT_YET, or a model that ignored the shape - means keep talking, which
-        // is the safe default and the one that was right before today.
-      }
+
+      // Her answer, however it arrived. The local call is the floor beneath her own instance.
+      if (!acted && r?.ok && r.text) acted = readAct(r.text);
+      // JSON that could not be read at all still has to say something - the raw text is a worse
+      // answer than a good one and a far better answer than silence.
+      if (!acted) acted = { say: String(r?.text || "").trim() || "Tell me a bit more.",
+                            act: "none", prompt: "" };
+
       // ══ THE BRIEF — FACTS, NOT TURNS ═══════════════════════════════════════════════════
       // "One leg." "Green eyes." "It's for my mum." Those are FACTS about what is being made,
       // and they lived in a conversation window that scrolls - so somebody had to keep repeating
@@ -59210,7 +59158,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         const tsNow = new Date().toISOString();
         try {
           tline.push({ ts: tsNow, role: "them", said: said.slice(0, 600) });
-          tline.push({ ts: tsNow, role: "aura", said: String(agentSaid || r.text || "").slice(0, 600) });
+          tline.push({ ts: tsNow, role: "aura", said: String(acted.say || "").slice(0, 600) });
           // Bounded. This is a cache, not the archive - the chain holds the whole history and
           // an unbounded KV value eventually stops being writable at all.
           if (tline.length > 60) tline = tline.slice(-60);
@@ -59225,7 +59173,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         // method, so a lead costs no wasted D1 read and no wasted Durable Object fetch, and the
         // refusal is never something anybody has to see.
         if (stage === "pta") {
-          for (const [who, text] of [["them", said], ["aura", String(agentSaid || r.text || "")]]) {
+          for (const [who, text] of [["them", said], ["aura", String(acted.say || "")]]) {
             const line = String(text || "").trim();
             if (!line) continue;
             try {
@@ -59255,68 +59203,38 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // one stays where it is rather than being mutated into something it is not.
       // The comparison is on the brief's own subject, which is already cumulative and already
       // correct; it survived three builds of the classifier getting this wrong.
-      // THE BRIEF IS THE TRIGGER, not the classifier. MEASURED: "make it meaner" produced a
-      // redraw, a redraw, silence, and silence again - four builds, each one a different route to
-      // the same dead end, because every version still asked a model to judge it. Meanwhile the
-      // brief was right every single time: `character: "menacing"` appeared on the turn they asked
-      // for it and did not exist the turn before.
-      // A NEW FACT ABOUT THE SAME SUBJECT, WITH A PICTURE ALREADY DRAWN, IS A CHANGE. That is not
-      // an opinion, it is a diff of two objects, and it does not need permission from anybody.
-      if (me && lastDrawn && lastDrawn.design && intent && typeof intent === "object") {
-        const wasSubj = String(lastDrawn.subject || "").trim().toLowerCase();
-        const nowSubj = String(intent.subject || "").trim().toLowerCase();
-        const sameSubject = wasSubj && nowSubj && (wasSubj === nowSubj ||
-          wasSubj.includes(nowSubj) || nowSubj.includes(wasSubj));
-        // What they settled this turn that was not settled before.
-        const before = carriedObj || {};
-        const moved = ["style", "character", "composition", "colour", "detail", "elements",
-                       "placement", "size"].filter((k) => {
-          const a = intent[k] == null ? "" : String(intent[k]);
-          const b = before[k] == null ? "" : String(before[k]);
-          return a && a !== b;
-        });
-        if (sameSubject && moved.length) { change = said.slice(0, 400); ready = null; }
-      }
-
+      // ══ SHE SAID IT, SO IT HAPPENS ════════════════════════════════════════════════════════
+      // No classifier, no diff of the brief, no inference. `acted.act` came out of the same
+      // sentence as `acted.say`, so the words and the act cannot contradict each other.
+      // A change with nothing to change is a first drawing - the only correction still needed,
+      // and it is a fact rather than a judgement.
       let drew = null;
-      // ══ A CHANGE STACKS ON THE PICTURE, NOT ON THE WORDS ══════════════════════════════════
-      // `IMAGE EVOLVE` builds the new subject as parent + change, so the piece on screen is the
-      // starting point and only the named thing moves. Redrawing from a sentence produced three
-      // unrelated dragons and no lineage.
-      if (change && me && lastDrawn && lastDrawn.design) {
+      const hasParent = !!(me && lastDrawn && lastDrawn.design);
+      let act = acted.act;
+      if (act === "change" && !hasParent) act = "draw";
+
+      if (act === "change" && me) {
+        // `IMAGE EVOLVE` sends the PARENT'S PIXELS with the instruction, so the piece on screen
+        // is the starting point and only the named thing moves. Redrawing from a sentence is what
+        // produced a bibliography of near-misses.
         try {
           const cr = await processCommand("IMAGE EVOLVE " + lastDrawn.design + " " +
-            JSON.stringify({ prompt: change, by: me }), env, true);
+            JSON.stringify({ prompt: acted.prompt || said, by: me }), env, true);
           const cp = (cr && cr.payload) ? cr.payload : cr;
           if (cp?.ok && cp.image_url) {
-            drew = { design: cp.child, image: cp.image_url, changed: change,
+            drew = { design: cp.child, image: cp.image_url, changed: acted.prompt || said,
                      from: lastDrawn.design };
           } else {
-            // Falling through to a fresh draw would silently discard the lineage, which is the
-            // thing this branch exists to protect. Say it failed instead.
-            drew = { failed: cp?.error || "COULD_NOT_CHANGE", changed: change,
+            drew = { failed: cp?.error || "COULD_NOT_CHANGE", changed: acted.prompt || said,
                      from: lastDrawn.design };
           }
-        } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160), changed: change }; }
-      }
-      // A change with nothing drawn yet is just a first drawing.
-      if (change && !drew) ready = ready || change;
-
-      // ══ A SHOW NOBODY CAN FULFIL IS A DRAW (2026-09-07) ═══════════════════════════════════
-      // MEASURED: "I want a dragon tattoo" returned SHOW on one run and DRAW on the next - the
-      // same sentence, a coin toss. On the SHOW run the turn produced NOTHING: `show_me` names a
-      // subject and nobody acts on it, so she decided to show somebody something and the screen
-      // stayed empty.
-      // The rule that fixes it is the doctrine already written down: a failed search is a routing
-      // event, not a conversational one. If there is nothing to show her, make them one. That is
-      // the product - the book is optional, the drawing is not.
-      if (show && !ready && !drew && !withPics.length) {
-        ready = show;
-        show = null;
-      }
-      if (ready && !drew && me) {
+        } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
+      } else if (act === "draw" && me) {
+        // HER PROMPT, NOT THEIR SENTENCE. This is the expansion the whole redesign was for: she
+        // writes what the piece looks like, the image model receives that, and nobody hands four
+        // typed words to a diffusion model and hopes.
         try {
-          const askLine = String(ready).trim().slice(0, 600);
+          const askLine = String(acted.prompt || said).trim().slice(0, 900);
           const dr = await processCommand("SHOW_IT " + JSON.stringify({
             subject: tatBuildAsk(askLine, [], {}, null),
             context: "a tattoo somebody is designing for themselves: " + askLine,
@@ -59330,9 +59248,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           } else {
             drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
           }
-        } catch (e) {
-          drew = { failed: String(e?.message ?? e).slice(0, 160) };
-        }
+        } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
       }
 
       if (me && drew && drew.image && !drew.failed) {
@@ -59370,8 +59286,9 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         } catch {}
       }
 
-      return { ok: true, said: agentSaid || r.text, ready_to_draw: ready, show_me: show,
-               ...(change ? { change } : {}), brief, intent,
+      return { ok: true, said: acted.say, act: acted.act,
+               ...(acted.prompt ? { prompt: acted.prompt } : {}),
+               brief, intent,
                // The picture, when she decided to make one. `image` is a real URL to open.
                ...(drew ? { drew } : {}),
                // What she was looking at when she answered - numbered, so "the second one" means

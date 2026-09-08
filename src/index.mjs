@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.174.0-2026-09-08-what-a-cover-up-actually-is";
+const BUILD = "aura-core-v9.176.0-2026-09-08-say-only-what-changes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58952,6 +58952,22 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         "through dark ink. This is not a preference, it is what happens in the skin.\n" +
         "  - BIGGER, ALWAYS. The new piece has to go past the outer edge of the old one. There is " +
         "no way around it.\n" +
+        // ══ BIGGER IS NOT THE SAME AS COVERING (2026-09-08) ═══════════════════════════════
+        // MEASURED against Grok on the same photograph: asked to cover a large portrait, she
+        // wrote "a T-rex standing tall over the old portrait, larger than the old piece" and got
+        // a small full-body dinosaur standing in the middle of bare skin. The portrait would
+        // still be plainly visible around it. Grok drew the HEAD, filling the whole area.
+        // A standing animal is a narrow silhouette with legs and gaps - the worst possible shape
+        // for a cover at any size. What matters is not how big the subject is, it is how much of
+        // the old ink is under new ink.
+        "  - IT MUST FILL THE FOOTPRINT. No bare skin left where the old tattoo sits. Bigger is " +
+        "not the same as covering - something standing in the middle of the old piece leaves gaps " +
+        "all round it and hides nothing.\n" +
+        // Everything above is for the CONVERSATION - what she tells the person, so they know why
+        // a fine-line rose over a black portrait is not on the table. It is not for the prompt.
+        "  THIS IS WHAT YOU EXPLAIN TO THEM. It is not something to write into a drawing " +
+        "instruction - the thing that draws can see their arm and will compose it better than a " +
+        "sentence about composition ever could.\n" +
         "  - DENSITY IS THE WHOLE JOB. Fine line does not cover - it lives on negative space and " +
         "the old ink shows through it. Colour realism does not cover either; it is translucent by " +
         "technique. Neo-traditional, blackwork, japanese and solid illustrative work do cover, and " +
@@ -59182,6 +59198,12 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         "WRITING `prompt` - DESCRIBE THE THING, NOT THE RENDERING. What it is, what it is doing, " +
         "how it sits, what it should feel like. Use everything they have told you and nothing " +
         "they have not - no placement they did not name.\n" +
+        "WHEN YOU ARE CHANGING A PICTURE THAT ALREADY EXISTS - a cover-up, an addition, a rework, " +
+        "or any edit - SAY ONLY WHAT CHANGES. \"a dinosaur\", \"add a shark\", \"meaner\". " +
+        "The picture itself is already in front of the thing that draws it, so it can see the arm, " +
+        "the skin, the old ink and the space. It composes better than a sentence can. Do NOT " +
+        "describe the pose, the framing, the size or where it sits - a pose you invent from a " +
+        "description is a pose nobody looked at, and it will be obeyed.\n" +
         "SAY NOTHING ABOUT LINEWORK, SHADING, COLOUR OR FINISH unless they asked for it by name. " +
         "The house handles how it is drawn; you handle what is drawn. \"A dragon coiled tight, " +
         "head low and jaws open\" is right. \"Clean black linework with shading\" is not yours " +
@@ -59547,10 +59569,18 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
               ? ". Keep the same arm, the same skin and the same photograph - only the tattoo " +
                 "changes. Every other tattoo already on this body stays exactly where it is and " +
                 "as it is." +
-                (jobNow === "cover"
-                  ? " The new piece must sit OVER the old one, larger than it and dark enough " +
-                    "that the old linework cannot be read underneath."
-                  : "") +
+                // ══ THE MODEL DRAWING IT CAN SEE THE ARM (2026-09-08) ══════════════════════
+                // Aaron sent Grok the photograph and eleven words - "cover it up with a dinosaur,
+                // show me on my arm" - and got jaws filling the whole portrait. We sent a
+                // paragraph and got a small standing T-rex with bare skin all round it.
+                // The difference is not the model. It is that HER prompt was written from a text
+                // description by something that never saw the arm, and it said "standing tall" -
+                // so the image model, which COULD see the arm, obediently drew a standing pose
+                // with legs and gaps. We overrode the one thing in the chain that was looking.
+                // Every composition rule I wrote here was compensating for a blindness that only
+                // existed because of this handoff. `add a shark` worked perfectly on the koi back
+                // piece for the same reason: five words, and the model composed it.
+                (jobNow === "cover" ? " Cover the old tattoo completely." : "") +
                 " Plain background, no logo, watermark or text."
               // Somebody else's reference photo - take the artwork, lose their studio.
               : ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +

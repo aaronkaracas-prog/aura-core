@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.180.0-2026-09-08-the-description-is-provenance";
+const BUILD = "aura-core-v9.181.0-2026-09-08-their-moment-in-their-own-index";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59707,6 +59707,38 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
             drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
           }
         } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
+      }
+
+      // ══ THEIR MOMENT, IN THEIR OWN INDEX (2026-09-08) ═════════════════════════════════════
+      // `auraRemember` embeds every remembered moment into Vectorize - and every one of its
+      // sixteen call sites is AURA'S life: self-edits, plans, lessons, failures. A customer's
+      // design reached their chain and never reached the index, so "the tattoo I made the week my
+      // mum died" would find nothing while "what did I patch on August 3rd" works perfectly.
+      // NOT via auraRemember: it hardcodes `ownerSubject(env)`, so it would file their tattoo
+      // under Aura's identity. `storeEventVector` keys the vector `entityId:eventId`, which puts
+      // it under THEIR PTA - filterable, and reachable by the same revocation that governs their
+      // chain. A second copy somewhere their revoke cannot reach is the pattern this file has
+      // paid for more than once.
+      // GATED ON `kept`, which is the live `can_remember` grant. No grant, no chain entry, and no
+      // vector either - the two stay in step because they are the same consent.
+      // `kept` is computed inline in the return, not a variable here - referencing it would have
+      // thrown outside the try and killed every draw. `stage === "pta"` is the same condition.
+      if (me && stage === "pta" && drew && drew.image && !drew.failed && env.VECTORIZE && env.AI) {
+        try {
+          const what = [
+            drew.changed || drew.asked || said,
+            intent && intent.subject ? "subject: " + intent.subject : null,
+            intent && intent.style ? "style: " + intent.style : null,
+            intent && intent.composition ? "composition: " + intent.composition : null,
+            intent && intent.colour ? "colour: " + intent.colour : null,
+            intent && intent.placement ? "on the " + intent.placement : null,
+            // The reason it exists, when they gave one. The part no model can reconstruct.
+            intent && intent.meaning ? "why: " + intent.meaning : null,
+            jobNow && jobNow !== "new" ? "a " + jobNow : null
+          ].filter(Boolean).join(". ");
+          await storeEventVector(me, "design:" + (drew.design || Date.now()),
+            "A tattoo design they made. " + what, env, "stated", "mytattoo");
+        } catch {}
       }
 
       if (me && drew && drew.image && !drew.failed) {

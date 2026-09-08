@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.178.0-2026-09-08-only-the-first-starts-from-the-photo";
+const BUILD = "aura-core-v9.179.0-2026-09-08-a-held-reference-is-not-a-parent";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59110,7 +59110,15 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // new subject and a new parent, and everything that described the old one goes with it.
       if (refDesign && !refHeld) { carriedObj = null; }
 
-      const pickFrom = String((opts && opts.from) || "").trim() || refDesign || "";
+      // ══ A HELD REFERENCE IS NOT A PARENT (2026-09-08) ═════════════════════════════════════
+      // MEASURED: three turns of a cover-up, and `from` was the original PHOTOGRAPH every time -
+      // so the T-rex was never there to modify and each change started from the bare arm again.
+      // Last build's guard was right and this line undid it before it ran: `refDesign` is set on
+      // every turn once a photo is on file, so it became the parent forever.
+      // Only a reference that ARRIVED THIS TURN is a starting point. One that is merely being
+      // carried is context - it tells her what is on the arm, not what to draw on top of.
+      const pickFrom = String((opts && opts.from) || "").trim() ||
+                       (refHeld ? "" : (refDesign || ""));
       if (pickFrom && me) {
         // Their own graph decides whether it is theirs - a design id from a caller is a claim,
         // not a fact, and a composite of somebody else's picture is the failure `onme` already
@@ -59193,6 +59201,12 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         // same breath and there is nothing to argue with.
         "NOTHING IS DRAWN UNTIL THEY SAY GO. Put an idea on the table, ask if they want to see it, " +
         "and wait. `do` stays `none` while you are still talking about it.\n" +
+        // MEASURED: "I want to cover this up with a dinosaur" drew on the turn it arrived, twice.
+        // Naming a subject in the same breath as sending a photo is not the same as approving a
+        // design - they have not seen an idea yet, so there is nothing for them to have approved.
+        "THE TURN A PHOTOGRAPH ARRIVES IS ALWAYS A CONVERSATION. Say what you see, say what you " +
+        "would do with it, ask if they want to see it. `do` is `none` on that turn even if they " +
+        "named what they want in the same sentence.\n" +
         "WHEN `do` IS `draw`: THEY HAVE SAID YES. \"go for it\", \"yeah do it\", \"show me\", " +
         "\"let's see it\" - or they asked outright for a picture. Never on your own judgement " +
         "that the idea is good enough.\n" +
@@ -59566,6 +59580,8 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       const startsFromPhoto = !(lastDrawn && lastDrawn.design && lastDrawn.design !== refDesign);
       if (act === "draw" && refDesign && startsFromPhoto &&
           ["cover", "add", "rework"].includes(jobNow)) {
+        // First piece on their skin - the photograph is the canvas. After that, whatever she
+        // drew last is.
         act = "change";
         lastDrawn = { design: refDesign, subject: (intent && intent.subject) || null };
       }

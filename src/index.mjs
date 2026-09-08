@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.172.0-2026-09-07-a-noun-is-not-a-design";
+const BUILD = "aura-core-v9.173.0-2026-09-07-on-the-same-arm";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59467,6 +59467,20 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       let act = acted.act;
       if (act === "change" && !hasParent) act = "draw";
 
+      // ══ IT HAS TO COME BACK ON THE SAME ARM (2026-09-07) ══════════════════════════════════
+      // MEASURED: a cover-up dolphin drawn as a fresh piece "on the forearm" - a forearm, not
+      // THEIRS. Aaron: "it still needs to come back on the same arm, because when we do add-ons
+      // it's going to be the same exact thing. There'll be other tattoos around it."
+      // A cover, an add or a rework is not a new drawing that mentions a body part. It is a
+      // change to the photograph they sent - their skin, their existing ink, their arm - and
+      // everything around the new piece has to survive. The mandala legs already proved the edit
+      // lane holds a body still while the artwork changes.
+      const jobNow = String((intent && intent.job) || "").toLowerCase();
+      if (act === "draw" && refDesign && ["cover", "add", "rework"].includes(jobNow)) {
+        act = "change";
+        lastDrawn = { design: refDesign, subject: (intent && intent.subject) || null };
+      }
+
       if (act === "change" && me) {
         // `IMAGE EVOLVE` sends the PARENT'S PIXELS with the instruction, so the piece on screen
         // is the starting point and only the named thing moves. Redrawing from a sentence is what
@@ -59480,11 +59494,24 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           // What they want is the limb and the artwork. Somebody else's branding on a picture we
           // hand a customer is worse than untidy - it is another shop's name on our work.
           const fromRef = !!(refDesign && lastDrawn.design === refDesign);
-          const cleanUp = fromRef
-            ? ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +
-              "nothing else in frame - no studio, no furniture, no other people or hands, and no " +
-              "logo, watermark or text of any kind."
-            : "";
+          const onTheirSkin = fromRef && ["cover", "add", "rework"].includes(jobNow);
+          const cleanUp = !fromRef ? ""
+            : onTheirSkin
+              // Their own arm. The body stays exactly as it is - same limb, same skin, same
+              // surrounding ink - and only the piece changes. For an add-on especially: the
+              // neighbouring tattoos are the reason they sent this photograph.
+              ? ". Keep the same arm, the same skin and the same photograph - only the tattoo " +
+                "changes. Every other tattoo already on this body stays exactly where it is and " +
+                "as it is." +
+                (jobNow === "cover"
+                  ? " The new piece must sit OVER the old one, larger than it and dark enough " +
+                    "that the old linework cannot be read underneath."
+                  : "") +
+                " Plain background, no logo, watermark or text."
+              // Somebody else's reference photo - take the artwork, lose their studio.
+              : ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +
+                "nothing else in frame - no studio, no furniture, no other people or hands, and " +
+                "no logo, watermark or text of any kind.";
           const cr = await processCommand("IMAGE EVOLVE " + lastDrawn.design + " " +
             JSON.stringify({ prompt: (acted.prompt || said) + cleanUp, by: me }), env, true);
           const cp = (cr && cr.payload) ? cr.payload : cr;

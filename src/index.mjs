@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.176.0-2026-09-08-say-only-what-changes";
+const BUILD = "aura-core-v9.177.0-2026-09-08-nothing-is-drawn-until-they-say-go";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59011,20 +59011,17 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           "table and let them push it around. \"A dolphin coming up through a wave with palm " +
           "trees behind it - or something simpler, just the one animal?\" One idea, specific " +
           "enough to react to, and one question. Then draw what they land on.\n\n" +
-          "WHEN THEY NAME A THING, DRAW IT - DO NOT ASK PERMISSION. Mount Rushmore, a dragon, " +
-          "their dog - if they asked for a thing, the answer is a picture of it. Say what you " +
-          "are making, in a few words, and it appears alongside your reply. NEVER answer a " +
-          "request for a thing with a list of other things that share a word with it.\n" +
+          "WHEN THEY NAME A THING, TAKE IT SOMEWHERE - do not answer with a list of other " +
+          "things that share a word with it, and do not just draw it either. Say what you would " +
+          "make of it and offer to show them.\n" +
           // MEASURED 2026-09-07: "make it meaner" three times gave a redraw, a redraw, then
           // NOTHING. She replied "Want me to draw it?" and the reader of that conversation saw an
           // unanswered question and waited. She asked permission, the machine waited for the
           // answer, and the turn died between them. A person who said "make it meaner" has
           // already asked; asking again is a toll booth, not manners.
-          "\"Want me to draw it?\" IS NOT A REPLY. They already asked. Say \"here it is, " +
-          "meaner\" and let the picture do the rest.\n" +
-          "THE DIFFERENCE IS WHETHER THEY HAVE DECIDED. \"Do a wolf on my forearm\" is an " +
-          "instruction - draw it. \"I like wolves\" is an opening - offer an idea first. When " +
-          "you cannot tell, one short question beats a wrong picture, and never more than one.\n\n" +
+          "ONCE THEY HAVE SAID GO, STOP ASKING. \"Here it is, meaner\" - not \"want me to " +
+          "draw it?\" again. The permission holds for the rest of the piece; every change after " +
+          "that is just work.\n\n" +
           "ANSWERING QUESTIONS IS PART OF THE JOB. If they ask how any of this works, answer " +
           "plainly and for free. GROUND IN TRUTH: only state something about how the product " +
           "works if it is written below. If it is not, say you will find out rather than " +
@@ -59182,8 +59179,23 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         '  "do": "draw | change | none",\n' +
         '  "prompt": "the image description, when do is draw or change"\n' +
         "}\n\n" +
-        "WHEN `do` IS `draw`: they asked for a thing and nothing has been made yet, or they want " +
-        "something DIFFERENT from what is on screen.\n" +
+        // ══ THE DISCUSSION DECIDES WHEN, NOT YOU (2026-09-08) ════════════════════════════════
+        // Aaron, after a dinosaur appeared on turn one: "the discussion happens with Aura and she
+        // says shall I show you, and the person says yes go for it. There has to be discussion and
+        // something has to trigger draw. Otherwise we're going to keep tossing images up in the
+        // air."
+        // A picture costs money and a sentence does not, but that is the smaller reason. The
+        // bigger one is that a person who has said four words has not decided anything yet, and
+        // handing them a rendering ends a conversation that had barely started.
+        // This is safe now in a way it was not this morning. The deadlock then - she offered, a
+        // separate classifier read the unanswered question and waited, nothing happened for three
+        // turns - came from TWO calls disagreeing. This is one call, so she offers and acts in the
+        // same breath and there is nothing to argue with.
+        "NOTHING IS DRAWN UNTIL THEY SAY GO. Put an idea on the table, ask if they want to see it, " +
+        "and wait. `do` stays `none` while you are still talking about it.\n" +
+        "WHEN `do` IS `draw`: THEY HAVE SAID YES. \"go for it\", \"yeah do it\", \"show me\", " +
+        "\"let's see it\" - or they asked outright for a picture. Never on your own judgement " +
+        "that the idea is good enough.\n" +
         "WHEN `do` IS `change`: a piece is already on screen and they are modifying it - meaner, " +
         "more colour, lose the flowers, that but bigger. `prompt` is then ONLY the change, in a " +
         "few words, because the picture itself is the starting point.\n" +
@@ -59199,7 +59211,9 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         "how it sits, what it should feel like. Use everything they have told you and nothing " +
         "they have not - no placement they did not name.\n" +
         "WHEN YOU ARE CHANGING A PICTURE THAT ALREADY EXISTS - a cover-up, an addition, a rework, " +
-        "or any edit - SAY ONLY WHAT CHANGES. \"a dinosaur\", \"add a shark\", \"meaner\". " +
+        "or any edit - SAY ONLY WHAT CHANGES, IN UNDER EIGHT WORDS. \"a dinosaur\", \"add a " +
+        "shark\", \"meaner\". If you have written more than eight words you are composing, and " +
+        "composing is not your job here. " +
         "The picture itself is already in front of the thing that draws it, so it can see the arm, " +
         "the skin, the old ink and the space. It composes better than a sentence can. Do NOT " +
         "describe the pose, the framing, the size or where it sits - a pose you invent from a " +

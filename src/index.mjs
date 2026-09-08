@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.177.0-2026-09-08-nothing-is-drawn-until-they-say-go";
+const BUILD = "aura-core-v9.178.0-2026-09-08-only-the-first-starts-from-the-photo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59556,7 +59556,16 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // everything around the new piece has to survive. The mandala legs already proved the edit
       // lane holds a body still while the artwork changes.
       const jobNow = String((intent && intent.job) || "").toLowerCase();
-      if (act === "draw" && refDesign && ["cover", "add", "rework"].includes(jobNow)) {
+      // ══ ONLY THE FIRST ONE STARTS FROM THE PHOTOGRAPH (2026-09-08) ════════════════════════
+      // MEASURED: the T-rex cover came out right, and then "make it stepping on a police car"
+      // drew a WOMAN crouching on a car - no dinosaur at all. `from` was the same entity on both
+      // turns: the original photo. This forced the reference to be the parent on EVERY cover
+      // turn, so each change went back to the bare arm and the T-rex was never there to modify.
+      // Right for the first draw, wrong for everything after it. Once she has drawn on their
+      // skin, THAT is the piece being changed - the photograph has done its job.
+      const startsFromPhoto = !(lastDrawn && lastDrawn.design && lastDrawn.design !== refDesign);
+      if (act === "draw" && refDesign && startsFromPhoto &&
+          ["cover", "add", "rework"].includes(jobNow)) {
         act = "change";
         lastDrawn = { design: refDesign, subject: (intent && intent.subject) || null };
       }

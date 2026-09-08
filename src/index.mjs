@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.179.0-2026-09-08-a-held-reference-is-not-a-parent";
+const BUILD = "aura-core-v9.180.0-2026-09-08-the-description-is-provenance";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -17780,10 +17780,22 @@ async function successionGate(env) {
         // the old behaviour rather than refusing. A worse image beats a dead command.
         const parentUrl = meta.url || meta.image_url || null;
         const evolvedSubject = (meta.subject ? meta.subject + ". " : "") + p.prompt;
+        // ══ THE DESCRIPTION IS PROVENANCE, NOT INSTRUCTION (2026-09-08) ════════════════════
+        // MEASURED over a whole cover-up chain: a T-rex was drawn over a portrait, and every
+        // later edit brought the woman's face back. She was not reappearing - WE WERE ASKING FOR
+        // HER. `subject` here carried the imported photograph's description, "a woman's face
+        // resting her chin on clasped hands", and it was prepended to every delta.
+        // It was harmless until yesterday, when the import started storing a real description
+        // instead of a useless caller note. Making that string true turned it into an active
+        // instruction, and on a cover-up the parent description is precisely what we are burying.
+        // Aaron: read what somebody sends, absolutely - but once generation one exists that
+        // description is no longer valid input. The pixels are the state. Keep the words on the
+        // record, in case they change direction and it matters what was there; do not send them.
+        // The no-URL fallback below still needs them: with no pixels, the words are all there is.
         const r = parentUrl
           ? await showIt(p.prompt, env, { source: "image_evolve", parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt,
-              refs: [parentUrl], subject: evolvedSubject })
+              refs: [parentUrl], subject: p.prompt })
           : await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
         if (!r || !r.ok) return { cmd: "IMAGE", payload: { ok: false, error: r ? r.error : "evolution failed" } };

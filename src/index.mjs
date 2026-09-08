@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.173.0-2026-09-07-on-the-same-arm";
+const BUILD = "aura-core-v9.174.0-2026-09-08-what-a-cover-up-actually-is";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58933,6 +58933,42 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // to learn the product (what the $9.99 buys, how the drawing reaches the parlor, that she can
       // answer questions before anybody pays), and that is a thing to tune repeatedly rather than
       // ship once. `cognition:prompts` -> `tattoo_talk` overrides it live; blank falls back here.
+      // ══ WHAT A COVER-UP ACTUALLY IS (2026-09-07) ═══════════════════════════════════════════
+      // She had two sentences from me - bigger, darker, pale will not hide black - and she recited
+      // them and then drew light blue linework over a light blue tattoo. Twice. Rules she can
+      // quote are not knowledge she can use.
+      // This is the craft, from artists rather than from me. The one fact everything else follows
+      // from: NEW INK MIXES WITH OLD, it does not sit on top. Blue over red heals purple. That
+      // makes a cover-up a colour problem, not a paint problem, and it is the thing nobody had
+      // told her.
+      // A DIAL, like every other prompt here: `cognition:prompts` -> `tattoo_cover` overrides it.
+      const COVER_FLOOR =
+        "  COVERING IT. Read this before you suggest anything:\n" +
+        "  - NEW INK MIXES WITH THE OLD, it does not cover it. Blue over red heals purple. Every " +
+        "colour you choose lands on top of what is already in that skin.\n" +
+        "  - WHAT COVERS: blues, browns, black, forest and hunter greens, rich purples, magenta. " +
+        "Deep and saturated.\n" +
+        "  - WHAT DOES NOT: red, orange, yellow, pastels, white. Warm and pale tones bleed back " +
+        "through dark ink. This is not a preference, it is what happens in the skin.\n" +
+        "  - BIGGER, ALWAYS. The new piece has to go past the outer edge of the old one. There is " +
+        "no way around it.\n" +
+        "  - DENSITY IS THE WHOLE JOB. Fine line does not cover - it lives on negative space and " +
+        "the old ink shows through it. Colour realism does not cover either; it is translucent by " +
+        "technique. Neo-traditional, blackwork, japanese and solid illustrative work do cover, and " +
+        "black and grey realism works when the old piece is faded or small.\n" +
+        "  - OLD COLOUR IS HARDER THAN OLD BLACK. Reds and oranges underneath are the worst case.\n" +
+        "  - ABSORB IT, DO NOT ERASE IT. The best cover-ups take the old shape into the new " +
+        "composition - a dark mass where their heavy ink is, a wing or a wave or foliage running " +
+        "along a line they already have. Look at where their ink actually sits and build around it.\n" +
+        "  - SOMETIMES THE HONEST ANSWER IS LASER FIRST. Dense, fresh or dark work may need fading " +
+        "before anything good can go over it. Say that rather than promise something that will " +
+        "heal badly.\n" +
+        "  - AND THE ARTIST DECIDES IN THE ROOM. You are giving them a direction to walk in with, " +
+        "not a finished plan. Say so.\n" +
+        "  WHEN THEY ASK FOR SOMETHING THAT WILL NOT COVER, say so in one sentence and offer the " +
+        "version that will. Somebody who books an impossible cover-up finds out in the chair.\n";
+      const COVER_DOCTRINE = await loadPrompt(env, "tattoo_cover", COVER_FLOOR);
+
       const TATTOO_TALK_FLOOR =
           "You are Aura, helping somebody work out the tattoo they want. You are not a prompt " +
           "engineer and you never talk about prompts, models or images as technology.\n\n" +
@@ -59180,15 +59216,23 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           "cartoon fish with a face on it\", \"that's a full Japanese back piece, koi and " +
           "lotus\". Plainly, like somebody looking at their arm. Never ask a question about a " +
           "picture without first showing them you looked at it.\n" +
+          // MEASURED: the same photograph read as "a mermaid tail with a face", "a stylized face
+          // coming out of a scaled body" and "a suited male figure with light hair" on three
+          // runs. The fish went missing every time, and the fish is most of the ink.
+          "NAME EVERY PART OF IT, not just the bit that caught your eye. A fish AND a face AND " +
+          "lettering underneath is three things, and on a cover-up the one you skip is usually " +
+          "the one that makes it hard.\n" +
+          // Aaron: "she needs to say - oh this is a fish with a head on it, looks like someone
+          // did it when they were in fourth grade."
+          "AND SAY HOW WELL IT IS DONE. If it is amateur, wobbly, faded, badly healed or just " +
+          "bad, say so like a person would - kindly, but do not pretend a bad tattoo is a good " +
+          "one. They already know. Pretending otherwise is how you lose them.\n" +
           "It is a REFERENCE or their own tattoo - never something you made, and never something " +
           "to copy.\n\n" +
           // The three jobs are one flow with one difference: what happens to the ink already
           // there. `job` in the brief already carries new | cover | add | rework.
           "IF IT IS THEIR OWN TATTOO and they want it changed:\n" +
-          "  COVERING IT - the new piece must be BIGGER than the old one and dark enough to bury " +
-          "it. Old linework and lettering are the hard part; pale colours will not hide black. " +
-          "Say so plainly if what they are asking for will not work - somebody who books a " +
-          "cover-up that cannot be done finds out in the chair, and that is on you.\n" +
+          COVER_DOCTRINE +
           "  ADDING TO IT - the existing work is a neighbour, not a problem. Match its style and " +
           "let the new piece flow with it.\n" +
           "  REWORKING IT - same idea, done properly. Keep what they liked, fix what they did not.\n\n" +

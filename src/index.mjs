@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.181.0-2026-09-08-their-moment-in-their-own-index";
+const BUILD = "aura-core-v9.182.0-2026-09-08-a-pta-that-remembers";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -32948,11 +32948,51 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) { emailResult = { ok: false, error: String(e.message) }; }
       }
 
+      // ══ A PTA THAT REMEMBERS NOTHING IS NOT AN IDENTITY (2026-09-08) ═══════════════════════
+      // MEASURED across a whole day of mytattoo tests: every fresh PTA came back
+      // `can_remember_now: false`, so `PTA_REMEMBER` refused silently and not one conversation or
+      // design reached a chain. Twenty rounds of `kept: true` in the replies were reporting
+      // `stage === "pta"`, not that anything had been kept. The chains held BORN and UNDERSTOOD
+      // and nothing else.
+      //
+      // THE PRECEDENT IS ALREADY IN THIS FILE, at the business signup: "THE SIGNUP IS THE CONSENT.
+      // They typed their own details and clicked a link in their own email; that is a stronger
+      // signal than the claim path has. It is recorded on the chain and revocable from the console
+      // at any time, which is what makes it a grant rather than an assumption."
+      // Creating a PTA is the same deliberate act. Somebody minted an identity to use the thing;
+      // remembering what they do with it is the service, not a favour.
+      //
+      // THE GRANTEE IS READ, NEVER GUESSED. `config:aura:pta_id` is the one place her id lives,
+      // and it returns null rather than a fallback because "an unattributed write is exactly what
+      // the permission layer exists to prevent". No id, no grant - and the reply says so instead
+      // of reporting a grant that went to nobody.
+      // NOT A SCALE PROBLEM: one edge on THEIR side, in THEIR store. Checks walk UP at read time -
+      // O(depth), three or four hops - so nothing reads a central row on a hot path. The
+      // hot-parent write the Council predicted here was measured and verified not to exist.
+      let remembers = false, remembersWhy = null;
+      try {
+        const auraId = (await getSecret(env, "aura_pta_id"))
+          || (await env.AURA_KV.get("config:aura:pta_id")) || "";
+        if (!auraId) {
+          remembersWhy = "config:aura:pta_id is unset, so there is no actor to grant to. " +
+            "This PTA exists but nothing said to it will be remembered.";
+        } else {
+          const gr = await processCommand("PTA_GRANT " + ptaId + " " + auraId +
+            ' CONFIRM {"edge_type":"grant","permission":{"can_remember":true}}', env, true);
+          const gp = (gr && gr.payload) ? gr.payload : gr;
+          remembers = !!(gp && gp.ok);
+          if (!remembers) remembersWhy = (gp && gp.error) || "grant did not land";
+        }
+      } catch (e) { remembersWhy = String(e?.message ?? e).slice(0, 160); }
+
       // `listed` says whether the directory row landed. It was absent before 2026-08-15 and the reply
       // said ok:true regardless - so a PTA that no other command could reach looked identical to one
       // that worked. A half-write that reports itself is recoverable; a silent one is not.
       return { cmd: "PTA_CREATE", payload: { ok: true, pta: ptaId, mode: "created", state: "active",
         listed: entityRow, listing_error: entityRowError || undefined,
+        // Same reasoning as `listed`: a grant that silently did not land looks exactly like one
+        // that did, and the failure only shows up weeks later as an empty memory.
+        remembers, remembers_note: remembers ? undefined : remembersWhy,
         listing_note: entityRow ? undefined : "The PTA exists and holds its chain, but it is NOT in pta_entities - " +
           "PTA_GRANT, PTA_LEARN and PTA_AUDIT walk that table and will not see it. Run PTA_RELIST to repair.",
         welcome, understood, email_sent: emailResult ? emailResult.ok : null, email_detail: emailResult } };

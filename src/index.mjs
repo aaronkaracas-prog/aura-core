@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.185.0-2026-09-09-give-her-the-address";
+const BUILD = "aura-core-v9.186.0-2026-09-09-the-picture-rides-with-the-turn";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -4423,7 +4423,7 @@ function agentInstanceFor(isOp, ptaId) {
   return id ? ("pta-" + id).slice(0, 64) : null;
 }
 
-async function proxyToAgent(env, line, isOp, ptaId) {
+async function proxyToAgent(env, line, isOp, ptaId, image) {
   try {
     const instance = agentInstanceFor(isOp, ptaId);
     if (!instance) return { failed: "no identity - an anonymous visitor has no agent instance of their own, so the local path answers" };
@@ -4435,7 +4435,11 @@ async function proxyToAgent(env, line, isOp, ptaId) {
     // A service binding is internal, faster, and free. The public fetch stays ONLY as a last resort for
     // the case where the binding is missing, and it names itself when it happens.
     const path = "/agents/aura-agent/" + instance + "/turn";
-    const body = JSON.stringify({ text: line, channel: "cmd" });
+    // `image` is a URL. `/turn` adds it as a user message before running the turn, which is
+    // Think's documented "add context, then run a turn" pattern - so she looks at it herself
+    // instead of being read a caption by a smaller model.
+    const body = JSON.stringify({ text: line, channel: "cmd",
+                                  ...(image ? { image: String(image) } : {}) });
     const headers = { "content-type": "application/json", authorization: "Bearer " + tok };
     let r;
     if (env.AURA_THINK && typeof env.AURA_THINK.fetch === "function") {
@@ -59378,11 +59382,9 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         ? "\n\n" + (seeing
             ? (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER is at " + refUrl + " - it is what you " +
                          "are working on. Call `look_at_image` on it if you need to see it again."
-                       : "THEY JUST SENT YOU A PHOTOGRAPH: " + refUrl + "\n" +
-                         "CALL `look_at_image` ON THAT URL BEFORE YOU SAY ANYTHING ABOUT IT. You " +
-                         "have not seen it yet and you cannot describe it from the fact that it " +
-                         "exists. Ask the tool what the tattoo is of, how well it is done, and " +
-                         "where on the body it sits.")
+                       : "THE PHOTOGRAPH THEY JUST SENT IS ATTACHED TO THIS TURN. Look at it " +
+                         "and say what is actually there - what the tattoo is of, how well it is " +
+                         "done, and where on the body it sits.")
             : (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER, still what you are working on:"
                        : "THEY JUST SENT YOU A PHOTOGRAPH. This is what is in it:") + "\n  " + refSaw) +
           "\n\nSAY WHAT YOU SEE FIRST, in your own words, before anything else - \"that's a " +
@@ -59449,7 +59451,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           const proxied = await proxyToAgent(env,
             "[A person is designing a tattoo with you on mytattoo.world. Answer as yourself, " +
             "from what you know about them.]\n\n" + fullSys + "\n\nTHEY SAID: " + said,
-            false, me);
+            false, me, seeing ? refUrl : null);
           if (proxied && proxied.reply && !proxied.failed) {
             acted = readAct(proxied.reply);
             if (acted) agentVia = proxied.instance || "agent";

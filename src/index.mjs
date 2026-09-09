@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.192.0-2026-09-09-say-the-job-not-the-theory";
+const BUILD = "aura-core-v9.193.0-2026-09-09-the-ending-never-changes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8774,6 +8774,52 @@ async function processCommand(line, env, isOp) {
     // linework is the one deliverable a parlour would throw away. So when the design handed in is
     // a lettered child, this walks BACK UP the lineage to the parent that has no words on it.
     // Nothing about the request says which is which, so it has to be found rather than assumed.
+    // ══ THE ENDING NEVER CHANGES (2026-09-09) ═══════════════════════════════════════════════════
+    // Aaron: "this end needs to never change - the final image off the body, and the artwork we
+    // give the artist has to be identical on every run."
+    // It already can be. `finish` applies TAT_SOURCE_LOCK + a STORED CARD, so the instruction is a
+    // string in KV rather than a sentence a model writes fresh each time. Two runs of the same card
+    // over the same picture send byte-identical text. The lock itself already says "preserve the
+    // subject, pose, orientation, crop and composition exactly, transform only the rendering,
+    // output a clean isolated design on a plain light background" - which IS the flatten.
+    // So this is not a new capability. It is the walk page's mechanism reachable from anywhere,
+    // with the two cards named once instead of typed each time.
+    //   FINAL <design|image id or url>            -> the finished artwork, off the body
+    //   FINAL <id> STENCIL                        -> the transfer sheet for the parlour
+    case "FINAL": {
+      const fnParts = rest.trim().split(/\s+/);
+      const fnId = String(fnParts[0] || "").trim();
+      if (!fnId) return { cmd: "FINAL", payload: { ok: false,
+        error: 'Usage: FINAL <design id, image id or url> [STENCIL]' } };
+      const fnStencil = /^STENCIL$/i.test(fnParts[1] || "");
+      const fnCardName = fnStencil ? "stencil" : "flat artwork";
+      const SCF = await tatStyleCards(env);
+      // The dash form is how the key was written; both spellings resolve to the same card.
+      const fnCard = SCF.find((c) => c[0].toLowerCase() === fnCardName) ||
+                     SCF.find((c) => c[0].toLowerCase() === fnCardName.replace(/ /g, "-"));
+      if (!fnCard) return { cmd: "FINAL", payload: { ok: false, error: "NO_SUCH_CARD",
+        looked_for: fnCardName,
+        fix: 'SETKV style:' + fnCardName.replace(/ /g, "-") + ' <the exact wording>' } };
+      const fnUrl = /^https?:\/\//i.test(fnId)
+        ? fnId
+        : "https://" + (await imageHost(env)) + "/image/" + fnId;
+      try {
+        const fr = await showIt(TAT_SOURCE_LOCK + fnCard[1], env,
+          { source: "style_transfer", refs: [fnUrl], parent: /^ent_/.test(fnId) ? fnId : null,
+            raw: true, subject: fnCard[0] + " of " + fnId });
+        const fp = (fr && fr.payload) ? fr.payload : fr;
+        if (!fp?.ok) return { cmd: "FINAL", payload: { ok: false,
+          error: fp?.error || "COULD_NOT_FINISH", card: fnCard[0] } };
+        return { cmd: "FINAL", payload: { ok: true, card: fnCard[0],
+          design: fp.design_id || fp.id || null, image: fp.image_url || null, from: fnId,
+          note: fnStencil
+            ? "The transfer sheet. The finished artwork is the artist's shading reference - send both."
+            : "The finished artwork off the body. Run FINAL <this id> STENCIL for the transfer sheet." } };
+      } catch (e) {
+        return { cmd: "FINAL", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
+      }
+    }
+
     case "STENCIL": {
       const id = String(rest || "").trim();
       if (!id) return { cmd: "STENCIL", payload: { ok: false,

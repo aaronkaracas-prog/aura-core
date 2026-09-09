@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.183.0-2026-09-09-an-offer-is-not-a-grant";
+const BUILD = "aura-core-v9.184.0-2026-09-09-she-sees-it-herself";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -425,7 +425,19 @@ async function _brainRoute(env, override) {
 // being routed here from callAnthropic carry real MULTI-TURN conversations - ONBOARD_CHAT is a dialogue
 // with a shop owner - and flattening a conversation into one user string throws away who said what.
 // A router that silently degrades the thing it routes is worse than no router.
-async function callBrain({ system, user, messages = null, max_tokens = 2000, model = null, temperature }, env) {
+// ══ SHE HAS TO SEE IT HERSELF (2026-09-09) ═════════════════════════════════════════════════════
+// MEASURED all day on mytattoo: every picture somebody sent reached her as a SENTENCE. `seeMedia`
+// looked with a 9B captioner and wrote five lines; she reasoned from those. A chest piece came
+// back "full-back tiger", a shaky home job came back "neo-traditional realism" - and she repeated
+// both confidently, because she had no way to check.
+// Aaron: "she needs to see it. We should not be analyzing what something is and then giving it to
+// Aura to work off what we just analyzed."
+// She runs on Grok, which is natively multimodal. The good eyes were in the building and never
+// used. `image` is a URL - xAI and Anthropic both accept one directly, so nothing is fetched or
+// base64'd here.
+// THIS IS THE SAME RULE AS THE DRAWING SIDE, applied to the other half: whichever model can see
+// should decide. That was fixed for the image model this morning and left broken for her.
+async function callBrain({ system, user, messages = null, max_tokens = 2000, model = null, temperature, image = null }, env) {
   env = env || _BRAIN_ENV;
   const route = await _brainRoute(env, model);
   const cap = Math.max(16, Math.min(16000, parseInt(max_tokens, 10) || 2000));
@@ -437,7 +449,14 @@ async function callBrain({ system, user, messages = null, max_tokens = 2000, mod
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({ model: route.model, max_tokens: cap, ...(system ? { system } : {}),
-                             messages: (Array.isArray(messages) && messages.length)
+                             messages: image
+                               ? [...(Array.isArray(messages) && messages.length ? messages.slice(0, -1) : []),
+                                  { role: "user", content: [
+                                    { type: "image", source: { type: "url", url: String(image) } },
+                                    { type: "text", text: String(
+                                      (Array.isArray(messages) && messages.length
+                                        ? messages[messages.length - 1]?.content : user) || "") } ] }]
+                               : (Array.isArray(messages) && messages.length)
                                ? messages
                                : [{ role: "user", content: String(user || "") }] }),
     }, env);
@@ -489,6 +508,19 @@ async function callBrain({ system, user, messages = null, max_tokens = 2000, mod
     }
   } else {
     msgs.push({ role: "user", content: String(user || "") });
+  }
+  // The picture rides on the LAST user turn, where the thing they just said is. Anywhere else and
+  // she is looking at a photograph while reading a sentence from three turns ago.
+  // `detail: "high"` because the whole point is the detail - a shaky line, a placement, how badly
+  // it was done. Low detail would reproduce the captioner's blur at a higher price.
+  if (image) {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role !== "user") continue;
+      msgs[i] = { role: "user", content: [
+        { type: "image_url", image_url: { url: String(image), detail: "high" } },
+        { type: "text", text: String(msgs[i].content || "") } ] };
+      break;
+    }
   }
   // ══ THIS WAS A RAW fetch() AND THEREFORE UNMETERED (found + fixed 2026-08-01) ═════════════════
   // The Anthropic branch above goes through brainFetch -> pfetch and lands in egress:<day>. This
@@ -59330,9 +59362,18 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           "to tell you what is in it. Never pretend no picture arrived."
         : "";
 
-      const refNote = refSaw
-        ? "\n\n" + (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER, still what you are working on:"
-                             : "THEY JUST SENT YOU A PHOTOGRAPH. This is what is in it:") + "\n  " + refSaw +
+      // ══ SHE IS LOOKING AT IT, SO STOP READING IT TO HER (2026-09-09) ══════════════════════
+      // The picture now rides on the turn itself. The captioner's sentence stays only as a
+      // fallback for the local floor when no image can be attached - and when she CAN see, being
+      // told what a 9B model thought is worse than nothing, because a confident wrong caption
+      // ("full-back tiger", "neo-traditional") overrides her own eyes.
+      const seeing = refUrl && /^https?:\/\//i.test(String(refUrl));
+      const refNote = (refSaw || seeing)
+        ? "\n\n" + (seeing
+            ? (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER IS ATTACHED - it is what you are working on."
+                       : "THEY JUST SENT YOU THIS PHOTOGRAPH. LOOK AT IT.")
+            : (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER, still what you are working on:"
+                       : "THEY JUST SENT YOU A PHOTOGRAPH. This is what is in it:") + "\n  " + refSaw) +
           "\n\nSAY WHAT YOU SEE FIRST, in your own words, before anything else - \"that's a " +
           "cartoon fish with a face on it\", \"that's a full Japanese back piece, koi and " +
           "lotus\". Plainly, like somebody looking at their arm. Never ask a question about a " +
@@ -59409,6 +59450,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         acted ? Promise.resolve(null) : callBrain({
           model: talkModel,
           system: fullSys,
+          image: seeing ? refUrl : null,
           messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
                                          content: String(h.said || "").slice(0, 1500) })),
                      { role: "user", content: said }],

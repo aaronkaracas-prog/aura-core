@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.194.0-2026-09-09-stencil-traces-lineart-redraws";
+const BUILD = "aura-core-v9.195.0-2026-09-09-only-the-new-work";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8790,7 +8790,7 @@ async function processCommand(line, env, isOp) {
       const fnParts = rest.trim().split(/\s+/);
       const fnId = String(fnParts[0] || "").trim();
       if (!fnId) return { cmd: "FINAL", payload: { ok: false,
-        error: 'Usage: FINAL <image url or id> [STENCIL|LINEART]' } };
+        error: 'Usage: FINAL <image url or id> [ADDED <original url>] [STENCIL|LINEART]' } };
       // ══ TWO WORDS, TWO MECHANISMS, AND THEY ARE NOT INTERCHANGEABLE (2026-09-09) ═════════
       // STENCIL is a PIXEL OPERATION - greyscale, blur, threshold. Free, instant, and the geometry
       // cannot move because it is the same pixels. Perfect on flat linework; on a full-colour
@@ -8800,7 +8800,19 @@ async function processCommand(line, env, isOp) {
       // minimalist line drawing", "stencil-ready tattoo linework only".
       // A KV card called `stencil` was shadowing the pixel operation and turning it into a redraw,
       // because `tatStyleCards` merges KV over the built-ins by NAME. Deleted; the trace is back.
-      const fnMode = String(fnParts[1] || "").toUpperCase();
+      // ══ ON AN ADD-ON, ONLY THE NEW WORK IS THE DELIVERABLE (2026-09-09) ═════════════════
+      // Aaron: "we started with the original - we're not printing that out and we're not
+      // flattening that."
+      // Right, and it matters on skin: the shoulder piece is already tattooed. A transfer of the
+      // WHOLE sleeve hands the artist work that exists, and the worst case is somebody re-lining
+      // healed ink to match a picture.
+      // WHAT IS NEW IS THE DIFFERENCE BETWEEN TWO PICTURES, so it takes both. `showIt` already
+      // carries up to three refs - no new plumbing, the same call with one more image.
+      //   FINAL <extended url> ADDED <original url> [LINEART]
+      const fnAddedAt = fnParts.findIndex((x) => /^ADDED$/i.test(x));
+      const fnWas = fnAddedAt > 0 ? String(fnParts[fnAddedAt + 1] || "").trim() : "";
+      const fnMode = String(
+        (fnAddedAt > 0 ? fnParts[fnAddedAt + 2] : fnParts[1]) || "").toUpperCase();
       const fnCardName = fnMode === "STENCIL" ? "stencil"
                        : (fnMode === "LINEART" || fnMode === "LINE") ? "line art"
                        : "flat artwork";
@@ -8816,13 +8828,23 @@ async function processCommand(line, env, isOp) {
         ? fnId
         : "https://" + (await imageHost(env)) + "/image/" + fnId;
       try {
-        const fr = await showIt(TAT_SOURCE_LOCK + fnCard[1], env,
-          { source: "style_transfer", refs: [fnUrl], parent: /^ent_/.test(fnId) ? fnId : null,
+        // The second image is what was there BEFORE. Named in the instruction so the model knows
+        // which is which - two unlabelled pictures is a guess.
+        const fnOnlyNew = fnWas
+          ? " TWO IMAGES ARE PROVIDED. The first is the finished piece; the second is what was " +
+            "already tattooed before this work. Draw ONLY what is new - everything present in the " +
+            "first image and absent from the second. Leave out the existing tattoo entirely, and " +
+            "leave out the body. Just the new artwork, alone."
+          : "";
+        const fr = await showIt(TAT_SOURCE_LOCK + fnCard[1] + fnOnlyNew, env,
+          { source: "style_transfer", refs: fnWas ? [fnUrl, fnWas] : [fnUrl],
+            parent: /^ent_/.test(fnId) ? fnId : null,
             raw: true, subject: fnCard[0] + " of " + fnId });
         const fp = (fr && fr.payload) ? fr.payload : fr;
         if (!fp?.ok) return { cmd: "FINAL", payload: { ok: false,
           error: fp?.error || "COULD_NOT_FINISH", card: fnCard[0] } };
         return { cmd: "FINAL", payload: { ok: true, card: fnCard[0],
+          ...(fnWas ? { only_new: true, was: fnWas } : {}),
           design: fp.design_id || fp.id || null, image: fp.image_url || null, from: fnId,
           note: fnStencil
             ? "For the artist. The finished artwork is their shading reference - send both."

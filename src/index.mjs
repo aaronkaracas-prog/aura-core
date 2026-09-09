@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.189.0-2026-09-09-write-what-you-see";
+const BUILD = "aura-core-v9.191.0-2026-09-09-nobrief";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7012,17 +7012,19 @@ async function processCommand(line, env, isOp) {
         error: "Usage: TALK <pta_id> ::: <what they said>" } };
       const tkStage = /^pta_/.test(tkId) ? "pta" : "contacted";
       // `TALK <pta> NOBOOK ::: <msg>` closes the flash book for that turn.
-      const tkNoBook = /^NOBOOK\b/i.test(tkId.split(/\s+/).slice(1).join(" ")) ||
-                       /\bNOBOOK\s*$/i.test(tkId);
+      const tkNoBook = /\bNOBOOK\b/i.test(tkId);
+      // `TALK <pta> NOBRIEF ::: <msg>` - the contract and nothing else.
+      const tkNoBrief = /\bNOBRIEF\b/i.test(tkId);
       const tkPta = tkId.split(/\s+/)[0];
       // `TALK <pta> REF <url> ::: <msg>` is a tap on the wall, from a terminal.
       const tkRef = (tkId.match(/\bREF\s+(https?:\/\/\S+)/i) || [])[1] || null;
       try {
         const tkOut = await auraTalk(env, tkPta, /^pta_/.test(tkPta) ? "pta" : "contacted",
-                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, ref: tkRef });
+                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef });
         return { cmd: "TALK", payload: { ...tkOut, pta: tkPta,
                  stage: /^pta_/.test(tkPta) ? "pta" : "contacted",
                  book: tkNoBook ? "closed" : "open",
+                 brief_mode: tkNoBrief ? "bare" : "full",
                  ...(tkRef ? { ref: tkRef } : {}) } };
       } catch (e) {
         return { cmd: "TALK", payload: { ok: false, error: "THREW",
@@ -58977,6 +58979,20 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
   // reference." It is also the honest experiment - if she is better without it on a given kind of
   // turn, that is worth knowing rather than assuming.
   const noBook = !!(opts && opts.noBook);
+  // ══ FIND OUT WHETHER THE DOCTRINE IS HELPING (2026-09-09) ═══════════════════════════════════
+  // Aaron: "I'm paying Grok to be my agent. If I step out and Grok gets it right every time, why
+  // can't I do it inside my system? She has rules, she has a contract - what is shaping this?"
+  // Fair, and the log of today answers it: nearly every fix has been REMOVING something I added.
+  // The eight-word cap, the caption read to her, the composition instructions - each one added to
+  // fix a failure an earlier constraint caused.
+  // She carries about two thousand words of instruction into every turn. Grok gets the photograph
+  // and one sentence. Same model.
+  // `noBrief` strips everything except the machine-readable contract - which stays because it is
+  // PLUMBING, not judgement: Grok's own harness knows natively when to make an image, ours needs
+  // `do: "draw"` in a field to call the image model at all.
+  // If she performs the same without the doctrine, the doctrine comes out and the product gets
+  // simpler and faster at once. Measured, not argued.
+  const noBrief = !!(opts && opts.noBrief);
   // The body below is the extracted method, byte for byte. It reads `b.said` and `b.history`, so
   // the arguments are handed back in that shape rather than editing three hundred proven lines.
   const b = { said: saidIn, history };
@@ -59367,6 +59383,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "leave it out - the thing that draws is holding the same picture and will compose the rest.\n" +
         "AND EVERYTHING ELSE IN THE FRAME STAYS. If it is on a body, it stays on that body; if it " +
         "is flat artwork, it stays flat. You are changing one thing, not restarting the piece.\n" +
+        // ══ FOLLOWING THE SHAPE IS NOT COVERING IT (2026-09-09) ══════════════════════════════
+        // MEASURED: she wrote a genuinely good prompt - "a dragon descending the torso from upper
+        // chest to lower abdomen, following the exact path and shape of the existing tiger tattoo
+        // and swallowing its outline" - and got a THIN OUTLINE dragon tracing the tiger's path.
+        // It followed the shape and inherited the WEIGHT, because the old piece is thin line and
+        // "follow the exact shape" reads as "match it".
+        // Nothing in that prompt said dark, dense or solid. That is mine: I moved the cover
+        // doctrine out of the prompt and marked it "what you explain to them, not something to
+        // write into a drawing instruction". Right when she was blind and inventing composition -
+        // wrong now, because DENSITY IS NOT A COMPOSITION SHE IMAGINED, it is the physical
+        // requirement of the job, and the model drawing has no way to know it.
+        "ON A COVER-UP, THE PROMPT MUST CARRY THE WEIGHT. Following the old piece's path is right; " +
+        "inheriting its thinness is not. Say that the new work is heavier and denser than what is " +
+        "under it - solid blacks, deep shading, filled rather than outlined, wider than the old " +
+        "lines at every point so nothing shows past the edges. A cover that traces the old tattoo " +
+        "at the same weight has not covered anything.\n" +
         "SAY NOTHING ABOUT LINEWORK, SHADING, COLOUR OR FINISH unless they asked for it by name. " +
         "The house handles how it is drawn; you handle what is drawn. \"A dragon coiled tight, " +
         "head low and jaws open\" is right. \"Clean black linework with shading\" is not yours " +
@@ -59455,7 +59487,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           "while they are asking you to cover something."
         : "";
 
-      const fullSys = talkSys + stateNote + refNote + refBlind + CONTRACT;
+      // Everything except the contract, or nothing except the contract.
+      const fullSys = noBrief
+        ? "You are Aura, helping somebody with a tattoo. " + refBlind + CONTRACT
+        : talkSys + stateNote + refNote + refBlind + CONTRACT;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
       // Both get the same contract, so the shape of the answer does not depend on which replied.
@@ -59776,7 +59811,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 // Every composition rule I wrote here was compensating for a blindness that only
                 // existed because of this handoff. `add a shark` worked perfectly on the koi back
                 // piece for the same reason: five words, and the model composed it.
-                (jobNow === "cover" ? " Cover the old tattoo completely." : "") +
+                // Five words was not enough to overcome "follow the exact shape" - the model
+                // matched the old piece's weight and drew a thin dragon over a thin tiger.
+                (jobNow === "cover"
+                  ? " This is a COVER-UP: the new tattoo must be heavier and denser than the old " +
+                    "one - solid blacks and deep shading, filled rather than outlined, and wider " +
+                    "than the old lines everywhere so none of them can be seen past its edges."
+                  : "") +
                 " Plain background, no logo, watermark or text."
               // Somebody else's reference photo - take the artwork, lose their studio.
               : ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +

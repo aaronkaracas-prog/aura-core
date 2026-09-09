@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.184.0-2026-09-09-she-sees-it-herself";
+const BUILD = "aura-core-v9.185.0-2026-09-09-give-her-the-address";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59369,9 +59369,20 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // ("full-back tiger", "neo-traditional") overrides her own eyes.
       const seeing = refUrl && /^https?:\/\//i.test(String(refUrl));
       const refNote = (refSaw || seeing)
+        // ══ AN INSTRUCTION SHE CANNOT ACT ON (2026-09-09) ═══════════════════════════════════
+        // This said "THEY JUST SENT YOU THIS PHOTOGRAPH. LOOK AT IT." and never gave the address.
+        // She has `look_at_image`, which takes a URL, and there was no URL anywhere in her
+        // context - so she invented. Twice, word for word: "a small faded flower with lettering",
+        // about a line-art tiger running down a man's stomach. The consistency was the tell; it is
+        // the most likely cover-up subject, which is what a model reaches for when it has nothing.
         ? "\n\n" + (seeing
-            ? (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER IS ATTACHED - it is what you are working on."
-                       : "THEY JUST SENT YOU THIS PHOTOGRAPH. LOOK AT IT.")
+            ? (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER is at " + refUrl + " - it is what you " +
+                         "are working on. Call `look_at_image` on it if you need to see it again."
+                       : "THEY JUST SENT YOU A PHOTOGRAPH: " + refUrl + "\n" +
+                         "CALL `look_at_image` ON THAT URL BEFORE YOU SAY ANYTHING ABOUT IT. You " +
+                         "have not seen it yet and you cannot describe it from the fact that it " +
+                         "exists. Ask the tool what the tattoo is of, how well it is done, and " +
+                         "where on the body it sits.")
             : (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER, still what you are working on:"
                        : "THEY JUST SENT YOU A PHOTOGRAPH. This is what is in it:") + "\n  " + refSaw) +
           "\n\nSAY WHAT YOU SEE FIRST, in your own words, before anything else - \"that's a " +

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.195.0-2026-09-09-only-the-new-work";
+const BUILD = "aura-core-v9.196.0-2026-09-09-added-drops-the-lock";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8828,15 +8828,29 @@ async function processCommand(line, env, isOp) {
         ? fnId
         : "https://" + (await imageHost(env)) + "/image/" + fnId;
       try {
-        // The second image is what was there BEFORE. Named in the instruction so the model knows
-        // which is which - two unlabelled pictures is a guess.
-        const fnOnlyNew = fnWas
-          ? " TWO IMAGES ARE PROVIDED. The first is the finished piece; the second is what was " +
-            "already tattooed before this work. Draw ONLY what is new - everything present in the " +
-            "first image and absent from the second. Leave out the existing tattoo entirely, and " +
-            "leave out the body. Just the new artwork, alone."
-          : "";
-        const fr = await showIt(TAT_SOURCE_LOCK + fnCard[1] + fnOnlyNew, env,
+        // ══ THE LOCK AND THE ASK WERE OPPOSITE INSTRUCTIONS (2026-09-09) ═══════════════════
+        // MEASURED on the space half-sleeve: `FINAL <sleeve> ADDED <original>` returned the WHOLE
+        // sleeve flattened, Saturn from the shoulder included. `only_new: true` in the reply said
+        // a field had been set, not that anything had been subtracted.
+        // The cause is in the string this line builds. `TAT_SOURCE_LOCK` says preserve the
+        // subject, pose, orientation, crop, proportions, arrangement and overall composition
+        // EXACTLY - and then a sentence of mine asked the model to remove most of the
+        // composition. The lock is first, it is months old and heavily tuned, and the model
+        // obeyed it. Two instructions arguing inside one prompt, and the newer one lost.
+        // Aaron gave Grok the two pictures and one sentence and got the forearm section alone,
+        // flat on white, first try. Same model. It had nothing arguing with it.
+        // SO ON `ADDED` THE LOCK COMES OUT. A lock whose job is to hold the composition still
+        // cannot be sent on the one job that is defined by changing it.
+        // The card stays available but only when a finish was NAMED - it says how to render, not
+        // what to keep, so it does not fight the ask. Bare `ADDED` sends the sentence and nothing
+        // else, which is the version that worked outside this system.
+        const fnPrompt = fnWas
+          ? "The first image is the finished piece. The second is what was already tattooed " +
+            "before this work. Show me only the new work - the artwork alone, off the body, " +
+            "without the piece that was already there." +
+            (fnStencil ? " " + fnCard[1] : "")
+          : TAT_SOURCE_LOCK + fnCard[1];
+        const fr = await showIt(fnPrompt, env,
           { source: "style_transfer", refs: fnWas ? [fnUrl, fnWas] : [fnUrl],
             parent: /^ent_/.test(fnId) ? fnId : null,
             raw: true, subject: fnCard[0] + " of " + fnId });
@@ -8844,7 +8858,11 @@ async function processCommand(line, env, isOp) {
         if (!fp?.ok) return { cmd: "FINAL", payload: { ok: false,
           error: fp?.error || "COULD_NOT_FINISH", card: fnCard[0] } };
         return { cmd: "FINAL", payload: { ok: true, card: fnCard[0],
-          ...(fnWas ? { only_new: true, was: fnWas } : {}),
+          ...(fnWas ? { only_new: true, was: fnWas,
+                        // What actually went out, not what was requested. `only_new: true` alone
+                        // reported a flag and hid a prompt that said the opposite.
+                        sent: fnStencil ? "only-the-new-work + " + fnCard[0] + ", no source lock"
+                                        : "only-the-new-work, no source lock, no card" } : {}),
           design: fp.design_id || fp.id || null, image: fp.image_url || null, from: fnId,
           note: fnStencil
             ? "For the artist. The finished artwork is their shading reference - send both."

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.191.0-2026-09-09-nobrief";
+const BUILD = "aura-core-v9.192.0-2026-09-09-say-the-job-not-the-theory";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59357,52 +59357,27 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // blueprint when they asked for a tattoo.
         // A register is a house decision, tuned once and applied everywhere. Leaving it to a
         // model to improvise per turn is how a product ends up with no look at all.
-        "WRITING `prompt` - DESCRIBE THE THING, NOT THE RENDERING. What it is, what it is doing, " +
-        "how it sits, what it should feel like. Use everything they have told you and nothing " +
-        "they have not - no placement they did not name.\n" +
-        // ══ THE EIGHT-WORD CAP WAS FOR A BLIND MODEL (2026-09-09) ════════════════════════════
-        // It was right when she could not see: her long prompts were INVENTION - "a T-rex standing
-        // tall" was a pose nobody had looked at, and the image model obeyed it. Capping her stopped
-        // her composing from imagination.
-        // SHE CAN SEE NOW, so the same sentences are OBSERVATION. MEASURED against Grok on the same
-        // chest tiger: Grok wrote "the existing tiger runs a long vertical path from upper chest to
-        // lower abs, so a descending dragon can follow that same flow and swallow the old lines" -
-        // and drew a cover that works. Ours saw the identical thing ("head low, body twisting up
-        // the torso") and then said "a dragon covering the tiger tattoo on the chest", because I
-        // had capped her at eight words. The rule that fixed a blind model was throttling a
-        // sighted one.
-        // WHAT STAYS: never invent. The line is not length, it is whether you LOOKED.
-        "WHEN YOU ARE CHANGING A PICTURE THAT ALREADY EXISTS - a cover-up, an addition, a rework, " +
-        "or any edit - WRITE WHAT YOU SEE, NOT WHAT YOU IMAGINE.\n" +
-        "You are looking at the picture. Use it. Where the old piece sits, which way it runs, how " +
-        "much space it takes, what the new work has to follow or swallow - say those, because you " +
-        "can see them and nobody else in the chain can. \"the tiger runs from upper chest to " +
-        "lower abs, so a dragon descending the same line, swallowing the old outline\" is right.\n" +
-        "NEVER describe something you have NOT looked at. A pose, a placement or a size you made " +
-        "up from a description is invention, and it will be obeyed exactly. If you did not see it, " +
-        "leave it out - the thing that draws is holding the same picture and will compose the rest.\n" +
-        "AND EVERYTHING ELSE IN THE FRAME STAYS. If it is on a body, it stays on that body; if it " +
-        "is flat artwork, it stays flat. You are changing one thing, not restarting the piece.\n" +
-        // ══ FOLLOWING THE SHAPE IS NOT COVERING IT (2026-09-09) ══════════════════════════════
-        // MEASURED: she wrote a genuinely good prompt - "a dragon descending the torso from upper
-        // chest to lower abdomen, following the exact path and shape of the existing tiger tattoo
-        // and swallowing its outline" - and got a THIN OUTLINE dragon tracing the tiger's path.
-        // It followed the shape and inherited the WEIGHT, because the old piece is thin line and
-        // "follow the exact shape" reads as "match it".
-        // Nothing in that prompt said dark, dense or solid. That is mine: I moved the cover
-        // doctrine out of the prompt and marked it "what you explain to them, not something to
-        // write into a drawing instruction". Right when she was blind and inventing composition -
-        // wrong now, because DENSITY IS NOT A COMPOSITION SHE IMAGINED, it is the physical
-        // requirement of the job, and the model drawing has no way to know it.
-        "ON A COVER-UP, THE PROMPT MUST CARRY THE WEIGHT. Following the old piece's path is right; " +
-        "inheriting its thinness is not. Say that the new work is heavier and denser than what is " +
-        "under it - solid blacks, deep shading, filled rather than outlined, wider than the old " +
-        "lines at every point so nothing shows past the edges. A cover that traces the old tattoo " +
-        "at the same weight has not covered anything.\n" +
-        "SAY NOTHING ABOUT LINEWORK, SHADING, COLOUR OR FINISH unless they asked for it by name. " +
-        "The house handles how it is drawn; you handle what is drawn. \"A dragon coiled tight, " +
-        "head low and jaws open\" is right. \"Clean black linework with shading\" is not yours " +
-        "to decide.\n" +
+        // ══ EVERY FAILURE TODAY WAS SOMETHING I ADDED (2026-09-09) ═══════════════════════════
+        // The whole session, in one line: the system got better each time I removed something.
+        // The eight-word cap - mine. The caption read to her instead of the picture - mine. The
+        // composition rules that put a T-rex in bare skin - mine. "Write what you see", which on a
+        // cover-up describes the thing that must DISAPPEAR, so the edit model filled the tiger in
+        // solid black and did exactly as asked - mine.
+        // Aaron, five times: what she says is for the person. The image model gets the image and
+        // the instruction. Nothing else.
+        // AND IT DOES NOT NEED TEACHING. Grok's image model was given "cover up of a dragon" and
+        // produced a dense black-and-grey dragon that buries the old piece. Nobody told it a cover
+        // has to be dark. THE WORD CARRIES THE REQUIREMENT. Every rule I wrote about weight,
+        // density and filling was explaining a job the model already knows.
+        "WRITING `prompt`: WHAT THEY ASKED FOR, AND THE JOB. \"a dragon, cover-up\". \"add a " +
+        "shark\". \"in colour\". \"a koi on the forearm\".\n" +
+        "Do not describe what is already in the picture - the thing that draws it is holding the " +
+        "same picture, and everything you describe is something you are asking it to KEEP. On a " +
+        "cover-up that is exactly backwards.\n" +
+        "Do not explain the craft to it either. \"cover-up\" already means bigger, darker and " +
+        "denser to a model that draws tattoos. Say the job, not the theory.\n" +
+        "What you tell THEM is a different thing entirely - talk about what you can see, as much " +
+        "as is useful. That is the conversation. It never goes in `prompt`.\n" +
         "IF YOUR `say` CLAIMS YOU ARE SHOWING THEM SOMETHING, `do` MUST NOT BE `none`.";
 
       const stateNote = (lastDrawn && lastDrawn.design)
@@ -59811,13 +59786,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 // Every composition rule I wrote here was compensating for a blindness that only
                 // existed because of this handoff. `add a shark` worked perfectly on the koi back
                 // piece for the same reason: five words, and the model composed it.
-                // Five words was not enough to overcome "follow the exact shape" - the model
-                // matched the old piece's weight and drew a thin dragon over a thin tiger.
-                (jobNow === "cover"
-                  ? " This is a COVER-UP: the new tattoo must be heavier and denser than the old " +
-                    "one - solid blacks and deep shading, filled rather than outlined, and wider " +
-                    "than the old lines everywhere so none of them can be seen past its edges."
-                  : "") +
+                // The job word is in her prompt and the model knows what it means. Explaining
+                // density to it was me teaching a tattoo model about tattoos.
+                (jobNow === "cover" ? " This is a cover-up." : "") +
                 " Plain background, no logo, watermark or text."
               // Somebody else's reference photo - take the artwork, lose their studio.
               : ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +

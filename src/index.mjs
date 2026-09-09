@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.188.0-2026-09-09-grep-the-name-first";
+const BUILD = "aura-core-v9.189.0-2026-09-09-write-what-you-see";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59344,14 +59344,29 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "WRITING `prompt` - DESCRIBE THE THING, NOT THE RENDERING. What it is, what it is doing, " +
         "how it sits, what it should feel like. Use everything they have told you and nothing " +
         "they have not - no placement they did not name.\n" +
+        // ══ THE EIGHT-WORD CAP WAS FOR A BLIND MODEL (2026-09-09) ════════════════════════════
+        // It was right when she could not see: her long prompts were INVENTION - "a T-rex standing
+        // tall" was a pose nobody had looked at, and the image model obeyed it. Capping her stopped
+        // her composing from imagination.
+        // SHE CAN SEE NOW, so the same sentences are OBSERVATION. MEASURED against Grok on the same
+        // chest tiger: Grok wrote "the existing tiger runs a long vertical path from upper chest to
+        // lower abs, so a descending dragon can follow that same flow and swallow the old lines" -
+        // and drew a cover that works. Ours saw the identical thing ("head low, body twisting up
+        // the torso") and then said "a dragon covering the tiger tattoo on the chest", because I
+        // had capped her at eight words. The rule that fixed a blind model was throttling a
+        // sighted one.
+        // WHAT STAYS: never invent. The line is not length, it is whether you LOOKED.
         "WHEN YOU ARE CHANGING A PICTURE THAT ALREADY EXISTS - a cover-up, an addition, a rework, " +
-        "or any edit - SAY ONLY WHAT CHANGES, IN UNDER EIGHT WORDS. \"a dinosaur\", \"add a " +
-        "shark\", \"meaner\". If you have written more than eight words you are composing, and " +
-        "composing is not your job here. " +
-        "The picture itself is already in front of the thing that draws it, so it can see the arm, " +
-        "the skin, the old ink and the space. It composes better than a sentence can. Do NOT " +
-        "describe the pose, the framing, the size or where it sits - a pose you invent from a " +
-        "description is a pose nobody looked at, and it will be obeyed.\n" +
+        "or any edit - WRITE WHAT YOU SEE, NOT WHAT YOU IMAGINE.\n" +
+        "You are looking at the picture. Use it. Where the old piece sits, which way it runs, how " +
+        "much space it takes, what the new work has to follow or swallow - say those, because you " +
+        "can see them and nobody else in the chain can. \"the tiger runs from upper chest to " +
+        "lower abs, so a dragon descending the same line, swallowing the old outline\" is right.\n" +
+        "NEVER describe something you have NOT looked at. A pose, a placement or a size you made " +
+        "up from a description is invention, and it will be obeyed exactly. If you did not see it, " +
+        "leave it out - the thing that draws is holding the same picture and will compose the rest.\n" +
+        "AND EVERYTHING ELSE IN THE FRAME STAYS. If it is on a body, it stays on that body; if it " +
+        "is flat artwork, it stays flat. You are changing one thing, not restarting the piece.\n" +
         "SAY NOTHING ABOUT LINEWORK, SHADING, COLOUR OR FINISH unless they asked for it by name. " +
         "The house handles how it is drawn; you handle what is drawn. \"A dragon coiled tight, " +
         "head low and jaws open\" is right. \"Clean black linework with shading\" is not yours " +

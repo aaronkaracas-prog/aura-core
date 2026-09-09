@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.187.0-2026-09-09-measure-the-turn";
+const BUILD = "aura-core-v9.188.0-2026-09-09-grep-the-name-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58962,6 +58962,16 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
 // `me` is the person (a PTA id), `stage` is "pta" or "contacted" and decides whether the round is
 // kept on their chain, `said` is what they typed, `history` is the fallback when nothing is banked.
 async function auraTalk(env, me, stage, saidIn, history, opts) {
+      // ══ MEASURE IT, DO NOT REASON ABOUT IT (2026-09-09) ═══════════════════════════════════
+      // One turn took 131 SECONDS. Typical is 26-45. Nobody waits half a minute on a phone, and
+      // this file's own record of the last performance hunt is four consecutive wrong guesses
+      // before anyone measured - then INVITE went 3,244ms to 922ms in ten minutes once it was
+      // aimed at numbers.
+      // Same instrument as INVITE's `phase_ms`, in the reply itself, because a budget in a
+      // document is one nobody reads at the moment it matters.
+      const _t0 = Date.now(); let _tp = _t0; const phase_ms = {};
+      const _tick = (name) => { const now = Date.now(); phase_ms[name] = now - _tp; _tp = now; };
+
   // `noBook: true` runs the conversation with the flash book closed. Aaron, testing the asset
   // rather than the catalogue: "let's just have her have a conversation with someone, not catalog
   // reference." It is also the honest experiment - if she is better without it on a given kind of
@@ -59005,7 +59015,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // They do not depend on each other: both read the same conversation. So they go together,
       // and `config:talk:model` gives the lane a faster model without a deploy. Unset, nothing
       // changes.
-      _mark("catalog");
+      _tick("catalog");
       const talkPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
       const talkModel = talkPin && talkPin.trim() ? talkPin.trim() : undefined;
 
@@ -59173,17 +59183,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // becomes the subject, and the drawing is an ORIGINAL born under their PTA.
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
-      // ══ MEASURE IT, DO NOT REASON ABOUT IT (2026-09-09) ═══════════════════════════════════
-      // One turn took 131 SECONDS. Typical is 26-45. Nobody waits half a minute on a phone, and
-      // this file's own record of the last performance hunt is four consecutive wrong guesses
-      // before anyone measured - then INVITE went 3,244ms to 922ms in ten minutes once it was
-      // aimed at numbers.
-      // Same instrument as INVITE's `phase_ms`, in the reply itself, because a budget in a
-      // document is one nobody reads at the moment it matters.
-      const _t0 = Date.now(); let _tp = _t0; const phase_ms = {};
-      const _mark = (name) => { const now = Date.now(); phase_ms[name] = now - _tp; _tp = now; };
-
-      let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
+let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const wantRef = String((opts && opts.ref) || "").trim();
       if (wantRef && me && /^https?:\/\//i.test(wantRef)) {
         try {
@@ -59235,7 +59235,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // every turn once a photo is on file, so it became the parent forever.
       // Only a reference that ARRIVED THIS TURN is a starting point. One that is merely being
       // carried is context - it tells her what is on the arm, not what to draw on top of.
-      _mark("import");
+      _tick("import");
       const pickFrom = String((opts && opts.from) || "").trim() ||
                        (refHeld ? "" : (refDesign || ""));
       if (pickFrom && me) {
@@ -59257,7 +59257,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         } catch {}
       }
 
-      _mark("read_state");
+      _tick("read_state");
       let hits = [];
       if (!noBook) { try { hits = await catalogFind(env, said, 8); } catch {} }
       const withPics = hits.filter((h) => h.image);
@@ -59458,7 +59458,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
                  prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "" };
       };
 
-      _mark("prompt_build");
+      _tick("prompt_build");
       let acted = null, agentVia = null;
       if (me && stage === "pta") {
         try {
@@ -59473,7 +59473,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         } catch {}
       }
 
-      _mark("agent");
+      _tick("agent");
       const [r, iRes] = await Promise.all([
         acted ? Promise.resolve(null) : callBrain({
           model: talkModel,
@@ -59697,7 +59697,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // sentence as `acted.say`, so the words and the act cannot contradict each other.
       // A change with nothing to change is a first drawing - the only correction still needed,
       // and it is a fact rather than a judgement.
-      _mark("classify");
+      _tick("classify");
       let drew = null;
       const hasParent = !!(me && lastDrawn && lastDrawn.design);
       let act = acted.act;
@@ -59853,7 +59853,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // vector either - the two stay in step because they are the same consent.
       // `kept` is computed inline in the return, not a variable here - referencing it would have
       // thrown outside the try and killed every draw. `stage === "pta"` is the same condition.
-      _mark("image");
+      _tick("image");
       if (me && stage === "pta" && drew && drew.image && !drew.failed && env.VECTORIZE && env.AI) {
         try {
           const what = [
@@ -59907,7 +59907,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         } catch {}
       }
 
-      _mark("remember");
+      _tick("remember");
       phase_ms.total = Date.now() - _t0;
       // Doubled the observed warm total. A number that never fires is not a budget.
       const over_budget = phase_ms.total > 20000;

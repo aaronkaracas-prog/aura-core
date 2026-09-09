@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.182.0-2026-09-08-a-pta-that-remembers";
+const BUILD = "aura-core-v9.183.0-2026-09-09-an-offer-is-not-a-grant";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -32980,8 +32980,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const gr = await processCommand("PTA_GRANT " + ptaId + " " + auraId +
             ' CONFIRM {"edge_type":"grant","permission":{"can_remember":true}}', env, true);
           const gp = (gr && gr.payload) ? gr.payload : gr;
-          remembers = !!(gp && gp.ok);
-          if (!remembers) remembersWhy = (gp && gp.error) || "grant did not land";
+          // ══ AN OFFER IS NOT A GRANT (2026-09-09) ═══════════════════════════════════════════
+          // MEASURED: the first build of this reported `remembers: true` and the edge sat
+          // `state: "pending"` with `can_remember_now: false`. `PTA_GRANT ... CONFIRM` OPENS the
+          // offer; ACCEPT is what makes it live. Reporting the offer as the grant is the same
+          // failure `listed` exists to prevent - a half-write that says it worked.
+          //
+          // `ACCEPT` records HOW the yes happened and keeps it in the chain forever: "self" when
+          // the subject acted, "witness" when somebody else reported it. This is self and the
+          // sentence says why - they created this PTA themselves to use the app. The code reads
+          // that wording, and an auditor can always tell the two apart. Saying it plainly is what
+          // makes this a recorded consent rather than a manufactured one.
+          const gEdge = (gp && (gp.edge_id || gp.edge)) || null;
+          if (gp && gp.ok && gEdge) {
+            const ar = await processCommand("ACCEPT " + gEdge +
+              " ::: they signed up themselves and created this PTA to use " + pcApp, env, true);
+            const ap = (ar && ar.payload) ? ar.payload : ar;
+            remembers = !!(ap && ap.ok);
+            if (!remembers) remembersWhy = (ap && ap.error) || "grant offered but not accepted";
+          } else {
+            remembersWhy = (gp && gp.error) || "grant did not land";
+          }
         }
       } catch (e) { remembersWhy = String(e?.message ?? e).slice(0, 160); }
 

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.193.0-2026-09-09-the-ending-never-changes";
+const BUILD = "aura-core-v9.194.0-2026-09-09-stencil-traces-lineart-redraws";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8790,9 +8790,21 @@ async function processCommand(line, env, isOp) {
       const fnParts = rest.trim().split(/\s+/);
       const fnId = String(fnParts[0] || "").trim();
       if (!fnId) return { cmd: "FINAL", payload: { ok: false,
-        error: 'Usage: FINAL <design id, image id or url> [STENCIL]' } };
-      const fnStencil = /^STENCIL$/i.test(fnParts[1] || "");
-      const fnCardName = fnStencil ? "stencil" : "flat artwork";
+        error: 'Usage: FINAL <image url or id> [STENCIL|LINEART]' } };
+      // ══ TWO WORDS, TWO MECHANISMS, AND THEY ARE NOT INTERCHANGEABLE (2026-09-09) ═════════
+      // STENCIL is a PIXEL OPERATION - greyscale, blur, threshold. Free, instant, and the geometry
+      // cannot move because it is the same pixels. Perfect on flat linework; on a full-colour
+      // shaded piece it finds no clean edge and returns mud.
+      // LINE ART is a model redraw, for exactly that case - shaded or colour work with no edge to
+      // trace. It is what every artist prompt in the wild asks for: "convert this into a
+      // minimalist line drawing", "stencil-ready tattoo linework only".
+      // A KV card called `stencil` was shadowing the pixel operation and turning it into a redraw,
+      // because `tatStyleCards` merges KV over the built-ins by NAME. Deleted; the trace is back.
+      const fnMode = String(fnParts[1] || "").toUpperCase();
+      const fnCardName = fnMode === "STENCIL" ? "stencil"
+                       : (fnMode === "LINEART" || fnMode === "LINE") ? "line art"
+                       : "flat artwork";
+      const fnStencil = fnCardName !== "flat artwork";
       const SCF = await tatStyleCards(env);
       // The dash form is how the key was written; both spellings resolve to the same card.
       const fnCard = SCF.find((c) => c[0].toLowerCase() === fnCardName) ||
@@ -8813,8 +8825,9 @@ async function processCommand(line, env, isOp) {
         return { cmd: "FINAL", payload: { ok: true, card: fnCard[0],
           design: fp.design_id || fp.id || null, image: fp.image_url || null, from: fnId,
           note: fnStencil
-            ? "The transfer sheet. The finished artwork is the artist's shading reference - send both."
-            : "The finished artwork off the body. Run FINAL <this id> STENCIL for the transfer sheet." } };
+            ? "For the artist. The finished artwork is their shading reference - send both."
+            : "The finished artwork off the body. Then FINAL <this url> LINEART for a shaded or " +
+              "colour piece, or FINAL <this url> STENCIL to trace flat linework." } };
       } catch (e) {
         return { cmd: "FINAL", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
       }

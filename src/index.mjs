@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.204.0-2026-09-10-the-sheet-is-not-the-piece";
+const BUILD = "aura-core-v9.205.0-2026-09-10-the-artist-package";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60119,19 +60119,45 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (act === "artist" && me) {
         try {
           const shopParent = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
+          // ══ "WHITE PAPER" DREW PAPER (2026-09-10) ══════════════════════════════════════
+          // MEASURED: the first good sheet came back with a sheet edge and a soft shadow down
+          // one side - the model drew a PHOTOGRAPH OF PAPER, because that is what it was asked
+          // for. A thermal head burns black pixels; a page shadow becomes grey mush.
           const SHEET =
-            "Take the tattoo ink in this photograph off the body and onto white paper as one " +
-            "flat sheet. The same motifs, in the same order they run down the limb. Black " +
-            "linework only. No skin, no clothing, no body, no new designs.";
+            "Take the tattoo ink in this photograph off the body and lay it out flat as one " +
+            "design. The same motifs, in the same order they run down the limb. Black linework " +
+            "on a plain white background. No skin, no clothing, no body, no paper, no shadow, " +
+            "no new designs.";
           const sr = await processCommand("IMAGE EVOLVE " + shopParent + " " +
             JSON.stringify({ prompt: SHEET, by: me }), env, true);
           const sp = (sr && sr.payload) ? sr.payload : sr;
-          drew = (sp?.ok && sp.image_url)
-            ? { design: sp.child, image: sp.image_url, changed: "the artist's sheet",
-                from: shopParent, for_the_artist: true,
-                // How it wraps. An artist needs both and they are not the same picture.
-                wraps: (lastDrawn && lastDrawn.image) || null }
-            : { failed: sp?.error || "COULD_NOT_MAKE_SHEET", from: shopParent };
+          if (sp?.ok && sp.image_url) {
+            // ══ THE STENCIL, ON THE SHEET - NOT ON A PHOTOGRAPH OF A PERSON ═══════════════
+            // `tatStencilBytes` is the one thing in this file that CANNOT drift: greyscale,
+            // blur, one threshold, thicken. Same bytes in, same bytes out, no model, free.
+            // It has existed for weeks and every time it ran today it ran on an ARM - skin, a
+            // top, a background - so it came back as a black silhouette of a person. Pointed at
+            // the flat sheet it is exactly the transfer file.
+            // IT DOES NOT REPLACE THE SHEET. An artist wants both: the artwork to look at and
+            // judge, and the burn to put through the printer.
+            // THE COMMAND, NOT THE HELPER. `tatStencilBytes` returns raw bytes; R2, the KV
+            // base64, `imagemeta` and the /image/<id> route all live in the STENCIL case.
+            // Calling the helper here would mean a second copy of every one of those.
+            let burn = null;
+            try {
+              const st = await processCommand("STENCIL " + (sp.child || sp.id), env, true);
+              const stp = (st && st.payload) ? st.payload : st;
+              if (stp?.ok && stp.image) burn = stp.image;
+            } catch {}
+            drew = { design: sp.child, image: sp.image_url, changed: "the artist's sheet",
+                     from: shopParent, for_the_artist: true,
+                     // Three files, one for each thing an artist actually does: what to tattoo,
+                     // what to put through the thermal printer, and where it goes on the body.
+                     ...(burn ? { stencil: burn } : {}),
+                     wraps: (lastDrawn && lastDrawn.image) || null };
+          } else {
+            drew = { failed: sp?.error || "COULD_NOT_MAKE_SHEET", from: shopParent };
+          }
         } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
       }
 

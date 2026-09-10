@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.198.0-2026-09-10-one-image-per-part";
+const BUILD = "aura-core-v9.199.0-2026-09-10-the-consultation-is-hers";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59471,7 +59471,36 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // ONE ELEMENT PER IMAGE is what a working artist can use: print it, place it, freehand
         // the flow between. Ornamental sleeves are built exactly that way - framework stencilled,
         // the rest freehand, because the pattern has to wrap that person's limb.
-        '  "pieces": ["optional - one image each, when the job is several separate images"]\n' +
+        '  "pieces": ["optional - one image each, when the job is several separate images"],\n' +
+        // ══ THE CONSULTATION BELONGS TO THE ONE HAVING IT (2026-09-10) ══════════════════════
+        // This was a SECOND model call that re-read the conversation after she answered and
+        // guessed at what she already knew. MEASURED: 41 seconds on a 71-second turn, running
+        // after her rather than beside her, and blind - no picture is attached to it, so it once
+        // reported "no image is attached" while she was describing the tattoo in front of her.
+        // It sat on `job: add, placement: full sleeve` for four turns while she was saying "fine
+        // line and dotwork" out loud.
+        // Same move as `prompt`, for the same reason: the thing that knows what they meant is
+        // the thing that wrote the sentence. A stranger reconstructing the appointment from the
+        // transcript is slower AND less accurate than the person who was in the room.
+        // FILL ONLY WHAT THEY HAVE ACTUALLY SETTLED. An empty field means you ask them; a field
+        // filled with a sensible guess means you never do. Carry every earlier fact forward
+        // unless this message changes it - a correction REPLACES (three legs then one leg is one
+        // leg), a new subject takes everything describing the old one with it, and anything YOU
+        // suggested that they did not take up is not a fact.
+        '  "brief": {\n' +
+        '    "subject": "what the tattoo is OF, in their words",\n' +
+        '    "job": "new | cover | add | rework",\n' +
+        '    "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
+        '    "colour": "full_colour | black_and_grey | muted",\n' +
+        '    "composition": "what the picture is OF - head portrait, coiled, flying, a bouquet",\n' +
+        '    "character": "what it should feel like - fierce, delicate, menacing, joyful",\n' +
+        '    "detail": "bold | balanced | intricate | ultra",\n' +
+        '    "placement": "where on the body, only if they said",\n' +
+        '    "size": "how big, only if they said",\n' +
+        '    "elements": ["cherry blossoms","waves"],\n' +
+        '    "meaning": "why they are getting it - who it is for, what happened",\n' +
+        '    "brief": "one paragraph, at most 60 words, for a tattoo artist to read"\n' +
+        "  }\n" +
         "}\n\n" +
         // ══ THE DISCUSSION DECIDES WHEN, NOT YOU (2026-09-08) ════════════════════════════════
         // Aaron, after a dinosaur appeared on turn one: "the discussion happens with Aura and she
@@ -59668,7 +59697,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                  act: ["draw", "change", "none"].includes(act) ? act : "none",
                  prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
                  use: strList(o.use, 4, 400),
-                 pieces: strList(o.pieces, 6, 160) };
+                 pieces: strList(o.pieces, 6, 160),
+                 brief: (o.brief && typeof o.brief === "object" && !Array.isArray(o.brief))
+                   ? o.brief : null };
       };
 
       _tick("prompt_build");
@@ -59698,8 +59729,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           max_tokens: 500
         }, env),
 
-        // The facts, read beside her answer rather than after it. Same conversation, no
-        // dependency between them, so they go together.
+        // ══ THE FLOOR, NOT THE ROUTINE (2026-09-10) ════════════════════════════════════
+        // She fills `brief` herself now. This call remains as the floor beneath her - when her
+        // agent did not answer at all, or answered without it - so the fields can never simply
+        // vanish from a turn. NOTHING IS LOST; it just stops running when it has nothing to add.
+        // `acted` is already set by this point on the agent path, so we know here whether she
+        // gave us one.
+        (acted && acted.brief && Object.keys(acted.brief).length) ? Promise.resolve(null) :
         callBrain({
           model: talkModel,
           system:
@@ -59783,9 +59819,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       let brief = null, intent = null;
       try {
         const it = iRes;
-        if (it?.ok && it.text) {
-          let parsed = null;
-          try { parsed = JSON.parse(it.text); }
+        // Hers if she wrote one, the floor's if she did not. One reader, one shape - the
+        // normalisation below is unchanged and still the only place a field is coerced.
+        const hers = (acted && acted.brief && typeof acted.brief === "object" &&
+                      Object.keys(acted.brief).length) ? acted.brief : null;
+        if (hers || (it?.ok && it.text)) {
+          let parsed = hers;
+          try { if (!parsed) parsed = JSON.parse(it.text); }
           // `repairJson` RETURNS A PARSED OBJECT, not a string - wrapping it in JSON.parse
           // stringifies it to "[object Object]" and throws, which silently killed both repair
           // paths and left every fenced or truncated reply with no fields at all. Caught by the
@@ -60155,6 +60195,30 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           delete merged.resolved; delete merged.missing;
           await env.AURA_KV.put("talk:brief:" + me, JSON.stringify(merged),
             { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+          // ══ A PTA KEEPS THINGS. A CACHE DOES NOT (2026-09-10) ══════════════════════════
+          // Aaron: "everything's within a PTA, and if we're using a PTA to manage everything
+          // then nothing should ever disappear - that's literally what a PTA does, it keeps
+          // continuity throughout someone's lifetime, not sit down and make a tattoo for ten
+          // minutes."
+          // Everything this person said they wanted lived in ONE KV key with a 90-day expiry.
+          // Their designs were already filed under their PTA as vectors and their chain already
+          // holds BORN and UNDERSTOOD - the consultation was the only part of them written on
+          // something that deletes itself.
+          // The KV key stays: it is the fast read for the next turn, and it is a CACHE now
+          // rather than the record. `appendChain` is the same call `PTA_CREATE` makes to write
+          // UNDERSTOOD at birth - this is one more thing known about them, on the same chain,
+          // reachable by the same revoke.
+          // ONLY WHEN IT CHANGED. A chain entry per turn would be a transcript, and the chain is
+          // for what is true, not for how often it was restated.
+          const changed = JSON.stringify(merged) !== JSON.stringify(carriedObj || {});
+          if (changed && stage === "pta" && env.PTA_DO) {
+            try {
+              const bStub = env.PTA_DO.get(env.PTA_DO.idFromName(me));
+              await bStub.fetch(new Request("http://do", { method: "POST",
+                body: JSON.stringify({ method: "appendChain",
+                                       params: ["WANTS", "self", merged] }) }));
+            } catch {}
+          }
           // What she answers from is the running brief, not this turn's slice of it.
           for (const k of Object.keys(merged)) {
             if (intent[k] == null || intent[k] === "") intent[k] = merged[k];

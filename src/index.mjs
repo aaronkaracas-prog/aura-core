@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.214.0-2026-09-10-the-job-sheet-tells-the-truth";
+const BUILD = "aura-core-v9.215.0-2026-09-10-ask-xai-for-a-size";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18221,11 +18221,15 @@ async function successionGate(env) {
         const evAs = (typeof p.as === "string" && /^[a-z_]{3,24}$/.test(p.as)) ? p.as : "image_evolve";
         const evW = Number.isInteger(p.width) ? p.width : null;
         const evH = Number.isInteger(p.height) ? p.height : null;
+        // xAI's own vocabulary, passed through untouched: a ratio like "9:16" and "1k" or "2k".
+        const evAsp = typeof p.aspect === "string" ? p.aspect : null;
+        const evRes = (p.res === "1k" || p.res === "2k") ? p.res : null;
         const r = parentUrl
           ? await showIt(p.prompt, env, { source: evAs, parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt,
               refs: [parentUrl, ...withRefs], subject: p.prompt,
-              ...(evW ? { width: evW } : {}), ...(evH ? { height: evH } : {}) })
+              ...(evW ? { width: evW } : {}), ...(evH ? { height: evH } : {}),
+              ...(evAsp ? { aspect: evAsp } : {}), ...(evRes ? { res: evRes } : {}) })
           : await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
         if (!r || !r.ok) return { cmd: "IMAGE", payload: { ok: false, error: r ? r.error : "evolution failed" } };
@@ -57506,7 +57510,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     // Without the seed in this key they would all be one cache entry and the caller would get the
     // same picture twenty times, reported as twenty successes.
     const sig = model + "|" + quality + "|" +
-                (opts.width || 1024) + "x" + (opts.height || 1024) + "|" + refs.join("|") + "|" +
+                (opts.width || 1024) + "x" + (opts.height || 1024) + "|" +
+                (opts.aspect || "") + (opts.res || "") + "|" + refs.join("|") + "|" +
                 (opts.seed != null ? "seed" + opts.seed + "|" : "") + p;
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
     cacheKey = "imgcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -57951,7 +57956,21 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       b64 = btoa(bs);
     } else if (/^grok-imagine/i.test(model)) {
       // xAI Grok image (Aurora). OpenAI-compatible /images/generations at api.x.ai, key XAI_API_KEY.
-      // xAI does NOT support quality/size/style on images - sending them errors - so we omit them here.
+      //
+      // ══ "xAI DOES NOT SUPPORT SIZE" WAS TRUE ONCE AND IS THE WALL NOW (2026-09-10) ════════
+      // That sentence sat here for weeks and every image this system made came back near 1024px
+      // because of it. It is why a shop sheet held 743 pixels of ink, why PRINT could only offer
+      // five inches of a twenty-six inch back piece, and why an afternoon went into DPI ceilings
+      // and page slicing - all downstream of a comment.
+      // xAI's own docs, read today: the Imagine API "supports batch generation of multiple
+      // images, and control over aspect ratio and resolution", `1k` or `2k`, with fourteen
+      // ratios. Aaron kept showing the same thing from the other side - Grok in a browser, cold,
+      // handing back print-resolution line art from one photograph. Same model. We were simply
+      // never asking it for a size.
+      // BOTH ARE OPTIONAL AND ABSENT MEANS UNCHANGED, so every existing caller draws exactly what
+      // it drew before. Only a caller that names a shape gets one.
+      // BILLING, from the same docs: an edit is charged for the input image AND the output, and
+      // 2k costs more than 1k. A big sheet is not the same two cents as a chat picture.
       //
       // ══ WITH REFERENCES IT IS AN EDIT, NOT A GENERATION (2026-08-24) ══════════════════════
       // MEASURED, and confirmed independently from source by Grok: IMAGE EVOLVE rebuilt a TEXT
@@ -57977,12 +57996,18 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         // From xAI's REST docs: JSON, not multipart (they explicitly do not support the OpenAI
         // SDK's multipart images.edit). One source is `image: {url, type:"image_url"}`; up to three
         // is `images: [...]`. A data URI or a Files API file_id works in the same slot.
-        body: JSON.stringify(isEdit
-          ? { model, prompt: p, n: 1, response_format: "b64_json",
-              ...(refs.length === 1
+        body: JSON.stringify(Object.assign(
+          { model, prompt: p, n: 1, response_format: "b64_json" },
+          // Named by the caller, never guessed. `opts.aspect` is one of xAI's ratios ("9:16"),
+          // `opts.res` is "1k" or "2k".
+          (typeof opts.aspect === "string" && /^\d+(\.\d+)?:\d+(\.\d+)?$|^auto$/.test(opts.aspect)
+            ? { aspect_ratio: opts.aspect } : {}),
+          (opts.res === "1k" || opts.res === "2k" ? { resolution: opts.res } : {}),
+          (isEdit
+            ? (refs.length === 1
                 ? { image: { type: "image_url", url: refs[0] } }
-                : { images: refs.slice(0, 3).map(u => ({ type: "image_url", url: u })) }) }
-          : { model, prompt: p, n: 1, response_format: "b64_json" })
+                : { images: refs.slice(0, 3).map(u => ({ type: "image_url", url: u })) })
+            : {})))
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));
@@ -60430,8 +60455,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // TALL, BECAUSE A SLEEVE IS TALL. 1024x2048 is 2 megapixels - the art gets the room
           // it needs instead of being shrunk into the middle of a square, and the ends stop
           // running off an edge that was never the right shape for the piece.
+          // ══ ASK THE MODEL FOR A PRINT-SIZED FILE (2026-09-10) ═════════════════════════
+          // A sleeve is tall and a shop needs pixels. `9:16` at `2k` is xAI's own vocabulary for
+          // that, and it is the difference between 743 pixels of ink and something an artist can
+          // print at a real size. `width`/`height` stay for the Cloudflare lane, which takes
+          // pixels instead; whichever model this job is dialled to reads the pair it understands.
           const sr = await processCommand("IMAGE EVOLVE " + shopParent + " " +
             JSON.stringify({ prompt: SHEET, by: me, as: "shop_sheet",
+                             aspect: "9:16", res: "2k",
                              width: 1024, height: 2048 }), env, true);
           const sp = (sr && sr.payload) ? sr.payload : sr;
           if (sp?.ok && sp.image_url) {

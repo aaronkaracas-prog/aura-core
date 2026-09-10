@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.203.0-2026-09-10-the-artists-sheet";
+const BUILD = "aura-core-v9.204.0-2026-09-10-the-sheet-is-not-the-piece";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59479,7 +59479,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // ONE ELEMENT PER IMAGE is what a working artist can use: print it, place it, freehand
         // the flow between. Ornamental sleeves are built exactly that way - framework stencilled,
         // the rest freehand, because the pattern has to wrap that person's limb.
-        '  "pieces": ["optional - one image each, when the job is several separate images"],\n' +
+
         // ══ THE CONSULTATION BELONGS TO THE ONE HAVING IT (2026-09-10) ══════════════════════
         // This was a SECOND model call that re-read the conversation after she answered and
         // guessed at what she already knew. MEASURED: 41 seconds on a 71-second turn, running
@@ -59741,7 +59741,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                  act: ["draw", "change", "artist", "none"].includes(act) ? act : "none",
                  prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
                  use: strList(o.use, 4, 400),
-                 pieces: strList(o.pieces, 6, 160),
                  brief: (o.brief && typeof o.brief === "object" && !Array.isArray(o.brief))
                    ? o.brief : null };
       };
@@ -60180,35 +60179,27 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const parentId = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
           const alsoRefs = useRaw.slice(useRaw.length && useOne(useRaw[0], "design") ? 1 : 0)
             .map((n) => useOne(n, "url")).filter(Boolean);
-          // ══ ONE IMAGE PER PART, WHEN SHE ASKED FOR PARTS ═══════════════════════════
-          // Same call, run once per element, every one off the SAME parent and the same
-          // references - so each part is cut from the piece they approved rather than from
-          // the part drawn before it. Chaining them would drift, and drift across four files
-          // that have to line up on one arm is the whole failure.
-          // `prompt` stays the job; the element name says which part this file is.
-          const parts = Array.isArray(acted.pieces) && acted.pieces.length
-            ? acted.pieces : [null];
-          const evolveOne = async (part) => {
-            const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
-              JSON.stringify({ prompt: (part ? part + ". " : "") + (acted.prompt || said) + cleanUp,
-                               by: me,
-                               ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
-            const cp = (cr && cr.payload) ? cr.payload : cr;
-            return (cp?.ok && cp.image_url)
-              ? { part: part || null, design: cp.child, image: cp.image_url }
-              : { part: part || null, failed: cp?.error || "COULD_NOT_CHANGE" };
-          };
-          const made = [];
-          for (const part of parts.slice(0, 6)) made.push(await evolveOne(part));
-          const first = made.find((m) => m.image) || made[0];
-          drew = first.image
-            ? { design: first.design, image: first.image, changed: acted.prompt || said,
+          // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════
+          // Added this morning to give an artist one file per element. Every run produced
+          // COUSINS: four evolves with a part name in front - "upper arm panel", "wrist cuff" -
+          // and a part name is a SUBJECT, so the model authored flash in the right genre instead
+          // of cutting the piece up. A HAMSA came back on a sleeve with no hamsa in it. Grok's
+          // read and it is right: that is what evolve DOES with a subject, so it would keep
+          // minting cousins on every style forever.
+          // It poisoned the chain too - each panel overwrote `talk:last`, so the artist's sheet
+          // was later unwrapped from a panel rather than from the sleeve.
+          // Tiling a sheet across letter pages is arithmetic on a bitmap, done at print time by
+          // the artist. The thermal-paper note above already says so. Never a job for a model.
+          const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
+            JSON.stringify({ prompt: (acted.prompt || said) + cleanUp, by: me,
+                             ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
+          const cp = (cr && cr.payload) ? cr.payload : cr;
+          drew = (cp?.ok && cp.image_url)
+            ? { design: cp.child, image: cp.image_url, changed: acted.prompt || said,
                 from: parentId,
-                ...(parts[0] ? { pieces: made } : {}),
                 ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) }
-            : { failed: first.failed || "COULD_NOT_CHANGE", changed: acted.prompt || said,
+            : { failed: cp?.error || "COULD_NOT_CHANGE", changed: acted.prompt || said,
                 from: parentId,
-                ...(parts[0] ? { pieces: made } : {}),
                 ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) };
         } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
       } else if (act === "draw" && me) {
@@ -60305,7 +60296,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         } catch {}
       }
 
-      if (me && drew && drew.image && !drew.failed) {
+      // ══ THE SHEET IS AN OUTPUT, NOT THE PIECE (2026-09-10) ═══════════════════════════════
+      // MEASURED on the first live `artist` turn: the sheet was unwrapped `from` the imported
+      // PHOTOGRAPH, and `wraps` pointed at a flat panel with a hamsa in it. Both wrong, and both
+      // from one cause - `talk:last` had been overwritten by a derivative, so "the piece on
+      // screen" was no longer the sleeve they approved.
+      // Everything downstream reads this key: the parent of the next evolve, the thing she is
+      // told is on screen, and now the mock the artist gets for how it wraps. A file MADE FROM
+      // the piece must never replace the piece, or the chain walks off the design.
+      if (me && drew && drew.image && !drew.failed && !drew.for_the_artist) {
         try {
           await env.AURA_KV.put("talk:last:" + me,
             JSON.stringify({ design: drew.design, image: drew.image,

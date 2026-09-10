@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.199.0-2026-09-10-the-consultation-is-hers";
+const BUILD = "aura-core-v9.200.0-2026-09-10-the-mytattoo-channel";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -4423,7 +4423,15 @@ function agentInstanceFor(isOp, ptaId) {
   return id ? ("pta-" + id).slice(0, 64) : null;
 }
 
-async function proxyToAgent(env, line, isOp, ptaId, image) {
+// ══ WHICH CHANNEL A TURN ARRIVES ON (2026-09-10) ═════════════════════════════════════════════
+// Every caller sent `channel: "cmd"`, and `cmd` is not registered in aura-think's
+// configureChannels(). MEASURED in `npx wrangler tail`, verbatim: `turn requested channel "cmd"
+// which is not registered (configureChannels()/getMessengers()); no per-channel policy applied`.
+// So a customer's tattoo consultation got the operator default - thirteen tool schemas at 4,411
+// tokens, and a decisions block about neurons and test fixtures.
+// `channel` is optional and defaults to "cmd", so the operator path and the self-edit path at
+// 66104 are byte-identical to before. Only the caller that knows it is a customer names one.
+async function proxyToAgent(env, line, isOp, ptaId, image, channel) {
   try {
     const instance = agentInstanceFor(isOp, ptaId);
     if (!instance) return { failed: "no identity - an anonymous visitor has no agent instance of their own, so the local path answers" };
@@ -4438,7 +4446,7 @@ async function proxyToAgent(env, line, isOp, ptaId, image) {
     // `image` is a URL. `/turn` adds it as a user message before running the turn, which is
     // Think's documented "add context, then run a turn" pattern - so she looks at it herself
     // instead of being read a caption by a smaller model.
-    const body = JSON.stringify({ text: line, channel: "cmd",
+    const body = JSON.stringify({ text: line, channel: channel || "cmd",
                                   ...(image ? { image: String(image) } : {}) });
     const headers = { "content-type": "application/json", authorization: "Bearer " + tok };
     let r;
@@ -59671,6 +59679,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         ? "You are Aura, helping somebody with a tattoo. " + refBlind + CONTRACT
         : talkSys + stateNote + picNote + refNote + refBlind + CONTRACT;
 
+      // ══ THE CONTRACT IS NOT SOMETHING THE CUSTOMER SAID (2026-09-10) ══════════════════════
+      // `/turn` has no system parameter - text, channel, image - so everything sent to her agent
+      // arrives as a USER MESSAGE and is kept in her Durable Object session forever. MEASURED:
+      // `history 10500 (11 msgs)` on a turn that produced 40 output tokens. Eleven copies of her
+      // own instructions, filed as things the person said, and one more added every turn.
+      // The contract now lives in the `mytattoo` channel's `instructions`, which Think prepends
+      // to the SYSTEM PROMPT - config, cached, never history. So it MOVED; there is one copy.
+      // WHAT STAYS HERE IS WHAT CHANGES: what is on screen, which pictures are on file, whether
+      // a photograph is attached this turn, and what they said. None of that can live in a
+      // channel definition because none of it is the same twice.
+      // THE FLOOR KEEPS `fullSys` UNCHANGED - it is a direct model call with its own `system`
+      // and never touches a channel, so it must still carry the contract itself.
+      const agentSys = talkSys + stateNote + picNote + refNote + refBlind;
+
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
       // Both get the same contract, so the shape of the answer does not depend on which replied.
       const readAct = (txt) => {
@@ -59708,8 +59730,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try {
           const proxied = await proxyToAgent(env,
             "[A person is designing a tattoo with you on mytattoo.world. Answer as yourself, " +
-            "from what you know about them.]\n\n" + fullSys + "\n\nTHEY SAID: " + said,
-            false, me, seeing ? refUrl : null);
+            "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said,
+            false, me, seeing ? refUrl : null, "mytattoo");
           if (proxied && proxied.reply && !proxied.failed) {
             acted = readAct(proxied.reply);
             if (acted) agentVia = proxied.instance || "agent";

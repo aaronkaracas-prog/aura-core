@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.200.0-2026-09-10-the-mytattoo-channel";
+const BUILD = "aura-core-v9.201.0-2026-09-10-never-drop-the-pixels";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59978,6 +59978,64 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       let act = acted.act;
       if (act === "change" && !hasParent) act = "draw";
 
+      // ══ WHAT SHE NAMED, RESOLVED TO REAL ADDRESSES ═══════════════════════════════════════
+      // `use` holds her words - "photo", "piece", or an https address. Anything that does not
+      // resolve is dropped rather than guessed at: a made-up reference is a picture of somebody
+      // else's arm, which is the failure `onme` already paid for.
+      // The FIRST name is the parent - the pixels the edit starts from. The rest ride along as
+      // extra references, which is how "the difference between these two" becomes a thing the
+      // image model can actually answer.
+      // READ HERE, ABOVE THE ACT, because it now decides the act as well as feeding the call.
+      const useRaw = Array.isArray(acted.use) ? acted.use.slice(0, 4) : [];
+      const useOne = (n, want) => {
+        const k = String(n || "").trim();
+        const low = k.toLowerCase();
+        if (low === "photo" || low === "the photo" || low === "photograph")
+          return want === "design" ? (refDesign || null) : (refUrl || null);
+        if (low === "piece" || low === "the piece" || low === "last")
+          return want === "design" ? ((lastDrawn && lastDrawn.design) || null)
+                                   : ((lastDrawn && lastDrawn.image) || null);
+        if (/^https?:\/\//i.test(k)) return want === "design" ? null : k;
+        if (/^(ent_|img_)/.test(k)) return want === "design" ? k : null;
+        return null;
+      };
+
+      // ══ A DRAW THROWS THE PIXELS AWAY (2026-09-10) ═══════════════════════════════════════
+      // MEASURED, side by side: her sleeve was pointed petal caps and delicate open linework;
+      // the sheet that came back one turn later was dense sunflower mandalas with heavy dotwork,
+      // on a limb. A DIFFERENT TATTOO. The reply says why - `act: "draw"`, and `drew` carried
+      // `asked` with no `from`. A draw is a fresh generation: no parent, no reference, nothing
+      // of the piece they had just approved. She described a sleeve and a model invented one.
+      // Aaron, and it is the thesis of the whole product: "if you're having a model anticipate,
+      // read an image, come back with what she thinks it should be and then spit the text out of
+      // what to create next, it's never gonna work - we're evolving an image."
+      // TWO WAYS THE PIXELS WERE BEING DROPPED, BOTH CLOSED HERE:
+      //  1. SHE NAMED A PICTURE AND SAID DRAW. `use` was wired into the change branch only, so
+      //     naming a starting picture could be silently overruled by the word `draw`. You cannot
+      //     start from a picture in a fresh generation - if she named one, it is an edit.
+      //  2. SHE SAID DRAW WITH THE SAME SUBJECT ALREADY ON SCREEN. The rule above already
+      //     converts a draw to an edit when the piece starts from their photograph; once she had
+      //     drawn something herself, that conversion stopped applying and a second `draw` went
+      //     back to nothing. The comment thirty lines up already states the right test - "if the
+      //     subject HAS moved it is a new piece" - it just was not being applied here.
+      // A GENUINELY NEW SUBJECT STILL DRAWS FRESH. Dragon, then Mount Rushmore: the subject moved
+      // and the old piece is left alone rather than mutated into something it is not.
+      // WHEN EITHER SUBJECT IS UNKNOWN, KEEP THE PIXELS. Dropping them is the failure being
+      // fixed, and an unwanted evolve is one sentence to correct; a lost piece is not.
+      if (act === "draw" && hasParent) {
+        const namedParent = useRaw.length ? useOne(useRaw[0], "design") : null;
+        const wasSubj = String((lastDrawn && lastDrawn.subject) || "").trim().toLowerCase();
+        const nowSubj = String((intent && intent.subject) || "").trim().toLowerCase();
+        const subjectMoved = !!(wasSubj && nowSubj && wasSubj !== nowSubj);
+        if (namedParent || !subjectMoved) {
+          act = "change";
+          if (namedParent && namedParent !== lastDrawn.design) {
+            lastDrawn = { design: namedParent, image: useOne(useRaw[0], "url") || null,
+                          subject: (intent && intent.subject) || null };
+          }
+        }
+      }
+
       // ══ IT HAS TO COME BACK ON THE SAME ARM (2026-09-07) ══════════════════════════════════
       // MEASURED: a cover-up dolphin drawn as a fresh piece "on the forearm" - a forearm, not
       // THEIRS. Aaron: "it still needs to come back on the same arm, because when we do add-ons
@@ -60044,26 +60102,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               : ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +
                 "nothing else in frame - no studio, no furniture, no other people or hands, and " +
                 "no logo, watermark or text of any kind.";
-          // ══ WHAT SHE NAMED, RESOLVED TO REAL ADDRESSES ═════════════════════════════
-          // `use` holds her words - "photo", "piece", or an https address. Anything that does
-          // not resolve is dropped rather than guessed at: a made-up reference is a picture of
-          // somebody else's arm, which is the failure `onme` already paid for.
-          // The FIRST name is the parent - the pixels the edit starts from. The rest ride along
-          // as extra references, which is how "the difference between these two" becomes a thing
-          // the image model can actually answer.
-          const useRaw = Array.isArray(acted.use) ? acted.use.slice(0, 4) : [];
-          const useOne = (n, want) => {
-            const k = String(n || "").trim();
-            const low = k.toLowerCase();
-            if (low === "photo" || low === "the photo" || low === "photograph")
-              return want === "design" ? (refDesign || null) : (refUrl || null);
-            if (low === "piece" || low === "the piece" || low === "last")
-              return want === "design" ? ((lastDrawn && lastDrawn.design) || null)
-                                       : ((lastDrawn && lastDrawn.image) || null);
-            if (/^https?:\/\//i.test(k)) return want === "design" ? null : k;
-            if (/^(ent_|img_)/.test(k)) return want === "design" ? k : null;
-            return null;
-          };
           const parentId = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
           const alsoRefs = useRaw.slice(useRaw.length && useOne(useRaw[0], "design") ? 1 : 0)
             .map((n) => useOne(n, "url")).filter(Boolean);

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.213.0-2026-09-10-the-pixels-are-the-ceiling";
+const BUILD = "aura-core-v9.214.0-2026-09-10-the-job-sheet-tells-the-truth";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8946,17 +8946,6 @@ async function processCommand(line, env, isOp) {
       const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
       const row = (k, v) => v ? "<tr><td>" + esc(k) + "</td><td>" + esc(v) + "</td></tr>" : "";
-      const facts =
-        row("Piece", (pB && pB.subject) || pSubject) +
-        row("Style", pB && pB.style) +
-        row("Placement", pB && pB.placement) +
-        row("Colour", pB && String(pB.colour || "").replace(/_/g, " ")) +
-        row("Detail", pB && pB.detail) +
-        row("Job", pB && pB.job) +
-        row("Meaning", pB && pB.meaning) +
-        row("Finished height", pIn + " in") +
-        row("Design", pId) +
-        row("For", pPta || null);
 
       // ══ THE BROWSER LAYS OUT PICTURES; IT DOES NOT CUT THEM (2026-09-10) ═════════════════
       // TWO ATTEMPTS IN CSS, BOTH FAILED THE SAME WAY. Grok opened the PDF and read the embedded
@@ -9025,7 +9014,7 @@ async function processCommand(line, env, isOp) {
         const MIN_DPI = 150;
         const maxIn = H / MIN_DPI;
         if (pTallIn > maxIn) {
-          pFitted = { asked_in: pIn, ink_px: H, min_dpi: MIN_DPI,
+          pFitted = { limit: "resolution", asked_in: pIn, ink_px: H, min_dpi: MIN_DPI,
                       why: "the artwork holds " + H + " pixels of ink - printing it taller than " +
                            maxIn.toFixed(1) + "in would fall under " + MIN_DPI + " DPI and stop " +
                            "being a usable stencil. Flatten the design larger to print it bigger." };
@@ -9037,6 +9026,7 @@ async function processCommand(line, env, isOp) {
         pWideIn = (W / H) * pTallIn;
         if (pWideIn > WIDE_IN) {
           pFitted = Object.assign(pFitted || { asked_in: pIn }, {
+            limit: pFitted ? "resolution and page width" : "page width",
             also: "wider than a letter page at that height" });
           pTallIn = (WIDE_IN * H) / W;
           pWideIn = WIDE_IN;
@@ -9066,6 +9056,28 @@ async function processCommand(line, env, isOp) {
           why: String(e && e.message || e).slice(0, 200) } };
       }
       const pPages = pSlices.length;
+
+      const facts =
+        row("Piece", (pB && pB.subject) || pSubject) +
+        row("Style", pB && pB.style) +
+        row("Placement", pB && pB.placement) +
+        row("Colour", pB && String(pB.colour || "").replace(/_/g, " ")) +
+        row("Detail", pB && pB.detail) +
+        row("Job", pB && pB.job) +
+        row("Meaning", pB && pB.meaning) +
+        // ══ THE JOB SHEET WAS PRINTING THE ASK (2026-09-10) ═══════════════════════════════
+        // It printed `pIn` - what was typed - while the reply reported 4.95in. So the paper in
+        // the artist's hand said 26 and the artwork on it was five. Three builds after writing
+        // the comment about fields that report the ask instead of the act, I shipped one.
+        // The row now reads what will actually come off the printer, and says so when it is not
+        // what was asked for.
+        row("Finished height", pTallIn.toFixed(1) + " in" +
+            (pFitted ? "  (asked for " + pIn + " in - see below)" : "")) +
+        row("Resolution", pDpi + " DPI") +
+        row("Sheets", pPages > 1 ? pPages + " (overlap " + OVERLAP_IN + " in)" : "1") +
+        (pFitted ? row("Why not " + pIn + " in", pFitted.why || pFitted.also || "") : "") +
+        row("Design", pId) +
+        row("For", pPta || null);
 
       // The sheet label rides OUTSIDE the artwork page. What is on that page is what gets burned
       // onto transfer paper, so nothing else belongs on it.
@@ -9125,7 +9137,10 @@ async function processCommand(line, env, isOp) {
         pdf: "https://" + pHost + "/doc/" + docId,
         inches: Number(pTallIn.toFixed(2)), wide_in: Number(pWideIn.toFixed(2)), dpi: pDpi,
         sheets: pPages, overlap_in: pPages > 1 ? OVERLAP_IN : 0,
-        ...(pFitted ? { fitted_to_page_width: pFitted } : {}),
+        // Named for what fired. It was called `fitted_to_page_width` while the thing that
+        // tripped was the DPI ceiling - a flag that misreports which limit stopped you is only
+        // half a measurement.
+        ...(pFitted ? { size_capped: pFitted } : {}),
         from: pId, artwork: pUrl, bytes: pdfArr.length,
         cost_usd: 0,
         note: "Page 1 is the job sheet. The artwork is on its own pages at " +

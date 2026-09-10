@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.206.0-2026-09-10-two-files-sheet-and-limb";
+const BUILD = "aura-core-v9.207.0-2026-09-10-the-whole-piece-in-frame";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60123,11 +60123,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // MEASURED: the first good sheet came back with a sheet edge and a soft shadow down
           // one side - the model drew a PHOTOGRAPH OF PAPER, because that is what it was asked
           // for. A thermal head burns black pixels; a page shadow becomes grey mush.
+          // ══ THE ENDS RAN OFF THE PAGE (2026-09-10) ═════════════════════════════════════
+          // MEASURED: the sheet was right in every other way - correct motifs, correct order,
+          // clean white - and the top and bottom were CUT OFF at the frame edge. A sleeve is
+          // long and narrow; drawn at full width it does not fit, and the model cropped rather
+          // than scaled.
+          // xAI takes no size or aspect argument - the comment in the image lane says sending
+          // one errors - so this cannot be a parameter. It is a requirement OF THE ARTEFACT: a
+          // shop sheet with the wrist end missing is not a shop sheet, and an artist cannot cut
+          // a piece out of a page that never had it.
           const SHEET =
             "Take the tattoo ink in this photograph off the body and lay it out flat as one " +
-            "design. The same motifs, in the same order they run down the limb. Black linework " +
-            "on a plain white background. No skin, no clothing, no body, no paper, no shadow, " +
-            "no new designs.";
+            "design. The same motifs, in the same order they run down the limb. Fit the WHOLE " +
+            "piece inside the picture, end to end, with clear white space all the way around " +
+            "it - scale it down as much as that takes. Nothing cropped, nothing touching an " +
+            "edge. Black linework on a plain white background. No skin, no clothing, no body, " +
+            "no paper, no shadow, no new designs.";
           const sr = await processCommand("IMAGE EVOLVE " + shopParent + " " +
             JSON.stringify({ prompt: SHEET, by: me }), env, true);
           const sp = (sr && sr.payload) ? sr.payload : sr;

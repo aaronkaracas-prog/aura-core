@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.201.0-2026-09-10-never-drop-the-pixels";
+const BUILD = "aura-core-v9.202.0-2026-09-10-say-why-she-was-dropped";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59725,7 +59725,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       };
 
       _tick("prompt_build");
-      let acted = null, agentVia = null;
+      // ══ HER ANSWER WAS BEING DROPPED IN SILENCE (2026-09-10) ═════════════════════════════
+      // MEASURED: `via: "local"` on four consecutive turns while the aura-think tail showed the
+      // turn running to completion - semantic pass, beliefs formed, `agent: 21771`. Her agent
+      // answered and this function threw the answer away without a word, so the reply looked
+      // identical whether the call FAILED or whether she replied something `readAct` could not
+      // read. Two very different problems, one indistinguishable symptom, and a whole afternoon
+      // of tests that were quietly measuring the local floor instead of her.
+      // Same failure as `only_new: true` and `kept: true` earlier today - a field reporting a
+      // state rather than a fact. This one says which, and shows the first of what she actually
+      // returned, because that is the only place her raw answer exists.
+      let acted = null, agentVia = null, agentNote = null;
       if (me && stage === "pta") {
         try {
           const proxied = await proxyToAgent(env,
@@ -59735,8 +59745,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           if (proxied && proxied.reply && !proxied.failed) {
             acted = readAct(proxied.reply);
             if (acted) agentVia = proxied.instance || "agent";
+            else agentNote = "her reply did not parse :: " +
+                             String(proxied.reply).trim().slice(0, 300);
+          } else {
+            agentNote = "agent did not answer :: " +
+                        String((proxied && proxied.failed) || "no reply").slice(0, 300);
           }
-        } catch {}
+        } catch (e) { agentNote = "agent threw :: " + String(e?.message ?? e).slice(0, 200); }
       }
 
       _tick("agent");
@@ -60306,6 +60321,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                         category: h.category || null, kind: h.kind || null, image: h.image })),
                // What she is actually working from, so a surface can say "we have talked before"
                // rather than pretending every visit is the first one.
+               ...(agentNote && !agentVia ? { agent_note: agentNote } : {}),
                remembering: me ? tline.length : 0,
                kept: stage === "pta",
                // Which Aura answered: her own instance, or the local floor beneath it.

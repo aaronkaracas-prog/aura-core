@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.209.0-2026-09-10-print-the-artists-pdf";
+const BUILD = "aura-core-v9.210.0-2026-09-10-tiled-across-sheets";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8958,6 +8958,30 @@ async function processCommand(line, env, isOp) {
         row("Design", pId) +
         row("For", pPta || null);
 
+      // ══ CHROME WILL NOT SLICE AN IMAGE (2026-09-10) ══════════════════════════════════════
+      // MEASURED: 9 inches printed perfectly on one page, and 26 inches came back as THREE BLANK
+      // SHEETS. An <img> is an unbreakable box - asked to flow across pages, Chrome pushes the
+      // whole thing to the next one, and when it is taller than a page it overflows into nothing.
+      // Nine worked only because it fitted.
+      // So the browser gives us physical size for free and pagination it does NOT. The tiling is
+      // ours, and it is arithmetic on a page rather than on pixels: one window per sheet, the
+      // SAME image inside each, shifted up by one window each time, clipped by overflow. Nothing
+      // is cut, nothing is redrawn, and the ink on sheet three is the ink that was on the sheet.
+      // OVERLAP, BECAUSE PAPER HAS TO BE JOINED. Butting two cuts edge to edge leaves nothing to
+      // align on, and the trade note this morning was blunt about taped seams. Half an inch of
+      // the previous sheet repeats at the top of the next, so an artist trims on the repeat.
+      const PAGE_IN = 10.0;      // letter, less the half-inch margins top and bottom
+      const OVERLAP_IN = 0.5;
+      const STEP_IN = PAGE_IN - OVERLAP_IN;
+      const pPages = Math.max(1, Math.ceil((pIn - PAGE_IN) / STEP_IN) + 1);
+      let pArt = "";
+      for (let i = 0; i < pPages; i++) {
+        pArt += '<div class=art><img style="top:-' + (i * STEP_IN).toFixed(3) +
+                'in" src="data:image/png;base64,' + pB64 + '">' +
+                (pPages > 1 ? '<div class=tag>sheet ' + (i + 1) + " of " + pPages + "</div>" : "") +
+                "</div>";
+      }
+
       const html =
         "<!doctype html><html><head><meta charset=utf-8><style>" +
         // Letter, no browser margin - the page IS the paper.
@@ -8969,15 +8993,18 @@ async function processCommand(line, env, isOp) {
         "td { padding:.06in .12in; border-bottom:1px solid #ddd; vertical-align:top; }" +
         "td:first-child { width:1.6in; color:#555; }" +
         // THE BREAK IS WHAT MAKES PAGE 1 A JOB SHEET AND PAGE 2 THE STENCIL.
-        ".art { break-before:page; page-break-before:always; }" +
-        // Height in INCHES is the whole point. Width follows the aspect ratio; Chrome breaks
-        // the pages when it runs past one.
-        ".art img { height:" + pIn + "in; width:auto; display:block; }" +
+        ".art { break-before:page; page-break-before:always; position:relative; " +
+          "overflow:hidden; height:" + PAGE_IN + "in; }" +
+        // Height in INCHES is the whole point. Width follows the aspect ratio.
+        ".art img { position:absolute; left:0; height:" + pIn + "in; width:auto; display:block; }" +
+        ".tag { position:absolute; right:0; bottom:0; font:8pt sans-serif; color:#999; }" +
         "</style></head><body>" +
         "<h1>" + esc((pB && pB.subject) || pSubject || "Tattoo design") + "</h1>" +
-        "<p class=sub>Print at 100%. Do not use Fit to Page - it changes the size.</p>" +
+        "<p class=sub>Print at 100%. Do not use Fit to Page - it changes the size." +
+        (pPages > 1 ? " " + pPages + " sheets, " + OVERLAP_IN +
+          "in of overlap - trim on the overlap and butt them together." : "") + "</p>" +
         "<table>" + facts + "</table>" +
-        "<div class=art><img src=\"data:image/png;base64," + pB64 + "\"></div>" +
+        pArt +
         "</body></html>";
 
       let pdfBytes = null, pBrowser = null;
@@ -9000,7 +9027,8 @@ async function processCommand(line, env, isOp) {
       const pHost = await imageHost(env);
       return { cmd: "PRINT", payload: { ok: true, doc: docId,
         pdf: "https://" + pHost + "/doc/" + docId,
-        inches: pIn, from: pId, artwork: pUrl, bytes: pdfArr.length,
+        inches: pIn, sheets: pPages, overlap_in: pPages > 1 ? OVERLAP_IN : 0,
+        from: pId, artwork: pUrl, bytes: pdfArr.length,
         cost_usd: 0,
         note: "Page 1 is the job sheet. The artwork is on its own pages at " + pIn +
               " inches - nothing else is on them, because that is what gets burned." } };

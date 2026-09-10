@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.207.0-2026-09-10-the-whole-piece-in-frame";
+const BUILD = "aura-core-v9.208.0-2026-09-10-a-sleeve-is-not-square";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -17949,10 +17949,16 @@ async function successionGate(env) {
         const withRefs = Array.isArray(p.with)
           ? p.with.filter((u) => typeof u === "string" && /^https?:\/\//i.test(u)).slice(0, 3)
           : [];
+        // `as` names the JOB for routing and the dial - absent, this is an image_evolve exactly
+        // as it has always been. `width`/`height` default to the square every caller used.
+        const evAs = (typeof p.as === "string" && /^[a-z_]{3,24}$/.test(p.as)) ? p.as : "image_evolve";
+        const evW = Number.isInteger(p.width) ? p.width : null;
+        const evH = Number.isInteger(p.height) ? p.height : null;
         const r = parentUrl
-          ? await showIt(p.prompt, env, { source: "image_evolve", parent: ent.id,
+          ? await showIt(p.prompt, env, { source: evAs, parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt,
-              refs: [parentUrl, ...withRefs], subject: p.prompt })
+              refs: [parentUrl, ...withRefs], subject: p.prompt,
+              ...(evW ? { width: evW } : {}), ...(evH ? { height: evH } : {}) })
           : await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
         if (!r || !r.ok) return { cmd: "IMAGE", payload: { ok: false, error: r ? r.error : "evolution failed" } };
@@ -57136,8 +57142,12 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // Same reasoning as `caps:edit` above: which callers count as edits is a product decision that
   // changes when a surface is added, not a property of this function. `caps:edit:sources` is a
   // comma list. Absent, this is the shipped set exactly.
+  // `shop_sheet` is the artist's file - an edit of the approved mock, and a DIFFERENT JOB from
+  // a conversational evolve: it wants a tall frame and a model that accepts one. Named here so
+  // it routes through the edit lane, and dialled by `config:source:shop_sheet:model` like every
+  // other job, so which model draws it is never a string in this file.
   const EDIT_SOURCES_DEFAULT = ["image_evolve", "letter", "onme", "design_evolve", "stencil",
-                                "style_transfer"];
+                                "style_transfer", "shop_sheet"];
   const editSrcRaw = await env.AURA_KV.get("config:edit:caps:sources").catch(() => null);
   const EDIT_SOURCES = new Set(
     (editSrcRaw && editSrcRaw.trim())
@@ -57228,7 +57238,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     // Twenty variations of one design are twenty calls with the SAME prompt and different seeds.
     // Without the seed in this key they would all be one cache entry and the caller would get the
     // same picture twenty times, reported as twenty successes.
-    const sig = model + "|" + quality + "|1024x1024|" + refs.join("|") + "|" +
+    const sig = model + "|" + quality + "|" +
+                (opts.width || 1024) + "x" + (opts.height || 1024) + "|" + refs.join("|") + "|" +
                 (opts.seed != null ? "seed" + opts.seed + "|" : "") + p;
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
     cacheKey = "imgcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -57293,8 +57304,18 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         const form = new FormData();
         const addPart = (k, v) => { parts.push({ k, v }); form.append(k, v); };
         addPart("prompt", p);
-        addPart("width", "1024");
-        addPart("height", "1024");
+        // ══ 1024 SQUARE WAS BAKED IN (2026-09-10) ══════════════════════════════════════════
+        // Every image this system has ever made is 1024x1024 because these two lines say so. A
+        // SLEEVE IS NOT SQUARE - it is roughly one across by three down - so a shop sheet drawn
+        // in a square either crops the ends or shrinks the art to a stamp in the middle of a
+        // white field. Neither is printable.
+        // Klein is billed PER MEGAPIXEL - Cloudflare's own pricing, already in the neuron table
+        // below: 1363.64 for the first, 181.82 for each after. Per-megapixel billing is what a
+        // model that can draw more than one megapixel looks like. A 1024x2048 strip is 2MP,
+        // about 1,545 neurons, under two cents.
+        // Default unchanged, so every existing caller draws exactly what it drew yesterday.
+        addPart("width", String(opts.width || 1024));
+        addPart("height", String(opts.height || 1024));
         // Documented on Cloudflare's model page as `seed (integer) - Seed for reproducibility`.
         // It is how twenty different dragons come out of one sentence: the words stay fixed and
         // the noise the model starts from changes. No authored variation list, no second model
@@ -60139,8 +60160,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             "it - scale it down as much as that takes. Nothing cropped, nothing touching an " +
             "edge. Black linework on a plain white background. No skin, no clothing, no body, " +
             "no paper, no shadow, no new designs.";
+          // TALL, BECAUSE A SLEEVE IS TALL. 1024x2048 is 2 megapixels - the art gets the room
+          // it needs instead of being shrunk into the middle of a square, and the ends stop
+          // running off an edge that was never the right shape for the piece.
           const sr = await processCommand("IMAGE EVOLVE " + shopParent + " " +
-            JSON.stringify({ prompt: SHEET, by: me }), env, true);
+            JSON.stringify({ prompt: SHEET, by: me, as: "shop_sheet",
+                             width: 1024, height: 2048 }), env, true);
           const sp = (sr && sr.payload) ? sr.payload : sr;
           if (sp?.ok && sp.image_url) {
             // ══ THE STENCIL PASS IS GONE, AND IT WAS MINE (2026-09-10) ════════════════════

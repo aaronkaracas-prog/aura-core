@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.216.0-2026-09-10-a-deliberate-fact-reaches-her";
+const BUILD = "aura-core-v9.217.0-2026-09-10-verify-the-pixels";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -57919,6 +57919,42 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       imgUsage = d?.usage || null;   // provider's OWN token report for this image - ground truth, no guess
       b64 = item.b64_json || null;
       if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
+      // ══ VERIFY THE PIXELS, BECAUSE THIS API FAILS QUIETLY (2026-09-10) ═══════════════════
+      // xAI's own behaviour, documented and matching two measurements here: OpenAI-style fields
+      // are silently ignored, and an invalid `aspect_ratio` or `resolution` "silently falls back
+      // to defaults" - a 200 with the wrong size and nothing saying the parameter was dropped.
+      // The documented remedy is exactly this: verify the OUTPUT PIXEL DIMENSIONS on the first
+      // call to confirm the parameters took effect. We asked for 9:16 at 2k twice and got the
+      // source height back both times, and had no way to see whether the request was refused,
+      // ignored, or never carried them.
+      // READ FROM THE BYTES, not from a field the response might not carry. PNG puts width and
+      // height at a fixed offset in the IHDR chunk; JPEG needs a scan for the SOF marker. Both
+      // are a few bytes and neither costs a call.
+      try {
+        if (b64) {
+          const _h = Uint8Array.from(atob(b64.slice(0, 4096)), (c) => c.charCodeAt(0));
+          let _w = 0, _ht = 0, _fmt = "?";
+          if (_h[0] === 0x89 && _h[1] === 0x50) {
+            _fmt = "png";
+            _w = (_h[16] << 24) | (_h[17] << 16) | (_h[18] << 8) | _h[19];
+            _ht = (_h[20] << 24) | (_h[21] << 16) | (_h[22] << 8) | _h[23];
+          } else if (_h[0] === 0xFF && _h[1] === 0xD8) {
+            _fmt = "jpeg";
+            for (let i = 2; i < _h.length - 9; i++) {
+              if (_h[i] === 0xFF && _h[i + 1] >= 0xC0 && _h[i + 1] <= 0xCF &&
+                  _h[i + 1] !== 0xC4 && _h[i + 1] !== 0xC8 && _h[i + 1] !== 0xCC) {
+                _ht = (_h[i + 5] << 8) | _h[i + 6];
+                _w = (_h[i + 7] << 8) | _h[i + 8];
+                break;
+              }
+            }
+          }
+          console.log("[XAI-IMG] " + model + " asked aspect=" + (opts.aspect || "-") +
+            " res=" + (opts.res || "-") + " edit=" + isEdit + " refs=" + refs.length +
+            " -> GOT " + _w + "x" + _ht + " " + _fmt +
+            (opts.res === "2k" && Math.max(_w, _ht) < 1600 ? "  ** 2k WAS NOT HONOURED **" : ""));
+        }
+      } catch {}
     } else if (/^flux-2/i.test(model)) {
       // ══ BLACK FOREST LABS, AND IT IS SHAPED DIFFERENTLY FROM THE OTHER FOUR ═══════════════
       // Every other branch here is one request in, an image out. BFL is ASYNCHRONOUS: the POST

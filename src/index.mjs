@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.215.0-2026-09-10-ask-xai-for-a-size";
+const BUILD = "aura-core-v9.216.0-2026-09-10-a-deliberate-fact-reaches-her";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23118,8 +23118,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const now = new Date().toISOString();
 
       if (fSub === "SET") {
-        const subject = fArgs[0], predicate = fArgs[1];
-        const value = fRest.slice(fRest.indexOf(predicate) + (predicate || "").length).trim();
+        // ══ AN OPERATOR FACT AND A SUMMARISER FACT ARRIVE THE SAME WAY (2026-09-10) ═══════════
+        // `state:knowledge:rev` was folded into aura-think's soul fingerprint so a new fact would
+        // reach her without waiting for a deploy. It worked and it was reverted the same day: the
+        // prompt cache went from 99.0% to 0.6% and the cost per turn from $0.0004 to as much as
+        // $0.0458, because `distill` writes facts on EVERY consolidation through this exact door -
+        // `this.core("FACT SET ...")` - so the stamp moved constantly and her whole 21,000-token
+        // prompt was rebuilt from scratch.
+        // Their own conclusion, written in that revert and never built: "the fix is at the WRITE
+        // end - only an operator-initiated fact should bump it, never distill's own summarisation."
+        // This is that fix. `--auto` marks a summariser write; the operator stamp does not move for
+        // it. One cold turn per DELIBERATE knowledge change, which is the right price, and none per
+        // consolidation, which was the wrong one.
+        // MEASURED tonight, and the reason this is being built now: ten facts describing the whole
+        // tattoo product were written correctly, the block rendered them - subjects=39 facts=88,
+        // 7,772 chars - and she answered "I have no information about any three tattoo assets" from
+        // a prompt that was 96.7% cache, rendered before the facts existed.
+        const fAuto = fArgs[0] === "--auto";
+        const fA = fAuto ? fArgs.slice(1) : fArgs;
+        const fBody = fAuto ? fRest.slice(fRest.indexOf("--auto") + 6).trim() : fRest;
+        const subject = fA[0], predicate = fA[1];
+        const value = fBody.slice(fBody.indexOf(predicate) + (predicate || "").length).trim();
         if (!subject || !predicate || !value)
           return { cmd: "FACT", payload: { ok: false, error: "Usage: FACT SET <subject> <predicate> <value>" } };
         const id = "fact_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
@@ -23159,6 +23178,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // nearly every turn and cost a cold step each time. This moves only when knowledge actually
         // changes, which is exactly when one cold turn is the right price.
         await env.AURA_KV.put("state:knowledge:rev", String(Date.now())).catch(() => {});
+        // THE OPERATOR STAMP. Only a deliberate write moves this one, and it is the only thing
+        // aura-think's fingerprint reads - so a consolidation can write all the facts it likes
+        // without rebuilding her prompt.
+        if (!fAuto) {
+          await env.AURA_KV.put("state:knowledge:op_rev", String(Date.now())).catch(() => {});
+        }
         await auraRemember(env, "A fact changed: " + subject + " " + predicate + " is now \"" + value.slice(0, 120) +
           "\"" + (prior ? " (was \"" + String(prior.value).slice(0, 80) + "\")" : " (first recorded)"), "fact");
         return { cmd: "FACT", payload: { ok: true, id, subject, predicate, value, valid_from: now,
@@ -23371,7 +23396,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       await env.AURA_KV.put(dKey, JSON.stringify(dRec));
       // Same stamp as FACT SET - a ratified decision she cannot see until the next deploy is worth
       // nothing, and the decisions block is frozen into the same cached prompt.
+      // AND THE OPERATOR STAMP TOO, unconditionally: nothing summarises into DECIDE. A decision is
+      // ratified by a person, which makes every one of them the deliberate case.
       await env.AURA_KV.put("state:knowledge:rev", String(Date.now())).catch(() => {});
+      await env.AURA_KV.put("state:knowledge:op_rev", String(Date.now())).catch(() => {});
       return { cmd: "DECIDE", payload: { ok: true, topic: decTopic, topic_key: dKey,
         action: superseded ? "superseded" : "ratified", superseded,
         note: "Ratified and permanent - no expiry, unlike a belief she formed. It rides in her prompt " +

@@ -50,7 +50,7 @@ import QRCode from "qrcode-svg";
 // It exists in this file for exactly one job - the stencil. A model cannot guarantee that the
 // output registers on top of the input; a threshold can, because every pixel is either side of a
 // cutoff and nothing moves.
-import { PhotonImage, grayscale, gaussian_blur, threshold as photonThreshold, invert as photonInvert,
+import { PhotonImage, crop as photonCrop, grayscale, gaussian_blur, threshold as photonThreshold, invert as photonInvert,
          normalize as photonNormalize, adjust_contrast as photonContrast,
          edge_detection as photonEdges, laplace as photonLaplace,
          dither as photonDither, halftone as photonHalftone,
@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.210.0-2026-09-10-tiled-across-sheets";
+const BUILD = "aura-core-v9.212.0-2026-09-10-photon-cuts-the-pages";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8958,28 +8958,97 @@ async function processCommand(line, env, isOp) {
         row("Design", pId) +
         row("For", pPta || null);
 
-      // ══ CHROME WILL NOT SLICE AN IMAGE (2026-09-10) ══════════════════════════════════════
-      // MEASURED: 9 inches printed perfectly on one page, and 26 inches came back as THREE BLANK
-      // SHEETS. An <img> is an unbreakable box - asked to flow across pages, Chrome pushes the
-      // whole thing to the next one, and when it is taller than a page it overflows into nothing.
-      // Nine worked only because it fitted.
-      // So the browser gives us physical size for free and pagination it does NOT. The tiling is
-      // ours, and it is arithmetic on a page rather than on pixels: one window per sheet, the
-      // SAME image inside each, shifted up by one window each time, clipped by overflow. Nothing
-      // is cut, nothing is redrawn, and the ink on sheet three is the ink that was on the sheet.
-      // OVERLAP, BECAUSE PAPER HAS TO BE JOINED. Butting two cuts edge to edge leaves nothing to
-      // align on, and the trade note this morning was blunt about taped seams. Half an inch of
-      // the previous sheet repeats at the top of the next, so an artist trims on the repeat.
-      const PAGE_IN = 10.0;      // letter, less the half-inch margins top and bottom
+      // ══ THE BROWSER LAYS OUT PICTURES; IT DOES NOT CUT THEM (2026-09-10) ═════════════════
+      // TWO ATTEMPTS IN CSS, BOTH FAILED THE SAME WAY. Grok opened the PDF and read the embedded
+      // objects: all three artwork pages carried the SAME jpeg, identical hash, 1248x832 - the
+      // whole canvas three times, not three windows onto it. The offset never reached the render,
+      // and `inches: 26` never changed the ink size either, because the image was landing
+      // fit-to-page. Tape those together and you get three small copies of the same drawing.
+      // So the geometry moves to Photon, which is arithmetic and cannot misplace anything, and
+      // the browser is left doing the one thing it does perfectly: putting a finished picture on
+      // a page at a stated physical size.
+      //   1. CROP TO THE INK. The source is a narrow strip in a wide white field; scaling the
+      //      whitespace means 26 inches of mostly nothing.
+      //   2. WORK OUT WHAT AN INCH IS, from the cropped height and the inches asked for.
+      //   3. SLICE into page-tall windows, each repeating half an inch of the one before. Paper
+      //      has to be joined and a butt cut leaves nothing to align on.
+      //   4. ONE SLICE PER PAGE, at its true physical height.
+      // NO UPSCALING. Enlarging 1024px to 300dpi adds no detail, only bigger soft lines. Slices
+      // go out at native resolution and the PDF states their physical size - that is what a PDF
+      // is for, and it is why this is a PDF and not a PNG.
+      const PAGE_IN = 10.0;      // letter, less the half-inch margins
+      const WIDE_IN = 7.5;
       const OVERLAP_IN = 0.5;
       const STEP_IN = PAGE_IN - OVERLAP_IN;
-      const pPages = Math.max(1, Math.ceil((pIn - PAGE_IN) / STEP_IN) + 1);
+
+      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null;
+      try {
+        const srcArr = Uint8Array.from(atob(pB64), (c) => c.charCodeAt(0));
+        const im0 = PhotonImage.new_from_byteslice(srcArr);
+        const W0 = im0.get_width(), H0 = im0.get_height();
+        const px = im0.get_raw_pixels();
+        let x1 = W0, y1 = H0, x2 = -1, y2 = -1;
+        for (let y = 0; y < H0; y++) {
+          for (let x = 0; x < W0; x++) {
+            const o = (y * W0 + x) * 4;
+            if (px[o] < 235 || px[o + 1] < 235 || px[o + 2] < 235) {
+              if (x < x1) x1 = x;
+              if (x > x2) x2 = x;
+              if (y < y1) y1 = y;
+              if (y > y2) y2 = y;
+            }
+          }
+        }
+        if (x2 < 0) { x1 = 0; y1 = 0; x2 = W0 - 1; y2 = H0 - 1; }
+        const pad = Math.round(Math.max(W0, H0) * 0.01);
+        x1 = Math.max(0, x1 - pad); y1 = Math.max(0, y1 - pad);
+        x2 = Math.min(W0 - 1, x2 + pad); y2 = Math.min(H0 - 1, y2 + pad);
+        const inked = photonCrop(im0, x1, y1, x2 + 1, y2 + 1);
+        try { im0.free(); } catch {}
+        const W = inked.get_width(), H = inked.get_height();
+
+        // WIDTH IS A LIMIT TOO. Silently letting a wide piece run off the side of the paper is
+        // the same failure sideways, so the height comes down until it fits - and the reply says
+        // that it did, rather than quietly returning something narrower than was asked for.
+        pWideIn = (W / H) * pIn;
+        if (pWideIn > WIDE_IN) {
+          pFitted = { asked_in: pIn,
+                      why: "wider than a letter page at that height" };
+          pTallIn = (WIDE_IN * H) / W;
+          pWideIn = WIDE_IN;
+        }
+        const pxPerIn = H / pTallIn;
+        const winPx = Math.max(1, Math.round(PAGE_IN * pxPerIn));
+        const stepPx = Math.max(1, Math.round(STEP_IN * pxPerIn));
+        const nPages = H <= winPx ? 1 : Math.ceil((H - winPx) / stepPx) + 1;
+
+        for (let i = 0; i < nPages; i++) {
+          const top = Math.min(i * stepPx, Math.max(0, H - 1));
+          const bot = Math.min(top + winPx, H);
+          if (bot - top < 2) break;
+          const sl = photonCrop(inked, 0, top, W, bot);
+          const bts = sl.get_bytes();
+          let t = "";
+          for (let k = 0; k < bts.length; k += 8192) {
+            t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+          }
+          pSlices.push({ b64: btoa(t), inches: (bot - top) / pxPerIn });
+          try { sl.free(); } catch {}
+        }
+        try { inked.free(); } catch {}
+      } catch (e) {
+        return { cmd: "PRINT", payload: { ok: false, error: "COULD_NOT_SLICE",
+          why: String(e && e.message || e).slice(0, 200) } };
+      }
+      const pPages = pSlices.length;
+
+      // The sheet label rides OUTSIDE the artwork page. What is on that page is what gets burned
+      // onto transfer paper, so nothing else belongs on it.
       let pArt = "";
-      for (let i = 0; i < pPages; i++) {
-        pArt += '<div class=art><img style="top:-' + (i * STEP_IN).toFixed(3) +
-                'in" src="data:image/png;base64,' + pB64 + '">' +
-                (pPages > 1 ? '<div class=tag>sheet ' + (i + 1) + " of " + pPages + "</div>" : "") +
-                "</div>";
+      for (let i = 0; i < pSlices.length; i++) {
+        pArt += '<div class=art><img style="height:' + pSlices[i].inches.toFixed(3) +
+                'in" src="data:image/png;base64,' + pSlices[i].b64 + '"></div>' +
+                (pPages > 1 ? '<div class=tag>sheet ' + (i + 1) + " of " + pPages + "</div>" : "");
       }
 
       const html =
@@ -8993,11 +9062,13 @@ async function processCommand(line, env, isOp) {
         "td { padding:.06in .12in; border-bottom:1px solid #ddd; vertical-align:top; }" +
         "td:first-child { width:1.6in; color:#555; }" +
         // THE BREAK IS WHAT MAKES PAGE 1 A JOB SHEET AND PAGE 2 THE STENCIL.
-        ".art { break-before:page; page-break-before:always; position:relative; " +
-          "overflow:hidden; height:" + PAGE_IN + "in; }" +
-        // Height in INCHES is the whole point. Width follows the aspect ratio.
-        ".art img { position:absolute; left:0; height:" + pIn + "in; width:auto; display:block; }" +
-        ".tag { position:absolute; right:0; bottom:0; font:8pt sans-serif; color:#999; }" +
+        // Each page holds ONE finished slice, already the right shape. Nothing here clips,
+        // offsets or scales - Photon did the geometry. The only job left is a page break and
+        // a stated height, which is the one thing a print engine cannot get wrong.
+        ".art { break-before:page; page-break-before:always; break-inside:avoid; " +
+          "page-break-inside:avoid; }" +
+        ".art img { display:block; width:auto; }" +
+        ".tag { text-align:right; font:8pt sans-serif; color:#999; }" +
         "</style></head><body>" +
         "<h1>" + esc((pB && pB.subject) || pSubject || "Tattoo design") + "</h1>" +
         "<p class=sub>Print at 100%. Do not use Fit to Page - it changes the size." +
@@ -9027,7 +9098,9 @@ async function processCommand(line, env, isOp) {
       const pHost = await imageHost(env);
       return { cmd: "PRINT", payload: { ok: true, doc: docId,
         pdf: "https://" + pHost + "/doc/" + docId,
-        inches: pIn, sheets: pPages, overlap_in: pPages > 1 ? OVERLAP_IN : 0,
+        inches: Number(pTallIn.toFixed(2)), wide_in: Number(pWideIn.toFixed(2)),
+        sheets: pPages, overlap_in: pPages > 1 ? OVERLAP_IN : 0,
+        ...(pFitted ? { fitted_to_page_width: pFitted } : {}),
         from: pId, artwork: pUrl, bytes: pdfArr.length,
         cost_usd: 0,
         note: "Page 1 is the job sheet. The artwork is on its own pages at " + pIn +

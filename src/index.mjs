@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.217.0-2026-09-10-verify-the-pixels";
+const BUILD = "aura-core-v9.218.0-2026-09-10-artwork-until-they-ask";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60668,10 +60668,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // its coverage rather than its subject.
           // A cover-up is by definition on a body - theirs, with the old piece under it. Flat
           // artwork answers nothing they asked.
-          const isCover = String((intent && intent.job) || "").toLowerCase() === "cover";
-          const wantsBody = acted.act === "draw" && (isCover ||
-            /\b(sleeve|full leg|both legs|leg sleeve|body ?suit|back ?piece|full back|chest ?piece|coverage|wraps?|hip to ankle|shoulder to wrist)\b/i
-            .test(askLine + " " + String(refSaw || "")));
+          // ══ A BIG PLACEMENT WORD IS NOT A BODY (2026-09-10) ═══════════════════════════
+          // MEASURED: "I want a dragon covering my whole back" - a NEW piece, no photograph,
+          // nobody's skin involved - came back as a dragon tattooed on a man's torso. The regex
+          // below matched "full back" and switched the frame to "shown on a body".
+          // Aaron: "we don't show it on a body until they ask for it at the very end, if they
+          // choose to. The body only jumps in beforehand for an add-on or a cover-up."
+          // And he is right that the rule already exists elsewhere - the evolve path decides this
+          // by JOB, not by wording: cover, add and rework start from their own photograph because
+          // the body IS the subject. A new design is artwork and stays artwork.
+          // WHAT THE REGEX WAS FOR, and why it looked reasonable: a pattern running both legs hip
+          // to ankle is about how much body it takes, so flat on paper answers nothing. True for a
+          // piece going onto skin they have shown us. Not true for a drawing of a dragon.
+          // SO THE TEST IS THE JOB. A phrase in a sentence never decides whether somebody's body
+          // appears in a picture of their tattoo.
+          const jobHere = String((intent && intent.job) || "").toLowerCase();
+          const wantsBody = acted.act === "draw" && ["cover", "add", "rework"].includes(jobHere);
           const frm = wantsBody
             ? ((await env.AURA_KV.get("frame:body").catch(() => null)) ||
                "Shown on a body so the coverage and the wrap read - a plain studio photograph of " +

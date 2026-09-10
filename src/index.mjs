@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.197.0-2026-09-10-she-picks-the-pictures";
+const BUILD = "aura-core-v9.198.0-2026-09-10-one-image-per-part";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59456,7 +59456,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // picture or the difference between two.
         // ABSENT IS TODAY. No `use`, and the job starts from the last thing she drew with the
         // parent riding along exactly as it has all week - "add a green ball" is untouched.
-        '  "use": ["optional - which pictures this job starts from"]\n' +
+        '  "use": ["optional - which pictures this job starts from"],\n' +
+        // ══ WHAT THE ARTIST ACTUALLY PRINTS (2026-09-10, from the trade) ════════════════════
+        // Researched rather than assumed, because four attempts at a single "shop sheet" all
+        // failed the same way and the reason turned out to be the artefact, not the wording.
+        // Thermal stencil paper is 8.5x11 with four layers. Most thermal printers stop at
+        // A4/Letter, so a sleeve CANNOT print in one go - and taping pages together makes rigid
+        // seams that will not bend around an arm, which is the whole job. Shops either run a roll
+        // printer or place several separate stencils.
+        // So the deliverable is not one picture with cut marks drawn on it. Cut marks in the
+        // artwork are fiction: real tiling happens in software at print time, with overlaps, done
+        // by the artist. A model asked for "sections he can cut apart" invents where they go, and
+        // the last run drew dashed borders and the words CUT HERE into the art itself.
+        // ONE ELEMENT PER IMAGE is what a working artist can use: print it, place it, freehand
+        // the flow between. Ornamental sleeves are built exactly that way - framework stencilled,
+        // the rest freehand, because the pattern has to wrap that person's limb.
+        '  "pieces": ["optional - one image each, when the job is several separate images"]\n' +
         "}\n\n" +
         // ══ THE DISCUSSION DECIDES WHEN, NOT YOU (2026-09-08) ════════════════════════════════
         // Aaron, after a dinosaur appeared on turn one: "the discussion happens with Aura and she
@@ -59529,7 +59544,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const picNote = picNames.length
         ? "\n\nTHE PICTURES ON FILE, AND WHAT TO CALL THEM IN `use`:\n" + picNames.join("\n") +
           "\nName them in the order the job needs. Leave `use` out and it starts from the last " +
-          "picture you drew."
+          "picture you drew." +
+          // ══ NOBODY ASKS FOR A FLATTENED FILE (2026-09-10) ══════════════════════════════
+          // Aaron: "no human's gonna say give it to me flattened so someone can print it out.
+          // It's just going to be conversation - is this what you want for your tattoo art -
+          // they're gonna say yes. That's gonna have to translate the intent."
+          // So this says what she CAN make and what it is. Not a trigger word, not a stage.
+          // She is holding the conversation and she is the only thing that knows the design is
+          // settled and they are talking about a shop.
+          "\n\nWHEN SOMEBODY IS READY TO GET IT TATTOOED, their artist needs files, and you can " +
+          "make them: each part of the piece as its own image, flat black on plain white, the " +
+          "artwork alone with no body and no paper. `pieces` names the parts - \"the shoulder " +
+          "cap\", \"the band above the elbow\", \"the forearm panel\" - one image each, because " +
+          "an artist prints each one and places it on the curve of the limb. Never one sheet " +
+          "with several parts arranged on it, and never draw cut lines: the cutting is theirs."
         : "";
 
       // ══ SAY WHAT YOU SEE BEFORE YOU ASK ANYTHING (2026-09-07) ═════════════════════════════
@@ -59625,9 +59653,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         const say = typeof o.say === "string" ? o.say.trim() : "";
         if (!say) return null;
         const act = String(o.do || "none").trim().toLowerCase();
+        // ══ A FIELD SHE CAN FILL AND NOBODY READS (2026-09-10) ═════════════════════════════
+        // `use` was added to the contract and wired into the evolve in the same hour, and this
+        // line - which is every field of her answer that survives - was not touched. She may
+        // have named both pictures on the first live run; it was discarded here before anything
+        // downstream could see it, and the reply's missing `used` looked exactly like her
+        // choosing not to reach. A contract and its parser are one thing in two places, and this
+        // file has now been burned three times in one day by something reporting the ask instead
+        // of the act.
+        const strList = (v, n, cap) => (Array.isArray(v) ? v : [])
+          .map((x) => String(x == null ? "" : x).trim()).filter(Boolean).slice(0, n)
+          .map((x) => x.slice(0, cap));
         return { say,
                  act: ["draw", "change", "none"].includes(act) ? act : "none",
-                 prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "" };
+                 prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
+                 use: strList(o.use, 4, 400),
+                 pieces: strList(o.pieces, 6, 160) };
       };
 
       _tick("prompt_build");
@@ -59964,19 +60005,36 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const parentId = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
           const alsoRefs = useRaw.slice(useRaw.length && useOne(useRaw[0], "design") ? 1 : 0)
             .map((n) => useOne(n, "url")).filter(Boolean);
-          const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
-            JSON.stringify({ prompt: (acted.prompt || said) + cleanUp, by: me,
-                             ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
-          const cp = (cr && cr.payload) ? cr.payload : cr;
-          if (cp?.ok && cp.image_url) {
-            drew = { design: cp.child, image: cp.image_url, changed: acted.prompt || said,
-                     from: parentId,
-                     ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) };
-          } else {
-            drew = { failed: cp?.error || "COULD_NOT_CHANGE", changed: acted.prompt || said,
-                     from: parentId,
-                     ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) };
-          }
+          // ══ ONE IMAGE PER PART, WHEN SHE ASKED FOR PARTS ═══════════════════════════
+          // Same call, run once per element, every one off the SAME parent and the same
+          // references - so each part is cut from the piece they approved rather than from
+          // the part drawn before it. Chaining them would drift, and drift across four files
+          // that have to line up on one arm is the whole failure.
+          // `prompt` stays the job; the element name says which part this file is.
+          const parts = Array.isArray(acted.pieces) && acted.pieces.length
+            ? acted.pieces : [null];
+          const evolveOne = async (part) => {
+            const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
+              JSON.stringify({ prompt: (part ? part + ". " : "") + (acted.prompt || said) + cleanUp,
+                               by: me,
+                               ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
+            const cp = (cr && cr.payload) ? cr.payload : cr;
+            return (cp?.ok && cp.image_url)
+              ? { part: part || null, design: cp.child, image: cp.image_url }
+              : { part: part || null, failed: cp?.error || "COULD_NOT_CHANGE" };
+          };
+          const made = [];
+          for (const part of parts.slice(0, 6)) made.push(await evolveOne(part));
+          const first = made.find((m) => m.image) || made[0];
+          drew = first.image
+            ? { design: first.design, image: first.image, changed: acted.prompt || said,
+                from: parentId,
+                ...(parts[0] ? { pieces: made } : {}),
+                ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) }
+            : { failed: first.failed || "COULD_NOT_CHANGE", changed: acted.prompt || said,
+                from: parentId,
+                ...(parts[0] ? { pieces: made } : {}),
+                ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) };
         } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
       } else if (act === "draw" && me) {
         // HER PROMPT, NOT THEIR SENTENCE. This is the expansion the whole redesign was for: she

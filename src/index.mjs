@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.208.0-2026-09-10-a-sleeve-is-not-square";
+const BUILD = "aura-core-v9.209.0-2026-09-10-print-the-artists-pdf";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8879,6 +8879,131 @@ async function processCommand(line, env, isOp) {
       } catch (e) {
         return { cmd: "FINAL", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
       }
+    }
+
+    // ══ PRINT ── THE ARTIST'S PDF, AT THE SIZE THEY MEASURED (2026-09-10) ══════════════════
+    //
+    //   PRINT <design or image id> <inches> [<pta>]
+    //
+    // WHY A PDF AND NOT A PNG. A PDF carries ABSOLUTE PHYSICAL GEOMETRY: the page is 8.5x11
+    // inches and the artwork on it is nine inches tall, stated in the file. A PNG carries pixels
+    // and a hope - "print at 100%" depends on whatever app opens it guessing a DPI, and a guess
+    // is how a sleeve prints as a stamp. Aaron: the size IS the asset. A design that is nine
+    // inches spans the pages it spans; a back piece spans six. Arm, leg, back - same arithmetic.
+    //
+    // WHY CHROME AND NOT A PDF WRITER. I started hand-rolling one. Aaron stopped it: Cloudflare
+    // has sold this for years. `@cloudflare/puppeteer` is imported on line 1 of this file,
+    // `env.BROWSER` is bound, and HANDS_SEE/HANDS_DO already drive it. Cloudflare's own docs:
+    // set the HTML on the page, then generate the PDF - and through the binding no API token is
+    // needed, because the binding is the auth.
+    // It is also simply better. THE PAGINATION BECOMES CSS. `@page { size: letter }` plus an
+    // image at `height: 9in` and Chrome breaks the pages itself. Nine inches is one page and
+    // thirty inches is four, and no code here counts them.
+    //
+    // THE ARTWORK PAGE CARRIES NOTHING BUT ARTWORK. An artist prints the stencil page and burns
+    // it onto transfer paper, so anything else on that sheet goes onto somebody's skin. The
+    // client, the placement, the style and the meaning ride on a COVER PAGE - read from the
+    // brief on their PTA, never typed - which is also how Grok's own pack was ordered.
+    case "PRINT": {
+      if (!isOp) return { cmd: "PRINT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const prm = String(rest || "").trim().match(/^(\S+)\s+([\d.]+)\s*(?:in|")?\s*(pta_[A-Za-z0-9]+)?$/i);
+      if (!prm) return { cmd: "PRINT", payload: { ok: false,
+        error: 'Usage: PRINT <design or image id> <inches> [<pta>]',
+        note: "Inches is the FINISHED HEIGHT on the body - what the artist measured." } };
+      const pId = prm[1], pIn = parseFloat(prm[2]), pPta = prm[3] || null;
+      if (!(pIn > 0 && pIn <= 60)) return { cmd: "PRINT", payload: { ok: false,
+        error: "inches must be between 0 and 60" } };
+      if (!env.BROWSER) return { cmd: "PRINT", payload: { ok: false,
+        error: "BROWSER binding not configured" } };
+
+      // The artwork, resolved the same way STENCIL resolves it - smart file first, imagemeta
+      // second, because not every image is in the graph.
+      let pUrl = null, pSubject = null;
+      try {
+        const ent = await resolveSmartFile(env.AURA_MEMORY, pId);
+        if (ent) { let m = {}; try { m = JSON.parse(ent.metadata || "{}"); } catch {}
+                   pUrl = m.url || null; pSubject = m.subject || null; }
+      } catch {}
+      if (!pUrl) {
+        try { const im = await env.AURA_KV.get("imagemeta:" + pId, "json");
+              if (im && im.url) { pUrl = im.url; pSubject = im.prompt || null; } } catch {}
+      }
+      if (!pUrl) return { cmd: "PRINT", payload: { ok: false, error: "NO_SUCH_DESIGN", asked: pId } };
+
+      // ══ THE BYTES GO IN THE PAGE, NOT A URL ═════════════════════════════════════════════
+      // The same lesson three other places in this file carry: a Worker fetching its own zone
+      // returned 522. Chrome here would be doing exactly that. The bytes are already in KV, so
+      // the image rides in the HTML as a data URI and nothing is fetched at render time.
+      const pImgId = (String(pUrl).match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || pId;
+      const pB64 = await env.AURA_KV.get("image:" + pImgId).catch(() => null);
+      if (!pB64) return { cmd: "PRINT", payload: { ok: false, error: "BYTES_NOT_IN_KV",
+        asked: pImgId, what_to_do: "Pass an img_ id this system created." } };
+
+      // The job sheet, read from their PTA rather than typed. Absent, the cover page simply
+      // carries less - it never invents a field.
+      let pB = null;
+      if (pPta) { try { pB = await env.AURA_KV.get("talk:brief:" + pPta, "json"); } catch {} }
+      const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const row = (k, v) => v ? "<tr><td>" + esc(k) + "</td><td>" + esc(v) + "</td></tr>" : "";
+      const facts =
+        row("Piece", (pB && pB.subject) || pSubject) +
+        row("Style", pB && pB.style) +
+        row("Placement", pB && pB.placement) +
+        row("Colour", pB && String(pB.colour || "").replace(/_/g, " ")) +
+        row("Detail", pB && pB.detail) +
+        row("Job", pB && pB.job) +
+        row("Meaning", pB && pB.meaning) +
+        row("Finished height", pIn + " in") +
+        row("Design", pId) +
+        row("For", pPta || null);
+
+      const html =
+        "<!doctype html><html><head><meta charset=utf-8><style>" +
+        // Letter, no browser margin - the page IS the paper.
+        "@page { size: 8.5in 11in; margin: 0.5in; }" +
+        "html,body { margin:0; padding:0; font:12pt/1.5 Georgia,serif; color:#000; }" +
+        "h1 { font-size:20pt; margin:0 0 .2in 0; }" +
+        ".sub { color:#444; font-size:10pt; margin:0 0 .35in 0; }" +
+        "table { border-collapse:collapse; width:100%; }" +
+        "td { padding:.06in .12in; border-bottom:1px solid #ddd; vertical-align:top; }" +
+        "td:first-child { width:1.6in; color:#555; }" +
+        // THE BREAK IS WHAT MAKES PAGE 1 A JOB SHEET AND PAGE 2 THE STENCIL.
+        ".art { break-before:page; page-break-before:always; }" +
+        // Height in INCHES is the whole point. Width follows the aspect ratio; Chrome breaks
+        // the pages when it runs past one.
+        ".art img { height:" + pIn + "in; width:auto; display:block; }" +
+        "</style></head><body>" +
+        "<h1>" + esc((pB && pB.subject) || pSubject || "Tattoo design") + "</h1>" +
+        "<p class=sub>Print at 100%. Do not use Fit to Page - it changes the size.</p>" +
+        "<table>" + facts + "</table>" +
+        "<div class=art><img src=\"data:image/png;base64," + pB64 + "\"></div>" +
+        "</body></html>";
+
+      let pdfBytes = null, pBrowser = null;
+      try {
+        pBrowser = await puppeteer.launch(env.BROWSER);
+        const pg = await pBrowser.newPage();
+        await pg.setContent(html, { waitUntil: "networkidle0" });
+        pdfBytes = await pg.pdf({ printBackground: true, preferCSSPageSize: true });
+      } catch (e) {
+        return { cmd: "PRINT", payload: { ok: false, error: "COULD_NOT_RENDER",
+          why: String(e && e.message || e).slice(0, 200) } };
+      } finally { if (pBrowser) { try { await pBrowser.close(); } catch {} } }
+
+      const pdfArr = new Uint8Array(pdfBytes);
+      let pb = ""; for (let i = 0; i < pdfArr.length; i += 8192) {
+        pb += String.fromCharCode.apply(null, pdfArr.subarray(i, i + 8192));
+      }
+      const docId = "doc_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      await env.AURA_KV.put("doc:" + docId, btoa(pb)).catch(() => {});
+      const pHost = await imageHost(env);
+      return { cmd: "PRINT", payload: { ok: true, doc: docId,
+        pdf: "https://" + pHost + "/doc/" + docId,
+        inches: pIn, from: pId, artwork: pUrl, bytes: pdfArr.length,
+        cost_usd: 0,
+        note: "Page 1 is the job sheet. The artwork is on its own pages at " + pIn +
+              " inches - nothing else is on them, because that is what gets burned." } };
     }
 
     case "STENCIL": {
@@ -65353,6 +65478,20 @@ function openAlbum(idx){
       if (!b64) return new Response("Image not found", { status: 404 });
       const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
       return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "public, max-age=31536000" } });
+    }
+
+    // ══ /doc/<id> ── THE SAME SHELF, THE HONEST CONTENT-TYPE (2026-09-10) ═══════════════════
+    // `/image/<id>` hardcodes image/png, so a PDF served through it downloads as a broken PNG.
+    // Same KV shelf, same base64, same 404 behaviour - only the header differs, because the
+    // bytes are not an image.
+    if (url.pathname.startsWith("/doc/") && request.method === "GET") {
+      const did = url.pathname.slice("/doc/".length).replace(/\.pdf$/, "");
+      const b64d = await env.AURA_KV.get("doc:" + did).catch(() => null);
+      if (!b64d) return new Response("Not found", { status: 404 });
+      const db = Uint8Array.from(atob(b64d), (c) => c.charCodeAt(0));
+      return new Response(db, { headers: { "content-type": "application/pdf",
+        "content-disposition": 'inline; filename="' + did + '.pdf"',
+        "cache-control": "public, max-age=31536000" } });
     }
 
     // BUILD â€” the structured page-build channel. Root-cause fix for the /chat mission-shredding

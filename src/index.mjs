@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.212.0-2026-09-10-photon-cuts-the-pages";
+const BUILD = "aura-core-v9.213.0-2026-09-10-the-pixels-are-the-ceiling";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8981,7 +8981,7 @@ async function processCommand(line, env, isOp) {
       const OVERLAP_IN = 0.5;
       const STEP_IN = PAGE_IN - OVERLAP_IN;
 
-      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null;
+      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null, pDpi = 0;
       try {
         const srcArr = Uint8Array.from(atob(pB64), (c) => c.charCodeAt(0));
         const im0 = PhotonImage.new_from_byteslice(srcArr);
@@ -9007,16 +9007,41 @@ async function processCommand(line, env, isOp) {
         try { im0.free(); } catch {}
         const W = inked.get_width(), H = inked.get_height();
 
+        // ══ THE PIXELS ARE THE CEILING (2026-09-10) ═══════════════════════════════════════
+        // MEASURED: 26 inches asked for, 720 pixels of ink available - 28 DPI. The slices came
+        // out 178px wide and Chrome stretched them across a letter page. Sharp arithmetic, a fax
+        // for a stencil, and a shop would bin it.
+        // I wrote "no upscaling, enlarging adds no detail" and then honoured 26 inches anyway.
+        // Both halves cannot be true. The honest one is: A FILE CANNOT BE PRINTED BIGGER THAN
+        // ITS PIXELS ALLOW, so the size comes down to what the file can actually hold and the
+        // reply SAYS the number changed. Returning 26 while printing 28 DPI is the same class of
+        // lie as `only_new: true` and `kept: true` earlier today - a field reporting the ask
+        // instead of the act.
+        // 150 DPI is the floor for linework a thermal head can burn. Shops work at 200-300; 150
+        // is the point below which a stencil stops being usable rather than the point of good.
+        // THE REAL FIX IS UPSTREAM. A 26-inch back piece needs about 3,900 pixels of ink height
+        // to exist before it is ever printed. That is the flatten's job, not this command's -
+        // PRINT enlarges what it is given and cannot invent detail.
+        const MIN_DPI = 150;
+        const maxIn = H / MIN_DPI;
+        if (pTallIn > maxIn) {
+          pFitted = { asked_in: pIn, ink_px: H, min_dpi: MIN_DPI,
+                      why: "the artwork holds " + H + " pixels of ink - printing it taller than " +
+                           maxIn.toFixed(1) + "in would fall under " + MIN_DPI + " DPI and stop " +
+                           "being a usable stencil. Flatten the design larger to print it bigger." };
+          pTallIn = maxIn;
+        }
         // WIDTH IS A LIMIT TOO. Silently letting a wide piece run off the side of the paper is
         // the same failure sideways, so the height comes down until it fits - and the reply says
-        // that it did, rather than quietly returning something narrower than was asked for.
-        pWideIn = (W / H) * pIn;
+        // so rather than quietly returning something narrower than was asked for.
+        pWideIn = (W / H) * pTallIn;
         if (pWideIn > WIDE_IN) {
-          pFitted = { asked_in: pIn,
-                      why: "wider than a letter page at that height" };
+          pFitted = Object.assign(pFitted || { asked_in: pIn }, {
+            also: "wider than a letter page at that height" });
           pTallIn = (WIDE_IN * H) / W;
           pWideIn = WIDE_IN;
         }
+        pDpi = Math.round(H / pTallIn);
         const pxPerIn = H / pTallIn;
         const winPx = Math.max(1, Math.round(PAGE_IN * pxPerIn));
         const stepPx = Math.max(1, Math.round(STEP_IN * pxPerIn));
@@ -9098,13 +9123,14 @@ async function processCommand(line, env, isOp) {
       const pHost = await imageHost(env);
       return { cmd: "PRINT", payload: { ok: true, doc: docId,
         pdf: "https://" + pHost + "/doc/" + docId,
-        inches: Number(pTallIn.toFixed(2)), wide_in: Number(pWideIn.toFixed(2)),
+        inches: Number(pTallIn.toFixed(2)), wide_in: Number(pWideIn.toFixed(2)), dpi: pDpi,
         sheets: pPages, overlap_in: pPages > 1 ? OVERLAP_IN : 0,
         ...(pFitted ? { fitted_to_page_width: pFitted } : {}),
         from: pId, artwork: pUrl, bytes: pdfArr.length,
         cost_usd: 0,
-        note: "Page 1 is the job sheet. The artwork is on its own pages at " + pIn +
-              " inches - nothing else is on them, because that is what gets burned." } };
+        note: "Page 1 is the job sheet. The artwork is on its own pages at " +
+              pTallIn.toFixed(1) + " inches at " + pDpi + " DPI - nothing else is on them, " +
+              "because that is what gets burned." } };
     }
 
     case "STENCIL": {

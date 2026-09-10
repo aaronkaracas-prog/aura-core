@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.202.0-2026-09-10-say-why-she-was-dropped";
+const BUILD = "aura-core-v9.203.0-2026-09-10-the-artists-sheet";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59443,7 +59443,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "\n\nANSWER WITH ONE JSON OBJECT AND NOTHING ELSE. No preamble, no markdown fence.\n" +
         "{\n" +
         '  "say": "what you say to them - short, human, no machine words",\n' +
-        '  "do": "draw | change | none",\n' +
+        '  "do": "draw | change | artist | none",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:
@@ -59536,6 +59536,28 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "WHEN `do` IS `change`: a piece is already on screen and they are modifying it - meaner, " +
         "more colour, lose the flowers, that but bigger. `prompt` is then ONLY the change, in a " +
         "few words, because the picture itself is the starting point.\n" +
+        // ══ SHE UNDERSTOOD AND HAD NOWHERE TO PUT IT (2026-09-10) ═══════════════════════════
+        // MEASURED, twice, once she had been told what a parlour needs: somebody said "I love it,
+        // that's exactly what I want, I'm going to book in with my artist" and she answered
+        // "Perfect, glad it landed right. Good luck with your artist."
+        // She was not failing to understand. `do` held three values - draw, change, none - and
+        // none of them means "make what the artist needs", so the only thing she could put in
+        // that field was `none`, and `none` means talk. She said the nicest sentence the shape
+        // allowed. Aaron: it is like knowing exactly what to do while the only buttons in front
+        // of you are new picture, edit picture, and say something.
+        // NOT A TRIGGER WORD. Nothing matches on what the customer typed - they will never say
+        // "flatten", they will say they are booking in, or something sideways, and reading that
+        // is the part she is already good at. This is an outlet for a judgement she was already
+        // making.
+        // AND WHAT FOLLOWS IS FIXED, WHICH IS WHY IT IS A VALUE AND NOT A PROMPT. "Take the ink
+        // off the body onto white paper" is the same sentence for a mandala sleeve, a space
+        // half-sleeve and a cover-up. It is an operation, not a description, and every time this
+        // file asked her to compose it fresh she wrote a two-word delta - correctly, because her
+        // contract tells her to write deltas, and a constant is not a delta.
+        "WHEN `do` IS `artist`: they are done deciding and this is going to a tattooist - they " +
+        "said yes, that is the one, they are booking in, they asked for something to send their " +
+        "artist. You do not need the words: you can tell. `prompt` is empty; what gets made is " +
+        "always the same thing and it is not yours to write.\n" +
         "WHEN `do` IS `none`: the conversation is the right next step. `prompt` is empty.\n\n" +
         // ══ SHE WRITES WHAT, THE HOUSE WRITES HOW (2026-09-07) ═══════════════════════════════
         // MEASURED: asked for a dragon she wrote "clean black linework with shading on the scales
@@ -59716,7 +59738,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           .map((x) => String(x == null ? "" : x).trim()).filter(Boolean).slice(0, n)
           .map((x) => x.slice(0, cap));
         return { say,
-                 act: ["draw", "change", "none"].includes(act) ? act : "none",
+                 act: ["draw", "change", "artist", "none"].includes(act) ? act : "none",
                  prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
                  use: strList(o.use, 4, 400),
                  pieces: strList(o.pieces, 6, 160),
@@ -59992,6 +60014,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const hasParent = !!(me && lastDrawn && lastDrawn.design);
       let act = acted.act;
       if (act === "change" && !hasParent) act = "draw";
+      // Nothing on screen is nothing to send an artist.
+      if (act === "artist" && !hasParent) act = "none";
 
       // ══ WHAT SHE NAMED, RESOLVED TO REAL ADDRESSES ═══════════════════════════════════════
       // `use` holds her words - "photo", "piece", or an https address. Anything that does not
@@ -60074,6 +60098,42 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // drew last is.
         act = "change";
         lastDrawn = { design: refDesign, subject: (intent && intent.subject) || null };
+      }
+
+      // ══ THE ARTIST'S SHEET - THE OPERATION, NOT A DESCRIPTION (2026-09-10) ═══════════════
+      // Everything that failed at this job failed the same way: a model was asked to AUTHOR the
+      // sheet instead of unwrap the one they already approved.
+      //  · `FINAL ... ADDED` sent the source lock and a subtract sentence, and the lock won.
+      //  · `pieces` sent four evolves with part names in front - "upper arm panel", "wrist cuff" -
+      //    and the model authored flash. A HAMSA came back. There is no hamsa on that arm.
+      //  · A plain draw dropped the pixels entirely and invented a different sleeve.
+      // What works, proven outside this system on the same picture and the same model: ONE
+      // image-to-image call, the approved mock as the only reference, and the instruction below
+      // sent whole. No source lock to argue with it. No brief - `job: add, placement: full
+      // sleeve` describes the mock, and on this call it reads as "draw another sleeve". No part
+      // names, because a part name is a subject and a subject is an invitation to invent one.
+      // THE TEXT IS A CONSTANT AND THAT IS THE POINT. Identical for a mandala sleeve, a space
+      // half-sleeve, a cover-up. It describes what to DO with the pixels, so there is nothing in
+      // it for a summariser to shorten and nothing style-specific to get wrong.
+      // TWO FILES GO BACK, the way a shop actually works: the sheet is what to tattoo, the mock
+      // is where it goes on the body and how it wraps a limb.
+      if (act === "artist" && me) {
+        try {
+          const shopParent = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
+          const SHEET =
+            "Take the tattoo ink in this photograph off the body and onto white paper as one " +
+            "flat sheet. The same motifs, in the same order they run down the limb. Black " +
+            "linework only. No skin, no clothing, no body, no new designs.";
+          const sr = await processCommand("IMAGE EVOLVE " + shopParent + " " +
+            JSON.stringify({ prompt: SHEET, by: me }), env, true);
+          const sp = (sr && sr.payload) ? sr.payload : sr;
+          drew = (sp?.ok && sp.image_url)
+            ? { design: sp.child, image: sp.image_url, changed: "the artist's sheet",
+                from: shopParent, for_the_artist: true,
+                // How it wraps. An artist needs both and they are not the same picture.
+                wraps: (lastDrawn && lastDrawn.image) || null }
+            : { failed: sp?.error || "COULD_NOT_MAKE_SHEET", from: shopParent };
+        } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
       }
 
       if (act === "change" && me) {

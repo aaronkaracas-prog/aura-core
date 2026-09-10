@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.196.0-2026-09-09-added-drops-the-lock";
+const BUILD = "aura-core-v9.197.0-2026-09-10-she-picks-the-pictures";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -17929,16 +17929,32 @@ async function successionGate(env) {
         // description is no longer valid input. The pixels are the state. Keep the words on the
         // record, in case they change direction and it matters what was there; do not send them.
         // The no-URL fallback below still needs them: with no pixels, the words are all there is.
+        // ══ AN EVOLVE MAY START FROM MORE THAN ONE PICTURE (2026-09-10) ════════════════════
+        // `refs: [parentUrl]` was hardcoded, and `showIt` has always accepted six. So an
+        // instruction like "just the new work, no arm, no skin" reached the image model with a
+        // single image - and "the new work" is not a question one picture can answer. It drew
+        // new work. Handed the mock AND the original photograph, the same model on the same
+        // sentence answers it the way it does in a browser: the difference between them.
+        // The caller names them. Nothing here decides when two pictures are wanted, because the
+        // thing holding the conversation is the only thing that knows.
+        // ADDITIVE. No `with`, and this is the same single-reference call it has always been.
+        const withRefs = Array.isArray(p.with)
+          ? p.with.filter((u) => typeof u === "string" && /^https?:\/\//i.test(u)).slice(0, 3)
+          : [];
         const r = parentUrl
           ? await showIt(p.prompt, env, { source: "image_evolve", parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt,
-              refs: [parentUrl], subject: p.prompt })
+              refs: [parentUrl, ...withRefs], subject: p.prompt })
           : await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
         if (!r || !r.ok) return { cmd: "IMAGE", payload: { ok: false, error: r ? r.error : "evolution failed" } };
         await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `Spawned a new version: ${p.prompt}`, kind: "spawned_child" });
         return { cmd: "IMAGE", payload: { ok: true, parent: ent.id, child: r.entity_id, child_image_id: r.id,
           image_url: r.image_url, doorway: r.doorway || null, evolved_with: p.prompt,
+          // How many pictures actually went. A count is a fact; `with: [...]` in the request was
+          // only ever an intention, and this file has been burned twice today by fields that
+          // reported the ask rather than the act.
+          refs_sent: 1 + withRefs.length,
           // WHICH MODEL, AND WHAT IT COST. Four models were compared on one cat today and every
           // one of them had to be identified by remembering which pin was set. `SHOW_IT` reports
           // this; the reply somebody actually reads when an edit misbehaves did not.
@@ -59420,7 +59436,27 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "{\n" +
         '  "say": "what you say to them - short, human, no machine words",\n' +
         '  "do": "draw | change | none",\n' +
-        '  "prompt": "the image description, when do is draw or change"\n' +
+        '  "prompt": "the image description, when do is draw or change",\n' +
+        // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
+        // Aaron, after a day of the same sentence giving two different answers inside and out:
+        // "I have an agent that talks to a customer, she calls out an image model and says make
+        // this image. It's literally that simple."
+        // It was not that simple, and the reason was here. She wrote the instruction and
+        // something else decided which pictures went with it - always the last thing drawn, one
+        // picture, no exceptions. So "just the new work, no arm, no skin" arrived at the image
+        // model with ONE image, and "the new work" has no meaning against one image. It drew new
+        // work: four invented mandalas. Same model as the browser, her exact sentence, and a
+        // different answer, because outside she is handed both pictures and inside she was not.
+        // MEASURED that same hour: the model was eliminated (both sides grok-imagine-image) and
+        // the wording was eliminated (her prompt was his sentence, whole). What was left was the
+        // envelope, and she was never asked what to put in it.
+        // NOT A RULE ABOUT WHEN. Below is a roster of what exists, and nothing about which job
+        // wants which picture - the same reasoning as the cover-up physics that had to come out
+        // of the prompt. She is holding the conversation; she knows whether this job is one
+        // picture or the difference between two.
+        // ABSENT IS TODAY. No `use`, and the job starts from the last thing she drew with the
+        // parent riding along exactly as it has all week - "add a green ball" is untouched.
+        '  "use": ["optional - which pictures this job starts from"]\n' +
         "}\n\n" +
         // ══ THE DISCUSSION DECIDES WHEN, NOT YOU (2026-09-08) ════════════════════════════════
         // Aaron, after a dinosaur appeared on turn one: "the discussion happens with Aura and she
@@ -59483,6 +59519,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
         : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.";
+
+      // The roster. Facts only: what is on file and what to call it. Which job wants which
+      // picture is hers, per turn, the way the tile grid on mytattoo.world lets Aaron click any
+      // image and evolve that one rather than always the newest.
+      const picNames = [];
+      if (refUrl) picNames.push('  "photo" - the photograph they sent you');
+      if (lastDrawn && lastDrawn.image) picNames.push('  "piece" - the last picture you drew for them');
+      const picNote = picNames.length
+        ? "\n\nTHE PICTURES ON FILE, AND WHAT TO CALL THEM IN `use`:\n" + picNames.join("\n") +
+          "\nName them in the order the job needs. Leave `use` out and it starts from the last " +
+          "picture you drew."
+        : "";
 
       // ══ SAY WHAT YOU SEE BEFORE YOU ASK ANYTHING (2026-09-07) ═════════════════════════════
       // MEASURED: somebody sent a photo of a cartoon fish with a human face on it and said "I hate
@@ -59564,7 +59612,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // Everything except the contract, or nothing except the contract.
       const fullSys = noBrief
         ? "You are Aura, helping somebody with a tattoo. " + refBlind + CONTRACT
-        : talkSys + stateNote + refNote + refBlind + CONTRACT;
+        : talkSys + stateNote + picNote + refNote + refBlind + CONTRACT;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
       // Both get the same contract, so the shape of the answer does not depend on which replied.
@@ -59893,15 +59941,41 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               : ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +
                 "nothing else in frame - no studio, no furniture, no other people or hands, and " +
                 "no logo, watermark or text of any kind.";
-          const cr = await processCommand("IMAGE EVOLVE " + lastDrawn.design + " " +
-            JSON.stringify({ prompt: (acted.prompt || said) + cleanUp, by: me }), env, true);
+          // ══ WHAT SHE NAMED, RESOLVED TO REAL ADDRESSES ═════════════════════════════
+          // `use` holds her words - "photo", "piece", or an https address. Anything that does
+          // not resolve is dropped rather than guessed at: a made-up reference is a picture of
+          // somebody else's arm, which is the failure `onme` already paid for.
+          // The FIRST name is the parent - the pixels the edit starts from. The rest ride along
+          // as extra references, which is how "the difference between these two" becomes a thing
+          // the image model can actually answer.
+          const useRaw = Array.isArray(acted.use) ? acted.use.slice(0, 4) : [];
+          const useOne = (n, want) => {
+            const k = String(n || "").trim();
+            const low = k.toLowerCase();
+            if (low === "photo" || low === "the photo" || low === "photograph")
+              return want === "design" ? (refDesign || null) : (refUrl || null);
+            if (low === "piece" || low === "the piece" || low === "last")
+              return want === "design" ? ((lastDrawn && lastDrawn.design) || null)
+                                       : ((lastDrawn && lastDrawn.image) || null);
+            if (/^https?:\/\//i.test(k)) return want === "design" ? null : k;
+            if (/^(ent_|img_)/.test(k)) return want === "design" ? k : null;
+            return null;
+          };
+          const parentId = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
+          const alsoRefs = useRaw.slice(useRaw.length && useOne(useRaw[0], "design") ? 1 : 0)
+            .map((n) => useOne(n, "url")).filter(Boolean);
+          const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
+            JSON.stringify({ prompt: (acted.prompt || said) + cleanUp, by: me,
+                             ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
           const cp = (cr && cr.payload) ? cr.payload : cr;
           if (cp?.ok && cp.image_url) {
             drew = { design: cp.child, image: cp.image_url, changed: acted.prompt || said,
-                     from: lastDrawn.design };
+                     from: parentId,
+                     ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) };
           } else {
             drew = { failed: cp?.error || "COULD_NOT_CHANGE", changed: acted.prompt || said,
-                     from: lastDrawn.design };
+                     from: parentId,
+                     ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) };
           }
         } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
       } else if (act === "draw" && me) {

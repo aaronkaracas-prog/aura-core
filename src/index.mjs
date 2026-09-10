@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.205.0-2026-09-10-the-artist-package";
+const BUILD = "aura-core-v9.206.0-2026-09-10-two-files-sheet-and-limb";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60132,29 +60132,41 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             JSON.stringify({ prompt: SHEET, by: me }), env, true);
           const sp = (sr && sr.payload) ? sr.payload : sr;
           if (sp?.ok && sp.image_url) {
-            // ══ THE STENCIL, ON THE SHEET - NOT ON A PHOTOGRAPH OF A PERSON ═══════════════
-            // `tatStencilBytes` is the one thing in this file that CANNOT drift: greyscale,
-            // blur, one threshold, thicken. Same bytes in, same bytes out, no model, free.
-            // It has existed for weeks and every time it ran today it ran on an ARM - skin, a
-            // top, a background - so it came back as a black silhouette of a person. Pointed at
-            // the flat sheet it is exactly the transfer file.
-            // IT DOES NOT REPLACE THE SHEET. An artist wants both: the artwork to look at and
-            // judge, and the burn to put through the printer.
-            // THE COMMAND, NOT THE HELPER. `tatStencilBytes` returns raw bytes; R2, the KV
-            // base64, `imagemeta` and the /image/<id> route all live in the STENCIL case.
-            // Calling the helper here would mean a second copy of every one of those.
-            let burn = null;
+            // ══ THE STENCIL PASS IS GONE, AND IT WAS MINE (2026-09-10) ════════════════════
+            // MEASURED one build later: the sheet went in as fine black linework on white and
+            // came back as SCATTERED BLACK SPECKS. `tatStencilBytes` is greyscale, blur, one
+            // threshold - built for a PHOTOGRAPH, where dark ink sits against mid-tone skin.
+            // Fed a drawing that is already 95% white with hairline strokes, a single cutoff
+            // throws almost all of it away and keeps only the densest dots.
+            // AND IT WAS NEVER NEEDED. The trade research this morning says what a shop prints:
+            // line art, 8.5x11, 300dpi, mirrored and tiled by the artist's own app at print
+            // time. The sheet IS that file. Thresholding black-on-white to get black-on-white is
+            // an operation with nothing to do.
+            // Grok, handed the same picture in a browser, returned TWO files and no stencil.
+            // ══ THE PLACEMENT FILE IS THE ARM, ISOLATED ═══════════════════════════════════
+            // The second thing it returned, and the thing we were missing: the same photograph
+            // with the background stripped - the tattooed limb alone, no room, no clothing, no
+            // studio. Its own words: the sheet is for the motifs, the isolated photo is for
+            // placement and how the piece wraps.
+            // We were handing over the raw mock instead: a colour photo of somebody in a black
+            // top standing in a room. Everything in that frame except the arm is noise to the
+            // person who has to place a stencil on it.
+            const WRAP =
+              "Keep the tattooed limb exactly as it is - same skin, same ink, same angle - and " +
+              "remove everything else. No background, no room, no clothing, no other people. " +
+              "The arm alone on plain white.";
+            let wrapUrl = (lastDrawn && lastDrawn.image) || null;
             try {
-              const st = await processCommand("STENCIL " + (sp.child || sp.id), env, true);
-              const stp = (st && st.payload) ? st.payload : st;
-              if (stp?.ok && stp.image) burn = stp.image;
+              const wr = await processCommand("IMAGE EVOLVE " + shopParent + " " +
+                JSON.stringify({ prompt: WRAP, by: me }), env, true);
+              const wp = (wr && wr.payload) ? wr.payload : wr;
+              if (wp?.ok && wp.image_url) wrapUrl = wp.image_url;
             } catch {}
             drew = { design: sp.child, image: sp.image_url, changed: "the artist's sheet",
                      from: shopParent, for_the_artist: true,
-                     // Three files, one for each thing an artist actually does: what to tattoo,
-                     // what to put through the thermal printer, and where it goes on the body.
-                     ...(burn ? { stencil: burn } : {}),
-                     wraps: (lastDrawn && lastDrawn.image) || null };
+                     // Two files, which is what a shop actually uses: the sheet is what to
+                     // tattoo, the isolated limb is where it goes and how it wraps.
+                     wraps: wrapUrl };
           } else {
             drew = { failed: sp?.error || "COULD_NOT_MAKE_SHEET", from: shopParent };
           }

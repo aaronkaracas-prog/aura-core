@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.221.0-2026-09-11-measure-the-right-pipe";
+const BUILD = "aura-core-v9.222.0-2026-09-11-list-the-field-or-lose-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58085,7 +58085,9 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       // own - 2k comes back PNG, 1k comes back JPEG.
       try {
         if (b64) {
-          const _h = Uint8Array.from(atob(b64.slice(0, 4096)), (c) => c.charCodeAt(0));
+          // 4KB was not enough - a JPEG can carry a large EXIF block before the SOF marker, so the
+          // scan ran off the end and reported 0x0. 128KB covers it and costs nothing.
+          const _h = Uint8Array.from(atob(b64.slice(0, 131072)), (c) => c.charCodeAt(0));
           let _w = 0, _ht = 0, _fmt = "?";
           if (_h[0] === 0x89 && _h[1] === 0x50) {
             _fmt = "png";
@@ -58413,7 +58415,13 @@ async function showIt(subject, env, opts = {}) {
   // discarded here and got whatever the KV pin said, which means a "comparison" would have run the
   // same model three times and looked like a result.
   // An explicit list is the right shape, so the fix is to list it, not to spread opts.
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null });
+  // AND `aspect`/`res` WERE NOT IN IT EITHER (2026-09-11) - the same defect the note above
+  // records, found again the same way. The tattoo draw asked for 3:4 at 2k, SHOW_IT parsed both
+  // and passed both, and they died on this line: three draws came back 1,248 pixels of ink no
+  // matter which model, which quality tier or which endpoint, and `[XAI-IMG]` printed
+  // `asked aspect=- res=-` the moment it was pointed at the right branch. An afternoon of
+  // theories about xAI's silent fallbacks, and the parameters never left this worker.
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════

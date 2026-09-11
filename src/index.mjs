@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.219.0-2026-09-10-born-at-a-printable-size";
+const BUILD = "aura-core-v9.220.0-2026-09-11-born-at-a-printable-size";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18284,6 +18284,7 @@ async function successionGate(env) {
       // wrong answer, which is the most expensive kind.
       let subject = after, ctx = null, nm = null, viaP = null, hostP = null;
       let refsP = null, rawP = false, parentP = null, creatorP = null;
+      let aspP = null, resP = null;
       if (/^\s*\{/.test(after)) {
         try {
           const p = JSON.parse(after);
@@ -18292,6 +18293,11 @@ async function successionGate(env) {
             viaP = p.via || null; hostP = p.host || null;
             refsP = Array.isArray(p.refs) ? p.refs.filter(Boolean) : null;
             rawP = p.raw === true; parentP = p.parent || null; creatorP = p.creator || null;
+            // Read here with the rest, because `p` only exists inside this block - the first
+            // version of this read it below and threw "p is not defined", which is the exact
+            // failure the comment above describes: a field the caller sent and the parser lost.
+            aspP = typeof p.aspect === "string" ? p.aspect : null;
+            resP = (p.res === "1k" || p.res === "2k") ? p.res : null;
           }
         } catch (e) {}
       }
@@ -18309,8 +18315,6 @@ async function successionGate(env) {
       // every later version evolves from this first drawing, so its pixels are the ceiling for
       // the whole piece.
       // Optional, so every existing caller is unchanged.
-      const aspP = typeof p.aspect === "string" ? p.aspect : null;
-      const resP = (p.res === "1k" || p.res === "2k") ? p.res : null;
       const r = await showIt(subject, env, { source: "show_it_cmd", context: ctx || subject, name: nm,
         via: viaP, host: hostP, refs: refsP || undefined, raw: rawP, parent: parentP, creator: creatorP,
         ...(aspP ? { aspect: aspP } : {}), ...(resP ? { res: resP } : {}) });

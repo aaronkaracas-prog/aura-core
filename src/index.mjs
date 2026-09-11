@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.223.0-2026-09-11-big-images-need-a-loop";
+const BUILD = "aura-core-v9.224.0-2026-09-11-the-chain-keeps-its-size";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8965,12 +8965,21 @@ async function processCommand(line, env, isOp) {
       // NO UPSCALING. Enlarging 1024px to 300dpi adds no detail, only bigger soft lines. Slices
       // go out at native resolution and the PDF states their physical size - that is what a PDF
       // is for, and it is why this is a PDF and not a PNG.
-      const PAGE_IN = 10.0;      // letter, less the half-inch margins
-      const WIDE_IN = 7.5;
+      // ══ TURN THE PAGE BEFORE SHRINKING THE ART (2026-09-11) ══════════════════════════════
+      // MEASURED on the first 2k dragon: 2,368 pixels of ink, good for 15.8in at 150 DPI, and
+      // PRINT still capped it at 10 - `limit: "resolution and page width"`. The dragon is nearly
+      // square and a portrait letter page is only 7.5in wide, so the PAPER ran out first.
+      // Paper turns. A landscape sheet is 10in wide by 7.5in tall, so a wide piece gets the long
+      // edge instead of losing three inches of size for nothing.
+      // CHOSEN BY THE ARTWORK, not by a flag: whichever orientation lets the piece print bigger
+      // wins, and the job sheet says which way to feed the printer.
+      const landscape = true;   // decided below, once the ink box is known
+      let PAGE_IN = 10.0;       // letter, less the half-inch margins
+      let WIDE_IN = 7.5;
       const OVERLAP_IN = 0.5;
-      const STEP_IN = PAGE_IN - OVERLAP_IN;
+      let STEP_IN = PAGE_IN - OVERLAP_IN;
 
-      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null, pDpi = 0;
+      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null, pDpi = 0, pOrient = "portrait";
       try {
         const srcArr = Uint8Array.from(atob(pB64), (c) => c.charCodeAt(0));
         const im0 = PhotonImage.new_from_byteslice(srcArr);
@@ -8996,42 +9005,35 @@ async function processCommand(line, env, isOp) {
         try { im0.free(); } catch {}
         const W = inked.get_width(), H = inked.get_height();
 
-        // ══ THE PIXELS ARE THE CEILING (2026-09-10) ═══════════════════════════════════════
-        // MEASURED: 26 inches asked for, 720 pixels of ink available - 28 DPI. The slices came
-        // out 178px wide and Chrome stretched them across a letter page. Sharp arithmetic, a fax
-        // for a stencil, and a shop would bin it.
-        // I wrote "no upscaling, enlarging adds no detail" and then honoured 26 inches anyway.
-        // Both halves cannot be true. The honest one is: A FILE CANNOT BE PRINTED BIGGER THAN
-        // ITS PIXELS ALLOW, so the size comes down to what the file can actually hold and the
-        // reply SAYS the number changed. Returning 26 while printing 28 DPI is the same class of
-        // lie as `only_new: true` and `kept: true` earlier today - a field reporting the ask
-        // instead of the act.
-        // 150 DPI is the floor for linework a thermal head can burn. Shops work at 200-300; 150
-        // is the point below which a stencil stops being usable rather than the point of good.
-        // THE REAL FIX IS UPSTREAM. A 26-inch back piece needs about 3,900 pixels of ink height
-        // to exist before it is ever printed. That is the flatten's job, not this command's -
-        // PRINT enlarges what it is given and cannot invent detail.
-        const MIN_DPI = 150;
-        const maxIn = H / MIN_DPI;
-        if (pTallIn > maxIn) {
-          pFitted = { limit: "resolution", asked_in: pIn, ink_px: H, min_dpi: MIN_DPI,
-                      why: "the artwork holds " + H + " pixels of ink - printing it taller than " +
-                           maxIn.toFixed(1) + "in would fall under " + MIN_DPI + " DPI and stop " +
-                           "being a usable stencil. Flatten the design larger to print it bigger." };
-          pTallIn = maxIn;
-        }
-        // WIDTH IS A LIMIT TOO. Silently letting a wide piece run off the side of the paper is
-        // the same failure sideways, so the height comes down until it fits - and the reply says
-        // so rather than quietly returning something narrower than was asked for.
+        const MIN_DPI = 150;   // the floor below which linework stops burning cleanly
+        // THE PAGE TURNS IF THE PIECE PRINTS BIGGER THAT WAY. Portrait gives 7.5 x 10, landscape
+        // gives 10 x 7.5. For each, the size is whatever fits both the width and the DPI floor,
+        // and the bigger of the two wins. A tall sleeve keeps portrait; a near-square back piece
+        // gets landscape and three inches it was losing to the margin.
+        const fitFor = (wIn, hIn) => {
+          const byDpi = H / MIN_DPI;                 // as tall as the pixels allow
+          const byWide = (wIn * H) / W;              // as tall as the paper allows
+          return Math.min(pIn, byDpi, byWide);
+        };
+        const tallPortrait = fitFor(7.5, 10.0);
+        const tallLandscape = fitFor(10.0, 7.5);
+        const useLandscape = tallLandscape > tallPortrait + 0.01;
+        if (useLandscape) { PAGE_IN = 7.5; WIDE_IN = 10.0; STEP_IN = PAGE_IN - OVERLAP_IN; }
+        pTallIn = Math.min(pIn, useLandscape ? tallLandscape : tallPortrait);
         pWideIn = (W / H) * pTallIn;
-        if (pWideIn > WIDE_IN) {
-          pFitted = Object.assign(pFitted || { asked_in: pIn }, {
-            limit: pFitted ? "resolution and page width" : "page width",
-            also: "wider than a letter page at that height" });
-          pTallIn = (WIDE_IN * H) / W;
-          pWideIn = WIDE_IN;
+        pOrient = useLandscape ? "landscape" : "portrait";
+        if (pTallIn < pIn - 0.01) {
+          pFitted = { asked_in: pIn, ink_px: H, min_dpi: MIN_DPI, orientation: pOrient,
+                      limit: (H / MIN_DPI) <= ((WIDE_IN * H) / W) ? "resolution" : "page width",
+                      why: (H / MIN_DPI) <= ((WIDE_IN * H) / W)
+                        ? ("the artwork holds " + H + " pixels of ink - printing it taller than " +
+                           (H / MIN_DPI).toFixed(1) + "in would fall under " + MIN_DPI +
+                           " DPI and stop being a usable stencil. Flatten the design larger to " +
+                           "print it bigger.")
+                        : ("the piece is " + (W / H).toFixed(2) + " times as wide as it is tall, " +
+                           "so it runs out of paper before it runs out of pixels - printed on " +
+                           pOrient + " letter it fits " + pTallIn.toFixed(1) + "in tall.") };
         }
-        pDpi = Math.round(H / pTallIn);
         const pxPerIn = H / pTallIn;
         const winPx = Math.max(1, Math.round(PAGE_IN * pxPerIn));
         const stepPx = Math.max(1, Math.round(STEP_IN * pxPerIn));
@@ -9074,6 +9076,7 @@ async function processCommand(line, env, isOp) {
         row("Finished height", pTallIn.toFixed(1) + " in" +
             (pFitted ? "  (asked for " + pIn + " in - see below)" : "")) +
         row("Resolution", pDpi + " DPI") +
+        row("Paper", pOrient === "landscape" ? "letter, LANDSCAPE" : "letter, portrait") +
         row("Sheets", pPages > 1 ? pPages + " (overlap " + OVERLAP_IN + " in)" : "1") +
         (pFitted ? row("Why not " + pIn + " in", pFitted.why || pFitted.also || "") : "") +
         row("Design", pId) +
@@ -9091,7 +9094,8 @@ async function processCommand(line, env, isOp) {
       const html =
         "<!doctype html><html><head><meta charset=utf-8><style>" +
         // Letter, no browser margin - the page IS the paper.
-        "@page { size: 8.5in 11in; margin: 0.5in; }" +
+        "@page { size: " + (pOrient === "landscape" ? "11in 8.5in" : "8.5in 11in") +
+          "; margin: 0.5in; }" +
         "html,body { margin:0; padding:0; font:12pt/1.5 Georgia,serif; color:#000; }" +
         "h1 { font-size:20pt; margin:0 0 .2in 0; }" +
         ".sub { color:#444; font-size:10pt; margin:0 0 .35in 0; }" +
@@ -9136,7 +9140,7 @@ async function processCommand(line, env, isOp) {
       return { cmd: "PRINT", payload: { ok: true, doc: docId,
         pdf: "https://" + pHost + "/doc/" + docId,
         inches: Number(pTallIn.toFixed(2)), wide_in: Number(pWideIn.toFixed(2)), dpi: pDpi,
-        sheets: pPages, overlap_in: pPages > 1 ? OVERLAP_IN : 0,
+        sheets: pPages, overlap_in: pPages > 1 ? OVERLAP_IN : 0, orientation: pOrient,
         // Named for what fired. It was called `fitted_to_page_width` while the thing that
         // tripped was the DPI ceiling - a flag that misreports which limit stopped you is only
         // half a measurement.
@@ -60581,6 +60585,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // that, and it is the difference between 743 pixels of ink and something an artist can
           // print at a real size. `width`/`height` stay for the Cloudflare lane, which takes
           // pixels instead; whichever model this job is dialled to reads the pair it understands.
+          // Already asked; kept here so the pair is visible together. This is the file that gets
+          // printed, so it is the one that must not be small.
           const sr = await processCommand("IMAGE EVOLVE " + shopParent + " " +
             JSON.stringify({ prompt: SHEET, by: me, as: "shop_sheet",
                              aspect: "9:16", res: "2k",
@@ -60683,8 +60689,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // was later unwrapped from a panel rather than from the sleeve.
           // Tiling a sheet across letter pages is arithmetic on a bitmap, done at print time by
           // the artist. The thermal-paper note above already says so. Never a job for a model.
+          // ══ AN EVOLVE MUST NOT SHRINK THE PIECE (2026-09-11) ═══════════════════════════
+          // The first drawing now comes back at 2k - 2,368 pixels of ink, enough for a back piece
+          // at 237 DPI. But EVERY conversation continues past that first turn: "in colour", "with
+          // flames", "bigger on the forearm". Each of those is an evolve, and this call asked for
+          // no size at all, so the piece they finally approve would drop back to the default and
+          // the whole gain would vanish on turn two.
+          // A chain is only as big as its smallest link, and the LAST image is the one that goes
+          // to the artist.
           const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
             JSON.stringify({ prompt: (acted.prompt || said) + cleanUp, by: me,
+                             aspect: "3:4", res: "2k",
                              ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
           const cp = (cr && cr.payload) ? cr.payload : cr;
           drew = (cp?.ok && cp.image_url)

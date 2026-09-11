@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.220.0-2026-09-11-born-at-a-printable-size";
+const BUILD = "aura-core-v9.221.0-2026-09-11-measure-the-right-pipe";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -57938,42 +57938,6 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       imgUsage = d?.usage || null;   // provider's OWN token report for this image - ground truth, no guess
       b64 = item.b64_json || null;
       if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
-      // ══ VERIFY THE PIXELS, BECAUSE THIS API FAILS QUIETLY (2026-09-10) ═══════════════════
-      // xAI's own behaviour, documented and matching two measurements here: OpenAI-style fields
-      // are silently ignored, and an invalid `aspect_ratio` or `resolution` "silently falls back
-      // to defaults" - a 200 with the wrong size and nothing saying the parameter was dropped.
-      // The documented remedy is exactly this: verify the OUTPUT PIXEL DIMENSIONS on the first
-      // call to confirm the parameters took effect. We asked for 9:16 at 2k twice and got the
-      // source height back both times, and had no way to see whether the request was refused,
-      // ignored, or never carried them.
-      // READ FROM THE BYTES, not from a field the response might not carry. PNG puts width and
-      // height at a fixed offset in the IHDR chunk; JPEG needs a scan for the SOF marker. Both
-      // are a few bytes and neither costs a call.
-      try {
-        if (b64) {
-          const _h = Uint8Array.from(atob(b64.slice(0, 4096)), (c) => c.charCodeAt(0));
-          let _w = 0, _ht = 0, _fmt = "?";
-          if (_h[0] === 0x89 && _h[1] === 0x50) {
-            _fmt = "png";
-            _w = (_h[16] << 24) | (_h[17] << 16) | (_h[18] << 8) | _h[19];
-            _ht = (_h[20] << 24) | (_h[21] << 16) | (_h[22] << 8) | _h[23];
-          } else if (_h[0] === 0xFF && _h[1] === 0xD8) {
-            _fmt = "jpeg";
-            for (let i = 2; i < _h.length - 9; i++) {
-              if (_h[i] === 0xFF && _h[i + 1] >= 0xC0 && _h[i + 1] <= 0xCF &&
-                  _h[i + 1] !== 0xC4 && _h[i + 1] !== 0xC8 && _h[i + 1] !== 0xCC) {
-                _ht = (_h[i + 5] << 8) | _h[i + 6];
-                _w = (_h[i + 7] << 8) | _h[i + 8];
-                break;
-              }
-            }
-          }
-          console.log("[XAI-IMG] " + model + " asked aspect=" + (opts.aspect || "-") +
-            " res=" + (opts.res || "-") + " edit=" + isEdit + " refs=" + refs.length +
-            " -> GOT " + _w + "x" + _ht + " " + _fmt +
-            (opts.res === "2k" && Math.max(_w, _ht) < 1600 ? "  ** 2k WAS NOT HONOURED **" : ""));
-        }
-      } catch {}
     } else if (/^flux-2/i.test(model)) {
       // ══ BLACK FOREST LABS, AND IT IS SHAPED DIFFERENTLY FROM THE OTHER FOUR ═══════════════
       // Every other branch here is one request in, an image out. BFL is ASYNCHRONOUS: the POST
@@ -58065,6 +58029,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       // this call. With refs present it goes to /images/edits and the parent rides along.
       let key = await getSecret(env, "xai");
       if (!key) throw new Error("no xAI key");
+      const wantUrl = opts.res === "2k";
       // Same fact as `isEdit` above, deliberately not re-declared - one name, one meaning.
       const r = await pfetch(env, "xai", "core:image",
         "https://api.x.ai/v1/images/" + (isEdit ? "edits" : "generations"), {
@@ -58079,8 +58044,15 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         // From xAI's REST docs: JSON, not multipart (they explicitly do not support the OpenAI
         // SDK's multipart images.edit). One source is `image: {url, type:"image_url"}`; up to three
         // is `images: [...]`. A data URI or a Files API file_id works in the same slot.
+        // ══ 2K MAY NOT FIT IN AN INLINE ANSWER (2026-09-11) ════════════════════════════════
+        // xAI's docs put a 2K PNG at 5-6MB, and base64 inflates that by a third before it is even
+        // JSON. If the API will not serve that inline it downgrades rather than errors - exactly
+        // the silent fallback described above, and consistent with three draws that all came back
+        // the same size no matter what was asked for.
+        // So the big jobs ask for a URL and the line below downloads it. One extra fetch, and the
+        // small jobs keep the inline path they have always used.
         body: JSON.stringify(Object.assign(
-          { model, prompt: p, n: 1, response_format: "b64_json" },
+          { model, prompt: p, n: 1, ...(wantUrl ? {} : { response_format: "b64_json" }) },
           // Named by the caller, never guessed. `opts.aspect` is one of xAI's ratios ("9:16"),
           // `opts.res` is "1k" or "2k".
           (typeof opts.aspect === "string" && /^\d+(\.\d+)?:\d+(\.\d+)?$|^auto$/.test(opts.aspect)
@@ -58098,6 +58070,45 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       imgUsage = d?.usage || null;
       b64 = item.b64_json || null;
       if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
+      // ══ VERIFY THE PIXELS - AND PUT THE CHECK IN THE RIGHT BRANCH (2026-09-11) ═══════════
+      // This block was written yesterday and landed in the OPENAI branch, sixty lines above -
+      // the one that sends `size: "1024x1024"`. So it never printed on a single Grok draw, and I
+      // then reasoned from its silence twice: first that the parameters were not reaching the
+      // call, then that some other lane must be involved. Both wrong, from an instrument pointed
+      // at the wrong pipe.
+      // xAI fails QUIETLY by design: OpenAI-style fields are ignored and an invalid aspect_ratio
+      // or resolution "silently falls back to defaults" - a 200 with the wrong size and nothing
+      // saying so. The documented remedy is to verify the OUTPUT PIXEL DIMENSIONS, which is the
+      // only way to tell an honoured parameter from a dropped one.
+      // READ FROM THE BYTES. PNG carries width and height in the IHDR at a fixed offset; JPEG
+      // needs a short scan for the SOF marker. Neither costs a call. The FORMAT is a tell of its
+      // own - 2k comes back PNG, 1k comes back JPEG.
+      try {
+        if (b64) {
+          const _h = Uint8Array.from(atob(b64.slice(0, 4096)), (c) => c.charCodeAt(0));
+          let _w = 0, _ht = 0, _fmt = "?";
+          if (_h[0] === 0x89 && _h[1] === 0x50) {
+            _fmt = "png";
+            _w = (_h[16] << 24) | (_h[17] << 16) | (_h[18] << 8) | _h[19];
+            _ht = (_h[20] << 24) | (_h[21] << 16) | (_h[22] << 8) | _h[23];
+          } else if (_h[0] === 0xFF && _h[1] === 0xD8) {
+            _fmt = "jpeg";
+            for (let i = 2; i < _h.length - 9; i++) {
+              if (_h[i] === 0xFF && _h[i + 1] >= 0xC0 && _h[i + 1] <= 0xCF &&
+                  _h[i + 1] !== 0xC4 && _h[i + 1] !== 0xC8 && _h[i + 1] !== 0xCC) {
+                _ht = (_h[i + 5] << 8) | _h[i + 6];
+                _w = (_h[i + 7] << 8) | _h[i + 8];
+                break;
+              }
+            }
+          }
+          console.log("[XAI-IMG] " + model + " " + (isEdit ? "edit" : "generation") +
+            " asked aspect=" + (opts.aspect || "-") + " res=" + (opts.res || "-") +
+            " fmt=" + (wantUrl ? "url" : "b64") + " refs=" + refs.length +
+            " -> GOT " + _w + "x" + _ht + " " + _fmt +
+            (opts.res === "2k" && Math.max(_w, _ht) < 1600 ? "  ** 2k NOT HONOURED **" : ""));
+        }
+      } catch {}
     } else if (/gemini.*image|nano-banana/i.test(model)) {
       // Google Gemini image (Nano Banana). NOT /images/generations - it uses generateContent with
       // responseModalities:["IMAGE"], and the image returns as inline base64 in the response PARTS, not a

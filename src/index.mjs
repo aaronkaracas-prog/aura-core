@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.218.0-2026-09-10-artwork-until-they-ask";
+const BUILD = "aura-core-v9.219.0-2026-09-10-born-at-a-printable-size";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18297,8 +18297,23 @@ async function successionGate(env) {
       }
       // `host` says whose surface this image belongs to, so the URL it hands back is on the
       // domain the person is actually using rather than a brand they have never heard of.
+      // ══ A TATTOO IS NOT A SQUARE, AND THE DRAW NEVER ASKED (2026-09-10) ═══════════════════
+      // MEASURED at the end of a whole back piece: the finished line art held 1,248 pixels of
+      // ink, which is 8.3 inches at 150 DPI. A back needs twenty. The crop had nothing left to
+      // reclaim - the ink already filled the frame - so it was never a framing problem. The file
+      // was simply born small, because THIS call asks for no size at all and takes whatever the
+      // default is.
+      // The artist's sheet was taught to ask - 9:16 at 2k - but that is an EDIT, and both edit
+      // models returned the source height and ignored it. A generation is a different endpoint,
+      // and xAI's docs say resolution takes effect there. Untested, and upstream of everything:
+      // every later version evolves from this first drawing, so its pixels are the ceiling for
+      // the whole piece.
+      // Optional, so every existing caller is unchanged.
+      const aspP = typeof p.aspect === "string" ? p.aspect : null;
+      const resP = (p.res === "1k" || p.res === "2k") ? p.res : null;
       const r = await showIt(subject, env, { source: "show_it_cmd", context: ctx || subject, name: nm,
-        via: viaP, host: hostP, refs: refsP || undefined, raw: rawP, parent: parentP, creator: creatorP });
+        via: viaP, host: hostP, refs: refsP || undefined, raw: rawP, parent: parentP, creator: creatorP,
+        ...(aspP ? { aspect: aspP } : {}), ...(resP ? { res: resP } : {}) });
       return { cmd: "SHOW_IT", payload: r };
     }
 
@@ -60692,7 +60707,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             : ((await env.AURA_KV.get("frame:talk").catch(() => null)) ||
                "The artwork alone, centred on a plain background, nothing else in frame. Not on " +
                "skin, not on a person, not a photograph of a tattoo.");
+          // 2k because the first drawing is the ceiling for every later version, and a tattoo is
+          // taller than it is wide. If the lane ignores either, the [XAI-IMG] line says so.
           const dr = await processCommand("SHOW_IT " + JSON.stringify({
+            aspect: "3:4", res: "2k",
             subject: askLine + ". " + reg + " " + frm +
               (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
                         "the way it sits - but draw a NEW original piece rather than copying it." : ""),

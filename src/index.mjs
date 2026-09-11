@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.224.0-2026-09-11-the-chain-keeps-its-size";
+const BUILD = "aura-core-v9.225.0-2026-09-11-nothing-but-artwork";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -9035,6 +9035,10 @@ async function processCommand(line, env, isOp) {
                            pOrient + " letter it fits " + pTallIn.toFixed(1) + "in tall.") };
         }
         const pxPerIn = H / pTallIn;
+        // Lost when the cap block was rewritten for orientation: the reply and the job sheet both
+        // printed "0 DPI". A number nobody set is worse than no number, and this file has spent a
+        // day on fields that reported something other than the fact.
+        pDpi = Math.round(pxPerIn);
         const winPx = Math.max(1, Math.round(PAGE_IN * pxPerIn));
         const stepPx = Math.max(1, Math.round(STEP_IN * pxPerIn));
         const nPages = H <= winPx ? 1 : Math.ceil((H - winPx) / stepPx) + 1;
@@ -9042,6 +9046,13 @@ async function processCommand(line, env, isOp) {
         for (let i = 0; i < nPages; i++) {
           const top = Math.min(i * stepPx, Math.max(0, H - 1));
           const bot = Math.min(top + winPx, H);
+          // ══ A SLIVER IS A BLANK PAGE (2026-09-11) ════════════════════════════════════════
+          // MEASURED: 13.3in of artwork on 7.5in landscape pages left a final slice 0.3in tall -
+          // a strip of white the artist prints for nothing. The overlap already covers it; that
+          // last third of an inch is inside the previous sheet.
+          // Half an inch is the floor because that IS the overlap: anything shorter is entirely
+          // repeated on the sheet before it.
+          if ((bot - top) / pxPerIn < OVERLAP_IN + 0.05) break;
           if (bot - top < 2) break;
           const sl = photonCrop(inked, 0, top, W, bot);
           const bts = sl.get_bytes();
@@ -9077,7 +9088,10 @@ async function processCommand(line, env, isOp) {
             (pFitted ? "  (asked for " + pIn + " in - see below)" : "")) +
         row("Resolution", pDpi + " DPI") +
         row("Paper", pOrient === "landscape" ? "letter, LANDSCAPE" : "letter, portrait") +
-        row("Sheets", pPages > 1 ? pPages + " (overlap " + OVERLAP_IN + " in)" : "1") +
+        row("Sheets", pPages > 1
+              ? pPages + ", in order after this page - overlap " + OVERLAP_IN +
+                " in, trim on the repeat and butt them together"
+              : "1") +
         (pFitted ? row("Why not " + pIn + " in", pFitted.why || pFitted.also || "") : "") +
         row("Design", pId) +
         row("For", pPta || null);
@@ -9086,9 +9100,16 @@ async function processCommand(line, env, isOp) {
       // onto transfer paper, so nothing else belongs on it.
       let pArt = "";
       for (let i = 0; i < pSlices.length; i++) {
+        // ══ THE LABEL WAS MAKING ITS OWN PAGE (2026-09-11) ════════════════════════════════
+        // MEASURED: a two-sheet piece produced FOUR pages - job sheet, artwork, a blank, artwork.
+        // The `sheet 1 of 2` line sat OUTSIDE the artwork div, so after an image that fills the
+        // page it flowed onto the next one, and the following `.art` broke again. A whole sheet
+        // of paper carrying eight points of grey text.
+        // It comes off entirely rather than moving. The artwork page carries NOTHING but artwork -
+        // that is the rule this file already states, because that page goes onto transfer paper -
+        // and the job sheet on page 1 already says how many sheets there are and in what order.
         pArt += '<div class=art><img style="height:' + pSlices[i].inches.toFixed(3) +
-                'in" src="data:image/png;base64,' + pSlices[i].b64 + '"></div>' +
-                (pPages > 1 ? '<div class=tag>sheet ' + (i + 1) + " of " + pPages + "</div>" : "");
+                'in" src="data:image/png;base64,' + pSlices[i].b64 + '"></div>';
       }
 
       const html =

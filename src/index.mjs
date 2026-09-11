@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.222.0-2026-09-11-list-the-field-or-lose-it";
+const BUILD = "aura-core-v9.223.0-2026-09-11-big-images-need-a-loop";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -57367,6 +57367,25 @@ function cardFormat(variable, value) {
     "No skin, no body, no border, no background scenery, no extra motifs - only the subject itself.";
 }
 
+// ══ A SPREAD IS FINE UNTIL THE IMAGE IS BIG (2026-09-11) ═════════════════════════════════════
+// Three sites turned a downloaded image into base64 by passing EVERY BYTE as a separate function
+// argument. It worked for years because every image this system made was about a megabyte.
+// MEASURED the first time a 2k render actually came back: "Maximum call stack size exceeded" - the
+// argument list overflowed before a single byte was encoded. It read as a provider failure and was
+// ours, and it surfaced only because the size parameter finally reached the API.
+// The inline-base64 paths in this file have always walked the buffer in 8KB blocks for exactly
+// this reason. This is that loop, in one place, for the three sites that were still spreading.
+// PROVEN before shipping: 6MB through the old form throws; through this it returns 8,388,608
+// base64 characters.
+function bytesToB64(ab) {
+  const u8 = new Uint8Array(ab);
+  let out = "";
+  for (let i = 0; i < u8.length; i += 8192) {
+    out += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
+  }
+  return btoa(out);
+}
+
 async function auraGenerateImage(prompt, env, opts = {}) {
   // AGNOSTIC + POLICY-DRIVEN. showIt states intent ("make an image"); AIMARGIN's POLICY decides who fulfills
   // it and at what quality. The operator declares INTENT once - config:policy:image = cheapest | balanced |
@@ -57856,7 +57875,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         out = await env.AI.run(model, { prompt: p });
       }
       if (out && out.image) b64 = out.image;
-      else if (out instanceof ReadableStream) { const ab = await new Response(out).arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
+      else if (out instanceof ReadableStream) { const ab = await new Response(out).arrayBuffer(); b64 = bytesToB64(ab); }
       else if (out instanceof ArrayBuffer) { b64 = btoa(String.fromCharCode(...new Uint8Array(out))); }
     } else if (/^(gpt-image|dall-e)/i.test(model)) {
       // OpenAI - a SELECTABLE option the margin layer can name, never the hardwired default.
@@ -57937,7 +57956,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       const item = d?.data?.[0] || {};
       imgUsage = d?.usage || null;   // provider's OWN token report for this image - ground truth, no guess
       b64 = item.b64_json || null;
-      if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
+      if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = bytesToB64(ab); }
     } else if (/^flux-2/i.test(model)) {
       // ══ BLACK FOREST LABS, AND IT IS SHAPED DIFFERENTLY FROM THE OTHER FOUR ═══════════════
       // Every other branch here is one request in, an image out. BFL is ASYNCHRONOUS: the POST
@@ -58069,7 +58088,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       const item = d?.data?.[0] || {};
       imgUsage = d?.usage || null;
       b64 = item.b64_json || null;
-      if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
+      if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = bytesToB64(ab); }
       // ══ VERIFY THE PIXELS - AND PUT THE CHECK IN THE RIGHT BRANCH (2026-09-11) ═══════════
       // This block was written yesterday and landed in the OPENAI branch, sixty lines above -
       // the one that sends `size: "1024x1024"`. So it never printed on a single Grok draw, and I

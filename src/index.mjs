@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.225.0-2026-09-11-nothing-but-artwork";
+const BUILD = "aura-core-v9.226.0-2026-09-12-she-writes-it-and-checks-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60591,13 +60591,30 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // one errors - so this cannot be a parameter. It is a requirement OF THE ARTEFACT: a
           // shop sheet with the wrist end missing is not a shop sheet, and an artist cannot cut
           // a piece out of a page that never had it.
-          const SHEET =
+          // ══ SHE WRITES IT WHEN SHE HAS SOMETHING TO SAY (2026-09-12) ══════════════════
+          // This was a CONSTANT because a constant is the same for every tattoo and she was
+          // writing two-word deltas. That was true when she knew nothing about the job. It is not
+          // true now: asked to flatten an add-on she produced, unprompted, "remove the snake, keep
+          // sunflowers and seashells exactly as placed, flat on white" - which is the correct
+          // instruction and one this constant CANNOT express, because only she knows there is
+          // existing ink on that arm that the artist already has.
+          // Aaron: she should understand where she is rather than be told. She does - what she was
+          // missing is the FACT about what an artist needs for each kind of job, and that now
+          // lives in her store beside everything else.
+          // SO THE CONSTANT BECOMES THE FLOOR. If she wrote a prompt this turn it is hers; if she
+          // did not, this is what goes, exactly as it did yesterday.
+          const SHEET_FLOOR =
             "Take the tattoo ink in this photograph off the body and lay it out flat as one " +
             "design. The same motifs, in the same order they run down the limb. Fit the WHOLE " +
             "piece inside the picture, end to end, with clear white space all the way around " +
             "it - scale it down as much as that takes. Nothing cropped, nothing touching an " +
             "edge. Black linework on a plain white background. No skin, no clothing, no body, " +
             "no paper, no shadow, no new designs.";
+          const SHEET = (acted.prompt && acted.prompt.trim().length > 12)
+            ? acted.prompt.trim() +
+              ". Flat on plain white, the whole piece in frame with white space around it, " +
+              "nothing cropped. No skin, no body, no paper, no shadow."
+            : SHEET_FLOOR;
           // TALL, BECAUSE A SLEEVE IS TALL. 1024x2048 is 2 megapixels - the art gets the room
           // it needs instead of being shrunk into the middle of a square, and the ends stop
           // running off an edge that was never the right shape for the piece.
@@ -60644,11 +60661,38 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               const wp = (wr && wr.payload) ? wr.payload : wr;
               if (wp?.ok && wp.image_url) wrapUrl = wp.image_url;
             } catch {}
+            // ══ SHE LOOKS AT THE FILE BEFORE IT LEAVES (2026-09-12) ══════════════════════
+            // ONE vision call per finished design, not one per turn. Aaron was right to hesitate:
+            // the drawing has been good and a look on every draw would double the cost to confirm
+            // something already fine.
+            // But this is the only output that LEAVES - a shop prints it and puts it on somebody
+            // permanently - and it is the one place a wrong file is expensive. Every failure this
+            // week would have been caught here by eye in a second: the hamsa on a sleeve with no
+            // hamsa, the cat's face in the mandala, the bouquet that had the right flowers in the
+            // wrong arrangement. She reads a photograph better than anything else in this system.
+            // AND THE QUESTION IS NARROW. She holds the piece they approved and the sheet made
+            // from it, and is asked whether they are the same work. That is comparison, not taste.
+            // IT REPORTS, IT DOES NOT BLOCK. A refusal to hand over a file on a judgement call is
+            // worse than a flagged file somebody looks at - so the note rides on the reply and
+            // the artist's sheet still goes.
+            let sheetNote = null;
+            try {
+              const look = await proxyToAgent(env,
+                "[You made this flat file for their tattooist from the piece they approved. " +
+                "Look at it. Is it the same work - the same elements, in the same arrangement? " +
+                "Answer in one short sentence: say it is right, or say exactly what is wrong " +
+                "with it. Nothing else.]",
+                false, me, sp.image_url, "mytattoo");
+              if (look && look.reply && !look.failed) {
+                sheetNote = String(look.reply).replace(/^\s*[{\[]/, "").trim().slice(0, 300);
+              }
+            } catch {}
             drew = { design: sp.child, image: sp.image_url, changed: "the artist's sheet",
                      from: shopParent, for_the_artist: true,
                      // Two files, which is what a shop actually uses: the sheet is what to
                      // tattoo, the isolated limb is where it goes and how it wraps.
-                     wraps: wrapUrl };
+                     wraps: wrapUrl,
+                     ...(sheetNote ? { she_checked: sheetNote } : {}) };
           } else {
             drew = { failed: sp?.error || "COULD_NOT_MAKE_SHEET", from: shopParent };
           }

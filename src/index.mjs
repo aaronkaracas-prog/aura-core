@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.227.0-2026-09-12-the-file-is-what-the-needle-does";
+const BUILD = "aura-core-v9.228.0-2026-09-13-the-file-is-what-the-needle-does";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60621,7 +60621,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // this branch sent never mentioned it.
           // SHE NAMES THE OLD INK, because only she knows what was already on the arm - and she
           // has been reading these photographs accurately all week.
-          const oldInk = (String(jobHere) === "add" && refDesign)
+          // `jobHere` belongs to the DRAW branch below - out of scope here, and the turn failed
+          // with "jobHere is not defined". `jobNow` already exists in the outer scope, set from
+          // the same `intent.job` for the cover-up rule, so this uses that one rather than
+          // declaring a second name for the same fact.
+          const oldInk = (jobNow === "add" && refDesign)
             ? " The " + ((intent && intent.subject) ? "existing work" : "existing tattoo") +
               " that was already on them before this piece is NOT part of this file - leave it " +
               "out entirely, including where the new work passes over or around it. Only the new " +

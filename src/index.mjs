@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.226.0-2026-09-12-she-writes-it-and-checks-it";
+const BUILD = "aura-core-v9.227.0-2026-09-12-the-file-is-what-the-needle-does";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60610,11 +60610,31 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             "it - scale it down as much as that takes. Nothing cropped, nothing touching an " +
             "edge. Black linework on a plain white background. No skin, no clothing, no body, " +
             "no paper, no shadow, no new designs.";
-          const SHEET = (acted.prompt && acted.prompt.trim().length > 12)
-            ? acted.prompt.trim() +
-              ". Flat on plain white, the whole piece in frame with white space around it, " +
-              "nothing cropped. No skin, no body, no paper, no shadow."
-            : SHEET_FLOOR;
+          // ══ THE FILE IS WHAT THE NEEDLE DOES (2026-09-12) ═════════════════════════════
+          // Aaron, and it settles a question this branch had been guessing at: "the file always
+          // contains new ink and then it always goes to line art - basically it always includes
+          // what's being tattooed."
+          // So on an ADD-ON the sheet leaves out the ink already on them. MEASURED a minute ago
+          // on a snake with flowers woven through it: she made a beautiful flat file WITH the
+          // snake in it and checked it as right - correctly, because nobody had asked her whether
+          // the snake belonged there. The fact about add-ons was in her store and the instruction
+          // this branch sent never mentioned it.
+          // SHE NAMES THE OLD INK, because only she knows what was already on the arm - and she
+          // has been reading these photographs accurately all week.
+          const oldInk = (String(jobHere) === "add" && refDesign)
+            ? " The " + ((intent && intent.subject) ? "existing work" : "existing tattoo") +
+              " that was already on them before this piece is NOT part of this file - leave it " +
+              "out entirely, including where the new work passes over or around it. Only the new " +
+              "ink, which is what the needle actually does."
+            : "";
+          const SHEET = ((acted.prompt && acted.prompt.trim().length > 12)
+            ? acted.prompt.trim()
+            : SHEET_FLOOR) + oldInk +
+            // LINE ART, ALWAYS. This is the file that goes through a thermal printer onto
+            // transfer paper, and a rendered picture with shading is not that.
+            " Clean black LINE ART only - contours and outlines, no shading, no colour, no " +
+            "greyscale fill. Flat on plain white, the whole piece in frame with white space " +
+            "around it, nothing cropped. No skin, no body, no paper, no shadow.";
           // TALL, BECAUSE A SLEEVE IS TALL. 1024x2048 is 2 megapixels - the art gets the room
           // it needs instead of being shrunk into the middle of a square, and the ends stop
           // running off an edge that was never the right shape for the piece.
@@ -60650,17 +60670,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // We were handing over the raw mock instead: a colour photo of somebody in a black
             // top standing in a room. Everything in that frame except the arm is noise to the
             // person who has to place a stencil on it.
-            const WRAP =
-              "Keep the tattooed limb exactly as it is - same skin, same ink, same angle - and " +
-              "remove everything else. No background, no room, no clothing, no other people. " +
-              "The arm alone on plain white.";
-            let wrapUrl = (lastDrawn && lastDrawn.image) || null;
-            try {
-              const wr = await processCommand("IMAGE EVOLVE " + shopParent + " " +
-                JSON.stringify({ prompt: WRAP, by: me }), env, true);
-              const wp = (wr && wr.payload) ? wr.payload : wr;
-              if (wp?.ok && wp.image_url) wrapUrl = wp.image_url;
-            } catch {}
+            // ══ THE SECOND FILE IS THE COLOUR REFERENCE, NOT A STRIPPED ARM (2026-09-12) ══
+            // This used to isolate the limb. On an add-on that produces a thing which will never
+            // exist - MEASURED: an arm carrying sunflowers and no snake - and on a piece that was
+            // never on a body there is nothing to isolate at all.
+            // What an artist actually wants beside the line art is the piece FINISHED: old ink
+            // and new together, in colour, so they can see what they are working towards. The
+            // mock already is that picture, and where it is on the body is in it too.
+            // The on-body mock IS the placement file. Nothing to generate.
+            const wrapUrl = (lastDrawn && lastDrawn.image) || null;
+
             // ══ SHE LOOKS AT THE FILE BEFORE IT LEAVES (2026-09-12) ══════════════════════
             // ONE vision call per finished design, not one per turn. Aaron was right to hesitate:
             // the drawing has been good and a look on every draw would double the cost to confirm
@@ -60689,9 +60708,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             } catch {}
             drew = { design: sp.child, image: sp.image_url, changed: "the artist's sheet",
                      from: shopParent, for_the_artist: true,
-                     // Two files, which is what a shop actually uses: the sheet is what to
-                     // tattoo, the isolated limb is where it goes and how it wraps.
-                     wraps: wrapUrl,
+                     // Two files. `image` is the LINE ART - what the needle does, and on an
+                     // add-on that is the new ink only. `shows_finished` is the colour mock:
+                     // old and new together, on the body, so the artist sees the destination.
+                     shows_finished: wrapUrl,
                      ...(sheetNote ? { she_checked: sheetNote } : {}) };
           } else {
             drew = { failed: sp?.error || "COULD_NOT_MAKE_SHEET", from: shopParent };

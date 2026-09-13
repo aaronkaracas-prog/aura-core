@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.232.0-2026-09-13-the-world-crosses-the-doorway";
+const BUILD = "aura-core-v9.233.0-2026-09-13-she-looks-at-what-arrived";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59866,7 +59866,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // becomes the subject, and the drawing is an ORIGINAL born under their PTA.
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
-let refSaw = null, refUrl = null, refDesign = null, refHeld = false, refIsolated = false;
+let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const wantRef = String((opts && opts.ref) || "").trim();
       if (wantRef && me && /^https?:\/\//i.test(wantRef)) {
         try {
@@ -59879,33 +59879,50 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, refIsolated
           if (ip?.ok) { refSaw = ip.saw || null; refUrl = ip.image_url || wantRef;
                         refDesign = ip.entity || null; }
         } catch {}
-        // ══ EVERY EDIT WAS REDRAWING A ROOM (2026-09-13) ═══════════════════════════════════
-        // MEASURED on a forearm landscape: the extension up the bicep came back with the arm
-        // DISTORTED - because the photograph is a person standing in a room, and a model asked to
-        // change the tattoo has to redraw the floor, the chair, the radiator and the arm to do it.
-        // Everything in that frame except the limb is work the model has to reproduce and can get
-        // wrong, and it gets one of them wrong eventually.
-        // Aaron: "when someone uploads an image of their tattoo or their arm, the FIRST edit needs
-        // to remove that background." He is right and this used to happen - it was the isolate
-        // step, which I deleted yesterday because it ran at the WRONG END, after the design was
-        // finished, where it produced an arm with no snake on it. The operation was never wrong.
-        // The place was.
-        // ONCE, HERE, AT THE DOOR. Every later turn starts from a clean limb on white, so nothing
-        // downstream ever pays to redraw a room again.
-        if (refUrl && refDesign) {
-          try {
-            const ISO = "Keep the arm exactly as it is - same skin, same tattoo, same angle, " +
-              "same lighting - and remove everything else. No background, no room, no floor, no " +
-              "furniture, no clothing, no other people. The limb alone on plain white. Do not " +
-              "change the tattoo in any way.";
-            const isr = await processCommand("IMAGE EVOLVE " + refDesign + " " +
-              JSON.stringify({ prompt: ISO, by: me }), env, true);
-            const isp = (isr && isr.payload) ? isr.payload : isr;
-            if (isp?.ok && isp.image_url && isp.child) {
-              refUrl = isp.image_url; refDesign = isp.child; refIsolated = true;
-            }
-          } catch {}
-        }
+        // ══ THE ISOLATE IS DELETED, AND IT IS NOT MOVING ANYWHERE (2026-09-13) ═════════════
+        //
+        // WHAT STOOD HERE: an unconditional `IMAGE EVOLVE` on every arriving photograph, with a
+        // prompt that said "keep the arm exactly as it is... the limb alone on plain white". It ran
+        // BEFORE she looked at anything. It was added yesterday for a real failure - a bicep
+        // extension came back distorted because the edit had to redraw a floor, a chair and a
+        // radiator - and the diagnosis was right.
+        //
+        // MEASURED TODAY, AND IT IS NOT A CROP. A photograph of a man's FULL BACK went in. What came
+        // out was a forearm. The model was told the subject is a limb, there was no limb, so it made
+        // one and wrapped the composition around it.
+        // The proof is in the row this block used to write - `talk:ref:pta_24c411f4661dd6c1`:
+        //     "saw": "...coverage: a full back..."     <- the eyes read the photo CORRECTLY
+        //     "url": ".../img_mu0c8hz99kho"            <- a forearm
+        //     "isolated": true
+        // She then described a forearm, accurately, four times across two models. Nothing was failing
+        // to see. She was never shown the photograph.
+        //
+        // AND SHE ALREADY HOLDS THIS AS A FACT. `tattoo_images` carries `isolate_the_limb_first`,
+        // written 2026-09-13, in her semantic store, reachable with `FACT GET`. So this block was a
+        // SECOND COPY of a rule she already knows - in code, ahead of her, unable to be overruled.
+        // Two readers of one fact, and the one that cannot reason ran first.
+        // A fact is conditional by nature: applied to a headstone or a photo of somebody's kid it
+        // simply does not fire. An `if (refUrl && refDesign)` fires on all of them.
+        //
+        // AARON'S RULE, AND IT IS THE WHOLE SHAPE OF THIS PRODUCT: an image arrives, she LOOKS, she
+        // says what it is, and she asks what they want done with it. That is the same event whether
+        // it is the first photo or a gravestone on turn nine - the world already says a tattoo is
+        // being made, so the frame supplies the intent and she supplies the reading. Every operation
+        // after that is one thing: evolve(image, instruction) where the INSTRUCTION CAME FROM A
+        // PERSON, AFTER SOMEBODY LOOKED. This block was an evolve whose instruction was authored by
+        // the door, before anyone looked. That is the only difference and it is the whole defect.
+        //
+        // DO NOT REBUILD IT IN A THIRD PLACE. It ran after the design was finished, which produced a
+        // bare arm with no tattoo on it, and it was deleted. It was rebuilt here at the door, which
+        // produced this. Two positions, two failures, and picking a third by reasoning would be the
+        // same move a third time. If stripping a background matters, SHE asks for it after seeing a
+        // cluttered photo, or the person does - and that is already reachable through IMAGE EVOLVE.
+        //
+        // WHAT COMES BACK WITH IT: the messy-photo edit failure this was built to fix. That is the
+        // accepted trade. Reading the image correctly is upstream of placement, size, the artist
+        // files and the print dimensions, so a wrong read poisons everything downstream, while a
+        // wrong edit is one picture somebody can see is wrong and ask again for.
+        //
         // ══ THE PICTURE THEY SENT DOES NOT EXPIRE AFTER ONE TURN (2026-09-07) ══════════════
         // MEASURED: they sent a photo of a tattoo to cover, she named it, and on the VERY NEXT
         // turn - "something dark, maybe a raven" - she drew a raven on a plain background with no
@@ -59916,7 +59933,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, refIsolated
         if (me && (refSaw || refUrl)) {
           try {
             await env.AURA_KV.put("talk:ref:" + me, JSON.stringify({
-              saw: refSaw, url: refUrl, design: refDesign, isolated: refIsolated,
+              // `isolated` is gone with the block above - it described an image that is no longer
+              // generated, and a flag that is always false is a field a reader will eventually trust.
+              saw: refSaw, url: refUrl, design: refDesign,
               at: new Date().toISOString()
             }), { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
           } catch {}

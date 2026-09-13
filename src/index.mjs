@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.231.0-2026-09-13-clean-limb-at-the-door";
+const BUILD = "aura-core-v9.232.0-2026-09-13-the-world-crosses-the-doorway";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -4423,6 +4423,43 @@ function agentInstanceFor(isOp, ptaId) {
   return id ? ("pta-" + id).slice(0, 64) : null;
 }
 
+// ══ THE WORLD IS THE HOSTNAME, AND IT DIED AT THE DOORWAY (2026-09-13) ═════════════
+//
+// aura-host routes 501 domains entirely on `url.hostname` - that is what makes one worker serve a
+// planet of doorways. But NOTHING carried the hostname across the service binding. `/_design` passed
+// no host at all; `/_talk` passed only the SUBDOMAIN as a slug. So by the time a turn reached the
+// agent, the only thing naming her world was a hardcoded string literal at the call site, and there
+// was exactly one of them: "mytattoo".
+//
+// Aaron, and it is the whole point of this: the agent is ALWAYS there and ALWAYS aware of which
+// world she is in. She cannot be aware of a fact nobody sent her.
+//
+// THE MAP IS DECLARED, NOT DERIVED. Which hostname is which world is a DECISION - the same reason
+// AURA_DOORS is a declared list rather than a scan. A regex over the domain would guess, and guessing
+// is how tattooparlors.world and tattooartist.world become the same thing.
+//
+// A SUBDOMAIN IS THE SAME WORLD. joestattooparlor.tattooparlors.world is tattooparlors - the tenant
+// changes, the world does not. So the match is on the REGISTRABLE DOMAIN at the end of the host.
+//
+// AN UNKNOWN HOST RETURNS NULL, NOT A DEFAULT. A doorway nobody has declared is a fact worth seeing:
+// the caller falls back to its own literal and the reply says which world resolved, so a missing
+// entry shows up as a wrong answer in a test rather than as a silent right-looking one.
+const AURA_WORLDS = [
+  ["mytattoo.world",         "mytattoo"],
+  ["tattooparlors.world",    "tattooparlors"],
+  ["tattooartist.world",     "tattooartist"],
+  ["shareyourink.world",     "shareyourink"],
+  ["openforbusiness.world",  "openforbusiness"],
+];
+function worldFor(host) {
+  const h = String(host || "").trim().toLowerCase().replace(/:\d+$/, "");
+  if (!h) return null;
+  for (const [domain, world] of AURA_WORLDS) {
+    if (h === domain || h.endsWith("." + domain)) return world;
+  }
+  return null;
+}
+
 // ══ WHICH CHANNEL A TURN ARRIVES ON (2026-09-10) ═════════════════════════════════════════════
 // Every caller sent `channel: "cmd"`, and `cmd` is not registered in aura-think's
 // configureChannels(). MEASURED in `npx wrangler tail`, verbatim: `turn requested channel "cmd"
@@ -7026,9 +7063,23 @@ async function processCommand(line, env, isOp) {
       const tkPta = tkId.split(/\s+/)[0];
       // `TALK <pta> REF <url> ::: <msg>` is a tap on the wall, from a terminal.
       const tkRef = (tkId.match(/\bREF\s+(https?:\/\/\S+)/i) || [])[1] || null;
+      // ══ `TALK <pta> WORLD <name> ::: <msg>` ─ THE BACK-END TEST FOR THE DOORWAY (2026-09-13) ══
+      // The web path gets its world from the hostname aura-host sends. A terminal has no hostname,
+      // so the test harness has to be able to NAME one - otherwise the only way to exercise a world
+      // other than mytattoo is to own a browser on that domain, and every world but one becomes
+      // untestable from PowerShell.
+      // VALIDATED AGAINST THE SAME DECLARED MAP the doorway uses, so a typo is refused rather than
+      // forwarded to aura-think as an unregistered channel name that quietly loses her tool policy.
+      const tkWorldRaw = (tkId.match(/\bWORLD\s+([a-z_]+)/i) || [])[1] || null;
+      const tkWorld = tkWorldRaw && AURA_WORLDS.some(([, w]) => w === tkWorldRaw.toLowerCase())
+        ? tkWorldRaw.toLowerCase() : null;
+      if (tkWorldRaw && !tkWorld) return { cmd: "TALK", payload: { ok: false,
+        error: "UNKNOWN_WORLD", asked_for: tkWorldRaw,
+        known: AURA_WORLDS.map(([, w]) => w),
+        what_to_do: "WORLD must be one of the declared worlds - see AURA_WORLDS in aura-core." } };
       try {
         const tkOut = await auraTalk(env, tkPta, /^pta_/.test(tkPta) ? "pta" : "contacted",
-                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef });
+                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef, world: tkWorld });
         return { cmd: "TALK", payload: { ...tkOut, pta: tkPta,
                  stage: /^pta_/.test(tkPta) ? "pta" : "contacted",
                  book: tkNoBook ? "closed" : "open",
@@ -59601,6 +59652,14 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
   // If she performs the same without the doctrine, the doctrine comes out and the product gets
   // simpler and faster at once. Measured, not argued.
   const noBrief = !!(opts && opts.noBrief);
+  // ══ WHICH WORLD THIS TURN ARRIVED IN (2026-09-13) ═══════════════════════
+  // Was a hardcoded "mytattoo" at the two proxyToAgent sites below. It is now carried from the
+  // hostname the person is actually standing on - see `worldFor`. The fallback is "mytattoo"
+  // rather than null because the TALK command and the design door were BOTH mytattoo-only before
+  // this change, so a caller that names nothing behaves exactly as it did.
+  // It is RETURNED in the reply as well as used, so a back-end test can prove the hostname crossed
+  // the binding without reading a log.
+  const world = String((opts && opts.world) || "").trim() || "mytattoo";
   // The body below is the extracted method, byte for byte. It reads `b.said` and `b.history`, so
   // the arguments are handed back in that shape rather than editing three hundred proven lines.
   const b = { said: saidIn, history };
@@ -60275,7 +60334,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, refIsolated
           const proxied = await proxyToAgent(env,
             "[A person is designing a tattoo with you on mytattoo.world. Answer as yourself, " +
             "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said,
-            false, me, seeing ? refUrl : null, "mytattoo");
+            false, me, seeing ? refUrl : null, world);
           if (proxied && proxied.reply && !proxied.failed) {
             acted = readAct(proxied.reply);
             if (acted) agentVia = proxied.instance || "agent";
@@ -60714,7 +60773,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, refIsolated
                             "already on them must not be in it" : "") +
                 ". Look at it. Is it right? Answer in one short sentence: say it is right, or " +
                 "say exactly what is wrong. Nothing else.]",
-                false, me, lineUrl || fp.image, "mytattoo");
+                false, me, lineUrl || fp.image, world);
               if (look && look.reply && !look.failed) {
                 sheetNote = String(look.reply).replace(/^\s*[{\[]/, "").trim().slice(0, 300);
               }
@@ -60993,7 +61052,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, refIsolated
       phase_ms.total = Date.now() - _t0;
       // Doubled the observed warm total. A number that never fires is not a budget.
       const over_budget = phase_ms.total > 20000;
-      return { ok: true, said: acted.say, act: acted.act, phase_ms,
+      return { ok: true, said: acted.say, act: acted.act, phase_ms, world,
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),
                brief, intent,
@@ -61606,9 +61665,16 @@ export class PublicEntry extends WorkerEntrypoint {
   // NO GATE YET, ON PURPOSE. Aaron: free and unlimited until the whole loop is walked front to
   // back. The meter goes in AFTER it is proven, and the seams for it are marked below rather
   // than half-built - a paywall wired into an unproven flow is two things to debug at once.
-  async design(action, body) {
+  // ══ `host` IS AN ARGUMENT, NOT A FIELD ON `body` (2026-09-13) ══════════════════
+  // `body` is whatever the PAGE posted, and a page must not get to name its own world - that would
+  // let anything with a fetch call declare itself tattooparlors and inherit that world's tools.
+  // The hostname is known by aura-host, which is the only thing that cannot be lied to about it, so
+  // it crosses the binding as its own argument. Optional: an older caller passing two arguments
+  // resolves to null and falls back exactly as before.
+  async design(action, body, host) {
     const b = body || {};
     const env = this.env;
+    const world = worldFor(host);
     try {
       // ══ WHO IS THIS (2026-08-24) ═══════════════════════════════════════════════════════════
       // Every action except `hello` needs a person, because everything they do belongs to somebody:
@@ -61691,7 +61757,7 @@ export class PublicEntry extends WorkerEntrypoint {
         return await auraTalk(env, me, stage,
           String(b.said || "").trim().slice(0, 2000),
           Array.isArray(b.history) ? b.history : [],
-          { from: b.from || null });
+          { from: b.from || null, world });
       }
 
       // ── MAKE. The first version. SHOW_IT births it as a PTA, so from this moment the design

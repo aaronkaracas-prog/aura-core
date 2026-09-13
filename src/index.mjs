@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.230.0-2026-09-13-one-ending-one-order";
+const BUILD = "aura-core-v9.231.0-2026-09-13-clean-limb-at-the-door";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -57983,7 +57983,23 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         r = await pfetch(env, "openai", "core:image", "https://api.openai.com/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
-          body: JSON.stringify({ model, prompt: p, n: 1, size: "1024x1024", quality })
+          // ══ 1024 SQUARE, HARDCODED, AGAIN (2026-09-13) ═════════════════════════════════
+          // Switching the image lanes to gpt-image-2 made every picture small: Grok was returning
+          // 2k because `aspect`/`res` reach it, and this branch has always sent a fixed square.
+          // OpenAI's own vocabulary is a size string, and gpt-image-2 serves 1024x1536 portrait
+          // and 1536x1024 landscape as well as the square. A tattoo is taller than it is wide, so
+          // a caller that named a tall shape gets one.
+          body: JSON.stringify({ model, prompt: p, n: 1, quality,
+            size: (function () {
+              const a = String(opts.aspect || "");
+              if (/^(9:16|3:4|2:3)$/.test(a)) return "1024x1536";
+              if (/^(16:9|4:3|3:2|2:1)$/.test(a)) return "1536x1024";
+              if (opts.width && opts.height) {
+                return opts.height > opts.width ? "1024x1536"
+                     : opts.width > opts.height ? "1536x1024" : "1024x1024";
+              }
+              return "1024x1024";
+            })() })
         });
       }
       const d = await r.json();
@@ -59791,7 +59807,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // becomes the subject, and the drawing is an ORIGINAL born under their PTA.
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
-let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
+let refSaw = null, refUrl = null, refDesign = null, refHeld = false, refIsolated = false;
       const wantRef = String((opts && opts.ref) || "").trim();
       if (wantRef && me && /^https?:\/\//i.test(wantRef)) {
         try {
@@ -59804,6 +59820,33 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           if (ip?.ok) { refSaw = ip.saw || null; refUrl = ip.image_url || wantRef;
                         refDesign = ip.entity || null; }
         } catch {}
+        // ══ EVERY EDIT WAS REDRAWING A ROOM (2026-09-13) ═══════════════════════════════════
+        // MEASURED on a forearm landscape: the extension up the bicep came back with the arm
+        // DISTORTED - because the photograph is a person standing in a room, and a model asked to
+        // change the tattoo has to redraw the floor, the chair, the radiator and the arm to do it.
+        // Everything in that frame except the limb is work the model has to reproduce and can get
+        // wrong, and it gets one of them wrong eventually.
+        // Aaron: "when someone uploads an image of their tattoo or their arm, the FIRST edit needs
+        // to remove that background." He is right and this used to happen - it was the isolate
+        // step, which I deleted yesterday because it ran at the WRONG END, after the design was
+        // finished, where it produced an arm with no snake on it. The operation was never wrong.
+        // The place was.
+        // ONCE, HERE, AT THE DOOR. Every later turn starts from a clean limb on white, so nothing
+        // downstream ever pays to redraw a room again.
+        if (refUrl && refDesign) {
+          try {
+            const ISO = "Keep the arm exactly as it is - same skin, same tattoo, same angle, " +
+              "same lighting - and remove everything else. No background, no room, no floor, no " +
+              "furniture, no clothing, no other people. The limb alone on plain white. Do not " +
+              "change the tattoo in any way.";
+            const isr = await processCommand("IMAGE EVOLVE " + refDesign + " " +
+              JSON.stringify({ prompt: ISO, by: me }), env, true);
+            const isp = (isr && isr.payload) ? isr.payload : isr;
+            if (isp?.ok && isp.image_url && isp.child) {
+              refUrl = isp.image_url; refDesign = isp.child; refIsolated = true;
+            }
+          } catch {}
+        }
         // ══ THE PICTURE THEY SENT DOES NOT EXPIRE AFTER ONE TURN (2026-09-07) ══════════════
         // MEASURED: they sent a photo of a tattoo to cover, she named it, and on the VERY NEXT
         // turn - "something dark, maybe a raven" - she drew a raven on a plain background with no
@@ -59814,7 +59857,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         if (me && (refSaw || refUrl)) {
           try {
             await env.AURA_KV.put("talk:ref:" + me, JSON.stringify({
-              saw: refSaw, url: refUrl, design: refDesign, at: new Date().toISOString()
+              saw: refSaw, url: refUrl, design: refDesign, isolated: refIsolated,
+              at: new Date().toISOString()
             }), { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
           } catch {}
         }

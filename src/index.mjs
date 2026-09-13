@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.229.0-2026-09-13-centred-on-the-sheet";
+const BUILD = "aura-core-v9.230.0-2026-09-13-one-ending-one-order";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60585,150 +60585,110 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // it for a summariser to shorten and nothing style-specific to get wrong.
       // TWO FILES GO BACK, the way a shop actually works: the sheet is what to tattoo, the mock
       // is where it goes on the body and how it wraps a limb.
+      // ══ THE ENDING IS A SEQUENCE, NOT A SENTENCE (2026-09-13) ═══════════════════════════════
+      // This branch composed its own instruction and made one image. It produced a good file and
+      // the WRONG one: on an add-on with a snake woven through the flowers it returned the new
+      // work in red and the existing snake in black - clever, and not what a shop prints.
+      // Transfer paper is transparent. The artist lays it over the tattoo already on the arm and
+      // sees the old ink through it, so drawing that ink into the file fights the skin.
+      // MEANWHILE THE CORRECT CHAIN WAS ALREADY BUILT. Aaron and I ran it by hand, three commands
+      // at a time - FINAL ADDED, FINAL LINEART, PRINT - and every step was proven separately over
+      // two days. His question before this goes behind a button: "do we have all the steps in the
+      // right order?" We did not. The steps existed; this branch was not running them.
+      // SO IT RUNS THEM. One order, every time, whether she reads the moment in conversation or
+      // somebody taps a tab - two callers, one path, and nothing here writes a prompt that those
+      // commands do not already carry.
+      //   1. THE MOCK, already made: on the body, in colour. Placement and the shading reference.
+      //   2. THE FLAT ARTWORK - FINAL, with ADDED when a photograph is on file, because an add-on
+      //      subtracts the ink they already have.
+      //   3. THE LINE ART - FINAL <flat> LINEART. What the needle actually does.
+      //   4. THE PDF - PRINT at the placement size, so the shop prints at 100%.
+      // AND SHE KNOWS WHAT IT IS. A fixed sequence is a fact she can state when somebody asks
+      // what happens next. A sentence she improvises each time is not.
       if (act === "artist" && me) {
         try {
           const shopParent = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
-          // ══ "WHITE PAPER" DREW PAPER (2026-09-10) ══════════════════════════════════════
-          // MEASURED: the first good sheet came back with a sheet edge and a soft shadow down
-          // one side - the model drew a PHOTOGRAPH OF PAPER, because that is what it was asked
-          // for. A thermal head burns black pixels; a page shadow becomes grey mush.
-          // ══ THE ENDS RAN OFF THE PAGE (2026-09-10) ═════════════════════════════════════
-          // MEASURED: the sheet was right in every other way - correct motifs, correct order,
-          // clean white - and the top and bottom were CUT OFF at the frame edge. A sleeve is
-          // long and narrow; drawn at full width it does not fit, and the model cropped rather
-          // than scaled.
-          // xAI takes no size or aspect argument - the comment in the image lane says sending
-          // one errors - so this cannot be a parameter. It is a requirement OF THE ARTEFACT: a
-          // shop sheet with the wrist end missing is not a shop sheet, and an artist cannot cut
-          // a piece out of a page that never had it.
-          // ══ SHE WRITES IT WHEN SHE HAS SOMETHING TO SAY (2026-09-12) ══════════════════
-          // This was a CONSTANT because a constant is the same for every tattoo and she was
-          // writing two-word deltas. That was true when she knew nothing about the job. It is not
-          // true now: asked to flatten an add-on she produced, unprompted, "remove the snake, keep
-          // sunflowers and seashells exactly as placed, flat on white" - which is the correct
-          // instruction and one this constant CANNOT express, because only she knows there is
-          // existing ink on that arm that the artist already has.
-          // Aaron: she should understand where she is rather than be told. She does - what she was
-          // missing is the FACT about what an artist needs for each kind of job, and that now
-          // lives in her store beside everything else.
-          // SO THE CONSTANT BECOMES THE FLOOR. If she wrote a prompt this turn it is hers; if she
-          // did not, this is what goes, exactly as it did yesterday.
-          const SHEET_FLOOR =
-            "Take the tattoo ink in this photograph off the body and lay it out flat as one " +
-            "design. The same motifs, in the same order they run down the limb. Fit the WHOLE " +
-            "piece inside the picture, end to end, with clear white space all the way around " +
-            "it - scale it down as much as that takes. Nothing cropped, nothing touching an " +
-            "edge. Black linework on a plain white background. No skin, no clothing, no body, " +
-            "no paper, no shadow, no new designs.";
-          // ══ THE FILE IS WHAT THE NEEDLE DOES (2026-09-12) ═════════════════════════════
-          // Aaron, and it settles a question this branch had been guessing at: "the file always
-          // contains new ink and then it always goes to line art - basically it always includes
-          // what's being tattooed."
-          // So on an ADD-ON the sheet leaves out the ink already on them. MEASURED a minute ago
-          // on a snake with flowers woven through it: she made a beautiful flat file WITH the
-          // snake in it and checked it as right - correctly, because nobody had asked her whether
-          // the snake belonged there. The fact about add-ons was in her store and the instruction
-          // this branch sent never mentioned it.
-          // SHE NAMES THE OLD INK, because only she knows what was already on the arm - and she
-          // has been reading these photographs accurately all week.
-          // `jobHere` belongs to the DRAW branch below - out of scope here, and the turn failed
-          // with "jobHere is not defined". `jobNow` already exists in the outer scope, set from
-          // the same `intent.job` for the cover-up rule, so this uses that one rather than
-          // declaring a second name for the same fact.
-          const oldInk = (jobNow === "add" && refDesign)
-            ? " The " + ((intent && intent.subject) ? "existing work" : "existing tattoo") +
-              " that was already on them before this piece is NOT part of this file - leave it " +
-              "out entirely, including where the new work passes over or around it. Only the new " +
-              "ink, which is what the needle actually does."
-            : "";
-          const SHEET = ((acted.prompt && acted.prompt.trim().length > 12)
-            ? acted.prompt.trim()
-            : SHEET_FLOOR) + oldInk +
-            // LINE ART, ALWAYS. This is the file that goes through a thermal printer onto
-            // transfer paper, and a rendered picture with shading is not that.
-            " Clean black LINE ART only - contours and outlines, no shading, no colour, no " +
-            "greyscale fill. Flat on plain white, the whole piece in frame with white space " +
-            "around it, nothing cropped. No skin, no body, no paper, no shadow.";
-          // TALL, BECAUSE A SLEEVE IS TALL. 1024x2048 is 2 megapixels - the art gets the room
-          // it needs instead of being shrunk into the middle of a square, and the ends stop
-          // running off an edge that was never the right shape for the piece.
-          // ══ ASK THE MODEL FOR A PRINT-SIZED FILE (2026-09-10) ═════════════════════════
-          // A sleeve is tall and a shop needs pixels. `9:16` at `2k` is xAI's own vocabulary for
-          // that, and it is the difference between 743 pixels of ink and something an artist can
-          // print at a real size. `width`/`height` stay for the Cloudflare lane, which takes
-          // pixels instead; whichever model this job is dialled to reads the pair it understands.
-          // Already asked; kept here so the pair is visible together. This is the file that gets
-          // printed, so it is the one that must not be small.
-          const sr = await processCommand("IMAGE EVOLVE " + shopParent + " " +
-            JSON.stringify({ prompt: SHEET, by: me, as: "shop_sheet",
-                             aspect: "9:16", res: "2k",
-                             width: 1024, height: 2048 }), env, true);
-          const sp = (sr && sr.payload) ? sr.payload : sr;
-          if (sp?.ok && sp.image_url) {
-            // ══ THE STENCIL PASS IS GONE, AND IT WAS MINE (2026-09-10) ════════════════════
-            // MEASURED one build later: the sheet went in as fine black linework on white and
-            // came back as SCATTERED BLACK SPECKS. `tatStencilBytes` is greyscale, blur, one
-            // threshold - built for a PHOTOGRAPH, where dark ink sits against mid-tone skin.
-            // Fed a drawing that is already 95% white with hairline strokes, a single cutoff
-            // throws almost all of it away and keeps only the densest dots.
-            // AND IT WAS NEVER NEEDED. The trade research this morning says what a shop prints:
-            // line art, 8.5x11, 300dpi, mirrored and tiled by the artist's own app at print
-            // time. The sheet IS that file. Thresholding black-on-white to get black-on-white is
-            // an operation with nothing to do.
-            // Grok, handed the same picture in a browser, returned TWO files and no stencil.
-            // ══ THE PLACEMENT FILE IS THE ARM, ISOLATED ═══════════════════════════════════
-            // The second thing it returned, and the thing we were missing: the same photograph
-            // with the background stripped - the tattooed limb alone, no room, no clothing, no
-            // studio. Its own words: the sheet is for the motifs, the isolated photo is for
-            // placement and how the piece wraps.
-            // We were handing over the raw mock instead: a colour photo of somebody in a black
-            // top standing in a room. Everything in that frame except the arm is noise to the
-            // person who has to place a stencil on it.
-            // ══ THE SECOND FILE IS THE COLOUR REFERENCE, NOT A STRIPPED ARM (2026-09-12) ══
-            // This used to isolate the limb. On an add-on that produces a thing which will never
-            // exist - MEASURED: an arm carrying sunflowers and no snake - and on a piece that was
-            // never on a body there is nothing to isolate at all.
-            // What an artist actually wants beside the line art is the piece FINISHED: old ink
-            // and new together, in colour, so they can see what they are working towards. The
-            // mock already is that picture, and where it is on the body is in it too.
-            // The on-body mock IS the placement file. Nothing to generate.
-            const wrapUrl = (lastDrawn && lastDrawn.image) || null;
+          const mockUrl = (lastDrawn && lastDrawn.image) ||
+            ("https://" + (await imageHost(env)) + "/image/" + shopParent);
+          // Subtract only when there IS prior ink: an add-on with their own photograph on file.
+          // A new piece has none, and FINAL alone is the whole design.
+          const priorInk = (jobNow === "add" && refUrl) ? refUrl : null;
 
-            // ══ SHE LOOKS AT THE FILE BEFORE IT LEAVES (2026-09-12) ══════════════════════
-            // ONE vision call per finished design, not one per turn. Aaron was right to hesitate:
-            // the drawing has been good and a look on every draw would double the cost to confirm
-            // something already fine.
-            // But this is the only output that LEAVES - a shop prints it and puts it on somebody
-            // permanently - and it is the one place a wrong file is expensive. Every failure this
-            // week would have been caught here by eye in a second: the hamsa on a sleeve with no
-            // hamsa, the cat's face in the mandala, the bouquet that had the right flowers in the
-            // wrong arrangement. She reads a photograph better than anything else in this system.
-            // AND THE QUESTION IS NARROW. She holds the piece they approved and the sheet made
-            // from it, and is asked whether they are the same work. That is comparison, not taste.
-            // IT REPORTS, IT DOES NOT BLOCK. A refusal to hand over a file on a judgement call is
-            // worse than a flagged file somebody looks at - so the note rides on the reply and
-            // the artist's sheet still goes.
+          // ── 2. FLAT ARTWORK ──────────────────────────────────────────────────────────
+          const fr = await processCommand("FINAL " + mockUrl +
+            (priorInk ? " ADDED " + priorInk : ""), env, true);
+          const fp = (fr && fr.payload) ? fr.payload : fr;
+          if (!fp || !fp.ok || !fp.image) {
+            drew = { failed: (fp && fp.error) || "COULD_NOT_FLATTEN", from: shopParent };
+          } else {
+            // ── 3. LINE ART ────────────────────────────────────────────────────────────
+            let lineUrl = null, lineId = null;
+            try {
+              const lr = await processCommand("FINAL " + fp.image + " LINEART", env, true);
+              const lp = (lr && lr.payload) ? lr.payload : lr;
+              if (lp && lp.ok && lp.image) { lineUrl = lp.image; lineId = lp.design || null; }
+            } catch {}
+
+            // ── 4. THE PDF ─────────────────────────────────────────────────────────────
+            // Sized from the placement they gave. PRINT caps it to what the pixels and the paper
+            // allow and SAYS so, so a number here can never overstate what comes off the printer.
+            let pdfUrl = null, pdfSheets = null, pdfInches = null;
+            const PLACEMENT_IN = { "full back": 20, "back": 20, "whole back": 20, "chest": 12,
+                                   "full sleeve": 18, "sleeve": 18, "forearm": 7, "upper arm": 8,
+                                   "thigh": 14, "calf": 10, "shoulder": 7, "hand": 4, "neck": 4,
+                                   "ribs": 12, "full leg": 24 };
+            const placeKey = String((intent && intent.placement) || "").toLowerCase();
+            let inches = 0;
+            for (const k of Object.keys(PLACEMENT_IN)) {
+              if (placeKey.includes(k) && PLACEMENT_IN[k] > inches) inches = PLACEMENT_IN[k];
+            }
+            if (!inches) inches = 8;   // a hand-sized default, and PRINT reports the real figure
+            try {
+              if (lineId) {
+                const pr2 = await processCommand("PRINT " + lineId + " " + inches + " " + me,
+                  env, true);
+                const pp = (pr2 && pr2.payload) ? pr2.payload : pr2;
+                if (pp && pp.ok && pp.pdf) {
+                  pdfUrl = pp.pdf; pdfSheets = pp.sheets; pdfInches = pp.inches;
+                }
+              }
+            } catch {}
+
+            // ══ SHE LOOKS AT THE FILE BEFORE IT LEAVES ═══════════════════════════════
+            // ONE vision call per finished design, not one per turn. This is the only output that
+            // LEAVES - a shop prints it and puts it on somebody permanently - and every failure
+            // this week would have been caught here by eye: the hamsa on a sleeve with no hamsa,
+            // the cat's face in the mandala, the bouquet with the right flowers in the wrong
+            // arrangement.
+            // IT REPORTS, IT DOES NOT BLOCK. A refused file on a judgement call is worse than a
+            // flagged one somebody reads.
             let sheetNote = null;
             try {
               const look = await proxyToAgent(env,
-                "[You made this flat file for their tattooist from the piece they approved. " +
-                "Look at it. Is it the same work - the same elements, in the same arrangement? " +
-                "Answer in one short sentence: say it is right, or say exactly what is wrong " +
-                "with it. Nothing else.]",
-                false, me, sp.image_url, "mytattoo");
+                "[This is the line art going to their tattooist" +
+                (priorInk ? " for an ADD-ON, so it should contain ONLY the new work - the ink " +
+                            "already on them must not be in it" : "") +
+                ". Look at it. Is it right? Answer in one short sentence: say it is right, or " +
+                "say exactly what is wrong. Nothing else.]",
+                false, me, lineUrl || fp.image, "mytattoo");
               if (look && look.reply && !look.failed) {
                 sheetNote = String(look.reply).replace(/^\s*[{\[]/, "").trim().slice(0, 300);
               }
             } catch {}
-            drew = { design: sp.child, image: sp.image_url, changed: "the artist's sheet",
-                     from: shopParent, for_the_artist: true,
-                     // Two files. `image` is the LINE ART - what the needle does, and on an
-                     // add-on that is the new ink only. `shows_finished` is the colour mock:
-                     // old and new together, on the body, so the artist sees the destination.
-                     shows_finished: wrapUrl,
-                     ...(sheetNote ? { she_checked: sheetNote } : {}) };
-          } else {
-            drew = { failed: sp?.error || "COULD_NOT_MAKE_SHEET", from: shopParent };
+
+            drew = {
+              design: lineId || fp.design || null,
+              // `image` is what the needle does: the line art, new ink only on an add-on.
+              image: lineUrl || fp.image,
+              changed: "the artist's files", from: shopParent, for_the_artist: true,
+              // The whole package, in the order a shop uses it.
+              flat_artwork: fp.image,
+              shows_finished: mockUrl,
+              ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,
+                             print_sheets: pdfSheets } : {}),
+              ...(priorInk ? { existing_ink_left_out: true } : {}),
+              ...(sheetNote ? { she_checked: sheetNote } : {})
+            };
           }
         } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
       }

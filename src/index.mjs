@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.228.0-2026-09-13-the-file-is-what-the-needle-does";
+const BUILD = "aura-core-v9.229.0-2026-09-13-centred-on-the-sheet";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -9127,9 +9127,19 @@ async function processCommand(line, env, isOp) {
         // Each page holds ONE finished slice, already the right shape. Nothing here clips,
         // offsets or scales - Photon did the geometry. The only job left is a page break and
         // a stated height, which is the one thing a print engine cannot get wrong.
+        // ══ CENTRED ON THE SHEET (2026-09-13) ═══════════════════════════════════════════════
+        // The artwork sat against the top-left corner. Harmless for a slice that fills the page
+        // and wrong-looking for anything smaller - a 6.5in piece on a 10in sheet hung off the top
+        // edge with three inches of white below it.
+        // The box is exactly the printable page, so a flex centre puts the art in the middle both
+        // ways and NOTHING can overflow: every slice is the page height or less by construction.
+        // `line-height:0` because an inline-level image otherwise carries a few points of text
+        // leading, and a few points past a full-height page is a blank sheet - the same way the
+        // sheet label made one two builds ago.
         ".art { break-before:page; page-break-before:always; break-inside:avoid; " +
-          "page-break-inside:avoid; }" +
-        ".art img { display:block; width:auto; }" +
+          "page-break-inside:avoid; height:" + PAGE_IN + "in; display:flex; " +
+          "align-items:center; justify-content:center; line-height:0; }" +
+        ".art img { display:block; width:auto; margin:0; }" +
         ".tag { text-align:right; font:8pt sans-serif; color:#999; }" +
         "</style></head><body>" +
         "<h1>" + esc((pB && pB.subject) || pSubject || "Tattoo design") + "</h1>" +

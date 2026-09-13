@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.233.0-2026-09-13-she-looks-at-what-arrived";
+const BUILD = "aura-core-v9.234.0-2026-09-13-what-arrived-is-current";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61012,6 +61012,46 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try {
           await env.AURA_KV.put("talk:last:" + me,
             JSON.stringify({ design: drew.design, image: drew.image,
+                             subject: (intent && intent.subject) || null,
+                             at: new Date().toISOString() }),
+            { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+        } catch {}
+      }
+
+      // \u2550\u2550 A PICTURE THAT ARRIVES IS CURRENT TOO, AND IT WAS NOT BEING SAVED (2026-09-13) \u2550\u2550
+      //
+      // The block above was the ONLY writer of `talk:last:` - so the current picture was only ever
+      // persisted when something was DRAWN. A photograph that arrived and became the parent on a
+      // turn where nothing was drawn evaporated at the end of it.
+      //
+      // MEASURED, end to end. A full back piece arrived by REF. `pickFrom` resolved it correctly -
+      // `refHeld` was false, and the rule three hundred lines up already says "only a reference that
+      // ARRIVED THIS TURN is a starting point". `lastDrawn` became the back piece IN MEMORY, she read
+      // it, and she described it accurately: the arch on the shoulder blades, the figures down the
+      // spine, the Roman numerals on the columns. `act` was "none" - a read, nothing drawn - so this
+      // was never written.
+      // Next turn: "colour the lion in", no new photo, so `refHeld` was true, `pickFrom` was empty
+      // and `lastDrawn` loaded from KV - still a KOI ON A FOREARM from three subjects earlier. She
+      // wrote a correct prompt about the lion at the lower back and it was applied to the koi.
+      // `from: ent_5d6956f91a5b4d06`, `used: ["piece"]`, and the reply describes a back.
+      //
+      // THE LOGIC WAS ALREADY RIGHT. Nothing about precedence, naming or which picture wins needed
+      // deciding - `pickFrom` had already decided, correctly, and the answer was thrown away at the
+      // end of the turn. Aaron, and he was right while this was being over-thought: "the mechanics
+      // are so simple - it's current image context, modify it, the new image is the modified image."
+      // What broke the invariant is that WHAT SHE IS TALKING ABOUT and WHAT SHE IS OPERATING ON came
+      // apart. The reading entered the chain; the pixels did not.
+      //
+      // ONLY A REFERENCE THAT ARRIVED THIS TURN (`!refHeld`), which is the same test `pickFrom` uses.
+      // A carried reference must NOT write here - that is the cover-up bug from 2026-09-08, where a
+      // held photograph became the parent on every turn and the T-rex was never there to modify.
+      // AND ONLY IF NOTHING WAS DRAWN. A draw already wrote above with the fuller row; running both
+      // would overwrite the new piece with the photograph it came from, which is the same class of
+      // damage as the artist sheet replacing the design.
+      if (me && refDesign && !refHeld && !(drew && drew.image && !drew.failed)) {
+        try {
+          await env.AURA_KV.put("talk:last:" + me,
+            JSON.stringify({ design: refDesign, image: refUrl || null,
                              subject: (intent && intent.subject) || null,
                              at: new Date().toISOString() }),
             { expirationTtl: 90 * 24 * 3600 }).catch(() => {});

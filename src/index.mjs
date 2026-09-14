@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.239.0-2026-09-14-a-fresh-instance-has-no-examples";
+const BUILD = "aura-core-v9.240.0-2026-09-14-a-floor-is-for-falling";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60547,7 +60547,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // vanish from a turn. NOTHING IS LOST; it just stops running when it has nothing to add.
         // `acted` is already set by this point on the agent path, so we know here whether she
         // gave us one.
+        // ══ A FLOOR IS FOR FALLING, NOT FOR STANDING ON (2026-09-14) ═════════════════
+        // MEASURED on the word "hey": `classify: 14,822ms` of a 32,770ms turn, and what it
+        // produced was {"job":"new","placement":"back"} - byte for byte the brief already sitting
+        // in `talk:brief:<pta>`. A model call, on every turn of every conversation, to re-derive
+        // something that had not changed.
+        // NOTHING IS LOST, AND THE FLOOR IS UNCHANGED WHERE IT MATTERS. It still runs when she did
+        // not answer at all, and it still runs when there is no brief yet - the two cases it was
+        // written for, where a field really would vanish. The case that stops is the one where she
+        // answered, changed nothing, and a carried brief was already correct.
+        // WHY `carriedObj` AND NOT `carried`: `carried` is the rendered string and is empty when
+        // every field is blank; `carriedObj` is the record itself. A brief with fields in it is
+        // what makes re-derivation redundant, not whether it rendered.
         (acted && acted.brief && Object.keys(acted.brief).length) ? Promise.resolve(null) :
+        (acted && carriedObj && typeof carriedObj === "object" &&
+         Object.keys(carriedObj).length) ? Promise.resolve(null) :
         callBrain({
           model: talkModel,
           system:

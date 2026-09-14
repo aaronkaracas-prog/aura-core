@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.242.0-2026-09-14-a-greeting-asks-for-nothing";
+const BUILD = "aura-core-v9.243.0-2026-09-14-nobody-is-waiting-for-the-brief";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -49025,6 +49025,9 @@ async function executeApprovedPatch(env) {
 // API wrapper (which has no env) can write the cost ledger. Prices are USD per 1M tokens;
 // a code default, overridable later via config:economics:prices. Sibling of the loop's timing.
 let _AURA_ENV = null;
+// Set on every fetch. `waitUntil` keeps the isolate alive for work that must finish but that
+// nobody is waiting to read - the reply goes out first and this runs behind it.
+let _AURA_CTX = null;
 const _AI_PRICES = { sonnet: { in: 3, out: 15 }, haiku: { in: 1, out: 5 }, opus: { in: 15, out: 75 }, gpt: { in: 2.5, out: 10 }, grok: { in: 1.25, out: 2.5 }, llama: { in: 0.59, out: 0.79 }, default: { in: 3, out: 15 } };
 async function recordCost(model, usage, source) {
   try {
@@ -60546,40 +60549,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         } catch (e) { agentNote = "agent threw :: " + String(e?.message ?? e).slice(0, 200); }
       }
 
-      _tick("agent");
-      const [r, iRes] = await Promise.all([
-        acted ? Promise.resolve(null) : callBrain({
-          model: talkModel,
-          system: fullSys,
-          image: seeing ? refUrl : null,
-          messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
-                                         content: String(h.said || "").slice(0, 1500) })),
-                     { role: "user", content: said }],
-          max_tokens: 500
-        }, env),
-
-        // ══ THE FLOOR, NOT THE ROUTINE (2026-09-10) ════════════════════════════════════
-        // She fills `brief` herself now. This call remains as the floor beneath her - when her
-        // agent did not answer at all, or answered without it - so the fields can never simply
-        // vanish from a turn. NOTHING IS LOST; it just stops running when it has nothing to add.
-        // `acted` is already set by this point on the agent path, so we know here whether she
-        // gave us one.
-        // ══ A FLOOR IS FOR FALLING, NOT FOR STANDING ON (2026-09-14) ═════════════════
-        // MEASURED on the word "hey": `classify: 14,822ms` of a 32,770ms turn, and what it
-        // produced was {"job":"new","placement":"back"} - byte for byte the brief already sitting
-        // in `talk:brief:<pta>`. A model call, on every turn of every conversation, to re-derive
-        // something that had not changed.
-        // NOTHING IS LOST, AND THE FLOOR IS UNCHANGED WHERE IT MATTERS. It still runs when she did
-        // not answer at all, and it still runs when there is no brief yet - the two cases it was
-        // written for, where a field really would vanish. The case that stops is the one where she
-        // answered, changed nothing, and a carried brief was already correct.
-        // WHY `carriedObj` AND NOT `carried`: `carried` is the rendered string and is empty when
-        // every field is blank; `carriedObj` is the record itself. A brief with fields in it is
-        // what makes re-derivation redundant, not whether it rendered.
-        (acted && acted.brief && Object.keys(acted.brief).length) ? Promise.resolve(null) :
-        (acted && carriedObj && typeof carriedObj === "object" &&
-         Object.keys(carriedObj).length) ? Promise.resolve(null) :
-        callBrain({
+      // ══ ONE DEFINITION, TWO PLACES TO RUN IT ═══════════════════════════════
+      // The extraction runs either inline - no execution context, or a brief already exists to
+      // amend - or behind the reply. Hoisted so the two can never be handed different prompts:
+      // a contract and its parser living in two places has burned this file three times.
+      const _extractCall = {
           model: talkModel,
           system:
             "Read the conversation and return the FACTS about the tattoo being designed, as JSON.\n\n" +
@@ -60614,7 +60588,80 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                                          content: String(h.said || "").slice(0, 1500) })),
                      { role: "user", content: said }],
           max_tokens: 700
-        }, env).catch(() => null),
+      };
+
+      _tick("agent");
+      const [r, iRes] = await Promise.all([
+        acted ? Promise.resolve(null) : callBrain({
+          model: talkModel,
+          system: fullSys,
+          image: seeing ? refUrl : null,
+          messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
+                                         content: String(h.said || "").slice(0, 1500) })),
+                     { role: "user", content: said }],
+          max_tokens: 500
+        }, env),
+
+        // ══ THE FLOOR, NOT THE ROUTINE (2026-09-10) ════════════════════════════════════
+        // She fills `brief` herself now. This call remains as the floor beneath her - when her
+        // agent did not answer at all, or answered without it - so the fields can never simply
+        // vanish from a turn. NOTHING IS LOST; it just stops running when it has nothing to add.
+        // `acted` is already set by this point on the agent path, so we know here whether she
+        // gave us one.
+        // ══ A FLOOR IS FOR FALLING, NOT FOR STANDING ON (2026-09-14) ═════════════════
+        // MEASURED on the word "hey": `classify: 14,822ms` of a 32,770ms turn, and what it
+        // produced was {"job":"new","placement":"back"} - byte for byte the brief already sitting
+        // in `talk:brief:<pta>`. A model call, on every turn of every conversation, to re-derive
+        // something that had not changed.
+        // NOTHING IS LOST, AND THE FLOOR IS UNCHANGED WHERE IT MATTERS. It still runs when she did
+        // not answer at all, and it still runs when there is no brief yet - the two cases it was
+        // written for, where a field really would vanish. The case that stops is the one where she
+        // answered, changed nothing, and a carried brief was already correct.
+        // WHY `carriedObj` AND NOT `carried`: `carried` is the rendered string and is empty when
+        // every field is blank; `carriedObj` is the record itself. A brief with fields in it is
+        // what makes re-derivation redundant, not whether it rendered.
+        (acted && acted.brief && Object.keys(acted.brief).length) ? Promise.resolve(null) :
+        (acted && carriedObj && typeof carriedObj === "object" &&
+         Object.keys(carriedObj).length) ? Promise.resolve(null) :
+        // ══ NOBODY IS WAITING FOR THIS (2026-09-14) ════════════════════════════
+        // MEASURED across one real seven-turn conversation: 15,154ms on turn one and 33,581ms on
+        // turn two, then 500ms for the rest of it. It is expensive exactly when the brief is empty,
+        // which is only ever the opening exchange - and on those turns its output feeds NOTHING in
+        // the reply, because with no carried brief there is nothing for the fields to show anyway.
+        // What it actually produces is the KV row the NEXT turn reads. So it runs behind the reply.
+        // ONE TURN OF LAG, AND ONLY WHERE IT COSTS NOTHING. She fills `brief` herself on most turns
+        // and the two gates above already skip this entirely when she does or when a brief exists.
+        // This branch is the remaining case: no brief anywhere, so this turn had no fields to lose.
+        // IF THERE IS NO CONTEXT TO DEFER INTO the await below is unchanged - the same call, the
+        // same blocking behaviour, the same result. Nothing depends on the fast path existing.
+        (acted && me && _AURA_CTX && typeof _AURA_CTX.waitUntil === "function")
+          ? (_AURA_CTX.waitUntil((async () => {
+              try {
+                const _late = await callBrain(_extractCall, env).catch(() => null);
+                if (!_late?.ok || !_late.text) return;
+                let _p = null;
+                try { _p = JSON.parse(_late.text); }
+                catch { try { _p = repairJson(_late.text); } catch {} }
+                if (_p) _p = unwrapSchema(_p);
+                if (!_p || typeof _p !== "object") return;
+                // Banked RAW. `carriedObj` is normalised on READ by the same block that normalises
+                // hers, so storing the extraction unnormalised keeps one coercion point rather
+                // than two that can drift - which is the failure this file records most often.
+                const _merged = Object.assign({}, carriedObj || {});
+                for (const k of Object.keys(_p)) {
+                  const v = _p[k];
+                  if (v == null || v === "" || (Array.isArray(v) && !v.length)) continue;
+                  _merged[k] = v;
+                }
+                delete _merged.resolved; delete _merged.missing;
+                if (Object.keys(_merged).length) {
+                  await env.AURA_KV.put("talk:brief:" + me, JSON.stringify(_merged),
+                    { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+                }
+              } catch { /* a brief that fails to bank costs one turn of lag, never a reply */ }
+            })()), Promise.resolve(null))
+          :
+        callBrain(_extractCall, env).catch(() => null),
       ]);
 
       // Her answer, however it arrived. The local call is the floor beneath her own instance.
@@ -64882,8 +64929,15 @@ export default {
     }
   },
 
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     _AURA_ENV = env;
+    // ══ THE CONTEXT WAS NEVER MISSING, IT WAS UNDECLARED (2026-09-14) ═══════════════════════
+    // Comments in this file say `ctx` does not exist in fetch(request, env). It does - Cloudflare
+    // passes it on every invocation and this signature simply did not name it. The consequence was
+    // that work nobody is waiting for could not be moved off the request: MEASURED on a real
+    // conversation, `classify: 33,581ms` of a 47,824ms turn, spent rebuilding a brief that is
+    // written to KV for the NEXT turn and that this turn's reply does not use.
+    _AURA_CTX = ctx || null;
     const url = new URL(request.url);
     // ══ INBOUND SENTRY ── THE HALF THAT WATCHES SOMEONE ATTACKING *ME* ═══════════════════════════
     //

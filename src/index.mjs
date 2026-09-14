@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.234.0-2026-09-13-what-arrived-is-current";
+const BUILD = "aura-core-v9.235.0-2026-09-13-meaning-comes-before-the-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60997,6 +60997,45 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           ].filter(Boolean).join(". ");
           await storeEventVector(me, "design:" + (drew.design || Date.now()),
             "A tattoo design they made. " + what, env, "stated", "mytattoo");
+        } catch {}
+      }
+
+      // ══ MEANING ARRIVES BEFORE THE PICTURE DOES (2026-09-13) ══════════════════
+      //
+      // The vector write above is guarded on `drew && drew.image` - so everything it carries is only
+      // saved WHEN AN IMAGE WAS DRAWN. For subject, style and placement that is fine; they are
+      // re-derivable from the picture at any time, because the picture still exists.
+      // `meaning` is not. Its own comment three lines up says so: "the reason it exists, when they
+      // gave one. The part no model can reconstruct."
+      //
+      // AND IT ALMOST NEVER ARRIVES ON A DRAWING TURN. Somebody says "my mum died, this one is for
+      // my dad, I want to bring them together" - that is a CONVERSATION. `act` is "none", nothing is
+      // drawn, and the only write that could have kept it does not run. People explain first and ask
+      // for the picture after, so the one irreplaceable fact was gated behind the one event that
+      // structurally comes later.
+      // MEASURED: `"meaning": null` on every single turn today, while BOTH consumers of the field are
+      // built and correct - the memory vector above, and `row("Meaning")` on the artist job sheet,
+      // which prints it on the paper in the tattooist's hand.
+      //
+      // SAME DEFECT AS `talk:last` EARLIER TONIGHT, and worth naming as a pattern rather than a
+      // second incident: a durable fact written only on the drawing path. A read turn produced it and
+      // a read turn dropped it. When a value cannot be recovered from the artefact, its write must not
+      // be conditional on the artefact.
+      //
+      // WHY IT CANNOT DOUBLE-WRITE: this fires only when the block above did not - no image, or the
+      // image failed. Where both could apply the drawing write is the fuller row and wins.
+      // WHY `stage === "pta"` STAYS: no chain, nowhere to put it. Same gate as above.
+      if (me && stage === "pta" && intent && intent.meaning &&
+          !(drew && drew.image && !drew.failed) && env.VECTORIZE && env.AI) {
+        try {
+          const why = [
+            "why: " + intent.meaning,
+            intent.subject ? "subject: " + intent.subject : null,
+            intent.placement ? "on the " + intent.placement : null,
+            jobNow && jobNow !== "new" ? "a " + jobNow : null
+          ].filter(Boolean).join(". ");
+          await storeEventVector(me, "meaning:" + Date.now(),
+            "What this tattoo is for, in their own words. " + why, env, "stated", "mytattoo");
         } catch {}
       }
 

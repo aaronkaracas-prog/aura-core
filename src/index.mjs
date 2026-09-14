@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.238.0-2026-09-14-a-greeting-is-a-greeting";
+const BUILD = "aura-core-v9.239.0-2026-09-14-a-fresh-instance-has-no-examples";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60439,10 +60439,25 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // already settled - then "hey" means "I am still here" and she needs the room to answer it,
       // which is exactly what she did on the back piece today.
       const hasLive = !!(lastDrawn && lastDrawn.design) || !!refUrl || !!refSaw || !!carried;
-      const agentLine = hasLive
+      // ══ A FRESH INSTANCE HAS NO EXAMPLES TO COPY (2026-09-14) ═══════════════════════════════
+      // MEASURED, two identities, same channel, same contract, same model: the one with dozens of
+      // her own JSON replies in its session returns JSON every time. A brand new one returned
+      // PROSE on every turn from the very first - "Hey! Good to meet you. What are you thinking
+      // about?" - which `readAct` correctly refuses, so every greeting fell to the local floor at
+      // 8-9 seconds of classify on top of a turn that had already finished.
+      // WHAT IT MEANS: the contract moved into the channel's instructions on 2026-09-10 and every
+      // test since has run on an ESTABLISHED identity. Her own history was demonstrating the shape
+      // and covering for the instruction. A first-time customer has no such history, and this has
+      // been broken for every one of them since that day with nothing to show it.
+      // THIS IS NOT A SECOND COPY OF THE CONTRACT. The contract is 40 lines and it stays in the
+      // channel, where it is system and cached. This is one sentence naming the shape, sitting
+      // where the question is - the same reason v1.66 moved lesson retrieval to read the END of
+      // a message rather than the start: what arrives last is what is answered.
+      const SHAPE = "\n\n(Reply with the JSON object. No prose.)";
+      const agentLine = (hasLive
         ? "[A person is designing a tattoo with you on " + world + ".world. Answer as yourself, " +
           "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said
-        : said;
+        : said) + SHAPE;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
       // Both get the same contract, so the shape of the answer does not depend on which replied.

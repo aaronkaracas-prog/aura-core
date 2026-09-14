@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.237.0-2026-09-14-the-sentence-first";
+const BUILD = "aura-core-v9.238.0-2026-09-14-a-greeting-is-a-greeting";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60116,7 +60116,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             (h.category ? "  (" + h.category + ")" : "")).join("\n")
         : "";
 
-      const talkSys = (await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR)) + shelf + found;
+      // ══ THE DOCTRINE IS NOT SOMETHING THE CUSTOMER SAID (2026-09-14) ══════════════
+      // THE SECOND HALF OF THE MOVE STARTED ON 2026-09-10, and the rule is the one written there:
+      // what stays in the turn is what CHANGES. The CONTRACT left for the channel that day. This
+      // doctrine was left behind, and it does not change either.
+      // MEASURED TODAY, one identity, seven turns in: `history 15680 (14 msgs)` before she could
+      // answer the word "hey" - the same paragraph filed seven times as things the PERSON said,
+      // because `/turn` has no system parameter and everything sent arrives as a user message and
+      // is kept forever. A fresh identity on turn one: `history 988 (1 msgs)`. Same code.
+      // IT IS NOT DELETED AND IT IS NOT COPIED - it is the floor under `cognition:prompts` ->
+      // `tattoo_talk` in aura-think now, read from the KV namespace both workers share. The local
+      // floor below still needs it, because that is a direct model call with its own `system` and
+      // never touches a channel.
+      const talkDoctrine = await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR);
+      const talkSys = talkDoctrine + shelf + found;
 
       // ══ ONE CALL. HER WORDS AND HER ACT, TOGETHER. (2026-09-07) ═══════════════════════════
       //
@@ -60411,7 +60424,25 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // channel definition because none of it is the same twice.
       // THE FLOOR KEEPS `fullSys` UNCHANGED - it is a direct model call with its own `system`
       // and never touches a channel, so it must still carry the contract itself.
-      const agentSys = talkSys + stateNote + picNote + refNote + refBlind;
+      const agentSys = shelf + found + stateNote + picNote + refNote + refBlind;
+
+      // ══ A GREETING HAS TO LOOK LIKE A GREETING (2026-09-14) ════════════════════
+      // Aaron, and it is the only thing this session was ever about: "I can't say hello to an agent."
+      // MEASURED: `ASK "hello"` returns at rung L0 in 0ms for $0 - a fixed table, no model. The same
+      // word through this surface took 26,513ms, because L0 tests the text it is given and what it
+      // was given was thousands of characters of context with `THEY SAID: hey` on the end. The tail
+      // says the same of the answer cache every turn: `[L1] bypassing cache - INSTRUCTION`.
+      // SO: WHEN THERE IS NOTHING LIVE TO CARRY, SEND THE SENTENCE. Nothing drawn, no photograph,
+      // nothing settled - there is no context, and "NOTHING HAS BEEN DRAWN FOR THEM YET" is the
+      // ABSENCE of context rather than context. She already holds the doctrine from her channel.
+      // THE MOMENT ANYTHING IS LIVE, IT ALL RIDES AGAIN. A piece on screen, a photograph, a brief
+      // already settled - then "hey" means "I am still here" and she needs the room to answer it,
+      // which is exactly what she did on the back piece today.
+      const hasLive = !!(lastDrawn && lastDrawn.design) || !!refUrl || !!refSaw || !!carried;
+      const agentLine = hasLive
+        ? "[A person is designing a tattoo with you on " + world + ".world. Answer as yourself, " +
+          "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said
+        : said;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
       // Both get the same contract, so the shape of the answer does not depend on which replied.
@@ -60457,12 +60488,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       let acted = null, agentVia = null, agentNote = null;
       if (me && stage === "pta") {
         try {
-          const proxied = await proxyToAgent(env,
-            "[A person is designing a tattoo with you on mytattoo.world. Answer as yourself, " +
-            "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said,
+          const proxied = await proxyToAgent(env, agentLine,
             false, me, seeing ? refUrl : null, world, _fwdDelta);
           if (proxied && proxied.reply && !proxied.failed) {
             acted = readAct(proxied.reply);
+            // ══ THE CHEAPEST RUNG DOES NOT SPEAK JSON ══════════════════════════════════════
+            // L0 is a fixed table and L1 is a cached answer - both return the sentence itself,
+            // with no contract around it, because no model ran to write one. `readAct` correctly
+            // returns null on that, and without this the free instant answer would be discarded
+            // as unparseable and the turn would fall to the local floor - which is two model
+            // calls, and which measured TWO MINUTES today on exactly that path.
+            // It is not a repair and it is not a guess: a rung that never calls a model cannot
+            // have decided to draw anything, so `act` is `none` and there is nothing else to read.
+            if (!acted && (proxied.rung === "L0" || proxied.rung === "L1")) {
+              const line = String(proxied.reply).trim();
+              if (line) acted = { say: line.slice(0, 900), act: "none", prompt: "", use: [], brief: null };
+            }
             if (acted) agentVia = proxied.instance || "agent";
             else agentNote = "her reply did not parse :: " +
                              String(proxied.reply).trim().slice(0, 300);

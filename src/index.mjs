@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.245.0-2026-09-14-the-flash-book-waits-to-be-asked";
+const BUILD = "aura-core-v9.246.0-2026-09-14-a-field-says-what-happened";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61092,7 +61092,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               shows_finished: mockUrl,
               ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,
                              print_sheets: pdfSheets } : {}),
-              ...(priorInk ? { existing_ink_left_out: true } : {}),
+              // ══ THE FLAG SAYS WHAT WAS ASKED, NOT WHAT CAME BACK (2026-09-14) ═════════
+              // `existing_ink_left_out: true` was set from `priorInk` being non-null - it reported
+              // that the subtraction was REQUESTED. MEASURED twice: sheets that still contained
+              // every healed cat carried this flag reading true, and once her own check said in the
+              // same reply "it shows all eight cats including the five already on their back".
+              // Two fields in one object disagreeing, and only one of them had looked.
+              // Renamed to what it actually is. `she_checked` below is the only field here that
+              // saw the file, and it is the one to believe.
+              ...(priorInk ? { subtraction_requested: true,
+                               subtraction_confirmed_by: "she_checked - nothing else here looked at " +
+                                 "the file" } : {}),
               ...(sheetNote ? { she_checked: sheetNote } : {})
             };
           }
@@ -61243,8 +61253,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           }), env, true);
           const dp = (dr && dr.payload) ? dr.payload : dr;
           if (dp?.ok && dp.image_url) {
+            // ══ A CACHE HIT IS NOT A SECOND DRAWING (2026-09-14) ═══════════════════════
+            // MEASURED: "do that" after a draw returned the SAME image id in 1,610ms - the image
+            // cache, keyed on the prompt - and she told them she had drawn it again. She had not.
+            // Nothing in the reply said so; `cached` was already captured here and read by nobody.
+            // The field is the fix. `same_picture` is the plain statement of what happened, so a
+            // caller cannot narrate a new version and neither can she on the turn after.
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
-                     asked: askLine, cached: !!dp.cached };
+                     asked: askLine, cached: !!dp.cached,
+                     ...(dp.cached ? { same_picture: true,
+                       note: "IDENTICAL PROMPT - this is the picture that already existed, not a " +
+                             "new one. Nothing was drawn. Say so rather than describing a change." } : {}) };
           } else {
             drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
           }

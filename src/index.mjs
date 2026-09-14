@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.240.0-2026-09-14-a-floor-is-for-falling";
+const BUILD = "aura-core-v9.241.0-2026-09-14-the-carried-brief-is-the-third-source";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60647,8 +60647,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         const it = iRes;
         // Hers if she wrote one, the floor's if she did not. One reader, one shape - the
         // normalisation below is unchanged and still the only place a field is coerced.
+        // ══ SKIPPING THE RE-DERIVATION MUST NOT EMPTY THE FIELDS (2026-09-14) ══════════
+        // MEASURED the moment the extractor stopped running on an unchanged brief: `brief: null,
+        // intent: null` in the reply, on a turn where the brief was sitting in KV and perfectly
+        // correct. The extractor had been the only thing feeding this block, so not running it did
+        // not just save a model call - it silently dropped the fields the page acts on.
+        // THE CARRIED BRIEF IS THE THIRD SOURCE, and it is gated on EXACTLY the condition that
+        // skips the extractor, so the two can never disagree about whether a brief exists.
+        // It still goes through the same normalisation below - one reader, one shape.
         const hers = (acted && acted.brief && typeof acted.brief === "object" &&
-                      Object.keys(acted.brief).length) ? acted.brief : null;
+                      Object.keys(acted.brief).length) ? acted.brief
+                   : (acted && carriedObj && typeof carriedObj === "object" &&
+                      Object.keys(carriedObj).length) ? carriedObj
+                   : null;
         if (hers || (it?.ok && it.text)) {
           let parsed = hers;
           try { if (!parsed) parsed = JSON.parse(it.text); }

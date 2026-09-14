@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.243.0-2026-09-14-nobody-is-waiting-for-the-brief";
+const BUILD = "aura-core-v9.244.0-2026-09-14-a-free-rung-has-nothing-to-extract";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60517,6 +60517,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // state rather than a fact. This one says which, and shows the first of what she actually
       // returned, because that is the only place her raw answer exists.
       let acted = null, agentVia = null, agentNote = null;
+      // Which rung answered, carried out of the block below so the extractor can see it. Null on the
+      // local floor, which is correct - the floor is a model call and may well have read something.
+      let proxied_rung = null;
       if (me && stage === "pta") {
         try {
           const proxied = await proxyToAgent(env, agentLine,
@@ -60539,7 +60542,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               const line = String(proxied.reply).trim();
               if (line) acted = { say: line.slice(0, 900), act: "none", prompt: "", use: [], brief: null };
             }
-            if (acted) agentVia = proxied.instance || "agent";
+            if (acted) { agentVia = proxied.instance || "agent"; proxied_rung = proxied.rung || null; }
             else agentNote = "her reply did not parse :: " +
                              String(proxied.reply).trim().slice(0, 300);
           } else {
@@ -60620,6 +60623,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // WHY `carriedObj` AND NOT `carried`: `carried` is the rendered string and is empty when
         // every field is blank; `carriedObj` is the record itself. A brief with fields in it is
         // what makes re-derivation redundant, not whether it rendered.
+        // ══ A FREE RUNG HAS NOTHING TO EXTRACT (2026-09-14) ═════════════════════
+        // MEASURED on a warm instance answering the word "hey": total 842ms, of which `agent` was
+        // 27ms and `classify` was 509ms. L0 answered from a fixed table - no model ran, nothing was
+        // said, nothing was settled - and the largest single cost on the turn was preparing to
+        // re-derive a brief from a greeting.
+        // L0 AND L1 ARE THE PROOF, NOT A GUESS. L0 is a fixed greeting/ping/thanks table and L1 is a
+        // cached answer; neither can carry a new fact about the tattoo, because neither looked at
+        // one. A turn that reached them has nothing for this call to read.
+        (acted && (proxied_rung === "L0" || proxied_rung === "L1")) ? Promise.resolve(null) :
         (acted && acted.brief && Object.keys(acted.brief).length) ? Promise.resolve(null) :
         (acted && carriedObj && typeof carriedObj === "object" &&
          Object.keys(carriedObj).length) ? Promise.resolve(null) :

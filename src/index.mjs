@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.241.0-2026-09-14-the-carried-brief-is-the-third-source";
+const BUILD = "aura-core-v9.242.0-2026-09-14-a-greeting-asks-for-nothing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60453,11 +60453,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // channel, where it is system and cached. This is one sentence naming the shape, sitting
       // where the question is - the same reason v1.66 moved lesson retrieval to read the END of
       // a message rather than the start: what arrives last is what is answered.
+      // ══ DO NOT DEMAND A CONTRACT YOU DID NOT ASK FOR (2026-09-14) ════════════════
+      // The shape line was added an hour before this one, and it was correct for the turn it was
+      // written for: a FRESH instance with no examples in its session answered in prose, `readAct`
+      // refused it, and a greeting cost 41 seconds falling to the local floor.
+      // AND IT BLOCKED THE ONLY THING THIS SESSION WAS ABOUT. Appended to EVERY turn, it meant the
+      // text reaching the ladder was never "hey" - it was "hey" plus an instruction - so L0 could
+      // not match it and a greeting went to the model every time. One fix cancelling the other.
+      // THE RECONCILIATION IS THE SAME RULE STATED TWICE: what rides is what is live. With a piece
+      // on screen, a photograph or a settled brief, the context rides AND the shape rides, because
+      // that turn has a contract to fill and fields downstream that read it. With none of that,
+      // nothing rides - and a sentence with no contract asked of it is free to be answered by the
+      // rung that never calls a model. The L0/L1 acceptance below is what catches her answer, so
+      // an unparseable reply on this path is expected rather than a failure.
       const SHAPE = "\n\n(Reply with the JSON object. No prose.)";
-      const agentLine = (hasLive
+      const agentLine = hasLive
         ? "[A person is designing a tattoo with you on " + world + ".world. Answer as yourself, " +
-          "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said
-        : said) + SHAPE;
+          "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said + SHAPE
+        : said;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
       // Both get the same contract, so the shape of the answer does not depend on which replied.
@@ -60515,7 +60528,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // calls, and which measured TWO MINUTES today on exactly that path.
             // It is not a repair and it is not a guess: a rung that never calls a model cannot
             // have decided to draw anything, so `act` is `none` and there is nothing else to read.
-            if (!acted && (proxied.rung === "L0" || proxied.rung === "L1")) {
+            // WIDENED 2026-09-14: `hasLive` false means no contract was asked for on this turn, so
+            // a plain sentence back is the CORRECT answer and not a parse failure - whichever rung
+            // produced it. Keeping this tied to L0/L1 alone would send an ordinary greeting to the
+            // local floor the moment the model answered it instead of the table.
+            if (!acted && (!hasLive || proxied.rung === "L0" || proxied.rung === "L1")) {
               const line = String(proxied.reply).trim();
               if (line) acted = { say: line.slice(0, 900), act: "none", prompt: "", use: [], brief: null };
             }

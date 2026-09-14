@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.244.0-2026-09-14-a-free-rung-has-nothing-to-extract";
+const BUILD = "aura-core-v9.245.0-2026-09-14-the-flash-book-waits-to-be-asked";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59695,7 +59695,27 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
   // rather than the catalogue: "let's just have her have a conversation with someone, not catalog
   // reference." It is also the honest experiment - if she is better without it on a given kind of
   // turn, that is worth knowing rather than assuming.
-  const noBook = !!(opts && opts.noBook);
+  // ══ THE FLASH BOOK IS NOT PART OF A CONVERSATION (2026-09-14) ═══════════════════════════════
+  // MEASURED twice in one session, both on turns where nobody asked for a picture:
+  //   "when can I get it in the sun"  -> Sun Stone, Stained Glass Tarot Sun
+  //   "this is my arm"                -> Biomech Claw Arm, Octopus Tangled in Its Own Arms,
+  //                                      Shopkeeper Holding an Arm and a Leg, a purple-haired mage
+  // It matches on a WORD, not on what the person is asking for, so somebody talking about sunscreen
+  // is shown tarot cards and somebody showing you their own tattooed arm is shown an octopus.
+  // Aaron: it never belongs in this process. Right - a person describing their own body or their
+  // own dead cat is not browsing, and a catalogue arriving uninvited is the same failure shape as
+  // her operating lessons landing on a customer turn.
+  // NOT DELETED - `catalogFind` and the shelf both work when somebody genuinely wants to browse,
+  // and the read that builds the shelf was written so she knows the book EXISTS rather than to sell
+  // it. So the default flips and the dial stays: `config:talk:book` = open restores today exactly.
+  // The TALK command's own `noBook` opt still forces it closed regardless, unchanged.
+  let noBook = !!(opts && opts.noBook);
+  if (!noBook) {
+    try {
+      const _bk = await env.AURA_KV.get("config:talk:book");
+      noBook = !(_bk && /^(open|on|1|true|yes)$/i.test(String(_bk).trim()));
+    } catch { noBook = true; }
+  }
   // ══ FIND OUT WHETHER THE DOCTRINE IS HELPING (2026-09-09) ═══════════════════════════════════
   // Aaron: "I'm paying Grok to be my agent. If I step out and Grok gets it right every time, why
   // can't I do it inside my system? She has rules, she has a contract - what is shaping this?"

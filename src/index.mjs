@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.235.0-2026-09-13-meaning-comes-before-the-picture";
+const BUILD = "aura-core-v9.237.0-2026-09-14-the-sentence-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -4468,7 +4468,15 @@ function worldFor(host) {
 // tokens, and a decisions block about neurons and test fixtures.
 // `channel` is optional and defaults to "cmd", so the operator path and the self-edit path at
 // 66104 are byte-identical to before. Only the caller that knows it is a customer names one.
-async function proxyToAgent(env, line, isOp, ptaId, image, channel) {
+// ══ `onDelta` - THE CALLER ASKS FOR THE SENTENCE AS IT IS WRITTEN (2026-09-14) ══════════
+// Optional. Absent on every existing call site, so every existing call site is byte-identical.
+// When present, this asks aura-think for `text/event-stream`, forwards each text delta to the
+// callback as it lands, and RETURNS THE SAME OBJECT IT ALWAYS DID - parsed from the `event: final`
+// frame. Nothing downstream of proxyToAgent learns that a stream happened.
+// MEASURED 2026-09-14 on the operator lane: twelve delta frames arriving one at a time, first words
+// on screen in ~2s against a 26.7s full turn, and the accumulated deltas reconstructing `reply`
+// exactly - which is what lets this return the usual shape instead of a second one.
+async function proxyToAgent(env, line, isOp, ptaId, image, channel, onDelta) {
   try {
     const instance = agentInstanceFor(isOp, ptaId);
     if (!instance) return { failed: "no identity - an anonymous visitor has no agent instance of their own, so the local path answers" };
@@ -4486,6 +4494,8 @@ async function proxyToAgent(env, line, isOp, ptaId, image, channel) {
     const body = JSON.stringify({ text: line, channel: channel || "cmd",
                                   ...(image ? { image: String(image) } : {}) });
     const headers = { "content-type": "application/json", authorization: "Bearer " + tok };
+    // The opt-in is a HEADER, which is why aura-think reads it without consuming the request body.
+    if (typeof onDelta === "function") headers["accept"] = "text/event-stream";
     let r;
     if (env.AURA_THINK && typeof env.AURA_THINK.fetch === "function") {
       try {
@@ -4515,8 +4525,53 @@ async function proxyToAgent(env, line, isOp, ptaId, image, channel) {
     // Otherwise parse as JSON (normal reply).
     const contentType = r.headers.get("content-type") || "";
     if (contentType.includes("text/event-stream")) {
-      // Streaming response: pass through directly with headers intact.
-      return r;
+      // ══ PASS THROUGH ONLY WHEN NOBODY HERE IS LISTENING (2026-09-14) ═══════════════
+      // The pass-through below was written for a caller that forwards the Response to a browser.
+      // `auraTalk` is not that caller - it reads `.reply` off the returned object, and handing it a
+      // Response would give it `undefined` silently. So when THIS function was asked for deltas, it
+      // consumes the stream here and returns the ordinary shape.
+      if (typeof onDelta !== "function") return r;
+
+      // SSE framing: blank-line-separated records, `data:` lines carry the payload. Frames can be
+      // split across network chunks, so the buffer keeps whatever has no terminator yet - reading
+      // per-chunk instead of per-frame is the classic way this breaks on long replies.
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", finalJson = null, errJson = null;
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let cut;
+          while ((cut = buf.indexOf("\n\n")) !== -1) {
+            const frame = buf.slice(0, cut); buf = buf.slice(cut + 2);
+            let ev = "message", data = "";
+            for (const ln of frame.split("\n")) {
+              if (ln.startsWith("event:")) ev = ln.slice(6).trim();
+              else if (ln.startsWith("data:")) data += ln.slice(5).trim();
+            }
+            if (!data) continue;
+            if (ev === "final") { try { finalJson = JSON.parse(data); } catch {} }
+            else if (ev === "error") { try { errJson = JSON.parse(data); } catch { errJson = { error: data }; } }
+            else {
+              // A delta that throws must not kill the turn - the answer is still coming and the
+              // final frame is what everything downstream actually depends on.
+              try { const d = JSON.parse(data); if (d && typeof d.delta === "string") await onDelta(d.delta); } catch {}
+            }
+          }
+        }
+      } catch (e) {
+        return { failed: "stream read failed: " + String(e && e.message || e).slice(0, 160) };
+      }
+      if (errJson) return { failed: "agent stream error: " + String(errJson.error || "").slice(0, 200) };
+      if (!finalJson) return { failed: "stream ended with no final frame - not finalizing a partial" };
+      if (finalJson.ok === false) return { failed: "agent said not ok: " + String(finalJson.error || "").slice(0, 200) };
+      if (typeof finalJson.reply === "string" && finalJson.reply.trim()) {
+        return { reply: finalJson.reply, rung: finalJson.rung || null, cost: finalJson.turn_cost || null,
+                 via: "aura-think", instance, streamed: true };
+      }
+      return { failed: "agent stream final frame carried no reply" };
     }
     
     // JSON response: parse and extract reply field
@@ -59660,6 +59715,58 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
   // It is RETURNED in the reply as well as used, so a back-end test can prove the hostname crossed
   // the binding without reading a log.
   const world = String((opts && opts.world) || "").trim() || "mytattoo";
+  // ══ HER SENTENCE, AS SHE WRITES IT (2026-09-14) ═══════════════════════════════════════════
+  // Optional. Absent on every existing caller, so every existing caller is byte-identical.
+  //
+  // WHY THE EXTRACTION IS HERE AND NOT ON THE PAGE. She answers in ONE JSON OBJECT and `say` is
+  // the first field in that contract, so the first bytes on the wire are the sentence - but they
+  // are the sentence wrapped in `{"say":" ... "}`. A page that appended deltas raw would render JSON
+  // assembling itself. Pulling it apart here means a page never learns the shape of her contract,
+  // which is the same rule that stops a page naming its own world: mt-shell, tattooartist and
+  // anything built later get her words without reimplementing a parser that breaks the day she
+  // adds a field.
+  const onDelta = (opts && typeof opts.onDelta === "function") ? opts.onDelta : null;
+  // The growing value of `say`, read out of a JSON object that has not finished arriving. Returns
+  // null until the key exists; stops at the closing quote; refuses to emit a half-arrived escape
+  // rather than guessing at it, because the rest of the character is in the next frame.
+  const _sayFrom = (t) => {
+    const k = t.indexOf('"say"');
+    if (k < 0) return null;
+    let i = t.indexOf('"', k + 5);
+    if (i < 0) return null;
+    i++;
+    let out = "";
+    for (; i < t.length; i++) {
+      const c = t[i];
+      if (c === "\\") {
+        const n = t[i + 1];
+        if (n === undefined) break;
+        if (n === "u") {
+          if (t.length < i + 6) break;
+          out += String.fromCharCode(parseInt(t.slice(i + 2, i + 6), 16));
+          i += 5;
+        } else {
+          out += n === "n" ? "\n" : n === "t" ? "\t" : n === "r" ? "\r" : n;
+          i += 1;
+        }
+        continue;
+      }
+      if (c === '"') break;
+      out += c;
+    }
+    return out;
+  };
+  // ONLY EVER FORWARD, NEVER RESEND. The page appends what it is given, so a re-emitted prefix
+  // would duplicate her words on screen.
+  let _rawAcc = "", _sentSoFar = "";
+  const _fwdDelta = onDelta ? (async (d) => {
+    _rawAcc += d;
+    const cur = _sayFrom(_rawAcc);
+    if (cur == null || cur.length <= _sentSoFar.length) return;
+    const add = cur.slice(_sentSoFar.length);
+    _sentSoFar = cur;
+    try { await onDelta(add); } catch { /* a dead reader must never kill the turn */ }
+  }) : null;
   // The body below is the extracted method, byte for byte. It reads `b.said` and `b.history`, so
   // the arguments are handed back in that shape rather than editing three hundred proven lines.
   const b = { said: saidIn, history };
@@ -60353,7 +60460,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const proxied = await proxyToAgent(env,
             "[A person is designing a tattoo with you on mytattoo.world. Answer as yourself, " +
             "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said,
-            false, me, seeing ? refUrl : null, world);
+            false, me, seeing ? refUrl : null, world, _fwdDelta);
           if (proxied && proxied.reply && !proxied.failed) {
             acted = readAct(proxied.reply);
             if (acted) agentVia = proxied.instance || "agent";
@@ -61852,10 +61959,61 @@ export class PublicEntry extends WorkerEntrypoint {
       if (action === "talk") {
         // The conversation itself lives in `auraTalk` so the TALK command and this door run the
         // same code. See the note above that function.
-        return await auraTalk(env, me, stage,
-          String(b.said || "").trim().slice(0, 2000),
-          Array.isArray(b.history) ? b.history : [],
-          { from: b.from || null, world });
+        const _said = String(b.said || "").trim().slice(0, 2000);
+        const _hist = Array.isArray(b.history) ? b.history : [];
+        // ══ THE SENTENCE FIRST (2026-09-14) ═══════════════════════════════════════════════
+        //
+        // MEASURED: 12-30s to a reply with NOTHING on screen until the last token. Aaron: "a
+        // conversation has to be instant, there is no way anyone is going to wait."
+        //
+        // OPT-IN, AND THAT IS NOT CAUTION - IT IS THE ONLY CORRECT SHAPE. `talk` is called by
+        // mt-design.html AND by mt-shell.html, and mt-shell has six hand-written fetches of its
+        // own. A caller that does not ask for a stream gets the identical object it gets today,
+        // byte for byte, so nothing that works stops working. Same opt-in aura-think's own /turn
+        // uses, and the same one proxyToAgent uses one layer down.
+        //
+        // WHAT THIS ALSO FIXES, AND IT IS NOT COSMETIC: aura-host wraps this call in a 40-SECOND
+        // TIMEOUT. Today the whole turn - her thinking AND the image - has to finish inside it, and
+        // a draw turn already measures 34,395ms on the image alone. Six seconds of headroom on a
+        // path customers are about to stand on. A streamed reply returns its Response in
+        // milliseconds and finishes on the wire, so the ceiling stops applying to how long she
+        // takes. The speed fix and the cliff fix are one change.
+        if (!b.stream) {
+          return await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world });
+        }
+        const { readable, writable } = new TransformStream();
+        const _w = writable.getWriter();
+        const _enc = new TextEncoder();
+        const _send = async (frame) => { try { await _w.write(_enc.encode(frame)); } catch { /* reader gone */ } };
+        const _pump = (async () => {
+          let out;
+          try {
+            // ONE IMPLEMENTATION. The streamed turn is the SAME auraTalk call, with a callback
+            // added - it draws, it writes talk:last, it writes the chain and the meaning, all of
+            // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
+            // the failure this file records more often than any other.
+            out = await auraTalk(env, me, stage, _said, _hist, {
+              from: b.from || null, world,
+              onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
+            });
+          } catch (e) {
+            out = { ok: false, error: "TALK_THREW", detail: String(e && e.message || e).slice(0, 300) };
+          }
+          // THE FINAL FRAME IS THE CONTRACT. The deltas are her sentence and nothing else; every
+          // field the page acts on - intent, brief, ready_to_draw, show_me, the drawn image - rides
+          // here, so a page that missed every delta still behaves exactly as it does today.
+          await _send("event: final\ndata: " + JSON.stringify(out || { ok: false }) + "\n\n");
+          try { await _w.close(); } catch { /* already closed */ }
+        })();
+        // The turn must finish even if they close the tab - the chain write and the meter are not
+        // theirs to cancel. Guarded because this class is also constructed by hand in `hello`,
+        // where `ctx` is a plain object.
+        try { this.ctx?.waitUntil?.(_pump); } catch { /* no ctx: the promise still runs */ }
+        return new Response(readable, { headers: {
+          "content-type": "text/event-stream; charset=utf-8",
+          "cache-control": "no-cache, no-transform",
+          "x-accel-buffering": "no",
+        }});
       }
 
       // ── MAKE. The first version. SHOW_IT births it as a PTA, so from this moment the design

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.253.0-2026-09-15-somebody-looks-at-the-mockup";
+const BUILD = "aura-core-v9.254.0-2026-09-15-she-has-eyes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18279,49 +18279,26 @@ async function successionGate(env) {
         await env.AURA_KV.put("image:" + iId, btoa(iBin));
         const iUrl = "https://" + (await imageHost(env)) + "/image/" + iId;
 
-        // She looks at it on the way in, so the record says what it IS rather than only where it
-        // came from. That description is what a conversation about covering it starts from.
-        let iSaw = null;
-        if (ip.look !== false) {
-          // ══ NAME IT IN THE PARTS THAT CAN BE SWAPPED (2026-09-07) ═══════════════════════
-          // This asked for "subject, style, where on the body" - which works for a wolf on a
-          // shoulder and falls apart on body art. Aaron showed a pair of fully covered legs:
-          // ornamental blackwork, mandalas at the hip, flower-of-life on the thighs, lotus
-          // arches down the shins, symmetrical left to right. "Subject" has no answer there.
-          // What makes the next turn possible is naming COVERAGE, LAYOUT and STYLE separately -
-          // because the useful move is "same coverage, same layout, different style", and that
-          // sentence is only sayable if those were pulled apart in the first place.
-          // MEASURED against Grok on the same photograph: one line of recognition in exactly
-          // those terms, then a redraw in watercolour with the geometry intact.
-          const sm = await seeMedia({ bytes: iBytes, media_type: iType, max_tokens: 260,
-            prompt: "Describe this tattoo in exactly these parts, each on its own line:\n" +
-                    "SUBJECT: what it is OF, or 'ornamental' if it is pattern rather than a thing\n" +
-                    "COVERAGE: how much body it takes and where - a forearm piece, a half sleeve, " +
-                    "both legs front and back, a full back\n" +
-                    "LAYOUT: how it is arranged - what sits where, whether it is symmetrical, " +
-                    "which motifs occupy which part of the limb, how it flows\n" +
-                    // ══ A MENU IS AN INVITATION TO PICK FROM IT (2026-09-07) ══════════════
-                    // MEASURED on a pastel cartoon fish: this listed six style names and got back
-                    // "Neo-traditional with fine line and dotwork, incorporating Japanese irezumi
-                    // techniques. The ink is black and grey" - for a blue and pink cartoon. It
-                    // contradicted its own layout line, which had just said blue and pink.
-                    // Handed a list, a small model chooses from the list. The names are examples
-                    // now, and the honest answers - amateur, cheap flash, a home job - are named
-                    // explicitly, because on a cover-up photograph that IS usually the answer and
-                    // a model will not volunteer an unflattering word it was never offered.
-                    "STYLE: the visual language, in your own words. It might be japanese irezumi, " +
-                    "black and grey realism, ornamental blackwork, dotwork, fine line, " +
-                    "neo-traditional, old school - or it might be amateur work, cheap flash, a " +
-                    "home job, or a cartoon. Say what it actually looks like, not the nearest " +
-                    "respectable name. If it is badly done, say so plainly.\n" +
-                    "COLOUR: what colours are actually in it, or 'black and grey' if there are none\n" +
-                    "INK: the condition of it - faded, solid, blown out, patchy - if that is visible\n" +
-                    // The fields ran together and "black and grey" from INK ended up inside STYLE,
-                    // asserting the opposite of what COLOUR would have said.
-                    "Each label on its own line. Do not merge them, and do not add commentary.\n" +
-                    "If it is not a tattoo, say what it is instead and skip the rest." }, env);
-          if (sm.ok) iSaw = sm.saw;
-        }
+        // ══ SHE HAS EYES. STOP DESCRIBING PICTURES TO HER (2026-09-15) ═══════════════════
+        // THIS RAN A 9B MODEL OVER EVERY ARRIVING PHOTOGRAPH and stored its words as `saw`, which
+        // then rode in her prompt on every turn afterwards.
+        // MEASURED on a chest-and-shoulder photograph, verbatim from `talk:ref`:
+        //   "Subject: Japanese Irezumi DRAGON tattoo / Coverage: FOREARM / ...wings and tail
+        //    extend down the forearm... / Colour: Primarily black ink with red, orange and blue
+        //    accents." - and that last line repeated SEVEN TIMES until it ran out of tokens.
+        // The piece is a phoenix on a shoulder and chest. She then wrote "an existing dragon
+        // shoulder cap" into her own prompt, and the image model obediently redrew the bird into a
+        // dragon. Three separate identities, three placement failures, one bad caption underneath.
+        // AND THE SAME REMOVAL WAS ALREADY MADE ONCE. `seeMedia`'s caption was taken off the
+        // conversation path for exactly this reason - a small model telling a model with eyes what
+        // it was looking at. It survived here, in a second place, and nobody was looking.
+        // SHE READ THE ZEUS BACK PIECE HERSELF: the arch, the shell niche, the V I X plinth, the
+        // eagle, the lion, how it rolls off the shoulders. No caption involved. The photograph
+        // rides on her turn as a file part and she looks at it. That is the whole mechanism.
+        // WHAT IS LOST: the smart file's `subject` now falls back to the caller's context, which is
+        // WHY the picture arrived rather than WHAT is in it. That is a worse label and an honest
+        // one - and a label that is merely thin beats a label that is confidently wrong.
+        const iSaw = null;
 
         await env.AURA_KV.put("imagemeta:" + iId, JSON.stringify({ id: iId,
           prompt: ip.context || iSaw || "imported image", created: new Date().toISOString(),

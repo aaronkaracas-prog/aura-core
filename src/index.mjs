@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.250.0-2026-09-15-one-sentence-not-two-that-argue";
+const BUILD = "aura-core-v9.251.0-2026-09-15-draw-the-panel-do-not-cut-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8985,10 +8985,24 @@ async function processCommand(line, env, isOp) {
         // SO WHEN BOTH ARE ASKED FOR THEY ARE ONE ASK. Nothing arguing, nothing newer to win.
         const fnPrompt = fnWas
           ? (fnOnly
+              // ══ DRAW THE PANEL, DO NOT CUT IT OUT (2026-09-15) ══════════════════════
+              // MEASURED, her own verdict on the failing sheet: "it contains the existing hawk
+              // piece AND AN ARM OUTLINE". The wording already said off the body and flat on white
+              // and it still returned a limb silhouette with healed ink inside it - because asking
+              // for a SECTION of a picture is a crop, and a crop of that limb contains the hawk.
+              // THE PASSING SHEET SHOWS THE OTHER ROUTE. The ribs panel came back as a DRAWN dragon
+              // on white, its palette drifted from the mockup - the model rendered it rather than
+              // cutting it, because there was no healed ink in that region to cut around.
+              // SO THE ASK CHANGES SHAPE: not "extract this region" but "draw the new work that
+              // belongs on this section, as artwork". The exclusions are named one by one because
+              // each of them is something that actually came back in a sheet somebody would have
+              // printed - the old tattoo, the arm, the skin.
               ? "The first image is the finished piece. The second is what was already tattooed " +
-                "before this work. Show me ONLY THE NEW WORK IN THE " + fnOnly.toUpperCase() +
-                " - that section alone, with none of the ink that was already there, the artwork " +
-                "by itself off the body, flat on plain white."
+                "before this work. DRAW, as tattoo artwork on plain white, only the NEW work that " +
+                "belongs on the " + fnOnly.toUpperCase() + ". Not a crop of the photograph: the " +
+                "artwork itself. No skin, no arm, no body, no outline of a limb, no background, " +
+                "and nothing from the tattoo that was already on them - only the new " +
+                fnOnly + " work, drawn flat and complete."
               : "The first image is the finished piece. The second is what was already tattooed " +
                 "before this work. Show me only the new work - the artwork alone, off the body, " +
                 "without the piece that was already there.") +

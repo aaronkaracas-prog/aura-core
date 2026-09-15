@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.251.0-2026-09-15-draw-the-panel-do-not-cut-it";
+const BUILD = "aura-core-v9.252.0-2026-09-15-a-verdict-the-code-can-read";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60570,7 +60570,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                  // The body sections the NEW work spans, hers to name. Capped at six because a
                  // human body does not have more separate stencil areas than that on one job, and
                  // each one is a real image call.
-                 panels: strList(o.panels, 6, 40),
+                 // Widened from 40: an entry is now `section: what part of the design goes there`,
+                 // because a placement word alone produced the same picture three times.
+                 panels: strList(o.panels, 6, 200),
                  brief: (o.brief && typeof o.brief === "object" && !Array.isArray(o.brief))
                    ? o.brief : null };
       };
@@ -61088,13 +61090,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ? acted.panels.slice(0, 6) : [null];
           const sheets = [];
           for (const panel of panelList) {
-            const only = panel
-              ? " ONLY the " + panel + " section of the new work"
-              : "";
+            // `section: what goes there`. The label before the colon is what the sheet is CALLED
+            // and what she is asked to verify it against; the whole phrase is what gets drawn,
+            // because the description is the only thing that makes one panel different from another.
+            const label = panel ? String(panel).split(":")[0].trim().slice(0, 40) : null;
+            const only = panel ? " ONLY " + panel : "";
             const fr = await processCommand("FINAL " + mockUrl +
               (priorInk ? " ADDED " + priorInk : "") + only, env, true);
             const fpp = (fr && fr.payload) ? fr.payload : fr;
-            if (fpp && fpp.ok && fpp.image) sheets.push({ panel, flat: fpp.image, id: fpp.design || null });
+            if (fpp && fpp.ok && fpp.image) {
+              sheets.push({ panel: label, asked: panel, flat: fpp.image, id: fpp.design || null });
+            }
           }
           const fp = sheets.length ? { ok: true, image: sheets[0].flat, design: sheets[0].id } : null;
           if (!fp) {
@@ -61183,16 +61189,27 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                               "section and no other part of the body" : "") +
                   (priorInk ? ", and it is an ADD-ON, so it should contain ONLY the new work - the " +
                               "ink already on them must not be in it" : "") +
-                  ". Look at it. Is it right? Answer in one short sentence: say it is right, or " +
-                  "say exactly what is wrong. Nothing else.]",
+                  ". Look at it. Begin your answer with the single word RIGHT or WRONG, then one " +
+                  "short sentence saying why. Nothing else.]",
                   false, me, sh.line || sh.flat, world);
                 if (look && look.reply && !look.failed) {
                   const _sv = readAct(look.reply);
                   sh.checked = String((_sv && _sv.say) || look.reply)
                     .replace(/^\s*[{\[]/, "").trim().slice(0, 240);
+                  // ══ A VERDICT NOBODY CAN READ CANNOT STOP ANYTHING (2026-09-15) ══════
+                  // MEASURED: she failed two of three sheets and `print_pdf` still pointed at the
+                  // first one regardless - a sheet she had just called wrong was the default the
+                  // person would open. The sentence was there and nothing could act on it.
+                  // So the first word is RIGHT or WRONG and her reason follows it. The prose is
+                  // unchanged for a human; the first word is what the code is allowed to use.
+                  sh.ok = /^\s*RIGHT\b/i.test(sh.checked);
                 }
               } catch {}
             }
+            // Default to a sheet she PASSED. If she passed none, the first is kept and every
+            // verdict still rides in the reply saying so - reporting a bad pack beats hiding it.
+            const _okSheet = sheets.find((sh) => sh.ok && sh.pdf);
+            if (_okSheet) { pdfUrl = _okSheet.pdf; pdfInches = _okSheet.inches; }
             // The top-level note is every verdict, labelled - never one sheet speaking for the rest.
             sheetNote = sheets.map((sh) => (sh.panel ? sh.panel + ": " : "") +
                                            (sh.checked || "not checked")).join("  |  ").slice(0, 900);
@@ -61212,10 +61229,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
                                                   line: sh.line || null,
                                                   pdf: sh.pdf || null,
+                                                  ok: sh.ok === true,
                                                   // Her verdict on THIS sheet. A panel whose
                                                   // picture disagrees with its label says so here.
                                                   checked: sh.checked || null })),
-                    panel_count: sheets.length }
+                    panel_count: sheets.length,
+                    // How many of them she actually passed. A pack is finished when this equals
+                    // panel_count and not before.
+                    panels_ok: sheets.filter((sh) => sh.ok).length }
                 : {}),
               ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,
                              print_sheets: pdfSheets } : {}),

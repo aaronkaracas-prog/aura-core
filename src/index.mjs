@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.248.0-2026-09-15-one-sheet-per-panel";
+const BUILD = "aura-core-v9.249.0-2026-09-15-every-sheet-is-looked-at";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61101,16 +61101,36 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               if (placeKey.includes(k) && PLACEMENT_IN[k] > inches) inches = PLACEMENT_IN[k];
             }
             if (!inches) inches = 8;   // a hand-sized default, and PRINT reports the real figure
-            try {
-              if (lineId) {
-                const pr2 = await processCommand("PRINT " + lineId + " " + inches + " " + me,
-                  env, true);
+            // ══ A PDF PER PANEL, AND THE COUNT HAS TO ADD UP (2026-09-15) ═════════════
+            // MEASURED: `panel_count: 3` and `print_sheets: 1` in the same object, because PRINT
+            // ran once on `lineId` - panel one. Two of the three line arts were never in any PDF,
+            // and she told the person "one sheet each" reading the field that said otherwise.
+            // Each panel is a separate transfer, so each gets its own PDF at its own size.
+            // `print_pdf` stays the first so a single-panel job is unchanged; `print_sheets` is now
+            // the real total across all of them and can no longer disagree with `panel_count`.
+            let pdfTotal = 0;
+            for (const sh of sheets) {
+              const sid = sh.lineId || sh.id;
+              if (!sid) continue;
+              // Sized per section, not once for the whole job - a forearm and a set of ribs do not
+              // print at the same width, and PRINT caps to what the pixels and the paper allow.
+              let shIn = 0;
+              const shKey = String(sh.panel || placeKey).toLowerCase();
+              for (const k of Object.keys(PLACEMENT_IN)) {
+                if (shKey.includes(k) && PLACEMENT_IN[k] > shIn) shIn = PLACEMENT_IN[k];
+              }
+              if (!shIn) shIn = inches;
+              try {
+                const pr2 = await processCommand("PRINT " + sid + " " + shIn + " " + me, env, true);
                 const pp = (pr2 && pr2.payload) ? pr2.payload : pr2;
                 if (pp && pp.ok && pp.pdf) {
-                  pdfUrl = pp.pdf; pdfSheets = pp.sheets; pdfInches = pp.inches;
+                  sh.pdf = pp.pdf; sh.sheets = pp.sheets || 1; sh.inches = pp.inches;
+                  pdfTotal += (pp.sheets || 1);
+                  if (!pdfUrl) { pdfUrl = pp.pdf; pdfInches = pp.inches; }
                 }
-              }
-            } catch {}
+              } catch {}
+            }
+            pdfSheets = pdfTotal || null;
 
             // ══ SHE LOOKS AT THE FILE BEFORE IT LEAVES ═══════════════════════════════
             // ONE vision call per finished design, not one per turn. This is the only output that
@@ -61120,30 +61140,35 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // arrangement.
             // IT REPORTS, IT DOES NOT BLOCK. A refused file on a judgement call is worse than a
             // flagged one somebody reads.
+            // ══ ONE LOOK PER SHEET, AND IT NAMES THE SHEET (2026-09-15) ═══════════════
+            // MEASURED on a three-panel sleeve: one look at panel 1 returned "none of the existing
+            // ink included" and that verdict was attached to all three. Panel 1 WAS the existing
+            // pec piece. A single check cannot speak for files it never opened, and a false pass is
+            // worse than no check at all - it is what carried this to somebody as a finished job.
+            // EACH SHEET IS ASKED ABOUT ITSELF, and told which section it CLAIMS to be, because
+            // the label came from loop order and the whole question is whether the picture agrees.
             let sheetNote = null;
-            try {
-              const look = await proxyToAgent(env,
-                "[This is the line art going to their tattooist" +
-                (priorInk ? " for an ADD-ON, so it should contain ONLY the new work - the ink " +
-                            "already on them must not be in it" : "") +
-                ". Look at it. Is it right? Answer in one short sentence: say it is right, or " +
-                "say exactly what is wrong. Nothing else.]",
-                false, me, lineUrl || fp.image, world);
-              if (look && look.reply && !look.failed) {
-                // ══ HER VERDICT ARRIVES IN THE CONTRACT (2026-09-14) ══════════════════
-                // This check runs on the mytattoo channel, so she answers the way that channel
-                // tells her to - one JSON object - and her judgement is in `say`. Stripping a
-                // leading brace left the rest of the wrapper attached, and the field read:
-                //   "say":"That's the ginger cat... it's right","do":"none","prompt":"" ...
-                // The verdict was correct and the field was unreadable. `readAct` is the parser
-                // this file already has for exactly this shape - use it rather than a second one,
-                // and fall back to the raw text when she answers in plain prose, which is what the
-                // free rungs return. Nothing here judges the sheet; it only reads her answer.
-                const _v = readAct(look.reply);
-                sheetNote = String((_v && _v.say) || look.reply)
-                  .replace(/^\s*[{\[]/, "").trim().slice(0, 300);
-              }
-            } catch {}
+            for (const sh of sheets) {
+              try {
+                const look = await proxyToAgent(env,
+                  "[This is the line art going to their tattooist" +
+                  (sh.panel ? " for the " + sh.panel.toUpperCase() + " - it should show that " +
+                              "section and no other part of the body" : "") +
+                  (priorInk ? ", and it is an ADD-ON, so it should contain ONLY the new work - the " +
+                              "ink already on them must not be in it" : "") +
+                  ". Look at it. Is it right? Answer in one short sentence: say it is right, or " +
+                  "say exactly what is wrong. Nothing else.]",
+                  false, me, sh.line || sh.flat, world);
+                if (look && look.reply && !look.failed) {
+                  const _sv = readAct(look.reply);
+                  sh.checked = String((_sv && _sv.say) || look.reply)
+                    .replace(/^\s*[{\[]/, "").trim().slice(0, 240);
+                }
+              } catch {}
+            }
+            // The top-level note is every verdict, labelled - never one sheet speaking for the rest.
+            sheetNote = sheets.map((sh) => (sh.panel ? sh.panel + ": " : "") +
+                                           (sh.checked || "not checked")).join("  |  ").slice(0, 900);
 
             drew = {
               design: lineId || fp.design || null,
@@ -61158,7 +61183,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // single-panel job reads exactly as it did before this existed.
               ...(sheets.length > 1
                 ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
-                                                  line: sh.line || null })),
+                                                  line: sh.line || null,
+                                                  pdf: sh.pdf || null,
+                                                  // Her verdict on THIS sheet. A panel whose
+                                                  // picture disagrees with its label says so here.
+                                                  checked: sh.checked || null })),
                     panel_count: sheets.length }
                 : {}),
               ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,

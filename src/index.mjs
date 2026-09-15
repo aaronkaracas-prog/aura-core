@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.252.0-2026-09-15-a-verdict-the-code-can-read";
+const BUILD = "aura-core-v9.253.0-2026-09-15-somebody-looks-at-the-mockup";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60588,6 +60588,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // Same failure as `only_new: true` and `kept: true` earlier today - a field reporting a
       // state rather than a fact. This one says which, and shows the first of what she actually
       // returned, because that is the only place her raw answer exists.
+      // Her verdicts come back either as a bare sentence or wrapped in the channel's contract. One
+      // stripper, used by both readers, so the two cannot drift apart.
+      const _verdict = (reply, parsed) => String((parsed && parsed.say) || reply)
+        .replace(/^\s*[{\[]/, "").trim();
       let acted = null, agentVia = null, agentNote = null;
       // Which rung answered, carried out of the block below so the extractor can see it. Null on the
       // local floor, which is correct - the floor is a model call and may well have read something.
@@ -61194,8 +61198,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                   false, me, sh.line || sh.flat, world);
                 if (look && look.reply && !look.failed) {
                   const _sv = readAct(look.reply);
-                  sh.checked = String((_sv && _sv.say) || look.reply)
-                    .replace(/^\s*[{\[]/, "").trim().slice(0, 240);
+                  sh.checked = _verdict(look.reply, _sv).slice(0, 240);
                   // ══ A VERDICT NOBODY CAN READ CANNOT STOP ANYTHING (2026-09-15) ══════
                   // MEASURED: she failed two of three sheets and `print_pdf` still pointed at the
                   // first one regardless - a sheet she had just called wrong was the default the
@@ -61256,6 +61259,39 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           }
         } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
       }
+
+      // ══ SOMEBODY HAS TO LOOK AT THE MOCKUP (2026-09-15) ═══════════════════════════════════
+      // FIVE RUNS, FIVE PLACEMENT FAILURES, AND NOTHING EVER LOOKED: the dragon on the wrong side,
+      // a second head in the middle twice, a chest panel that swallowed the existing hawk, and -
+      // subtlest and worst - a mockup where the healed piece's own black border stopped
+      // terminating and dissolved into the new cloudwork. Aaron caught that one by eye.
+      // EVERY CHECK IN THIS FILE LOOKS AT THE ARTIST SHEET. She flattens whatever came back and
+      // then verifies the FLATTEN is clean, so a wrong placement passes straight through to the
+      // files - the only question ever asked was "is this isolated", never "is this where they
+      // asked for it, and is their healed work still theirs".
+      // HER OWN FACT ALREADY SAYS TO DO THIS: "when the mock comes back the first thing I check is
+      // where it landed and whether their healed work survived, before I look at whether it is
+      // beautiful. She had no way to. Nothing showed her the picture and asked.
+      // ONLY ON THEIR OWN BODY. A design on white paper has no healed ink to protect and no
+      // placement to get wrong, so this costs nothing on the catalogue path.
+      // IT REPORTS, IT DOES NOT BLOCK. An answer they can see beats a turn that silently refuses,
+      // and she is the one who tells them - which is the same rule as the artist sheet.
+      const _lookAtMock = async (mockUrl) => {
+        if (!mockUrl || !me || !seeing) return null;
+        try {
+          const look = await proxyToAgent(env,
+            "[This is the mock-up on their own body. Compare it to the photograph they sent. " +
+            "Is the new work where they asked for it, and is every tattoo they ALREADY had " +
+            "untouched - not just present, but unchanged, including the edges and borders of it? " +
+            "Begin your answer with the single word RIGHT or WRONG, then one short sentence " +
+            "saying why. Nothing else.]",
+            false, me, mockUrl, world);
+          if (look && look.reply && !look.failed) {
+            return _verdict(look.reply, readAct(look.reply)).slice(0, 240);
+          }
+        } catch { /* a check that fails must never cost them the picture */ }
+        return null;
+      };
 
       if (act === "change" && me) {
         // `IMAGE EVOLVE` sends the PARENT'S PIXELS with the instruction, so the piece on screen
@@ -61325,9 +61361,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                              aspect: "3:4", res: "2k",
                              ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
           const cp = (cr && cr.payload) ? cr.payload : cr;
+          const _mockNote = (cp?.ok && cp.image_url) ? await _lookAtMock(cp.image_url) : null;
           drew = (cp?.ok && cp.image_url)
             ? { design: cp.child, image: cp.image_url, changed: acted.prompt || said,
                 from: parentId,
+                ...(_mockNote ? { she_looked: _mockNote,
+                                  placement_ok: /^\s*RIGHT\b/i.test(_mockNote) } : {}),
                 ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) }
             : { failed: cp?.error || "COULD_NOT_CHANGE", changed: acted.prompt || said,
                 from: parentId,
@@ -61407,8 +61446,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // Nothing in the reply said so; `cached` was already captured here and read by nobody.
             // The field is the fix. `same_picture` is the plain statement of what happened, so a
             // caller cannot narrate a new version and neither can she on the turn after.
+            const _mockNote2 = seeing ? await _lookAtMock(dp.image_url) : null;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached,
+                     ...(_mockNote2 ? { she_looked: _mockNote2,
+                                        placement_ok: /^\s*RIGHT\b/i.test(_mockNote2) } : {}),
                      ...(dp.cached ? { same_picture: true,
                        note: "IDENTICAL PROMPT - this is the picture that already existed, not a " +
                              "new one. Nothing was drawn. Say so rather than describing a change." } : {}) };

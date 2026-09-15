@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.249.0-2026-09-15-every-sheet-is-looked-at";
+const BUILD = "aura-core-v9.250.0-2026-09-15-one-sentence-not-two-that-argue";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8973,16 +8973,29 @@ async function processCommand(line, env, isOp) {
         // else, which is the version that worked outside this system.
         // The section clause goes LAST in both shapes, because the sentence nearest the end is the
         // one the model answers - the same reason the contract sits at the end of her turn text.
-        const fnCut = fnOnly
-          ? " Show me ONLY the " + fnOnly + " - that section alone, nothing from the rest of the " +
-            "piece, flat on plain white."
-          : "";
+        // ══ ONE SENTENCE, NOT TWO THAT ARGUE (2026-09-15) ═══════════════════════════════
+        // The same failure recorded three lines above, in a new place. Subtraction and section were
+        // sent as SEPARATE sentences with the section LAST, and the section clause says nothing
+        // about old ink - so on the one panel where old and new ink meet, the model heard "that
+        // section alone" and returned the section, existing piece included.
+        // MEASURED on a dragon sleeve, her own per-panel verdicts: forearm "right - new dragon and
+        // wave work only", ribs "right", upper arm "WRONG - it's a copy of your existing shoulder
+        // piece". Forearm and ribs are bare skin, so nothing was there to subtract and the two
+        // instructions could not conflict. The upper arm is the seam, and that is where it broke.
+        // SO WHEN BOTH ARE ASKED FOR THEY ARE ONE ASK. Nothing arguing, nothing newer to win.
         const fnPrompt = fnWas
-          ? "The first image is the finished piece. The second is what was already tattooed " +
-            "before this work. Show me only the new work - the artwork alone, off the body, " +
-            "without the piece that was already there." +
-            (fnStencil ? " " + fnCard[1] : "") + fnCut
-          : TAT_SOURCE_LOCK + fnCard[1] + fnCut;
+          ? (fnOnly
+              ? "The first image is the finished piece. The second is what was already tattooed " +
+                "before this work. Show me ONLY THE NEW WORK IN THE " + fnOnly.toUpperCase() +
+                " - that section alone, with none of the ink that was already there, the artwork " +
+                "by itself off the body, flat on plain white."
+              : "The first image is the finished piece. The second is what was already tattooed " +
+                "before this work. Show me only the new work - the artwork alone, off the body, " +
+                "without the piece that was already there.") +
+            (fnStencil ? " " + fnCard[1] : "")
+          : TAT_SOURCE_LOCK + fnCard[1] +
+            (fnOnly ? " Show me ONLY the " + fnOnly + " - that section alone, nothing from the " +
+                      "rest of the piece, flat on plain white." : "");
         const fr = await showIt(fnPrompt, env,
           { source: "style_transfer", refs: fnWas ? [fnUrl, fnWas] : [fnUrl],
             parent: /^ent_/.test(fnId) ? fnId : null,

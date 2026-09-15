@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.247.0-2026-09-14-read-her-verdict-with-her-own-parser";
+const BUILD = "aura-core-v9.248.0-2026-09-15-one-sheet-per-panel";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8923,6 +8923,19 @@ async function processCommand(line, env, isOp) {
       // WHAT IS NEW IS THE DIFFERENCE BETWEEN TWO PICTURES, so it takes both. `showIt` already
       // carries up to three refs - no new plumbing, the same call with one more image.
       //   FINAL <extended url> ADDED <original url> [LINEART]
+      // ══ ONLY <section> - ONE PANEL OF THE NEW WORK (2026-09-15) ═══════════════════════
+      // A shop cannot transfer one sheet across a joint, so a piece that crosses one is printed in
+      // pieces. Everything from ONLY to the end is the section wanted, in her words, because she is
+      // the one who read the body and knows where the joints fall.
+      // IT IS ALSO WHAT MAKES THE SUBTRACTION POSSIBLE. Removing healed ink from a whole
+      // composition asks the model to find a seam that may not exist - MEASURED on a dragon whose
+      // existing head and new body are one animal, it came back whole every time. A forearm panel
+      // contains only new ink by definition.
+      // CUT BEFORE `fnMode` IS READ, or the first word of the section is taken for STENCIL/LINEART.
+      const fnOnlyAt = fnParts.findIndex((x) => /^ONLY$/i.test(x));
+      const fnOnly = fnOnlyAt > 0 ? fnParts.slice(fnOnlyAt + 1).join(" ").trim().slice(0, 120) : "";
+      if (fnOnlyAt > 0) fnParts.length = fnOnlyAt;
+
       const fnAddedAt = fnParts.findIndex((x) => /^ADDED$/i.test(x));
       const fnWas = fnAddedAt > 0 ? String(fnParts[fnAddedAt + 1] || "").trim() : "";
       const fnMode = String(
@@ -8958,12 +8971,18 @@ async function processCommand(line, env, isOp) {
         // The card stays available but only when a finish was NAMED - it says how to render, not
         // what to keep, so it does not fight the ask. Bare `ADDED` sends the sentence and nothing
         // else, which is the version that worked outside this system.
+        // The section clause goes LAST in both shapes, because the sentence nearest the end is the
+        // one the model answers - the same reason the contract sits at the end of her turn text.
+        const fnCut = fnOnly
+          ? " Show me ONLY the " + fnOnly + " - that section alone, nothing from the rest of the " +
+            "piece, flat on plain white."
+          : "";
         const fnPrompt = fnWas
           ? "The first image is the finished piece. The second is what was already tattooed " +
             "before this work. Show me only the new work - the artwork alone, off the body, " +
             "without the piece that was already there." +
-            (fnStencil ? " " + fnCard[1] : "")
-          : TAT_SOURCE_LOCK + fnCard[1];
+            (fnStencil ? " " + fnCard[1] : "") + fnCut
+          : TAT_SOURCE_LOCK + fnCard[1] + fnCut;
         const fr = await showIt(fnPrompt, env,
           { source: "style_transfer", refs: fnWas ? [fnUrl, fnWas] : [fnUrl],
             parent: /^ent_/.test(fnId) ? fnId : null,
@@ -60521,6 +60540,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                  act: ["draw", "change", "artist", "none"].includes(act) ? act : "none",
                  prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
                  use: strList(o.use, 4, 400),
+                 // The body sections the NEW work spans, hers to name. Capped at six because a
+                 // human body does not have more separate stencil areas than that on one job, and
+                 // each one is a real image call.
+                 panels: strList(o.panels, 6, 40),
                  brief: (o.brief && typeof o.brief === "object" && !Array.isArray(o.brief))
                    ? o.brief : null };
       };
@@ -61020,20 +61043,49 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // A new piece has none, and FINAL alone is the whole design.
           const priorInk = (jobNow === "add" && refUrl) ? refUrl : null;
 
-          // ── 2. FLAT ARTWORK ──────────────────────────────────────────────────────────
-          const fr = await processCommand("FINAL " + mockUrl +
-            (priorInk ? " ADDED " + priorInk : ""), env, true);
-          const fp = (fr && fr.payload) ? fr.payload : fr;
-          if (!fp || !fp.ok || !fp.image) {
-            drew = { failed: (fp && fp.error) || "COULD_NOT_FLATTEN", from: shopParent };
+          // ══ ONE SHEET PER PANEL (2026-09-15) ═══════════════════════════════════════════
+          // She named these herself, twice, before anything could act on them: "the forearm panel,
+          // the band above the elbow, the ribs panel and the shoulder cap, one image each" - and
+          // then, looking at what this branch had actually produced: "this is the whole composition
+          // on one sheet... it needs to be split into the separate parts."
+          // A shop cannot lay one transfer across a shoulder. An arm and a set of ribs are separate
+          // stencils and always were.
+          // AND IT IS WHY THE SUBTRACTION KEPT FAILING. Taking healed ink out of a whole
+          // composition asks a model to find a seam. MEASURED impossible on a dragon whose existing
+          // head and new body are ONE ANIMAL - it came back whole every time, and her own check
+          // said so. A forearm panel holds only new ink BY DEFINITION: cut to the panel and there
+          // is nothing left to subtract. The split is the fix, not a feature beside it.
+          // ONE PANEL OR NONE RUNS THE IDENTICAL PATH IT ALWAYS DID - `panelList` falls back to a
+          // single unnamed pass, `ADDED` still rides on it, and the reply keeps its old shape.
+          const panelList = (acted && Array.isArray(acted.panels) && acted.panels.length)
+            ? acted.panels.slice(0, 6) : [null];
+          const sheets = [];
+          for (const panel of panelList) {
+            const only = panel
+              ? " ONLY the " + panel + " section of the new work"
+              : "";
+            const fr = await processCommand("FINAL " + mockUrl +
+              (priorInk ? " ADDED " + priorInk : "") + only, env, true);
+            const fpp = (fr && fr.payload) ? fr.payload : fr;
+            if (fpp && fpp.ok && fpp.image) sheets.push({ panel, flat: fpp.image, id: fpp.design || null });
+          }
+          const fp = sheets.length ? { ok: true, image: sheets[0].flat, design: sheets[0].id } : null;
+          if (!fp) {
+            drew = { failed: "COULD_NOT_FLATTEN", from: shopParent };
           } else {
             // ── 3. LINE ART ────────────────────────────────────────────────────────────
+            // Once per sheet. The line art is what the needle follows, so a panel without one is
+            // a panel the shop cannot use - but a failure on one must not lose the others, which
+            // is why each is caught on its own.
             let lineUrl = null, lineId = null;
-            try {
-              const lr = await processCommand("FINAL " + fp.image + " LINEART", env, true);
-              const lp = (lr && lr.payload) ? lr.payload : lr;
-              if (lp && lp.ok && lp.image) { lineUrl = lp.image; lineId = lp.design || null; }
-            } catch {}
+            for (const sh of sheets) {
+              try {
+                const lr = await processCommand("FINAL " + sh.flat + " LINEART", env, true);
+                const lp = (lr && lr.payload) ? lr.payload : lr;
+                if (lp && lp.ok && lp.image) { sh.line = lp.image; sh.lineId = lp.design || null; }
+              } catch {}
+            }
+            lineUrl = sheets[0].line || null; lineId = sheets[0].lineId || null;
 
             // ── 4. THE PDF ─────────────────────────────────────────────────────────────
             // Sized from the placement they gave. PRINT caps it to what the pixels and the paper
@@ -61101,6 +61153,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // The whole package, in the order a shop uses it.
               flat_artwork: fp.image,
               shows_finished: mockUrl,
+              // ONE ENTRY PER PANEL, each with the section it covers, its flat artwork and the
+              // line art the needle follows. `flat_artwork` above stays the first sheet so a
+              // single-panel job reads exactly as it did before this existed.
+              ...(sheets.length > 1
+                ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
+                                                  line: sh.line || null })),
+                    panel_count: sheets.length }
+                : {}),
               ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,
                              print_sheets: pdfSheets } : {}),
               // ══ THE FLAG SAYS WHAT WAS ASKED, NOT WHAT CAME BACK (2026-09-14) ═════════

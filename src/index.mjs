@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.246.0-2026-09-14-a-field-says-what-happened";
+const BUILD = "aura-core-v9.247.0-2026-09-14-read-her-verdict-with-her-own-parser";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61078,7 +61078,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 "say exactly what is wrong. Nothing else.]",
                 false, me, lineUrl || fp.image, world);
               if (look && look.reply && !look.failed) {
-                sheetNote = String(look.reply).replace(/^\s*[{\[]/, "").trim().slice(0, 300);
+                // ══ HER VERDICT ARRIVES IN THE CONTRACT (2026-09-14) ══════════════════
+                // This check runs on the mytattoo channel, so she answers the way that channel
+                // tells her to - one JSON object - and her judgement is in `say`. Stripping a
+                // leading brace left the rest of the wrapper attached, and the field read:
+                //   "say":"That's the ginger cat... it's right","do":"none","prompt":"" ...
+                // The verdict was correct and the field was unreadable. `readAct` is the parser
+                // this file already has for exactly this shape - use it rather than a second one,
+                // and fall back to the raw text when she answers in plain prose, which is what the
+                // free rungs return. Nothing here judges the sheet; it only reads her answer.
+                const _v = readAct(look.reply);
+                sheetNote = String((_v && _v.say) || look.reply)
+                  .replace(/^\s*[{\[]/, "").trim().slice(0, 300);
               }
             } catch {}
 

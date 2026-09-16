@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.263.0-2026-09-16-ask-her-what-goes-on-each-sheet";
+const BUILD = "aura-core-v9.264.0-2026-09-16-not-checked-is-not-passed";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61279,12 +61279,27 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // along either way, so nobody is being told a bad sheet is a good one.
             const _sendAnyway = /\b(send (them|it|those)? ?anyway|send anyway|give (them|it) to me anyway|i('| wi)?ll look( for myself)?|print (them|it) anyway|anyway)\b/i
               .test(String(said || ""));
+            // ══ NOT CHECKED IS NOT PASSED (2026-09-16) ═══════════════════════════════════
+            // MEASURED: a two-panel pack where the arm sheet failed and was held, and the chest
+            // sheet went out with `checked: null` - her verdict never came back, because the look
+            // hit an empty reply from the provider. So a sheet nobody had looked at was handed over
+            // as if it were fine, while the one she HAD looked at was correctly held.
+            // AN UNSEEN SHEET AND A GOOD SHEET ARE NOT THE SAME THING. The whole promise of this
+            // gate is that nothing reaches a shop without being looked at, and silence is not a
+            // pass - it is the absence of one.
+            // IT IS HELD LIKE ANY OTHER FAILURE, with a reason that says what actually happened,
+            // so nobody reads it as her having found something wrong.
+            const _unseen = (sh) => !sh.checked;
+            const _failed = (sh) => sh.checked && /^\s*WRONG\b/i.test(sh.checked);
             const _bad = _sendAnyway ? []
-              : sheets.filter((sh) => sh.checked && /^\s*WRONG\b/i.test(sh.checked));
+              : sheets.filter((sh) => _failed(sh) || _unseen(sh));
             const _good = _sendAnyway ? sheets
-              : sheets.filter((sh) => !(sh.checked && /^\s*WRONG\b/i.test(sh.checked)));
+              : sheets.filter((sh) => !(_failed(sh) || _unseen(sh)));
             const _heldBack = _bad.length
-              ? _bad.map((sh) => (sh.panel ? sh.panel + ": " : "") + sh.checked).join("  |  ")
+              ? _bad.map((sh) => (sh.panel ? sh.panel + ": " : "") +
+                  (sh.checked || "NOT CHECKED - the look at this sheet came back empty, so nobody " +
+                                 "has seen it. Ask me to try again, or to send it anyway."))
+                  .join("  |  ")
               : null;
             const _sheetsFailed = _good.length === 0 && _bad.length > 0;
             if (_sheetsFailed) {

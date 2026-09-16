@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.274.1-2026-09-16-mask-preview-in-kv";
+const BUILD = "aura-core-v9.275.0-2026-09-16-ink-by-local-contrast";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -57653,29 +57653,50 @@ async function buildEditMask(env, parentUrl, spec) {
       for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) free[y * W + x] = 1;
       how = { box_px: [x0, y0, x1, y1] };
     } else {
-      const Y = new Float32Array(N), Cb = new Float32Array(N), Cr = new Float32Array(N);
-      const candY = [], candCb = [], candCr = [];
+      // v9.275 - LOCAL CONTRAST, NOT ONE SKIN COLOUR. One colour cannot cover a lit arm: the
+      // shoulder is bright, the shadowed side darker and redder, and v9.274 marked all of the
+      // shadow as "not skin". Lighting changes slowly; ink is sharply darker than what is right
+      // around it. So:
+      //   ink  = a pixel clearly darker than the average of its neighbourhood (a window wider
+      //          than a tattoo line or a filled handle, so solid black still reads as darker).
+      //   skin = a loose skin colour range with no brightness requirement - shadowed skin
+      //          qualifies, a grey-green shirt and a white wall do not.
+      //   free = skin and not ink. Grown by only a few pixels so gaps between leaves stay open.
+      const Y = new Float32Array(N), skinish = new Uint8Array(N);
       for (let i = 0, j = 0; i < N; i++, j += 4) {
         const r = px[j], g = px[j + 1], b = px[j + 2];
         const y = 0.299 * r + 0.587 * g + 0.114 * b;
         const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
         const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
-        Y[i] = y; Cb[i] = cb; Cr[i] = cr;
-        if (y > 60 && cr >= 135 && cr <= 180 && cb >= 77 && cb <= 127 && (i % 3 === 0)) {
-          candY.push(y); candCb.push(cb); candCr.push(cr);
+        Y[i] = y;
+        if (y > 35 && cr >= 133 && cr <= 185 && cb >= 70 && cb <= 130) skinish[i] = 1;
+      }
+      // Neighbourhood average via an integral image - one pass, any window size.
+      const IW = W + 1;
+      const integ = new Float64Array(IW * (H + 1));
+      for (let y = 0; y < H; y++) {
+        let rowSum = 0;
+        for (let x = 0; x < W; x++) {
+          rowSum += Y[y * W + x];
+          integ[(y + 1) * IW + (x + 1)] = integ[y * IW + (x + 1)] + rowSum;
         }
       }
-      if (candY.length < 200) return { ok: false, error: "could not find enough skin in the photo to use as a reference" };
-      const med = (a) => { const s = Float32Array.from(a).sort(); return s[s.length >> 1]; };
-      const sY = med(candY), sCb = med(candCb), sCr = med(candCr);
-      const tolC = 14, darkFloor = 0.62;
-      for (let i = 0; i < N; i++) {
-        if (Math.abs(Cb[i] - sCb) <= tolC && Math.abs(Cr[i] - sCr) <= tolC && Y[i] >= sY * darkFloor) free[i] = 1;
-      }
-      // Grow what is NOT free, so edges of lines and stipple are covered.
-      const R = Math.max(2, Math.round(Math.min(W, H) * 0.01));
+      const Rb = Math.max(8, Math.round(Math.min(W, H) * 0.06));
+      const ratio = 0.82, blackFloor = 45;
       const kept = new Uint8Array(N);
-      for (let i = 0; i < N; i++) kept[i] = free[i] ? 0 : 1;
+      for (let y = 0; y < H; y++) {
+        const y0 = Math.max(0, y - Rb), y1 = Math.min(H, y + Rb + 1);
+        for (let x = 0; x < W; x++) {
+          const x0 = Math.max(0, x - Rb), x1 = Math.min(W, x + Rb + 1);
+          const area = (x1 - x0) * (y1 - y0);
+          const sum = integ[y1 * IW + x1] - integ[y0 * IW + x1] - integ[y1 * IW + x0] + integ[y0 * IW + x0];
+          const i = y * W + x;
+          const ink = Y[i] < blackFloor || Y[i] < (sum / area) * ratio;
+          if (skinish[i] && !ink) free[i] = 1;
+          else kept[i] = 1;
+        }
+      }
+      const R = Math.max(1, Math.round(Math.min(W, H) * 0.004));
       const tmp = new Uint8Array(N), grown = new Uint8Array(N);
       for (let y = 0; y < H; y++) {
         const row = y * W; let c = 0;
@@ -57698,8 +57719,8 @@ async function buildEditMask(env, parentUrl, spec) {
         }
       }
       for (let i = 0; i < N; i++) if (grown[i]) free[i] = 0;
-      how = { auto: "protect_ink", their_skin: { y: Math.round(sY), cb: Math.round(sCb), cr: Math.round(sCr) },
-              colour_tolerance: tolC, dark_floor: darkFloor, grow_px: R };
+      how = { auto: "protect_ink", method: "local_contrast", window_px: Rb, darker_than: ratio,
+              black_floor: blackFloor, grow_px: R };
     }
     let open = 0;
     const raw = new Uint8Array(N * 4), prev = new Uint8Array(N * 4);

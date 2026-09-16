@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.262.0-2026-09-16-a-sheet-a-shop-can-print";
+const BUILD = "aura-core-v9.263.0-2026-09-16-ask-her-what-goes-on-each-sheet";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61092,8 +61092,43 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // is nothing left to subtract. The split is the fix, not a feature beside it.
           // ONE PANEL OR NONE RUNS THE IDENTICAL PATH IT ALWAYS DID - `panelList` falls back to a
           // single unnamed pass, `ADDED` still rides on it, and the reply keeps its old shape.
-          const panelList = (acted && Array.isArray(acted.panels) && acted.panels.length)
+          let panelList = (acted && Array.isArray(acted.panels) && acted.panels.length)
             ? acted.panels.slice(0, 6) : [null];
+
+          // ══ ASK HER ONE THING AND SHE ANSWERS IT WELL (2026-09-16) ══════════════════════
+          // The contract asks for `section: what part of the design goes there`, and she keeps
+          // sending the section alone. MEASURED: "left arm sleeve" and "left chest panel" - no
+          // description after the colon - and the two sheets came back as THE SAME DRAWING, because
+          // the only thing that differed between the two asks was a placement word.
+          // WHEN SHE GOT IT RIGHT she had written it out: "the dragon's head, horns and foreclaw",
+          // "the coiling body", "the tail and rear claws" - three different sheets, and she passed
+          // two of them.
+          // TIGHTENING THE CONTRACT FAILED TWICE. What has never failed is a SINGLE-PURPOSE
+          // question: `_lookAtMock` and the sheet checks are one ask with nothing else in the
+          // prompt, and her answers there have been specific and correct all session. So this asks
+          // her that one question on its own rather than hoping a fourteen-field object carries it.
+          // ONLY WHEN IT IS NEEDED - more than one section, and at least one of them arrived with
+          // no description. A complete list is hers already and is left alone.
+          const _thin = panelList.filter(Boolean).filter((x) => !String(x).includes(":"));
+          if (panelList.length > 1 && _thin.length && me && seeing) {
+            try {
+              const ask = await proxyToAgent(env,
+                "[Your artist sheets are being cut now, one per section: " +
+                panelList.map((x) => String(x).split(":")[0].trim()).join(", ") + ". " +
+                "For EACH one, what part of the new design actually goes on it? Answer as one line " +
+                "per section, `section: what is drawn on it`, and nothing else.]",
+                false, me, mockUrl, world);
+              if (ask && ask.reply && !ask.failed) {
+                const lines = _verdict(ask.reply, readAct(ask.reply))
+                  .split(/\r?\n/).map((l) => l.replace(/^[-*\d.\s]+/, "").trim())
+                  .filter((l) => l.includes(":") && l.length > 12).slice(0, 6);
+                if (lines.length === panelList.length) {
+                  console.log("[PANELS] she described each one: " + lines.join(" || "));
+                  panelList = lines;
+                }
+              }
+            } catch { /* her answer is an improvement, never a requirement */ }
+          }
           const sheets = [];
           for (const panel of panelList) {
             // `section: what goes there`. The label before the colon is what the sheet is CALLED

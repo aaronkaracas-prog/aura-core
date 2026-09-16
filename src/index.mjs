@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.261.0-2026-09-16-send-them-anyway-is-an-answer";
+const BUILD = "aura-core-v9.262.0-2026-09-16-a-sheet-a-shop-can-print";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -9010,9 +9010,21 @@ async function processCommand(line, env, isOp) {
           : TAT_SOURCE_LOCK + fnCard[1] +
             (fnOnly ? " Show me ONLY the " + fnOnly + " - that section alone, nothing from the " +
                       "rest of the piece, flat on plain white." : "");
+        // ══ THE ARTIST SHEET PRINTS AT THE SIZE OF ITS PIXELS (2026-09-16) ═════════════════
+        // This asked for no resolution at all, so it took the lane default - and MEASURED, every
+        // artist file came out of PRINT at ~5.1 INCHES. Nothing was wrong with the sizing: the
+        // placement table says a sleeve is 18in, PRINT's floor is 150 DPI and it refuses to
+        // upscale, so 5.12in means the line art held exactly 768 pixels of ink. A sleeve stencil
+        // needs twelve to eighteen inches and a shop cannot use five.
+        // THE WHOLE POINT OF THIS FILE IS THAT IT GETS PRINTED AND PUT ON SOMEBODY. 2k gives about
+        // 2,048px, which is 13.6in at the DPI floor - a real forearm - and PRINT tiles anything
+        // bigger across sheets, so asking for more never wastes it.
+        // `3:4` because a tattoo is taller than it is wide and the earlier square default spent
+        // half its pixels on white margin that the ink-box crop then threw away.
         const fr = await showIt(fnPrompt, env,
           { source: "style_transfer", refs: fnWas ? [fnUrl, fnWas] : [fnUrl],
             parent: /^ent_/.test(fnId) ? fnId : null,
+            res: "2k", aspect: "3:4",
             raw: true, subject: fnCard[0] + " of " + fnId });
         const fp = (fr && fr.payload) ? fr.payload : fr;
         if (!fp?.ok) return { cmd: "FINAL", payload: { ok: false,

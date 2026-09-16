@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.264.0-2026-09-16-not-checked-is-not-passed";
+const BUILD = "aura-core-v9.265.0-2026-09-16-a-go-ahead-is-not-a-second-request";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60948,6 +60948,28 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
       if (act === "artist" && !hasParent) act = "none";
+
+      // ══ A GO-AHEAD IS NOT A SECOND REQUEST (2026-09-16) ══════════════════════════════════
+      // MEASURED on one conversation: "I want it to come all the way down to my wrist and all the
+      // way down to my belly button" drew a full body (42.0s), and then "yeah show me" drew ANOTHER
+      // full body (42.9s). Two generations and two charges for one idea - and the second is a
+      // DIFFERENT picture, so what they finally approve is not what they reacted to.
+      // "SHOW ME" AFTER A DRAWING MEANS LOOK AT IT. The contract has said so since v1.78 and it
+      // keeps losing, because it is a judgement made fresh each turn against fourteen other fields.
+      // This is not a judgement: if the only thing they said is a go-ahead and a picture already
+      // exists, there is nothing new to draw, by definition.
+      // IT NEVER BLOCKS A REAL REQUEST - any sentence carrying content fails the test and draws.
+      if ((act === "draw" || act === "change") && lastDrawn && lastDrawn.image) {
+        const _said = String(said || "").replace(/^\s*(yeah|yep|ok(ay)?|yes|sure|alright),?\s*/i, "").trim();
+        const _bareGo = /^(go|go ahead|do it|show me|show it|lets see|let'?s see|let me see|see it|that'?s it|that'?s the one|that'?s perfect|that'?s right|perfect|nice|love it|great|cool|please|please do|draw it|make it|send it|)[\s.,!]*$/i.test(_said);
+        if (_bareGo) {
+          act = "none";
+          drew = { design: lastDrawn.design, image: lastDrawn.image, same_picture: true,
+                   note: "they said go, not something new - this is the picture already on screen " +
+                         "and nothing was drawn. Say what is there and let them look." };
+          console.log("[GOAHEAD] bare confirmation, picture already drawn - no second draw");
+        }
+      }
 
       // ══ WHAT SHE NAMED, RESOLVED TO REAL ADDRESSES ═══════════════════════════════════════
       // `use` holds her words - "photo", "piece", or an https address. Anything that does not

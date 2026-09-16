@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.258.0-2026-09-16-their-photograph-their-words";
+const BUILD = "aura-core-v9.257.0-2026-09-16-a-failed-sheet-is-not-shipped";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60025,28 +60025,6 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // than a history display.
       let lastDrawn = null;
       if (me) { try { lastDrawn = await env.AURA_KV.get("talk:last:" + me, "json"); } catch {} }
-
-      // ══ WHAT THEY ASKED FOR, IN THEIR WORDS (2026-09-16) ═══════════════════════════════════
-      // The request and the go-ahead arrive on DIFFERENT turns. Somebody says "I want it to come
-      // all the way down to my wrist and all the way down to my belly button", she answers, and the
-      // next thing they type is "yeah show me" - which is the turn that draws, and is worthless as
-      // an instruction. So the real request is remembered and carried to the turn that needs it.
-      // A CONFIRMATION IS NOT A REQUEST. Short, or one of the words people use to mean go ahead.
-      let askedFor = null;
-      const _isGo = (t) => !t || t.trim().length < 18 ||
-        /^(ok(ay)?|sure|yes|yeah|yep|go|do it|go ahead|show me|lets see|let'?s see|thats? (it|the one|perfect|right)|perfect|nice|love it|great|cool|please do|draw it|make it)\b/i
-          .test(t.trim());
-      if (me) {
-        try {
-          if (!_isGo(said)) {
-            askedFor = said.trim().slice(0, 300);
-            await env.AURA_KV.put("talk:ask:" + me, askedFor,
-              { expirationTtl: 30 * 24 * 3600 }).catch(() => {});
-          } else {
-            askedFor = await env.AURA_KV.get("talk:ask:" + me);
-          }
-        } catch {}
-      }
       // ══ THEY POINTED AT ONE (2026-09-07) ══════════════════════════════════════════════════
       // The wall is a fork, not the tattoo. When somebody taps a photograph, what travels is not
       // the picture - it is what SHE SAW IN IT. `import` describes it in a sentence, that sentence
@@ -61377,16 +61355,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               : ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +
                 "nothing else in frame - no studio, no furniture, no other people or hands, and " +
                 "no logo, watermark or text of any kind.";
-          // ══ EVOLVE THEIR PHOTOGRAPH, NOT THE LAST DRAWING (2026-09-16) ══════════════════
-          // `lastDrawn.design` is whatever came back last, so a second change evolved a MOCKUP, and
-          // a third evolved that - each generation inheriting every drift of the one before.
-          // MEASURED: one generation from a freshly imported photo came back clean; the same ask
-          // deeper in a conversation came back with both pecs covered and the other arm repainted.
-          // When it is THEIR OWN BODY the parent is their photograph, every time. They are not
-          // iterating on a drawing, they are looking at what a piece would be on them, and the only
-          // honest starting point for that is the picture they sent.
-          const parentId = (useRaw.length && useOne(useRaw[0], "design"))
-            || (onTheirSkin && refDesign) || lastDrawn.design;
+          const parentId = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
           const alsoRefs = useRaw.slice(useRaw.length && useOne(useRaw[0], "design") ? 1 : 0)
             .map((n) => useOne(n, "url")).filter(Boolean);
           // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════
@@ -61421,28 +61390,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // SHAPE as the source. The variable was never the words.
           // NOTHING IS ASKED FOR NOW, so the lane keeps the parent's own shape. `res` stays: a
           // chain is only as big as its smallest link and the last image goes to the artist.
-          // ══ THE CONVERSATION IS NOT THE INSTRUCTION (2026-09-16) ════════════════════════
-          // `acted.prompt` is HER rewrite of what the person said, and the rewrite is what breaks
-          // it. MEASURED against ONE freshly imported photograph, same model, same minute:
-          //   his words, 19: "extend the tattoo on his left arm down to the wrist and down his left
-          //     side to his navel, same style"                     -> RIGHT
-          //   plus one clause: "...do not touch his other arm"     -> RIGHT, and it reached the navel
-          //   her rewrite, 60: "...a chest-to-belly-button panel... clouds and flame trailing across
-          //     the chest and down to the navel"                   -> BOTH pecs covered, flames down
-          //     his stomach, the blackwork on his other arm painted over.
-          // NINE ATTEMPTS AT FIXING THE REWRITE FAILED - longer, shorter, facts about placement,
-          // facts about healed ink, a contract field demanding 25 words. Each moved her somewhere
-          // new and none fixed it, because a description of a picture is what the field asks her
-          // for and a description is what makes the model redraw the picture.
-          // SO HER SENTENCE IS NOT SENT ON THEIR OWN BODY. What goes out is what the PERSON said,
-          // carried from the turn they said it on. Her judgement is untouched and it is the whole
-          // conversation: she reads the photograph, asks what is ambiguous, decides WHEN to draw,
-          // and says afterwards whether it is right. She stops composing the instruction, nothing
-          // more. A drawing on white, or a job nobody put in words, still uses hers.
-          const evolveAsk = (onTheirSkin && askedFor) ? askedFor
-                                                     : ((acted.prompt || said) + cleanUp);
           const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
-            JSON.stringify({ prompt: evolveAsk, by: me,
+            JSON.stringify({ prompt: (acted.prompt || said) + cleanUp, by: me,
                              res: "2k",
                              ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
           const cp = (cr && cr.payload) ? cr.payload : cr;

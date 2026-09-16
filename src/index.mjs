@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.258.0-2026-09-16-their-photograph-their-words";
+const BUILD = "aura-core-v9.259.0-2026-09-16-an-edit-is-a-delta";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60026,27 +60026,6 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       let lastDrawn = null;
       if (me) { try { lastDrawn = await env.AURA_KV.get("talk:last:" + me, "json"); } catch {} }
 
-      // ══ WHAT THEY ASKED FOR, IN THEIR WORDS (2026-09-16) ═══════════════════════════════════
-      // The request and the go-ahead arrive on DIFFERENT turns. Somebody says "I want it to come
-      // all the way down to my wrist and all the way down to my belly button", she answers, and the
-      // next thing they type is "yeah show me" - which is the turn that draws, and is worthless as
-      // an instruction. So the real request is remembered and carried to the turn that needs it.
-      // A CONFIRMATION IS NOT A REQUEST. Short, or one of the words people use to mean go ahead.
-      let askedFor = null;
-      const _isGo = (t) => !t || t.trim().length < 18 ||
-        /^(ok(ay)?|sure|yes|yeah|yep|go|do it|go ahead|show me|lets see|let'?s see|thats? (it|the one|perfect|right)|perfect|nice|love it|great|cool|please do|draw it|make it)\b/i
-          .test(t.trim());
-      if (me) {
-        try {
-          if (!_isGo(said)) {
-            askedFor = said.trim().slice(0, 300);
-            await env.AURA_KV.put("talk:ask:" + me, askedFor,
-              { expirationTtl: 30 * 24 * 3600 }).catch(() => {});
-          } else {
-            askedFor = await env.AURA_KV.get("talk:ask:" + me);
-          }
-        } catch {}
-      }
       // ══ THEY POINTED AT ONE (2026-09-07) ══════════════════════════════════════════════════
       // The wall is a fork, not the tattoo. When somebody taps a photograph, what travels is not
       // the picture - it is what SHE SAW IN IT. `import` describes it in a sentence, that sentence
@@ -61421,7 +61400,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // SHAPE as the source. The variable was never the words.
           // NOTHING IS ASKED FOR NOW, so the lane keeps the parent's own shape. `res` stays: a
           // chain is only as big as its smallest link and the last image goes to the artist.
-          // ══ THE CONVERSATION IS NOT THE INSTRUCTION (2026-09-16) ════════════════════════
+          // ══ SHE WRITES IT, AND NOW SHE KNOWS THE SHAPE (2026-09-16) ═════════════════════
+          // This briefly sent the person's own words instead of hers, because her rewrites kept
+          // over-scoping. That was treating the symptom: the rewrite was bad because nothing had
+          // ever told her what an edit instruction IS.
+          // WHAT THE BIG MODELS DOCUMENT - checked against Google's and Black Forest Labs' own
+          // editing guidance - is that an edit is a DELTA with three parts: the single change
+          // placed exactly, what the new work should match, and a NAMED LIST of what must not
+          // change. "Preserve the hands, laptop, notebook, table texture" - enumerated, not
+          // "everything else", because a model cannot act on everything else. One change per run.
+          // THAT IS NOW A FACT IN HER STORE, so the sentence is hers again. She read the
+          // photograph, she heard what they want, and she is the only one who can name which of
+          // their pieces must be protected. Nothing in code can write that list.
           // `acted.prompt` is HER rewrite of what the person said, and the rewrite is what breaks
           // it. MEASURED against ONE freshly imported photograph, same model, same minute:
           //   his words, 19: "extend the tattoo on his left arm down to the wrist and down his left
@@ -61439,8 +61429,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // conversation: she reads the photograph, asks what is ambiguous, decides WHEN to draw,
           // and says afterwards whether it is right. She stops composing the instruction, nothing
           // more. A drawing on white, or a job nobody put in words, still uses hers.
-          const evolveAsk = (onTheirSkin && askedFor) ? askedFor
-                                                     : ((acted.prompt || said) + cleanUp);
+          const evolveAsk = (acted.prompt || said) + cleanUp;
           const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
             JSON.stringify({ prompt: evolveAsk, by: me,
                              res: "2k",

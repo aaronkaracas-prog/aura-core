@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.265.0-2026-09-16-a-go-ahead-is-not-a-second-request";
+const BUILD = "aura-core-v9.266.0-2026-09-16-serve-what-the-bytes-actually-are";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64231,12 +64231,45 @@ export class PublicEntry extends WorkerEntrypoint {
           for (let i = 0; i < bytes.length; i += 8192) {
             bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
           }
-          return { ok: true, id: key, b64: btoa(bin), type: "image/png", from: "r2" };
+          // ══ THE TYPE WAS RECORDED AND THEN THROWN AWAY (2026-09-16) ═══════════════════
+          // `type` was hardcoded "image/png" here, so every object served claimed to be a PNG no
+          // matter what its bytes were. IMPORT already stores the truth - `httpMetadata.contentType`
+          // is written with the real type on the way in - and this simply never read it back.
+          // MEASURED, one AVIF photograph: stored correctly as image/avif, served as image/png,
+          // attached to the turn as image/jpeg, and the model answered
+          //   AI_APICallError 8006: Invalid data for image - reason corrupt image data
+          // then every later turn died on the same attachment, the breaker opened, and the error
+          // told us to go and check provider credits. Four layers, one file, and the only honest
+          // fact about it was recorded in the first three seconds.
+          // THE `.png` KEY IS A NAME, NOT A CLAIM - the bytes under it are whatever arrived, so the
+          // metadata is the only thing that knows, and now it is what gets returned.
+          return { ok: true, id: key, b64: btoa(bin),
+                   type: obj.httpMetadata?.contentType || "image/png", from: "r2" };
         }
       }
       const b64 = await this.env.AURA_KV.get("image:" + key).catch(() => null);
       if (!b64) return { ok: false, error: "NOT_FOUND", id: key };
-      return { ok: true, id: key, b64, type: "image/png", from: "kv" };
+      // KV holds base64 with no metadata beside it, so the BYTES are asked. Matching on the base64
+      // text does not work - `ftyp` sits at byte 4 and base64 packs in threes, so the same marker
+      // encodes differently depending on alignment. Decode the header and read it properly.
+      const _sniff = (b64s) => {
+        try {
+          const head = atob(String(b64s).slice(0, 64));
+          const B = (i) => head.charCodeAt(i);
+          if (B(0) === 0xFF && B(1) === 0xD8) return "image/jpeg";
+          if (B(0) === 0x89 && head.slice(1, 4) === "PNG") return "image/png";
+          if (head.slice(0, 3) === "GIF") return "image/gif";
+          if (head.slice(0, 4) === "RIFF" && head.slice(8, 12) === "WEBP") return "image/webp";
+          if (head.slice(4, 8) === "ftyp") {
+            const brand = head.slice(8, 12);
+            if (brand === "avif" || brand === "avis") return "image/avif";
+            if (brand.startsWith("hei") || brand === "mif1" || brand === "msf1") return "image/heic";
+            return "video/mp4";
+          }
+        } catch { /* an unreadable header is a png exactly as often as it was before */ }
+        return "image/png";
+      };
+      return { ok: true, id: key, b64, type: _sniff(b64), from: "kv" };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

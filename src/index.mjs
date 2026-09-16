@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.270.0-2026-09-16-the-drawer-hears-the-conversation";
+const BUILD = "aura-core-v9.271.0-2026-09-16-plan-edit-check";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60406,8 +60406,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "\"let's see it\" - or they asked outright for a picture. Never on your own judgement " +
         "that the idea is good enough.\n" +
         "WHEN `do` IS `change`: a piece is already on screen and they are modifying it - meaner, " +
-        "more colour, lose the flowers, that but bigger. `prompt` is then ONLY the change, in a " +
-        "few words, because the picture itself is the starting point.\n" +
+        "more colour, lose the flowers, that but bigger. `prompt` is then an EDIT INSTRUCTION " +
+        "(below), because the picture itself is the starting point.\n" +
         // ══ SHE UNDERSTOOD AND HAD NOWHERE TO PUT IT (2026-09-10) ═══════════════════════════
         // MEASURED, twice, once she had been told what a parlour needs: somebody said "I love it,
         // that's exactly what I want, I'm going to book in with my artist" and she answered
@@ -60452,7 +60452,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // density and filling was explaining a job the model already knows.
         "WRITING `prompt`: WHAT THEY ASKED FOR, AND THE JOB. \"a dragon, cover-up\". \"add a " +
         "shark\". \"in colour\". \"a koi on the forearm\".\n" +
-        "Do not describe what is already in the picture - the thing that draws it is holding the " +
+        // ══ AN EDIT INSTRUCTION HAS ONE DOCUMENTED SHAPE (2026-09-16, v9.271) ═══════════════
+        // Conversational image editing, as Google documents it for developers and as the 2026
+        // research on it finds: people say what should CHANGE and leave what should STAY unsaid,
+        // and editors only act on what is said. The planner states both. Google's own template:
+        // "Using the provided image, change only X. Keep everything else exactly the same."
+        // One change, where it goes, and what stays NAMED IN A FEW WORDS - never described.
+        "WHEN THE PICTURE IS MADE FROM A PICTURE THAT EXISTS - a change to what is on screen, or " +
+        "the first drawing on the photograph of their own body for an add-on, cover-up or " +
+        "rework - `prompt` is ONE EDIT INSTRUCTION in exactly this shape:\n" +
+        "  Using the provided image, <the one change, and where it goes>. Keep <what they " +
+        "already have, named in a few words> and everything else exactly the same.\n" +
+        "Examples: \"Using the provided image, add sunflowers with Catherine in script below " +
+        "the hammer. Keep their hammer tattoo and everything else exactly the same.\" / " +
+        "\"Using the provided image, make the dragon's scales red. Keep the rest of the dragon " +
+        "and everything else exactly the same.\" / \"Using the provided image, cover their " +
+        "old tattoo with a dragon. Keep their arm and everything else exactly the same.\"\n" +
+        "Name what stays; never describe it. One change per instruction.\n" +
+        "Beyond naming what stays, do not describe what is already in the picture - the thing that draws it is holding the " +
         "same picture, and everything you describe is something you are asking it to KEEP. On a " +
         "cover-up that is exactly backwards.\n" +
         "Do not explain the craft to it either. \"cover-up\" already means bigger, darker and " +
@@ -61602,9 +61619,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // when lastDrawn.design IS refDesign, so it could only ever return what the last term
           // already returned. It never changed the parent. What sent "try that again" back to the
           // bare arm was `use: ["photo"]` - measured on pta_af518d910eac5f03.
-          const parentId = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
-          const alsoRefs = useRaw.slice(useRaw.length && useOne(useRaw[0], "design") ? 1 : 0)
-            .map((n) => useOne(n, "url")).filter(Boolean);
+          // ══ THE CURRENT IMAGE, AND ONLY IT (2026-09-16, v9.271 - Aaron, locked) ═══════════
+          // What reaches the editor is the current image and the instruction. The current image
+          // is their photograph until something has been drawn, then the last drawing - every
+          // time. `use` no longer picks the parent: on pta_af518d910eac5f03 she named "photo" on
+          // "try that again" and the edit restarted from the bare arm. Nothing else rides along.
+          const parentId = _drewNow() ? lastDrawn.design : (refDesign || lastDrawn.design);
+          const alsoRefs = [];
           // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════
           // Added this morning to give an artist one file per element. Every run produced
           // COUSINS: four evolves with a part name in front - "upper arm panel", "wrist cuff" -
@@ -61687,7 +61708,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ? " Their existing tattoo stays exactly as it is - same size, same position, same " +
               "lines - not redrawn, not moved, and not covered by any of the new work."
             : "";
-          const evolveAsk = (acted.prompt || said) + cleanUp + _protectOld;
+          // v9.271: `_protectOld` is no longer appended. Her edit instruction now names what
+          // stays, in the documented shape, and a second author saying it differently is two
+          // instructions to reconcile. The constant above is left in place and unused.
+          void _protectOld;
+          const evolveAsk = (acted.prompt || said) + cleanUp;
           // ══ THE THING THAT DRAWS HEARS THE CONVERSATION (2026-09-16, v9.270) ═══════════════
           // Grok, ChatGPT and Meta do not hand an image model a sentence somebody else wrote. The
           // conversation model holds the image generation TOOL: it sees the photograph and every
@@ -61714,21 +61739,44 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             if (u && u !== refUrl && !(lastDrawn && u === lastDrawn.image))
               _talkImgs.push({ label: "They also pointed at this picture.", url: u });
           }
-          const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
+          let cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
             JSON.stringify({ prompt: evolveAsk, by: me,
                              res: "2k",
                              ...(alsoRefs.length ? { with: alsoRefs } : {}),
                              talk: { turns: _turns.slice(-12).map((h) => ({ role: h.role, said: String(h.said).slice(0, 2000) })),
                                      said, images: _talkImgs.slice(0, 4) },
                              lane: "tattoo_talk" }), env, true);
-          const cp = (cr && cr.payload) ? cr.payload : cr;
-          const _mockNote = (cp?.ok && cp.image_url) ? await _lookAtMock(cp.image_url) : null;
+          let cp = (cr && cr.payload) ? cr.payload : cr;
+          let _mockNote = (cp?.ok && cp.image_url) ? await _lookAtMock(cp.image_url) : null;
+          // ══ CHECK, THEN ONE RETRY (2026-09-16, v9.271) ════════════════════════════════════
+          // Plan, edit, check - the loop every conversational editing system runs. The check was
+          // here and it reported and stopped. The artist sheets already hand her verdict back as
+          // the correction, once; the mock-up now does the same, from the SAME current image, so
+          // a wrong attempt is never the starting point of the next one. A second WRONG stands
+          // and rides in the reply.
+          let _retried = null;
+          if (cp?.ok && cp.image_url && !cp.talk && _mockNote && /^\s*WRONG\b/i.test(_mockNote)) {
+            const _why = _mockNote.replace(/^\s*WRONG\b[\s:,.-]*/i, "").trim();
+            console.log("[AGAIN] mock-up - " + _mockNote);
+            try {
+              const cr2 = await processCommand("IMAGE EVOLVE " + parentId + " " +
+                JSON.stringify({ prompt: evolveAsk + " The last attempt was wrong: " + _why + " Fix that.",
+                                 by: me, res: "2k" }), env, true);
+              const cp2 = (cr2 && cr2.payload) ? cr2.payload : cr2;
+              if (cp2?.ok && cp2.image_url) {
+                _retried = { first_image: cp.image_url, first_verdict: _mockNote };
+                cr = cr2; cp = cp2;
+                _mockNote = await _lookAtMock(cp2.image_url);
+              }
+            } catch { /* the first attempt still stands, with its verdict */ }
+          }
           drew = (cp?.ok && cp.image_url)
             ? { design: cp.child, image: cp.image_url,
                 changed: (cp.talk && cp.talk.prompt) || acted.prompt || said,
                 from: parentId,
                 // What the drawing model itself wrote and said - the lane ran if this is here.
                 ...(cp.talk ? { drawer: cp.talk } : {}),
+                ...(_retried ? { retried: _retried } : {}),
                 ...(_mockNote ? { she_looked: _mockNote,
                                   placement_ok: /^\s*RIGHT\b/i.test(_mockNote) } : {}),
                 ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) }

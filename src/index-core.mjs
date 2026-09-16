@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.257.0-2026-09-16-a-failed-sheet-is-not-shipped";
+const BUILD = "aura-core-v9.267.0-2026-09-16-the-door-the-world-uses";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -9010,9 +9010,21 @@ async function processCommand(line, env, isOp) {
           : TAT_SOURCE_LOCK + fnCard[1] +
             (fnOnly ? " Show me ONLY the " + fnOnly + " - that section alone, nothing from the " +
                       "rest of the piece, flat on plain white." : "");
+        // ══ THE ARTIST SHEET PRINTS AT THE SIZE OF ITS PIXELS (2026-09-16) ═════════════════
+        // This asked for no resolution at all, so it took the lane default - and MEASURED, every
+        // artist file came out of PRINT at ~5.1 INCHES. Nothing was wrong with the sizing: the
+        // placement table says a sleeve is 18in, PRINT's floor is 150 DPI and it refuses to
+        // upscale, so 5.12in means the line art held exactly 768 pixels of ink. A sleeve stencil
+        // needs twelve to eighteen inches and a shop cannot use five.
+        // THE WHOLE POINT OF THIS FILE IS THAT IT GETS PRINTED AND PUT ON SOMEBODY. 2k gives about
+        // 2,048px, which is 13.6in at the DPI floor - a real forearm - and PRINT tiles anything
+        // bigger across sheets, so asking for more never wastes it.
+        // `3:4` because a tattoo is taller than it is wide and the earlier square default spent
+        // half its pixels on white margin that the ink-box crop then threw away.
         const fr = await showIt(fnPrompt, env,
           { source: "style_transfer", refs: fnWas ? [fnUrl, fnWas] : [fnUrl],
             parent: /^ent_/.test(fnId) ? fnId : null,
+            res: "2k", aspect: "3:4",
             raw: true, subject: fnCard[0] + " of " + fnId });
         const fp = (fr && fr.payload) ? fr.payload : fr;
         if (!fp?.ok) return { cmd: "FINAL", payload: { ok: false,
@@ -60025,6 +60037,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // than a history display.
       let lastDrawn = null;
       if (me) { try { lastDrawn = await env.AURA_KV.get("talk:last:" + me, "json"); } catch {} }
+
       // ══ THEY POINTED AT ONE (2026-09-07) ══════════════════════════════════════════════════
       // The wall is a fork, not the tattoo. When somebody taps a photograph, what travels is not
       // the picture - it is what SHE SAW IN IT. `import` describes it in a sentence, that sentence
@@ -60936,6 +60949,28 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // Nothing on screen is nothing to send an artist.
       if (act === "artist" && !hasParent) act = "none";
 
+      // ══ A GO-AHEAD IS NOT A SECOND REQUEST (2026-09-16) ══════════════════════════════════
+      // MEASURED on one conversation: "I want it to come all the way down to my wrist and all the
+      // way down to my belly button" drew a full body (42.0s), and then "yeah show me" drew ANOTHER
+      // full body (42.9s). Two generations and two charges for one idea - and the second is a
+      // DIFFERENT picture, so what they finally approve is not what they reacted to.
+      // "SHOW ME" AFTER A DRAWING MEANS LOOK AT IT. The contract has said so since v1.78 and it
+      // keeps losing, because it is a judgement made fresh each turn against fourteen other fields.
+      // This is not a judgement: if the only thing they said is a go-ahead and a picture already
+      // exists, there is nothing new to draw, by definition.
+      // IT NEVER BLOCKS A REAL REQUEST - any sentence carrying content fails the test and draws.
+      if ((act === "draw" || act === "change") && lastDrawn && lastDrawn.image) {
+        const _said = String(said || "").replace(/^\s*(yeah|yep|ok(ay)?|yes|sure|alright),?\s*/i, "").trim();
+        const _bareGo = /^(go|go ahead|do it|show me|show it|lets see|let'?s see|let me see|see it|that'?s it|that'?s the one|that'?s perfect|that'?s right|perfect|nice|love it|great|cool|please|please do|draw it|make it|send it|)[\s.,!]*$/i.test(_said);
+        if (_bareGo) {
+          act = "none";
+          drew = { design: lastDrawn.design, image: lastDrawn.image, same_picture: true,
+                   note: "they said go, not something new - this is the picture already on screen " +
+                         "and nothing was drawn. Say what is there and let them look." };
+          console.log("[GOAHEAD] bare confirmation, picture already drawn - no second draw");
+        }
+      }
+
       // ══ WHAT SHE NAMED, RESOLVED TO REAL ADDRESSES ═══════════════════════════════════════
       // `use` holds her words - "photo", "piece", or an https address. Anything that does not
       // resolve is dropped rather than guessed at: a made-up reference is a picture of somebody
@@ -61079,8 +61114,43 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // is nothing left to subtract. The split is the fix, not a feature beside it.
           // ONE PANEL OR NONE RUNS THE IDENTICAL PATH IT ALWAYS DID - `panelList` falls back to a
           // single unnamed pass, `ADDED` still rides on it, and the reply keeps its old shape.
-          const panelList = (acted && Array.isArray(acted.panels) && acted.panels.length)
+          let panelList = (acted && Array.isArray(acted.panels) && acted.panels.length)
             ? acted.panels.slice(0, 6) : [null];
+
+          // ══ ASK HER ONE THING AND SHE ANSWERS IT WELL (2026-09-16) ══════════════════════
+          // The contract asks for `section: what part of the design goes there`, and she keeps
+          // sending the section alone. MEASURED: "left arm sleeve" and "left chest panel" - no
+          // description after the colon - and the two sheets came back as THE SAME DRAWING, because
+          // the only thing that differed between the two asks was a placement word.
+          // WHEN SHE GOT IT RIGHT she had written it out: "the dragon's head, horns and foreclaw",
+          // "the coiling body", "the tail and rear claws" - three different sheets, and she passed
+          // two of them.
+          // TIGHTENING THE CONTRACT FAILED TWICE. What has never failed is a SINGLE-PURPOSE
+          // question: `_lookAtMock` and the sheet checks are one ask with nothing else in the
+          // prompt, and her answers there have been specific and correct all session. So this asks
+          // her that one question on its own rather than hoping a fourteen-field object carries it.
+          // ONLY WHEN IT IS NEEDED - more than one section, and at least one of them arrived with
+          // no description. A complete list is hers already and is left alone.
+          const _thin = panelList.filter(Boolean).filter((x) => !String(x).includes(":"));
+          if (panelList.length > 1 && _thin.length && me && seeing) {
+            try {
+              const ask = await proxyToAgent(env,
+                "[Your artist sheets are being cut now, one per section: " +
+                panelList.map((x) => String(x).split(":")[0].trim()).join(", ") + ". " +
+                "For EACH one, what part of the new design actually goes on it? Answer as one line " +
+                "per section, `section: what is drawn on it`, and nothing else.]",
+                false, me, mockUrl, world);
+              if (ask && ask.reply && !ask.failed) {
+                const lines = _verdict(ask.reply, readAct(ask.reply))
+                  .split(/\r?\n/).map((l) => l.replace(/^[-*\d.\s]+/, "").trim())
+                  .filter((l) => l.includes(":") && l.length > 12).slice(0, 6);
+                if (lines.length === panelList.length) {
+                  console.log("[PANELS] she described each one: " + lines.join(" || "));
+                  panelList = lines;
+                }
+              }
+            } catch { /* her answer is an improvement, never a requirement */ }
+          }
           const sheets = [];
           for (const panel of panelList) {
             // `section: what goes there`. The label before the colon is what the sheet is CALLED
@@ -61218,7 +61288,42 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // wrong, which is the answer a tattooist gives - this is not right yet, let me redo it.
             // THE PERSON IS NEVER STUCK: `retry_the_drawing` says what happens next, and every
             // underlying command still answers a direct ask. The gate is on the automatic pack.
-            const _sheetsFailed = sheets.some((sh) => sh.checked && /^\s*WRONG\b/i.test(sh.checked));
+            // ══ PER SHEET, NOT ALL OR NOTHING (2026-09-16) ════════════════════════════════
+            // The gate first blocked the WHOLE pack when any one sheet failed. On a split job that
+            // costs them the good panels to punish the bad one - and the panels are separate
+            // tattoos on separate days, so there is no reason a correct forearm sheet should be
+            // withheld because the stomach sheet came back with healed ink in it.
+            // SO A FAILED SHEET IS DROPPED AND THE REST GO. `held_back` says which and why.
+            // ══ SEND THEM ANYWAY IS AN ANSWER SOMEBODY CAN GIVE (2026-09-16) ══════════════
+            // The gate already tells them "or tell me to send them anyway if you want to look for
+            // yourself" - and nothing was listening, so the offer was a sentence that did nothing.
+            // A person who wants to hold the files and judge them is entitled to. The verdicts ride
+            // along either way, so nobody is being told a bad sheet is a good one.
+            const _sendAnyway = /\b(send (them|it|those)? ?anyway|send anyway|give (them|it) to me anyway|i('| wi)?ll look( for myself)?|print (them|it) anyway|anyway)\b/i
+              .test(String(said || ""));
+            // ══ NOT CHECKED IS NOT PASSED (2026-09-16) ═══════════════════════════════════
+            // MEASURED: a two-panel pack where the arm sheet failed and was held, and the chest
+            // sheet went out with `checked: null` - her verdict never came back, because the look
+            // hit an empty reply from the provider. So a sheet nobody had looked at was handed over
+            // as if it were fine, while the one she HAD looked at was correctly held.
+            // AN UNSEEN SHEET AND A GOOD SHEET ARE NOT THE SAME THING. The whole promise of this
+            // gate is that nothing reaches a shop without being looked at, and silence is not a
+            // pass - it is the absence of one.
+            // IT IS HELD LIKE ANY OTHER FAILURE, with a reason that says what actually happened,
+            // so nobody reads it as her having found something wrong.
+            const _unseen = (sh) => !sh.checked;
+            const _failed = (sh) => sh.checked && /^\s*WRONG\b/i.test(sh.checked);
+            const _bad = _sendAnyway ? []
+              : sheets.filter((sh) => _failed(sh) || _unseen(sh));
+            const _good = _sendAnyway ? sheets
+              : sheets.filter((sh) => !(_failed(sh) || _unseen(sh)));
+            const _heldBack = _bad.length
+              ? _bad.map((sh) => (sh.panel ? sh.panel + ": " : "") +
+                  (sh.checked || "NOT CHECKED - the look at this sheet came back empty, so nobody " +
+                                 "has seen it. Ask me to try again, or to send it anyway."))
+                  .join("  |  ")
+              : null;
+            const _sheetsFailed = _good.length === 0 && _bad.length > 0;
             if (_sheetsFailed) {
               drew = {
                 from: shopParent,
@@ -61241,17 +61346,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // line art the needle follows. `flat_artwork` above stays the first sheet so a
               // single-panel job reads exactly as it did before this existed.
               ...(sheets.length > 1
-                ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
+                ? { panels: _good.map((sh) => ({ section: sh.panel, flat: sh.flat,
                                                   line: sh.line || null,
                                                   pdf: sh.pdf || null,
                                                   ok: sh.ok === true,
                                                   // Her verdict on THIS sheet. A panel whose
                                                   // picture disagrees with its label says so here.
                                                   checked: sh.checked || null })),
-                    panel_count: sheets.length,
+                    panel_count: _good.length,
+                    // Named, so nobody has to notice a sheet is missing.
+                    ...(_heldBack ? { held_back: _heldBack } : {}),
                     // How many of them she actually passed. A pack is finished when this equals
                     // panel_count and not before.
-                    panels_ok: sheets.filter((sh) => sh.ok).length }
+                    panels_ok: _good.filter((sh) => sh.ok).length }
                 : {}),
               ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,
                              print_sheets: pdfSheets } : {}),
@@ -61355,7 +61462,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               : ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +
                 "nothing else in frame - no studio, no furniture, no other people or hands, and " +
                 "no logo, watermark or text of any kind.";
-          const parentId = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
+          // ══ EVOLVE THEIR PHOTOGRAPH, NOT THE LAST DRAWING (2026-09-16) ══════════════════
+          // `lastDrawn.design` is whatever came back last, so a second change evolved a MOCKUP, and
+          // a third evolved that - each generation inheriting every drift of the one before.
+          // MEASURED: one generation from a freshly imported photo came back clean; the same ask
+          // deeper in a conversation came back with both pecs covered and the other arm repainted.
+          // When it is THEIR OWN BODY the parent is their photograph, every time. They are not
+          // iterating on a drawing, they are looking at what a piece would be on them, and the only
+          // honest starting point for that is the picture they sent.
+          const parentId = (useRaw.length && useOne(useRaw[0], "design"))
+            || (onTheirSkin && refDesign) || lastDrawn.design;
           const alsoRefs = useRaw.slice(useRaw.length && useOne(useRaw[0], "design") ? 1 : 0)
             .map((n) => useOne(n, "url")).filter(Boolean);
           // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════
@@ -61390,8 +61506,38 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // SHAPE as the source. The variable was never the words.
           // NOTHING IS ASKED FOR NOW, so the lane keeps the parent's own shape. `res` stays: a
           // chain is only as big as its smallest link and the last image goes to the artist.
+          // ══ SHE WRITES IT, AND NOW SHE KNOWS THE SHAPE (2026-09-16) ═════════════════════
+          // This briefly sent the person's own words instead of hers, because her rewrites kept
+          // over-scoping. That was treating the symptom: the rewrite was bad because nothing had
+          // ever told her what an edit instruction IS.
+          // WHAT THE BIG MODELS DOCUMENT - checked against Google's and Black Forest Labs' own
+          // editing guidance - is that an edit is a DELTA with three parts: the single change
+          // placed exactly, what the new work should match, and a NAMED LIST of what must not
+          // change. "Preserve the hands, laptop, notebook, table texture" - enumerated, not
+          // "everything else", because a model cannot act on everything else. One change per run.
+          // THAT IS NOW A FACT IN HER STORE, so the sentence is hers again. She read the
+          // photograph, she heard what they want, and she is the only one who can name which of
+          // their pieces must be protected. Nothing in code can write that list.
+          // `acted.prompt` is HER rewrite of what the person said, and the rewrite is what breaks
+          // it. MEASURED against ONE freshly imported photograph, same model, same minute:
+          //   his words, 19: "extend the tattoo on his left arm down to the wrist and down his left
+          //     side to his navel, same style"                     -> RIGHT
+          //   plus one clause: "...do not touch his other arm"     -> RIGHT, and it reached the navel
+          //   her rewrite, 60: "...a chest-to-belly-button panel... clouds and flame trailing across
+          //     the chest and down to the navel"                   -> BOTH pecs covered, flames down
+          //     his stomach, the blackwork on his other arm painted over.
+          // NINE ATTEMPTS AT FIXING THE REWRITE FAILED - longer, shorter, facts about placement,
+          // facts about healed ink, a contract field demanding 25 words. Each moved her somewhere
+          // new and none fixed it, because a description of a picture is what the field asks her
+          // for and a description is what makes the model redraw the picture.
+          // SO HER SENTENCE IS NOT SENT ON THEIR OWN BODY. What goes out is what the PERSON said,
+          // carried from the turn they said it on. Her judgement is untouched and it is the whole
+          // conversation: she reads the photograph, asks what is ambiguous, decides WHEN to draw,
+          // and says afterwards whether it is right. She stops composing the instruction, nothing
+          // more. A drawing on white, or a job nobody put in words, still uses hers.
+          const evolveAsk = (acted.prompt || said) + cleanUp;
           const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
-            JSON.stringify({ prompt: (acted.prompt || said) + cleanUp, by: me,
+            JSON.stringify({ prompt: evolveAsk, by: me,
                              res: "2k",
                              ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
           const cp = (cr && cr.payload) ? cr.payload : cr;
@@ -64085,12 +64231,45 @@ export class PublicEntry extends WorkerEntrypoint {
           for (let i = 0; i < bytes.length; i += 8192) {
             bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
           }
-          return { ok: true, id: key, b64: btoa(bin), type: "image/png", from: "r2" };
+          // ══ THE TYPE WAS RECORDED AND THEN THROWN AWAY (2026-09-16) ═══════════════════
+          // `type` was hardcoded "image/png" here, so every object served claimed to be a PNG no
+          // matter what its bytes were. IMPORT already stores the truth - `httpMetadata.contentType`
+          // is written with the real type on the way in - and this simply never read it back.
+          // MEASURED, one AVIF photograph: stored correctly as image/avif, served as image/png,
+          // attached to the turn as image/jpeg, and the model answered
+          //   AI_APICallError 8006: Invalid data for image - reason corrupt image data
+          // then every later turn died on the same attachment, the breaker opened, and the error
+          // told us to go and check provider credits. Four layers, one file, and the only honest
+          // fact about it was recorded in the first three seconds.
+          // THE `.png` KEY IS A NAME, NOT A CLAIM - the bytes under it are whatever arrived, so the
+          // metadata is the only thing that knows, and now it is what gets returned.
+          return { ok: true, id: key, b64: btoa(bin),
+                   type: obj.httpMetadata?.contentType || "image/png", from: "r2" };
         }
       }
       const b64 = await this.env.AURA_KV.get("image:" + key).catch(() => null);
       if (!b64) return { ok: false, error: "NOT_FOUND", id: key };
-      return { ok: true, id: key, b64, type: "image/png", from: "kv" };
+      // KV holds base64 with no metadata beside it, so the BYTES are asked. Matching on the base64
+      // text does not work - `ftyp` sits at byte 4 and base64 packs in threes, so the same marker
+      // encodes differently depending on alignment. Decode the header and read it properly.
+      const _sniff = (b64s) => {
+        try {
+          const head = atob(String(b64s).slice(0, 64));
+          const B = (i) => head.charCodeAt(i);
+          if (B(0) === 0xFF && B(1) === 0xD8) return "image/jpeg";
+          if (B(0) === 0x89 && head.slice(1, 4) === "PNG") return "image/png";
+          if (head.slice(0, 3) === "GIF") return "image/gif";
+          if (head.slice(0, 4) === "RIFF" && head.slice(8, 12) === "WEBP") return "image/webp";
+          if (head.slice(4, 8) === "ftyp") {
+            const brand = head.slice(8, 12);
+            if (brand === "avif" || brand === "avis") return "image/avif";
+            if (brand.startsWith("hei") || brand === "mif1" || brand === "msf1") return "image/heic";
+            return "video/mp4";
+          }
+        } catch { /* an unreadable header is a png exactly as often as it was before */ }
+        return "image/png";
+      };
+      return { ok: true, id: key, b64, type: _sniff(b64), from: "kv" };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }
@@ -66642,18 +66821,63 @@ function openAlbum(idx){
 
 
 
-    if (url.pathname.startsWith("/image/") && request.method === "GET") {
+    // ══ THIS IS THE ONE THE WORLD ACTUALLY USES (2026-09-16) ═══════════════════════════════
+    // `auras.guide/*` routes to THIS worker, not to aura-host - so every picture every model ever
+    // fetches came through here, and here said `image/png` about all of them.
+    // MEASURED: an AVIF photograph, stored correctly, served from here as image/png, attached to a
+    // turn as image/jpeg, and the model answered
+    //   AI_APICallError 8006: Invalid data for image - reason corrupt image data
+    // then every later turn on that conversation died on the same attachment and the breaker
+    // opened. The note under /doc/ below has known about this since 2026-09-10 - "hardcodes
+    // image/png, so a PDF served through it downloads as a broken PNG" - and a second route was
+    // added beside it rather than this one being fixed.
+    // R2 KNOWS. Import writes `httpMetadata.contentType` with the real type on the way in.
+    // KV DOES NOT, so the first bytes are read instead - every format worth serving says what it
+    // is in its own header, and anything unrecognised is a png exactly as often as it was before.
+    // HEAD ANSWERS TOO. A client asking what a file is got `200 text/plain` from the catch-all,
+    // which reads as "this is a text file" rather than "I do not do HEAD".
+    if (url.pathname.startsWith("/image/") &&
+        (request.method === "GET" || request.method === "HEAD")) {
       const id = url.pathname.slice("/image/".length).replace(/\.png$/, "");
+      const _head = request.method === "HEAD";
+      const _sniff = (b64s) => {
+        try {
+          const h = atob(String(b64s).slice(0, 64));
+          const B = (i) => h.charCodeAt(i);
+          if (B(0) === 0xFF && B(1) === 0xD8) return "image/jpeg";
+          if (B(0) === 0x89 && h.slice(1, 4) === "PNG") return "image/png";
+          if (h.slice(0, 3) === "GIF") return "image/gif";
+          if (h.slice(0, 4) === "RIFF" && h.slice(8, 12) === "WEBP") return "image/webp";
+          if (h.slice(0, 4) === "%PDF") return "application/pdf";
+          if (h.slice(4, 8) === "ftyp") {
+            const br = h.slice(8, 12);
+            if (br === "avif" || br === "avis") return "image/avif";
+            if (br.startsWith("hei") || br === "mif1" || br === "msf1") return "image/heic";
+            return "video/mp4";
+          }
+        } catch {}
+        return "image/png";
+      };
       // PRIMARY: serve from permanent R2
       if (env.AURA_IMAGES) {
         const obj = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null);
-        if (obj) return new Response(obj.body, { headers: { "content-type": "image/png", "cache-control": "public, max-age=31536000" } });
+        if (obj) {
+          const ct = obj.httpMetadata?.contentType || "image/png";
+          if (_head) { await obj.body?.cancel?.().catch(() => {}); }
+          return new Response(_head ? null : obj.body, { headers: {
+            "content-type": ct,
+            ...(obj.size ? { "content-length": String(obj.size) } : {}),
+            "cache-control": "public, max-age=31536000, immutable" } });
+        }
       }
       // FALLBACK: legacy/safety-net KV copy
       const b64 = await env.AURA_KV.get(`image:${id}`).catch(() => null);
-      if (!b64) return new Response("Image not found", { status: 404 });
+      if (!b64) return new Response(_head ? null : "Image not found", { status: 404 });
       const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-      return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "public, max-age=31536000" } });
+      return new Response(_head ? null : bytes, { headers: {
+        "content-type": _sniff(b64),
+        "content-length": String(bytes.length),
+        "cache-control": "public, max-age=31536000, immutable" } });
     }
 
     // ══ /doc/<id> ── THE SAME SHELF, THE HONEST CONTENT-TYPE (2026-09-10) ═══════════════════

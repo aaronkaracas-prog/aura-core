@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.268.0-2026-09-16-the-second-ask-is-what-works";
+const BUILD = "aura-core-v9.269.0-2026-09-16-their-old-piece-stays";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61586,7 +61586,28 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // conversation: she reads the photograph, asks what is ambiguous, decides WHEN to draw,
           // and says afterwards whether it is right. She stops composing the instruction, nothing
           // more. A drawing on white, or a job nobody put in words, still uses hers.
-          const evolveAsk = (acted.prompt || said) + cleanUp;
+          // ══ ONE CLAUSE THAT IS TRUE OF EVERY ADD-ON (2026-09-16) ════════════════════════
+          // Three times now she has been told - in the contract, and twice in her own facts - to
+          // write the protection into her prompt herself, and three times she has not. MEASURED,
+          // the exact string that went out for a memorial around a healed hammer:
+          //   "...added BESIDE an existing ornate hammer tattoo... 'Catherine' in fine flowing
+          //    script ACROSS the flowers..."
+          // Not one word protecting the hammer. It came back larger, rotated, with sunflowers over
+          // its handle - and her check said exactly that, afterwards, when the drawing was done.
+          // SHE IS EXCELLENT AT THE THINGS SHE IS EXCELLENT AT - reading the picture, judging it,
+          // talking to the person. Reliably placing a specific clause in a generated sentence is
+          // not one of them, and it does not have to be: this is not a judgement call. On EVERY
+          // add-on to ink somebody already has, their old piece stays. That is what makes it an
+          // add-on rather than a cover-up, so the code can say it every time and be right.
+          // ONE SENTENCE, NOT FIVE. `cleanUp` was emptied on this branch because it said several
+          // things at once and contradicted itself. This says the single thing that is always true,
+          // and it is appended LAST, where the closing sentence is the one the model answers.
+          // A COVER-UP IS EXEMPT, because going over the old piece is the entire job there.
+          const _protectOld = (jobNow === "add" && (refUrl || refDesign))
+            ? " Their existing tattoo stays exactly as it is - same size, same position, same " +
+              "lines - not redrawn, not moved, and not covered by any of the new work."
+            : "";
+          const evolveAsk = (acted.prompt || said) + cleanUp + _protectOld;
           const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
             JSON.stringify({ prompt: evolveAsk, by: me,
                              res: "2k",

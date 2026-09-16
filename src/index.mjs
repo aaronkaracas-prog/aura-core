@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.256.0-2026-09-16-do-not-reshape-their-photograph";
+const BUILD = "aura-core-v9.257.0-2026-09-16-a-failed-sheet-is-not-shipped";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61206,6 +61206,29 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             sheetNote = sheets.map((sh) => (sh.panel ? sh.panel + ": " : "") +
                                            (sh.checked || "not checked")).join("  |  ").slice(0, 900);
 
+            // ══ A VERDICT THAT STOPS NOTHING IS DECORATION (2026-09-16) ═══════════════════
+            // MEASURED on one run: she said WRONG about the body - "the dragon has spilled into a
+            // full sleeve on the right arm too, which you never asked for" - and WRONG about the
+            // sheet - "existing ink has been drawn into the new-work-only line art" - and the very
+            // same reply said "I have made your artist files, ready to print".
+            // BOTH CHECKS WERE RIGHT AND NEITHER CHANGED ANYTHING. The entire reason they exist is
+            // that these files LEAVE: a shop prints one and puts it on somebody permanently, and a
+            // sheet carrying their healed ink gets that ink tattooed over itself.
+            // SO A SHEET SHE FAILED IS NOT HANDED OVER. What comes back instead is what she found
+            // wrong, which is the answer a tattooist gives - this is not right yet, let me redo it.
+            // THE PERSON IS NEVER STUCK: `retry_the_drawing` says what happens next, and every
+            // underlying command still answers a direct ask. The gate is on the automatic pack.
+            const _sheetsFailed = sheets.some((sh) => sh.checked && /^\s*WRONG\b/i.test(sh.checked));
+            if (_sheetsFailed) {
+              drew = {
+                from: shopParent,
+                not_sent: "the artist files were made and they are wrong, so they were not handed " +
+                          "over - a sheet with healed ink in it gets that ink tattooed twice",
+                she_checked: sheetNote,
+                retry_the_drawing: "say what to change and I will draw it again, or tell me to " +
+                                   "send them anyway if you want to look for yourself",
+              };
+            } else {
             drew = {
               design: lineId || fp.design || null,
               // `image` is what the needle does: the line art, new ink only on an add-on.
@@ -61245,6 +61268,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                                  "the file" } : {}),
               ...(sheetNote ? { she_checked: sheetNote } : {})
             };
+            }
           }
         } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
       }

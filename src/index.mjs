@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.272.0-2026-09-16-grok-mask-test";
+const BUILD = "aura-core-v9.273.0-2026-09-16-protect-their-ink";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18421,7 +18421,9 @@ async function successionGate(env) {
         // a third-party copy of their schema lists one. This exists to find out whether Grok
         // honours it. Absent, nothing below changes.
         let evMask = null, evMaskNote = null;
-        if (p.mask && typeof p.mask === "object" && Array.isArray(p.mask.edit) && p.mask.edit.length === 4) {
+        const _maskBox = p.mask && typeof p.mask === "object" && Array.isArray(p.mask.edit) && p.mask.edit.length === 4;
+        const _maskInk = p.mask && typeof p.mask === "object" && p.mask.auto === "protect_ink";
+        if (_maskBox || _maskInk) {
           try {
             if (!parentUrl) throw new Error("the parent has no stored image to size the mask from");
             let mBytes = null;
@@ -18438,22 +18440,87 @@ async function successionGate(env) {
             if (!mBytes) throw new Error("could not read the parent's pixels from storage");
             const pIm = PhotonImage.new_from_byteslice(mBytes);
             const mW = pIm.get_width(), mH = pIm.get_height();
+            const pPx = _maskInk ? pIm.get_raw_pixels() : null;
             try { pIm.free(); } catch {}
-            const fr = p.mask.edit.map((v) => Math.min(1, Math.max(0, Number(v) || 0)));
-            const ex0 = Math.floor(fr[0] * mW), ey0 = Math.floor(fr[1] * mH);
-            const ex1 = Math.ceil(fr[2] * mW), ey1 = Math.ceil(fr[3] * mH);
-            const raw = new Uint8Array(mW * mH * 4);
-            for (let y = 0; y < mH; y++) {
-              const inY = y >= ey0 && y < ey1;
-              for (let x = 0; x < mW; x++) {
-                raw[(y * mW + x) * 4 + 3] = (inY && x >= ex0 && x < ex1) ? 0 : 255;
+            const N = mW * mH;
+            // editable[i] = 1 where the model may draw.
+            const editable = new Uint8Array(N);
+            let _how = null;
+            if (_maskBox) {
+              const fr = p.mask.edit.map((v) => Math.min(1, Math.max(0, Number(v) || 0)));
+              const ex0 = Math.floor(fr[0] * mW), ey0 = Math.floor(fr[1] * mH);
+              const ex1 = Math.ceil(fr[2] * mW), ey1 = Math.ceil(fr[3] * mH);
+              for (let y = ey0; y < ey1; y++) for (let x = ex0; x < ex1; x++) editable[y * mW + x] = 1;
+              _how = { box_px: [ex0, ey0, ex1, ey1] };
+            } else {
+              // ══ PROTECT THEIR INK (2026-09-16, v9.273) ══════════════════════════════════
+              // An add-on may draw on BARE SKIN and nowhere else. Two facts per pixel, no model:
+              //  skin - a standard RGB skin test (red leads green and blue, enough chroma, not dark).
+              //  ink  - dark pixels. Grown outward by ~1.2% of the short side so line edges and
+              //         fine stipple around them are covered.
+              // Editable = skin AND not near ink. Shirt, background, shadows and the tattoo itself
+              // are all protected, which is what "leave everything else alone" means in pixels.
+              const inkT = 115;
+              const ink = new Uint8Array(N);
+              for (let i = 0, j = 0; i < N; i++, j += 4) {
+                const r = pPx[j], g = pPx[j + 1], b = pPx[j + 2];
+                const l = 0.299 * r + 0.587 * g + 0.114 * b;
+                if (l < inkT) ink[i] = 1;
+                if (r > 95 && g > 40 && b > 20 && r > g && r > b && (r - Math.min(g, b)) > 15 &&
+                    Math.abs(r - g) > 10 && l > 90) editable[i] = 1;
               }
+              const R = Math.max(2, Math.round(Math.min(mW, mH) * 0.012));
+              const tmp = new Uint8Array(N), near = new Uint8Array(N);
+              for (let y = 0; y < mH; y++) {
+                const row = y * mW; let c = 0;
+                for (let x = 0; x < mW + R; x++) {
+                  if (x < mW && ink[row + x]) c++;
+                  const out = x - 2 * R - 1;
+                  if (out >= 0 && out < mW && ink[row + out]) c--;
+                  const cx = x - R;
+                  if (cx >= 0 && cx < mW) tmp[row + cx] = c > 0 ? 1 : 0;
+                }
+              }
+              for (let x = 0; x < mW; x++) {
+                let c = 0;
+                for (let y = 0; y < mH + R; y++) {
+                  if (y < mH && tmp[y * mW + x]) c++;
+                  const out = y - 2 * R - 1;
+                  if (out >= 0 && out < mH && tmp[out * mW + x]) c--;
+                  const cy = y - R;
+                  if (cy >= 0 && cy < mH) near[cy * mW + x] = c > 0 ? 1 : 0;
+                }
+              }
+              for (let i = 0; i < N; i++) if (near[i]) editable[i] = 0;
+              _how = { auto: "protect_ink", ink_threshold: inkT, grow_px: R };
+            }
+            let _open = 0;
+            const raw = new Uint8Array(N * 4), prev = new Uint8Array(N * 4);
+            for (let i = 0, j = 0; i < N; i++, j += 4) {
+              raw[j + 3] = editable[i] ? 0 : 255;
+              const v = editable[i] ? 255 : 0;
+              prev[j] = v; prev[j + 1] = v; prev[j + 2] = v; prev[j + 3] = 255;
+              _open += editable[i];
             }
             const mIm = new PhotonImage(raw, mW, mH);
             const mPng = mIm.get_bytes();
             try { mIm.free(); } catch {}
             evMask = "data:image/png;base64," + bytesToB64(mPng);
-            evMaskNote = { width: mW, height: mH, editable_px: [ex0, ey0, ex1, ey1], png_bytes: mPng.length };
+            // A picture of the mask, so a person can SEE what was protected: white = may draw,
+            // black = protected. Stored like any image this system makes.
+            let _previewUrl = null;
+            try {
+              const vIm = new PhotonImage(prev, mW, mH);
+              const vPng = vIm.get_bytes();
+              try { vIm.free(); } catch {}
+              const vId = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+              if (env.AURA_IMAGES) {
+                await env.AURA_IMAGES.put(vId + ".png", vPng, { httpMetadata: { contentType: "image/png" } });
+                _previewUrl = "https://" + (await imageHost(env)) + "/image/" + vId;
+              }
+            } catch {}
+            evMaskNote = { width: mW, height: mH, ..._how, editable_pct: +((100 * _open) / N).toFixed(1),
+                           png_bytes: mPng.length, preview: _previewUrl };
           } catch (e) {
             return { cmd: "IMAGE", payload: { ok: false, error: "MASK_FAILED: " + String(e?.message ?? e).slice(0, 200) } };
           }
@@ -61780,6 +61847,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // A DIAL DECIDES WHETHER THIS LANE RUNS. `config:source:tattoo_talk:provider` and
           // `:model` both set, and auraGenerateImage uses the tool. Either missing, and `talk` is
           // ignored - the IMAGE EVOLVE below behaves exactly as v9.269 did.
+          // ══ AN ADD-ON NEVER WRITES OVER THEIR INK (2026-09-16, v9.273) ══════════════════════
+          // Proven on Grok: a mask is obeyed. On an add-on starting from their own photograph, the
+          // existing tattoo is protected pixel by pixel and only bare skin is editable. Only the
+          // FIRST drawing on the photo - once new work exists, protecting all ink would also freeze
+          // the new work, and that case is not built yet. A cover-up is exempt: going over the old
+          // piece is the job.
+          const _protectInk = jobNow === "add" && !!refDesign && parentId === refDesign;
           const _turns = (Array.isArray(hist) ? hist : []).filter((h) => h && h.said);
           if (_turns.length && _turns[_turns.length - 1].role !== "aura" &&
               String(_turns[_turns.length - 1].said).trim() === said) _turns.pop();
@@ -61795,6 +61869,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             JSON.stringify({ prompt: evolveAsk, by: me,
                              res: "2k",
                              ...(alsoRefs.length ? { with: alsoRefs } : {}),
+                             ...(_protectInk ? { mask: { auto: "protect_ink" } } : {}),
                              talk: { turns: _turns.slice(-12).map((h) => ({ role: h.role, said: String(h.said).slice(0, 2000) })),
                                      said, images: _talkImgs.slice(0, 4) },
                              lane: "tattoo_talk" }), env, true);
@@ -61813,7 +61888,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             try {
               const cr2 = await processCommand("IMAGE EVOLVE " + parentId + " " +
                 JSON.stringify({ prompt: evolveAsk + " The last attempt was wrong: " + _why + " Fix that.",
-                                 by: me, res: "2k" }), env, true);
+                                 by: me, res: "2k",
+                                 ...(_protectInk ? { mask: { auto: "protect_ink" } } : {}) }), env, true);
               const cp2 = (cr2 && cr2.payload) ? cr2.payload : cr2;
               if (cp2?.ok && cp2.image_url) {
                 _retried = { first_image: cp.image_url, first_verdict: _mockNote };
@@ -61829,6 +61905,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 // What the drawing model itself wrote and said - the lane ran if this is here.
                 ...(cp.talk ? { drawer: cp.talk } : {}),
                 ...(_retried ? { retried: _retried } : {}),
+                ...(cp.mask_sent ? { mask: cp.mask_sent } : {}),
                 ...(_mockNote ? { she_looked: _mockNote,
                                   placement_ok: /^\s*RIGHT\b/i.test(_mockNote) } : {}),
                 ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) }

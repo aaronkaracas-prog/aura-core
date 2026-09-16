@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.259.0-2026-09-16-an-edit-is-a-delta";
+const BUILD = "aura-core-v9.260.0-2026-09-16-the-good-sheets-still-go";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61219,7 +61219,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // wrong, which is the answer a tattooist gives - this is not right yet, let me redo it.
             // THE PERSON IS NEVER STUCK: `retry_the_drawing` says what happens next, and every
             // underlying command still answers a direct ask. The gate is on the automatic pack.
-            const _sheetsFailed = sheets.some((sh) => sh.checked && /^\s*WRONG\b/i.test(sh.checked));
+            // ══ PER SHEET, NOT ALL OR NOTHING (2026-09-16) ════════════════════════════════
+            // The gate first blocked the WHOLE pack when any one sheet failed. On a split job that
+            // costs them the good panels to punish the bad one - and the panels are separate
+            // tattoos on separate days, so there is no reason a correct forearm sheet should be
+            // withheld because the stomach sheet came back with healed ink in it.
+            // SO A FAILED SHEET IS DROPPED AND THE REST GO. `held_back` says which and why.
+            const _bad = sheets.filter((sh) => sh.checked && /^\s*WRONG\b/i.test(sh.checked));
+            const _good = sheets.filter((sh) => !(sh.checked && /^\s*WRONG\b/i.test(sh.checked)));
+            const _heldBack = _bad.length
+              ? _bad.map((sh) => (sh.panel ? sh.panel + ": " : "") + sh.checked).join("  |  ")
+              : null;
+            const _sheetsFailed = _good.length === 0 && _bad.length > 0;
             if (_sheetsFailed) {
               drew = {
                 from: shopParent,
@@ -61242,17 +61253,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // line art the needle follows. `flat_artwork` above stays the first sheet so a
               // single-panel job reads exactly as it did before this existed.
               ...(sheets.length > 1
-                ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
+                ? { panels: _good.map((sh) => ({ section: sh.panel, flat: sh.flat,
                                                   line: sh.line || null,
                                                   pdf: sh.pdf || null,
                                                   ok: sh.ok === true,
                                                   // Her verdict on THIS sheet. A panel whose
                                                   // picture disagrees with its label says so here.
                                                   checked: sh.checked || null })),
-                    panel_count: sheets.length,
+                    panel_count: _good.length,
+                    // Named, so nobody has to notice a sheet is missing.
+                    ...(_heldBack ? { held_back: _heldBack } : {}),
                     // How many of them she actually passed. A pack is finished when this equals
                     // panel_count and not before.
-                    panels_ok: sheets.filter((sh) => sh.ok).length }
+                    panels_ok: _good.filter((sh) => sh.ok).length }
                 : {}),
               ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,
                              print_sheets: pdfSheets } : {}),

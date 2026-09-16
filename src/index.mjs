@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.254.0-2026-09-15-she-has-eyes";
+const BUILD = "aura-core-v9.255.0-2026-09-15-saying-it-twice-is-not-saying-it-better";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58609,8 +58609,20 @@ async function showIt(subject, env, opts = {}) {
   // well: with the reference it reads as an edit to that subject, and without it, it still draws
   // the right thing slightly differently. Failure lands on "a different koi", never on "a canyon".
   const refs = Array.isArray(opts.refs) ? opts.refs.filter(Boolean) : [];
+  // ══ SAYING IT TWICE IS NOT SAYING IT BETTER (2026-09-15) ═══════════════════════════════
+  // `opts.subject` exists to carry the full description FOR THE RECORD - see `record` below, which
+  // is its real consumer. It was also being concatenated INTO the prompt, and `IMAGE EVOLVE` passes
+  // the same string as both, so every edit sent the instruction, a full stop, and the instruction
+  // again.
+  // MEASURED tonight: ~1,400 characters where ~700 were written, the duplicate carrying a
+  // contradiction in both halves - keep the same photograph, plain background, keep the same
+  // photograph, plain background.
+  // AND IT IS THE WHOLE DIFFERENCE FROM WHAT WORKS. Aaron gets the picture he wants by handing
+  // Grok the photograph and ONE SENTENCE in a raw window. Same model, same image, same ask. The
+  // only thing his window does differently is not say it twice.
+  // A DIFFERENT subject still rides, because then it is saying something the change does not.
   const prompt = refs.length
-    ? (opts.subject ? `${opts.subject.trim()}. ${want}` : want)
+    ? ((opts.subject && opts.subject.trim() !== want) ? `${opts.subject.trim()}. ${want}` : want)
     : (opts.raw ? want : `${want}. High quality, visually striking, well-composed, detailed.`);
   // ══ THE OPTIONS ARE LISTED, SO ANYTHING UNLISTED IS SILENTLY DROPPED ═══════════════════════
   // `model` was not in this object. Callers passing one - the 8007 retry, the bakeoff - had it
@@ -61289,9 +61301,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // Their own arm. The body stays exactly as it is - same limb, same skin, same
               // surrounding ink - and only the piece changes. For an add-on especially: the
               // neighbouring tattoos are the reason they sent this photograph.
-              ? ". Keep the same arm, the same skin and the same photograph - only the tattoo " +
-                "changes. Every other tattoo already on this body stays exactly where it is and " +
-                "as it is." +
+              // ══ AND THEN WE SAID IT AGAIN (2026-09-15) ═════════════════════════════════
+              // The comment below already records the lesson: eleven words to Grok beat our
+              // paragraph. This IS the paragraph. "Keep the same photograph" then "Plain
+              // background" is a contradiction the model resolves by coin toss - which is why the
+              // same test returned a shop interior one run and a grey studio the next.
+              // AND SHE ALREADY WRITES THIS HERSELF, in her own words, because her facts taught her
+              // to: "the existing untouched hawk half sleeve, the other arm kept exactly as they
+              // are, starting below the hawk". A second author saying the same thing differently is
+              // not reinforcement, it is two instructions to reconcile.
+              // WHAT STAYS: nothing on this branch. The photograph is attached and she wrote the
+              // sentence. That is the raw-window shape, which is the one that works.
+              ? "" +
                 // ══ THE MODEL DRAWING IT CAN SEE THE ARM (2026-09-08) ══════════════════════
                 // Aaron sent Grok the photograph and eleven words - "cover it up with a dinosaur,
                 // show me on my arm" - and got jaws filling the whole portrait. We sent a
@@ -61305,8 +61326,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 // piece for the same reason: five words, and the model composed it.
                 // The job word is in her prompt and the model knows what it means. Explaining
                 // density to it was me teaching a tattoo model about tattoos.
-                (jobNow === "cover" ? " This is a cover-up." : "") +
-                " Plain background, no logo, watermark or text."
+                (jobNow === "cover" ? " This is a cover-up." : "")
               // Somebody else's reference photo - take the artwork, lose their studio.
               : ". Keep only the tattooed limb and the artwork on it. Plain neutral background, " +
                 "nothing else in frame - no studio, no furniture, no other people or hands, and " +

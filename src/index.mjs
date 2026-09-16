@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.267.0-2026-09-16-the-door-the-world-uses";
+const BUILD = "aura-core-v9.268.0-2026-09-16-the-second-ask-is-what-works";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8932,6 +8932,17 @@ async function processCommand(line, env, isOp) {
       // existing head and new body are one animal, it came back whole every time. A forearm panel
       // contains only new ink by definition.
       // CUT BEFORE `fnMode` IS READ, or the first word of the section is taken for STENCIL/LINEART.
+      // ══ AGAIN <what was wrong> - THE SECOND ASK (2026-09-16) ══════════════════════════
+      // A first sheet that carries their healed ink is the NORMAL outcome, not a rare failure:
+      // Aaron got exactly that from ChatGPT and from Grok, and both needed telling once. Everything
+      // after AGAIN is what she found wrong with the first attempt, in her words, and it is
+      // appended at the very END of the prompt where the last sentence is the one answered.
+      // CUT BEFORE `ONLY`, because it arrives after the section text and would otherwise be
+      // swallowed into the section name.
+      const fnAgainAt = fnParts.findIndex((x) => /^AGAIN$/i.test(x));
+      const fnAgain = fnAgainAt > 0 ? fnParts.slice(fnAgainAt + 1).join(" ").trim().slice(0, 400) : "";
+      if (fnAgainAt > 0) fnParts.length = fnAgainAt;
+
       const fnOnlyAt = fnParts.findIndex((x) => /^ONLY$/i.test(x));
       const fnOnly = fnOnlyAt > 0 ? fnParts.slice(fnOnlyAt + 1).join(" ").trim().slice(0, 120) : "";
       if (fnOnlyAt > 0) fnParts.length = fnOnlyAt;
@@ -9010,6 +9021,8 @@ async function processCommand(line, env, isOp) {
           : TAT_SOURCE_LOCK + fnCard[1] +
             (fnOnly ? " Show me ONLY the " + fnOnly + " - that section alone, nothing from the " +
                       "rest of the piece, flat on plain white." : "");
+        // Her correction goes last, on whichever shape was built above.
+        const fnPromptFinal = fnPrompt + (fnAgain ? " THE LAST ATTEMPT WAS WRONG: " + fnAgain : "");
         // ══ THE ARTIST SHEET PRINTS AT THE SIZE OF ITS PIXELS (2026-09-16) ═════════════════
         // This asked for no resolution at all, so it took the lane default - and MEASURED, every
         // artist file came out of PRINT at ~5.1 INCHES. Nothing was wrong with the sizing: the
@@ -9021,7 +9034,7 @@ async function processCommand(line, env, isOp) {
         // bigger across sheets, so asking for more never wastes it.
         // `3:4` because a tattoo is taller than it is wide and the earlier square default spent
         // half its pixels on white margin that the ink-box crop then threw away.
-        const fr = await showIt(fnPrompt, env,
+        const fr = await showIt(fnPromptFinal, env,
           { source: "style_transfer", refs: fnWas ? [fnUrl, fnWas] : [fnUrl],
             parent: /^ent_/.test(fnId) ? fnId : null,
             res: "2k", aspect: "3:4",
@@ -61158,9 +61171,47 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // because the description is the only thing that makes one panel different from another.
             const label = panel ? String(panel).split(":")[0].trim().slice(0, 40) : null;
             const only = panel ? " ONLY " + panel : "";
-            const fr = await processCommand("FINAL " + mockUrl +
-              (priorInk ? " ADDED " + priorInk : "") + only, env, true);
-            const fpp = (fr && fr.payload) ? fr.payload : fr;
+            const _ask = "FINAL " + mockUrl + (priorInk ? " ADDED " + priorInk : "") + only;
+            const fr = await processCommand(_ask, env, true);
+            let fpp = (fr && fr.payload) ? fr.payload : fr;
+
+            // ══ ASK AGAIN THE WAY A PERSON WOULD (2026-09-16) ══════════════════════════
+            // MEASURED by Aaron by hand, in a plain ChatGPT window, three turns:
+            //   "something around this current tattoo, on myself"   -> mock-up, correct
+            //   "give me the new one so I can print it"             -> the sheet, HAMMER IN IT
+            //   "you're printing out the existing tattoo, my artist only needs the new design
+            //    that goes around the current tattoo"               -> the wreath with a HOLE
+            // Grok needed four. So a first sheet carrying their healed ink is the DEFAULT of every
+            // one of these models, and the thing that fixes it is being told once.
+            // SHE HAS BEEN DOING THE HARD HALF ALL ALONG. Her check catches this every time and
+            // then reports it and stops - "the banner and vines run straight across the hammer",
+            // "the dragon head duplicates the existing shoulder cap". This hands her own sentence
+            // back as the correction, which is precisely what Aaron typed on his third turn.
+            // ONE RETRY, and only when there IS healed ink to protect. If the second is wrong too,
+            // her verdict rides in the reply and the gate holds it: two failures mean the piece
+            // has no seam to draw around, and asking a third time will not find one.
+            if (fpp && fpp.ok && fpp.image && priorInk && me && seeing) {
+              try {
+                const look1 = await proxyToAgent(env,
+                  "[This is the line art going to their tattooist for work being ADDED to ink they " +
+                  "already have, so it must contain ONLY the new work and nothing that is already " +
+                  "tattooed on them. Look at it. Begin your answer with the single word RIGHT or " +
+                  "WRONG, then one short sentence saying why. Nothing else.]",
+                  false, me, fpp.image, world);
+                const v1 = (look1 && look1.reply && !look1.failed)
+                  ? _verdict(look1.reply, readAct(look1.reply)).slice(0, 240) : null;
+                if (v1 && /^\s*WRONG\b/i.test(v1)) {
+                  console.log("[AGAIN] " + (label || "sheet") + " carried existing ink - " + v1);
+                  const ar = await processCommand(_ask + " AGAIN " +
+                    v1.replace(/^\s*WRONG\b[\s:,.-]*/i, "") +
+                    " Draw ONLY the new work and leave an empty space where their existing tattoo " +
+                    "sits - their old piece must not be on this sheet at all.", env, true);
+                  const ap = (ar && ar.payload) ? ar.payload : ar;
+                  if (ap && ap.ok && ap.image) fpp = ap;
+                }
+              } catch { /* the first sheet still stands; the gate checks it either way */ }
+            }
+
             if (fpp && fpp.ok && fpp.image) {
               sheets.push({ panel: label, asked: panel, flat: fpp.image, id: fpp.design || null });
             }

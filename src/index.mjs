@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.271.0-2026-09-16-plan-edit-check";
+const BUILD = "aura-core-v9.272.0-2026-09-16-grok-mask-test";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18413,12 +18413,58 @@ async function successionGate(env) {
         // xAI's own vocabulary, passed through untouched: a ratio like "9:16" and "1k" or "2k".
         const evAsp = typeof p.aspect === "string" ? p.aspect : null;
         const evRes = (p.res === "1k" || p.res === "2k") ? p.res : null;
+        // ══ A MASK: WHERE THE EDIT MAY DRAW (2026-09-16, v9.272 - a test) ══════════════════
+        // `mask: {"edit":[x0,y0,x1,y1]}` - fractions of the parent's width and height. Inside the
+        // box is editable; everything else is protected. Built HERE from the parent's own pixel
+        // size so nobody measures anything, as a PNG in the OpenAI convention (transparent =
+        // edit, opaque = keep), sent inline as a data URI. xAI's own guide documents no mask;
+        // a third-party copy of their schema lists one. This exists to find out whether Grok
+        // honours it. Absent, nothing below changes.
+        let evMask = null, evMaskNote = null;
+        if (p.mask && typeof p.mask === "object" && Array.isArray(p.mask.edit) && p.mask.edit.length === 4) {
+          try {
+            if (!parentUrl) throw new Error("the parent has no stored image to size the mask from");
+            let mBytes = null;
+            const mOwn = String(parentUrl).match(/\/image\/(img_[a-z0-9]+)/i);
+            if (mOwn && env.AURA_IMAGES) {
+              const mObj = await env.AURA_IMAGES.get(mOwn[1] + ".png").catch(() => null);
+              if (mObj) mBytes = new Uint8Array(await mObj.arrayBuffer());
+            }
+            if (!mBytes && mOwn) {
+              const mb64 = await env.AURA_KV.get("image:" + mOwn[1]).catch(() => null);
+              if (mb64) { const bin = atob(mb64); mBytes = new Uint8Array(bin.length);
+                          for (let n = 0; n < bin.length; n++) mBytes[n] = bin.charCodeAt(n); }
+            }
+            if (!mBytes) throw new Error("could not read the parent's pixels from storage");
+            const pIm = PhotonImage.new_from_byteslice(mBytes);
+            const mW = pIm.get_width(), mH = pIm.get_height();
+            try { pIm.free(); } catch {}
+            const fr = p.mask.edit.map((v) => Math.min(1, Math.max(0, Number(v) || 0)));
+            const ex0 = Math.floor(fr[0] * mW), ey0 = Math.floor(fr[1] * mH);
+            const ex1 = Math.ceil(fr[2] * mW), ey1 = Math.ceil(fr[3] * mH);
+            const raw = new Uint8Array(mW * mH * 4);
+            for (let y = 0; y < mH; y++) {
+              const inY = y >= ey0 && y < ey1;
+              for (let x = 0; x < mW; x++) {
+                raw[(y * mW + x) * 4 + 3] = (inY && x >= ex0 && x < ex1) ? 0 : 255;
+              }
+            }
+            const mIm = new PhotonImage(raw, mW, mH);
+            const mPng = mIm.get_bytes();
+            try { mIm.free(); } catch {}
+            evMask = "data:image/png;base64," + bytesToB64(mPng);
+            evMaskNote = { width: mW, height: mH, editable_px: [ex0, ey0, ex1, ey1], png_bytes: mPng.length };
+          } catch (e) {
+            return { cmd: "IMAGE", payload: { ok: false, error: "MASK_FAILED: " + String(e?.message ?? e).slice(0, 200) } };
+          }
+        }
         const r = parentUrl
           ? await showIt(p.prompt, env, { source: evAs, parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt,
               refs: [parentUrl, ...withRefs], subject: p.prompt,
               ...(evW ? { width: evW } : {}), ...(evH ? { height: evH } : {}),
               ...(evAsp ? { aspect: evAsp } : {}), ...(evRes ? { res: evRes } : {}),
+              ...(evMask ? { mask: evMask } : {}),
               // v9.270 - the conversation for the tool lane. Ignored unless its dials are set.
               ...(p.talk && typeof p.talk === "object" && typeof p.lane === "string" &&
                   /^[a-z_]{3,24}$/.test(p.lane) ? { talk: p.talk, talk_lane: p.lane } : {}) })
@@ -18437,6 +18483,7 @@ async function successionGate(env) {
           // this; the reply somebody actually reads when an edit misbehaves did not.
           model: r.model || null, cost_usd: r.cost_usd,
           ...(r.talk ? { talk: r.talk } : {}),
+          ...(evMaskNote ? { mask_sent: evMaskNote } : {}),
           // Says out loud whether the parent's pixels were actually used. Without this the two
           // cases look identical in the reply and only the picture tells you - which is how this
           // went unnoticed in the first place.
@@ -57790,7 +57837,9 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     const sig = model + "|" + quality + "|" +
                 (opts.width || 1024) + "x" + (opts.height || 1024) + "|" +
                 (opts.aspect || "") + (opts.res || "") + "|" + refs.join("|") + "|" +
-                (opts.seed != null ? "seed" + opts.seed + "|" : "") + p;
+                (opts.seed != null ? "seed" + opts.seed + "|" : "") +
+                // A masked edit is a different ask from the same words unmasked.
+                (typeof opts.mask === "string" && opts.mask ? "mask" + opts.mask.length + opts.mask.slice(-48) + "|" : "") + p;
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
     cacheKey = "imgcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
     const hitRaw = await env.AURA_KV.get(cacheKey);
@@ -58351,6 +58400,9 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           (typeof opts.aspect === "string" && /^\d+(\.\d+)?:\d+(\.\d+)?$|^auto$/.test(opts.aspect)
             ? { aspect_ratio: opts.aspect } : {}),
           (opts.res === "1k" || opts.res === "2k" ? { resolution: opts.res } : {}),
+          // v9.272: the mask rides beside the image, same object shape. Edits only.
+          (isEdit && typeof opts.mask === "string" && opts.mask
+            ? { mask: { type: "image_url", url: opts.mask } } : {}),
           (isEdit
             ? (refs.length === 1
                 ? { image: { type: "image_url", url: refs[0] } }
@@ -58728,7 +58780,7 @@ async function showIt(subject, env, opts = {}) {
   // matter which model, which quality tier or which endpoint, and `[XAI-IMG]` printed
   // `asked aspect=- res=-` the moment it was pointed at the right branch. An afternoon of
   // theories about xAI's silent fallbacks, and the parameters never left this worker.
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, talk: opts.talk || null, talk_lane: opts.talk_lane || null });
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, talk: opts.talk || null, talk_lane: opts.talk_lane || null, mask: opts.mask || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════

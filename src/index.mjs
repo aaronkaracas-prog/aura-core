@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.273.0-2026-09-16-protect-their-ink";
+const BUILD = "aura-core-v9.274.0-2026-09-16-their-own-skin-is-the-reference";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18363,6 +18363,18 @@ async function successionGate(env) {
         const L = await smartFileLife(env, db, ent);
         return { cmd: "IMAGE", payload: { ok: true, image: { id: ent.id, name: ent.name, image_url: L.meta.url || L.meta.image_url || null, subject: L.meta.subject || null, created_at: ent.created_at }, life: L.life, event_count: L.life.length, lineage: L.lineage, contributors: L.contributors, note: `This image has lived through ${L.life.length} moment(s) with ${L.contributors.length} contributor(s).` } };
       }
+      // ══ IMAGE MASK - SEE WHAT WOULD BE PROTECTED, FOR NOTHING (2026-09-16, v9.274) ═══════════
+      // Builds exactly the mask IMAGE EVOLVE would send - same function - and returns the picture
+      // of it. No edit, no model call, $0.00. White = free space the edit may draw on, black =
+      // protected.
+      if (sub === "MASK") {
+        let p; try { p = JSON.parse(payloadStr || "null"); } catch { p = null; }
+        let meta = {}; try { meta = JSON.parse(ent.metadata || "null") || {}; } catch {}
+        const parentUrl = meta.url || meta.image_url || null;
+        const mk = await buildEditMask(env, parentUrl, (p && typeof p === "object") ? p : { auto: "protect_ink" });
+        return { cmd: "IMAGE", payload: mk.ok ? { ok: true, of: ent.id, source: parentUrl, ...mk.note }
+                                             : { ok: false, error: "MASK_FAILED: " + mk.error } };
+      }
       if (sub === "EVOLVE") {
         let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "IMAGE", payload: { ok: false, error: 'Usage: IMAGE EVOLVE <ref> {"prompt":"the dog but with a black ear","by?":"<pta>"}' } }; }
         if (!p || !p.prompt) return { cmd: "IMAGE", payload: { ok: false, error: "prompt is required (what the new version should be)" } };
@@ -18421,109 +18433,10 @@ async function successionGate(env) {
         // a third-party copy of their schema lists one. This exists to find out whether Grok
         // honours it. Absent, nothing below changes.
         let evMask = null, evMaskNote = null;
-        const _maskBox = p.mask && typeof p.mask === "object" && Array.isArray(p.mask.edit) && p.mask.edit.length === 4;
-        const _maskInk = p.mask && typeof p.mask === "object" && p.mask.auto === "protect_ink";
-        if (_maskBox || _maskInk) {
-          try {
-            if (!parentUrl) throw new Error("the parent has no stored image to size the mask from");
-            let mBytes = null;
-            const mOwn = String(parentUrl).match(/\/image\/(img_[a-z0-9]+)/i);
-            if (mOwn && env.AURA_IMAGES) {
-              const mObj = await env.AURA_IMAGES.get(mOwn[1] + ".png").catch(() => null);
-              if (mObj) mBytes = new Uint8Array(await mObj.arrayBuffer());
-            }
-            if (!mBytes && mOwn) {
-              const mb64 = await env.AURA_KV.get("image:" + mOwn[1]).catch(() => null);
-              if (mb64) { const bin = atob(mb64); mBytes = new Uint8Array(bin.length);
-                          for (let n = 0; n < bin.length; n++) mBytes[n] = bin.charCodeAt(n); }
-            }
-            if (!mBytes) throw new Error("could not read the parent's pixels from storage");
-            const pIm = PhotonImage.new_from_byteslice(mBytes);
-            const mW = pIm.get_width(), mH = pIm.get_height();
-            const pPx = _maskInk ? pIm.get_raw_pixels() : null;
-            try { pIm.free(); } catch {}
-            const N = mW * mH;
-            // editable[i] = 1 where the model may draw.
-            const editable = new Uint8Array(N);
-            let _how = null;
-            if (_maskBox) {
-              const fr = p.mask.edit.map((v) => Math.min(1, Math.max(0, Number(v) || 0)));
-              const ex0 = Math.floor(fr[0] * mW), ey0 = Math.floor(fr[1] * mH);
-              const ex1 = Math.ceil(fr[2] * mW), ey1 = Math.ceil(fr[3] * mH);
-              for (let y = ey0; y < ey1; y++) for (let x = ex0; x < ex1; x++) editable[y * mW + x] = 1;
-              _how = { box_px: [ex0, ey0, ex1, ey1] };
-            } else {
-              // ══ PROTECT THEIR INK (2026-09-16, v9.273) ══════════════════════════════════
-              // An add-on may draw on BARE SKIN and nowhere else. Two facts per pixel, no model:
-              //  skin - a standard RGB skin test (red leads green and blue, enough chroma, not dark).
-              //  ink  - dark pixels. Grown outward by ~1.2% of the short side so line edges and
-              //         fine stipple around them are covered.
-              // Editable = skin AND not near ink. Shirt, background, shadows and the tattoo itself
-              // are all protected, which is what "leave everything else alone" means in pixels.
-              const inkT = 115;
-              const ink = new Uint8Array(N);
-              for (let i = 0, j = 0; i < N; i++, j += 4) {
-                const r = pPx[j], g = pPx[j + 1], b = pPx[j + 2];
-                const l = 0.299 * r + 0.587 * g + 0.114 * b;
-                if (l < inkT) ink[i] = 1;
-                if (r > 95 && g > 40 && b > 20 && r > g && r > b && (r - Math.min(g, b)) > 15 &&
-                    Math.abs(r - g) > 10 && l > 90) editable[i] = 1;
-              }
-              const R = Math.max(2, Math.round(Math.min(mW, mH) * 0.012));
-              const tmp = new Uint8Array(N), near = new Uint8Array(N);
-              for (let y = 0; y < mH; y++) {
-                const row = y * mW; let c = 0;
-                for (let x = 0; x < mW + R; x++) {
-                  if (x < mW && ink[row + x]) c++;
-                  const out = x - 2 * R - 1;
-                  if (out >= 0 && out < mW && ink[row + out]) c--;
-                  const cx = x - R;
-                  if (cx >= 0 && cx < mW) tmp[row + cx] = c > 0 ? 1 : 0;
-                }
-              }
-              for (let x = 0; x < mW; x++) {
-                let c = 0;
-                for (let y = 0; y < mH + R; y++) {
-                  if (y < mH && tmp[y * mW + x]) c++;
-                  const out = y - 2 * R - 1;
-                  if (out >= 0 && out < mH && tmp[out * mW + x]) c--;
-                  const cy = y - R;
-                  if (cy >= 0 && cy < mH) near[cy * mW + x] = c > 0 ? 1 : 0;
-                }
-              }
-              for (let i = 0; i < N; i++) if (near[i]) editable[i] = 0;
-              _how = { auto: "protect_ink", ink_threshold: inkT, grow_px: R };
-            }
-            let _open = 0;
-            const raw = new Uint8Array(N * 4), prev = new Uint8Array(N * 4);
-            for (let i = 0, j = 0; i < N; i++, j += 4) {
-              raw[j + 3] = editable[i] ? 0 : 255;
-              const v = editable[i] ? 255 : 0;
-              prev[j] = v; prev[j + 1] = v; prev[j + 2] = v; prev[j + 3] = 255;
-              _open += editable[i];
-            }
-            const mIm = new PhotonImage(raw, mW, mH);
-            const mPng = mIm.get_bytes();
-            try { mIm.free(); } catch {}
-            evMask = "data:image/png;base64," + bytesToB64(mPng);
-            // A picture of the mask, so a person can SEE what was protected: white = may draw,
-            // black = protected. Stored like any image this system makes.
-            let _previewUrl = null;
-            try {
-              const vIm = new PhotonImage(prev, mW, mH);
-              const vPng = vIm.get_bytes();
-              try { vIm.free(); } catch {}
-              const vId = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-              if (env.AURA_IMAGES) {
-                await env.AURA_IMAGES.put(vId + ".png", vPng, { httpMetadata: { contentType: "image/png" } });
-                _previewUrl = "https://" + (await imageHost(env)) + "/image/" + vId;
-              }
-            } catch {}
-            evMaskNote = { width: mW, height: mH, ..._how, editable_pct: +((100 * _open) / N).toFixed(1),
-                           png_bytes: mPng.length, preview: _previewUrl };
-          } catch (e) {
-            return { cmd: "IMAGE", payload: { ok: false, error: "MASK_FAILED: " + String(e?.message ?? e).slice(0, 200) } };
-          }
+        if (p.mask && typeof p.mask === "object") {
+          const mk = await buildEditMask(env, parentUrl, p.mask);
+          if (!mk.ok) return { cmd: "IMAGE", payload: { ok: false, error: "MASK_FAILED: " + mk.error } };
+          evMask = mk.mask; evMaskNote = mk.note;
         }
         const r = parentUrl
           ? await showIt(p.prompt, env, { source: evAs, parent: ent.id,
@@ -57694,6 +57607,132 @@ function bytesToB64(ab) {
     out += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
   }
   return btoa(out);
+}
+
+// ══ THE EDIT MASK - ONE BUILDER FOR IMAGE MASK AND IMAGE EVOLVE (2026-09-16, v9.274) ════════
+// A mask is a yes/no for EVERY pixel: may the edit draw here. Not boxes - the shape follows the
+// ink line for line, and the free skin between leaves and inside curls stays free.
+//
+// FINDING WHAT ALREADY EXISTS USES THE ORIGINAL PHOTO AS ITS OWN REFERENCE. v9.273 used a fixed
+// colour rule for "skin", which varies by person, and let a stippled laurel read as bare skin.
+// Now the photo tells us what THIS person's skin looks like:
+//   1. Loose candidates: pixels in the broad YCbCr skin range (a standard range that holds across
+//      skin tones), not very dark.
+//   2. Their skin = the median brightness and colour of those candidates.
+//   3. Free space = pixels close to THEIR skin colour and not much darker than it. Ink is darker;
+//      grey shading has lost the skin's colour; shirt and background are not skin. All protected.
+//   4. What is not free is grown outward a little, so line edges and stipple are covered.
+// spec: {"auto":"protect_ink"} or {"edit":[x0,y0,x1,y1]} as fractions. Returns {ok, mask, note}.
+async function buildEditMask(env, parentUrl, spec) {
+  try {
+    if (!parentUrl) return { ok: false, error: "the parent has no stored image" };
+    let bytes = null;
+    const own = String(parentUrl).match(/\/image\/(img_[a-z0-9]+)/i);
+    if (own && env.AURA_IMAGES) {
+      const obj = await env.AURA_IMAGES.get(own[1] + ".png").catch(() => null);
+      if (obj) bytes = new Uint8Array(await obj.arrayBuffer());
+    }
+    if (!bytes && own) {
+      const b64 = await env.AURA_KV.get("image:" + own[1]).catch(() => null);
+      if (b64) { const bin = atob(b64); bytes = new Uint8Array(bin.length);
+                 for (let n = 0; n < bin.length; n++) bytes[n] = bin.charCodeAt(n); }
+    }
+    if (!bytes) return { ok: false, error: "could not read the parent's pixels from storage" };
+    const im = PhotonImage.new_from_byteslice(bytes);
+    const W = im.get_width(), H = im.get_height();
+    const px = im.get_raw_pixels();
+    try { im.free(); } catch {}
+    const N = W * H;
+    const free = new Uint8Array(N);
+    let how = null;
+    const isBox = spec && Array.isArray(spec.edit) && spec.edit.length === 4;
+    if (isBox) {
+      const fr = spec.edit.map((v) => Math.min(1, Math.max(0, Number(v) || 0)));
+      const x0 = Math.floor(fr[0] * W), y0 = Math.floor(fr[1] * H);
+      const x1 = Math.ceil(fr[2] * W), y1 = Math.ceil(fr[3] * H);
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) free[y * W + x] = 1;
+      how = { box_px: [x0, y0, x1, y1] };
+    } else {
+      const Y = new Float32Array(N), Cb = new Float32Array(N), Cr = new Float32Array(N);
+      const candY = [], candCb = [], candCr = [];
+      for (let i = 0, j = 0; i < N; i++, j += 4) {
+        const r = px[j], g = px[j + 1], b = px[j + 2];
+        const y = 0.299 * r + 0.587 * g + 0.114 * b;
+        const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+        const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+        Y[i] = y; Cb[i] = cb; Cr[i] = cr;
+        if (y > 60 && cr >= 135 && cr <= 180 && cb >= 77 && cb <= 127 && (i % 3 === 0)) {
+          candY.push(y); candCb.push(cb); candCr.push(cr);
+        }
+      }
+      if (candY.length < 200) return { ok: false, error: "could not find enough skin in the photo to use as a reference" };
+      const med = (a) => { const s = Float32Array.from(a).sort(); return s[s.length >> 1]; };
+      const sY = med(candY), sCb = med(candCb), sCr = med(candCr);
+      const tolC = 14, darkFloor = 0.62;
+      for (let i = 0; i < N; i++) {
+        if (Math.abs(Cb[i] - sCb) <= tolC && Math.abs(Cr[i] - sCr) <= tolC && Y[i] >= sY * darkFloor) free[i] = 1;
+      }
+      // Grow what is NOT free, so edges of lines and stipple are covered.
+      const R = Math.max(2, Math.round(Math.min(W, H) * 0.01));
+      const kept = new Uint8Array(N);
+      for (let i = 0; i < N; i++) kept[i] = free[i] ? 0 : 1;
+      const tmp = new Uint8Array(N), grown = new Uint8Array(N);
+      for (let y = 0; y < H; y++) {
+        const row = y * W; let c = 0;
+        for (let x = 0; x < W + R; x++) {
+          if (x < W && kept[row + x]) c++;
+          const out = x - 2 * R - 1;
+          if (out >= 0 && out < W && kept[row + out]) c--;
+          const cx = x - R;
+          if (cx >= 0 && cx < W) tmp[row + cx] = c > 0 ? 1 : 0;
+        }
+      }
+      for (let x = 0; x < W; x++) {
+        let c = 0;
+        for (let y = 0; y < H + R; y++) {
+          if (y < H && tmp[y * W + x]) c++;
+          const out = y - 2 * R - 1;
+          if (out >= 0 && out < H && tmp[out * W + x]) c--;
+          const cy = y - R;
+          if (cy >= 0 && cy < H) grown[cy * W + x] = c > 0 ? 1 : 0;
+        }
+      }
+      for (let i = 0; i < N; i++) if (grown[i]) free[i] = 0;
+      how = { auto: "protect_ink", their_skin: { y: Math.round(sY), cb: Math.round(sCb), cr: Math.round(sCr) },
+              colour_tolerance: tolC, dark_floor: darkFloor, grow_px: R };
+    }
+    let open = 0;
+    const raw = new Uint8Array(N * 4), prev = new Uint8Array(N * 4);
+    for (let i = 0, j = 0; i < N; i++, j += 4) {
+      raw[j + 3] = free[i] ? 0 : 255;
+      const v = free[i] ? 255 : 0;
+      prev[j] = v; prev[j + 1] = v; prev[j + 2] = v; prev[j + 3] = 255;
+      open += free[i];
+    }
+    const mIm = new PhotonImage(raw, W, H);
+    const mPng = mIm.get_bytes();
+    try { mIm.free(); } catch {}
+    // The picture of the mask. A failure here is REPORTED - v9.273 swallowed it and returned null.
+    let preview = null, preview_error = null;
+    try {
+      const vIm = new PhotonImage(prev, W, H);
+      const vPng = vIm.get_bytes();
+      try { vIm.free(); } catch {}
+      const vId = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      if (!env.AURA_IMAGES) throw new Error("no AURA_IMAGES binding");
+      await env.AURA_IMAGES.put(vId + ".png", vPng, { httpMetadata: { contentType: "image/png" } });
+      let b = ""; for (let i = 0; i < vPng.length; i += 8192) b += String.fromCharCode.apply(null, vPng.subarray(i, i + 8192));
+      await env.AURA_KV.put("image:" + vId, btoa(b)).catch(() => {});
+      await env.AURA_KV.put("imagemeta:" + vId, JSON.stringify({ id: vId, prompt: "edit mask preview", created: new Date().toISOString(),
+        source: "edit_mask", model: "photon-wasm", cost_usd: 0, url: "https://" + (await imageHost(env)) + "/image/" + vId })).catch(() => {});
+      preview = "https://" + (await imageHost(env)) + "/image/" + vId;
+    } catch (e) { preview_error = String(e?.message ?? e).slice(0, 200); }
+    return { ok: true, mask: "data:image/png;base64," + bytesToB64(mPng),
+             note: { width: W, height: H, ...how, editable_pct: +((100 * open) / N).toFixed(1),
+                     png_bytes: mPng.length, preview, ...(preview_error ? { preview_error } : {}) } };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e).slice(0, 200) };
+  }
 }
 
 async function auraGenerateImage(prompt, env, opts = {}) {

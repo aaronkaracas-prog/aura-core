@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.255.0-2026-09-15-saying-it-twice-is-not-saying-it-better";
+const BUILD = "aura-core-v9.256.0-2026-09-16-do-not-reshape-their-photograph";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61353,9 +61353,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // the whole gain would vanish on turn two.
           // A chain is only as big as its smallest link, and the LAST image is the one that goes
           // to the artist.
+          // ══ DO NOT RESHAPE SOMEBODY'S PHOTOGRAPH (2026-09-15) ═══════════════════════════
+          // This asked for `aspect: "3:4"` on every evolve. A tattoo design on white paper IS
+          // taller than it is wide, so that was right for a fresh drawing - and it is wrong for a
+          // photograph of a person, which arrives in whatever shape their camera made.
+          // MEASURED: the source photograph here is WIDE. Demanding 3:4 means the model cannot
+          // return the picture it was given - it has to crop the body, re-frame it, and decide
+          // what fills the new shape. That is forced recomposition of the whole person on EVERY
+          // turn, before a single word of the prompt is read.
+          // IT EXPLAINS WHAT NO PROMPT CHANGE COULD. Her sentence and Aaron's own eleven words both
+          // came back re-planned tonight. A direct IMAGE EVOLVE with no aspect came back the SAME
+          // SHAPE as the source. The variable was never the words.
+          // NOTHING IS ASKED FOR NOW, so the lane keeps the parent's own shape. `res` stays: a
+          // chain is only as big as its smallest link and the last image goes to the artist.
           const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
             JSON.stringify({ prompt: (acted.prompt || said) + cleanUp, by: me,
-                             aspect: "3:4", res: "2k",
+                             res: "2k",
                              ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
           const cp = (cr && cr.payload) ? cr.payload : cr;
           const _mockNote = (cp?.ok && cp.image_url) ? await _lookAtMock(cp.image_url) : null;

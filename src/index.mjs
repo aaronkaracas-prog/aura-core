@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.266.0-2026-09-16-serve-what-the-bytes-actually-are";
+const BUILD = "aura-core-v9.267.0-2026-09-16-the-door-the-world-uses";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66821,18 +66821,63 @@ function openAlbum(idx){
 
 
 
-    if (url.pathname.startsWith("/image/") && request.method === "GET") {
+    // ══ THIS IS THE ONE THE WORLD ACTUALLY USES (2026-09-16) ═══════════════════════════════
+    // `auras.guide/*` routes to THIS worker, not to aura-host - so every picture every model ever
+    // fetches came through here, and here said `image/png` about all of them.
+    // MEASURED: an AVIF photograph, stored correctly, served from here as image/png, attached to a
+    // turn as image/jpeg, and the model answered
+    //   AI_APICallError 8006: Invalid data for image - reason corrupt image data
+    // then every later turn on that conversation died on the same attachment and the breaker
+    // opened. The note under /doc/ below has known about this since 2026-09-10 - "hardcodes
+    // image/png, so a PDF served through it downloads as a broken PNG" - and a second route was
+    // added beside it rather than this one being fixed.
+    // R2 KNOWS. Import writes `httpMetadata.contentType` with the real type on the way in.
+    // KV DOES NOT, so the first bytes are read instead - every format worth serving says what it
+    // is in its own header, and anything unrecognised is a png exactly as often as it was before.
+    // HEAD ANSWERS TOO. A client asking what a file is got `200 text/plain` from the catch-all,
+    // which reads as "this is a text file" rather than "I do not do HEAD".
+    if (url.pathname.startsWith("/image/") &&
+        (request.method === "GET" || request.method === "HEAD")) {
       const id = url.pathname.slice("/image/".length).replace(/\.png$/, "");
+      const _head = request.method === "HEAD";
+      const _sniff = (b64s) => {
+        try {
+          const h = atob(String(b64s).slice(0, 64));
+          const B = (i) => h.charCodeAt(i);
+          if (B(0) === 0xFF && B(1) === 0xD8) return "image/jpeg";
+          if (B(0) === 0x89 && h.slice(1, 4) === "PNG") return "image/png";
+          if (h.slice(0, 3) === "GIF") return "image/gif";
+          if (h.slice(0, 4) === "RIFF" && h.slice(8, 12) === "WEBP") return "image/webp";
+          if (h.slice(0, 4) === "%PDF") return "application/pdf";
+          if (h.slice(4, 8) === "ftyp") {
+            const br = h.slice(8, 12);
+            if (br === "avif" || br === "avis") return "image/avif";
+            if (br.startsWith("hei") || br === "mif1" || br === "msf1") return "image/heic";
+            return "video/mp4";
+          }
+        } catch {}
+        return "image/png";
+      };
       // PRIMARY: serve from permanent R2
       if (env.AURA_IMAGES) {
         const obj = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null);
-        if (obj) return new Response(obj.body, { headers: { "content-type": "image/png", "cache-control": "public, max-age=31536000" } });
+        if (obj) {
+          const ct = obj.httpMetadata?.contentType || "image/png";
+          if (_head) { await obj.body?.cancel?.().catch(() => {}); }
+          return new Response(_head ? null : obj.body, { headers: {
+            "content-type": ct,
+            ...(obj.size ? { "content-length": String(obj.size) } : {}),
+            "cache-control": "public, max-age=31536000, immutable" } });
+        }
       }
       // FALLBACK: legacy/safety-net KV copy
       const b64 = await env.AURA_KV.get(`image:${id}`).catch(() => null);
-      if (!b64) return new Response("Image not found", { status: 404 });
+      if (!b64) return new Response(_head ? null : "Image not found", { status: 404 });
       const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-      return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "public, max-age=31536000" } });
+      return new Response(_head ? null : bytes, { headers: {
+        "content-type": _sniff(b64),
+        "content-length": String(bytes.length),
+        "cache-control": "public, max-age=31536000, immutable" } });
     }
 
     // ══ /doc/<id> ── THE SAME SHELF, THE HONEST CONTENT-TYPE (2026-09-10) ═══════════════════

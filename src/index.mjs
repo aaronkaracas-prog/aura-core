@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.274.0-2026-09-16-their-own-skin-is-the-reference";
+const BUILD = "aura-core-v9.274.1-2026-09-16-mask-preview-in-kv";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -57719,10 +57719,13 @@ async function buildEditMask(env, parentUrl, spec) {
       const vPng = vIm.get_bytes();
       try { vIm.free(); } catch {}
       const vId = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      if (!env.AURA_IMAGES) throw new Error("no AURA_IMAGES binding");
-      await env.AURA_IMAGES.put(vId + ".png", vPng, { httpMetadata: { contentType: "image/png" } });
+      // aura-core has no R2 binding - its images live in KV as `image:<id>`, which is what its own
+      // /image/ route serves. R2 is written only where a binding exists.
+      if (env.AURA_IMAGES) {
+        await env.AURA_IMAGES.put(vId + ".png", vPng, { httpMetadata: { contentType: "image/png" } }).catch(() => {});
+      }
       let b = ""; for (let i = 0; i < vPng.length; i += 8192) b += String.fromCharCode.apply(null, vPng.subarray(i, i + 8192));
-      await env.AURA_KV.put("image:" + vId, btoa(b)).catch(() => {});
+      await env.AURA_KV.put("image:" + vId, btoa(b));
       await env.AURA_KV.put("imagemeta:" + vId, JSON.stringify({ id: vId, prompt: "edit mask preview", created: new Date().toISOString(),
         source: "edit_mask", model: "photon-wasm", cost_usd: 0, url: "https://" + (await imageHost(env)) + "/image/" + vId })).catch(() => {});
       preview = "https://" + (await imageHost(env)) + "/image/" + vId;

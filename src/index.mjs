@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.260.0-2026-09-16-the-good-sheets-still-go";
+const BUILD = "aura-core-v9.261.0-2026-09-16-send-them-anyway-is-an-answer";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61225,8 +61225,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // tattoos on separate days, so there is no reason a correct forearm sheet should be
             // withheld because the stomach sheet came back with healed ink in it.
             // SO A FAILED SHEET IS DROPPED AND THE REST GO. `held_back` says which and why.
-            const _bad = sheets.filter((sh) => sh.checked && /^\s*WRONG\b/i.test(sh.checked));
-            const _good = sheets.filter((sh) => !(sh.checked && /^\s*WRONG\b/i.test(sh.checked)));
+            // ══ SEND THEM ANYWAY IS AN ANSWER SOMEBODY CAN GIVE (2026-09-16) ══════════════
+            // The gate already tells them "or tell me to send them anyway if you want to look for
+            // yourself" - and nothing was listening, so the offer was a sentence that did nothing.
+            // A person who wants to hold the files and judge them is entitled to. The verdicts ride
+            // along either way, so nobody is being told a bad sheet is a good one.
+            const _sendAnyway = /\b(send (them|it|those)? ?anyway|send anyway|give (them|it) to me anyway|i('| wi)?ll look( for myself)?|print (them|it) anyway|anyway)\b/i
+              .test(String(said || ""));
+            const _bad = _sendAnyway ? []
+              : sheets.filter((sh) => sh.checked && /^\s*WRONG\b/i.test(sh.checked));
+            const _good = _sendAnyway ? sheets
+              : sheets.filter((sh) => !(sh.checked && /^\s*WRONG\b/i.test(sh.checked)));
             const _heldBack = _bad.length
               ? _bad.map((sh) => (sh.panel ? sh.panel + ": " : "") + sh.checked).join("  |  ")
               : null;

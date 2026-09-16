@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.269.0-2026-09-16-their-old-piece-stays";
+const BUILD = "aura-core-v9.270.0-2026-09-16-the-drawer-hears-the-conversation";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18418,7 +18418,10 @@ async function successionGate(env) {
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt,
               refs: [parentUrl, ...withRefs], subject: p.prompt,
               ...(evW ? { width: evW } : {}), ...(evH ? { height: evH } : {}),
-              ...(evAsp ? { aspect: evAsp } : {}), ...(evRes ? { res: evRes } : {}) })
+              ...(evAsp ? { aspect: evAsp } : {}), ...(evRes ? { res: evRes } : {}),
+              // v9.270 - the conversation for the tool lane. Ignored unless its dials are set.
+              ...(p.talk && typeof p.talk === "object" && typeof p.lane === "string" &&
+                  /^[a-z_]{3,24}$/.test(p.lane) ? { talk: p.talk, talk_lane: p.lane } : {}) })
           : await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
         if (!r || !r.ok) return { cmd: "IMAGE", payload: { ok: false, error: r ? r.error : "evolution failed" } };
@@ -18433,6 +18436,7 @@ async function successionGate(env) {
           // one of them had to be identified by remembering which pin was set. `SHOW_IT` reports
           // this; the reply somebody actually reads when an edit misbehaves did not.
           model: r.model || null, cost_usd: r.cost_usd,
+          ...(r.talk ? { talk: r.talk } : {}),
           // Says out loud whether the parent's pixels were actually used. Without this the two
           // cases look identical in the reply and only the picture tells you - which is how this
           // went unnoticed in the first place.
@@ -57748,6 +57752,21 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // the wrong tool whatever the catalogue is set to. Overridable, because the day a Workers AI
   // model does image-to-image this should follow the pin again.
   if (isEdit && !CAN_EDIT.test(model)) model = IMAGE_POLICY.edit.model;
+  // ══ THE CONVERSATION LANE (2026-09-16, v9.270) ════════════════════════════════════════════
+  // A caller that holds a conversation passes `talk` and names its lane. The lane runs only when
+  // BOTH dials are set - `config:source:<lane>:provider` (grok | xai | openai) and
+  // `config:source:<lane>:model`, the conversation model that holds the image tool. Named under
+  // `config:` with :provider and :model so AIMARGIN's pin scanner lists them.
+  // Resolved AFTER the edit guard on purpose: the guard replaces any model that cannot edit, and
+  // a conversation model is not an image model - the tool behind it is.
+  let talkLane = null;
+  if (opts.talk && typeof opts.talk === "object" && typeof opts.talk_lane === "string" &&
+      /^[a-z_]{3,24}$/.test(opts.talk_lane)) {
+    const _lp = String((await env.AURA_KV.get("config:source:" + opts.talk_lane + ":provider").catch(() => null)) || "").trim().toLowerCase();
+    const _lm = String((await env.AURA_KV.get("config:source:" + opts.talk_lane + ":model").catch(() => null)) || "").trim();
+    if (/^(grok|xai|openai)$/.test(_lp) && _lm) talkLane = { provider: _lp === "openai" ? "openai" : "xai", model: _lm };
+  }
+  if (talkLane) model = talkLane.model;
   const quality = ((rawQuality && rawQuality.trim()) || resolved.quality || "low").trim();
   const p = String(prompt).slice(0, 4000);
 
@@ -57762,7 +57781,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // served the other person's body. That is the most dangerous line in this change.
   const refs = Array.isArray(opts.refs) ? opts.refs.filter(u => typeof u === "string" && u).slice(0, 6) : [];
   let cacheKey = null;
-  try {
+  // A conversation is never served from the prompt cache: "try that again" twice is two asks.
+  if (!talkLane) try {
     // ══ A SEED IS PART OF WHAT WAS ASKED FOR ═════════════════════════════════════════════════
     // Twenty variations of one design are twenty calls with the SAME prompt and different seeds.
     // Without the seed in this key they would all be one cache entry and the caller would get the
@@ -57809,8 +57829,54 @@ async function auraGenerateImage(prompt, env, opts = {}) {
 
   const id = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   let b64 = null, err = null, imgUsage = null;
+  let talkOut = null;
   try {
-    if (model.startsWith("@cf/")) {
+    if (talkLane) {
+      // ══ image_generation ON /v1/responses - xAI and OpenAI, one shape ══════════════════════
+      // From xAI's docs: the model decides when to call the tool, writes the image prompt, and
+      // returns the image alongside its text. Output items: `image_generation_call` carries
+      // `result` (base64, no data-URL prefix) and `prompt`; `message` carries the text.
+      // `action: "edit"` when pictures are on the table - a change to somebody's photograph must
+      // not become a fresh drawing.
+      const _oa = talkLane.provider === "openai";
+      let key = await getSecret(env, _oa ? "openai" : "xai");
+      if (key && key.startsWith("\x7b")) { try { key = JSON.parse(key).api_key; } catch {} }
+      if (!key) throw new Error("no " + (_oa ? "OpenAI" : "xAI") + " key");
+      const _t = opts.talk;
+      const _input = (Array.isArray(_t.turns) ? _t.turns : [])
+        .filter((x) => x && x.said)
+        .map((x) => ({ role: x.role === "aura" ? "assistant" : "user", content: String(x.said).slice(0, 2000) }));
+      const _content = [{ type: "input_text", text: String(_t.said || p).slice(0, 2000) }];
+      const _imgs = (Array.isArray(_t.images) ? _t.images : []).filter((im) => im && typeof im.url === "string" && /^https?:\/\//i.test(im.url)).slice(0, 4);
+      for (const im of _imgs) {
+        if (im.label) _content.push({ type: "input_text", text: String(im.label).slice(0, 200) });
+        _content.push({ type: "input_image", image_url: im.url });
+      }
+      _input.push({ role: "user", content: _content });
+      const r = await pfetch(env, _oa ? "openai" : "xai", "core:image_talk",
+        (_oa ? "https://api.openai.com" : "https://api.x.ai") + "/v1/responses", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+        body: JSON.stringify({ model, input: _input,
+          tools: [{ type: "image_generation", action: _imgs.length ? "edit" : "auto" }] })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));
+      const _out = Array.isArray(d?.output) ? d.output : [];
+      const _calls = _out.filter((o) => o && o.type === "image_generation_call" && o.result);
+      const _last = _calls.length ? _calls[_calls.length - 1] : null;
+      b64 = _last ? String(_last.result).replace(/^data:[^,]+,/, "") : null;
+      const _text = _out.filter((o) => o && o.type === "message")
+        .flatMap((o) => Array.isArray(o.content) ? o.content : [])
+        .map((c) => (c && (c.text || c.output_text)) || "").filter(Boolean).join("\n").trim();
+      talkOut = { said: _text || null, prompt: (_last && (_last.prompt || _last.revised_prompt)) || null,
+                  provider: talkLane.provider, model, images_sent: _imgs.length, image_calls: _calls.length,
+                  edited: !!(_last && /^ie_/.test(String(_last.id || ""))),
+                  response_id: d?.id || null, usage: d?.usage || null };
+      console.log("[IMG-TALK] " + talkLane.provider + " " + model + " images_sent=" + _imgs.length +
+        " calls=" + _calls.length + " id=" + ((_last && _last.id) || "-"));
+      if (!b64) throw new Error("the conversation model answered without drawing: " + (_text || "no text").slice(0, 200));
+    } else if (model.startsWith("@cf/")) {
       // Cloudflare Workers AI - near-free, no external key, already bound as env.AI. flux-1-schnell returns
       // { image: <base64> }; stream/byte variants return raw bytes - handle both.
       // ══ THE FLUX.2 MODELS ON WORKERS AI WANT MULTIPART, NOT JSON ═════════════════════════
@@ -58609,8 +58675,10 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       });
     } catch (e) { try { console.warn("[IMG] egress write failed: " + (e && e.message)); } catch {} }
   }
+  if (talkOut) costSource = "responses tool - text tokens from provider usage; the image fee is not in the reply, read the console";
   return { ok: true, id, image_url: meta.url, prompt: meta.prompt, model, quality, tokens,
-           cost_usd: costUsd, cost_source: costSource, neurons };
+           cost_usd: costUsd, cost_source: costSource, neurons,
+           ...(talkOut ? { talk: talkOut } : {}) };
 }
 
 // SHOW IT â€” Aura's universal visual verb. Everywhere she lives, when a moment is better shown
@@ -58660,7 +58728,7 @@ async function showIt(subject, env, opts = {}) {
   // matter which model, which quality tier or which endpoint, and `[XAI-IMG]` printed
   // `asked aspect=- res=-` the moment it was pointed at the right branch. An afternoon of
   // theories about xAI's silent fallbacks, and the parameters never left this worker.
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null });
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, talk: opts.talk || null, talk_lane: opts.talk_lane || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════
@@ -58674,7 +58742,8 @@ async function showIt(subject, env, opts = {}) {
     // A priced-from-usage figure and a guessed one must not look the same downstream either.
     cost_source: result.cost_source || null, neurons: result.neurons ?? null,
     edited: refs.length ? true : undefined,
-    from_refs: refs.length || undefined };
+    from_refs: refs.length || undefined,
+    ...(result.talk ? { talk: result.talk } : {}) };
   // THE IMAGE IS A LIVING SMART FILE. Register it through the generic Smart File engine as
   // filetype:"image" - it gets the same identity, timeline, lineage, and attributed contributors any
   // file gets. Image is just one filetype; the engine is universal.
@@ -60058,6 +60127,14 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
 let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
+      // ══ A PHOTOGRAPH THAT ARRIVED IS NOT A DRAWING (2026-09-16, v9.270) ══════════════════
+      // `talk:last` is written on a REF turn with `image: refUrl` so the pixels survive the turn.
+      // Correct - but three readers took "lastDrawn has an image" to mean SHE DREW IT. The go-ahead
+      // guard returned their own photo with same_picture: true on "go for it", the state note told
+      // her a piece she drew was on screen, and the roster called their photo "the piece".
+      // The fact that separates the two already exists: a drawing is never the reference itself.
+      const _drewNow = () => !!(lastDrawn && lastDrawn.image && lastDrawn.design &&
+                                lastDrawn.design !== refDesign);
       const wantRef = String((opts && opts.ref) || "").trim();
       if (wantRef && me && /^https?:\/\//i.test(wantRef)) {
         try {
@@ -60384,7 +60461,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "as is useful. That is the conversation. It never goes in `prompt`.\n" +
         "IF YOUR `say` CLAIMS YOU ARE SHOWING THEM SOMETHING, `do` MUST NOT BE `none`.";
 
-      const stateNote = (lastDrawn && lastDrawn.design)
+      const stateNote = _drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
         : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.";
@@ -60394,7 +60471,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // image and evolve that one rather than always the newest.
       const picNames = [];
       if (refUrl) picNames.push('  "photo" - the photograph they sent you');
-      if (lastDrawn && lastDrawn.image) picNames.push('  "piece" - the last picture you drew for them');
+      if (_drewNow()) picNames.push('  "piece" - the last picture you drew for them');
       const picNote = picNames.length
         ? "\n\nTHE PICTURES ON FILE, AND WHAT TO CALL THEM IN `use`:\n" + picNames.join("\n") +
           "\nName them in the order the job needs. Leave `use` out and it starts from the last " +
@@ -60972,7 +61049,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // This is not a judgement: if the only thing they said is a go-ahead and a picture already
       // exists, there is nothing new to draw, by definition.
       // IT NEVER BLOCKS A REAL REQUEST - any sentence carrying content fails the test and draws.
-      if ((act === "draw" || act === "change") && lastDrawn && lastDrawn.image) {
+      if ((act === "draw" || act === "change") && _drewNow()) {
         const _said = String(said || "").replace(/^\s*(yeah|yep|ok(ay)?|yes|sure|alright),?\s*/i, "").trim();
         const _bareGo = /^(go|go ahead|do it|show me|show it|lets see|let'?s see|let me see|see it|that'?s it|that'?s the one|that'?s perfect|that'?s right|perfect|nice|love it|great|cool|please|please do|draw it|make it|send it|)[\s.,!]*$/i.test(_said);
         if (_bareGo) {
@@ -61521,8 +61598,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // When it is THEIR OWN BODY the parent is their photograph, every time. They are not
           // iterating on a drawing, they are looking at what a piece would be on them, and the only
           // honest starting point for that is the picture they sent.
-          const parentId = (useRaw.length && useOne(useRaw[0], "design"))
-            || (onTheirSkin && refDesign) || lastDrawn.design;
+          // v9.270: the middle term `(onTheirSkin && refDesign)` is gone. `onTheirSkin` is only true
+          // when lastDrawn.design IS refDesign, so it could only ever return what the last term
+          // already returned. It never changed the parent. What sent "try that again" back to the
+          // bare arm was `use: ["photo"]` - measured on pta_af518d910eac5f03.
+          const parentId = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
           const alsoRefs = useRaw.slice(useRaw.length && useOne(useRaw[0], "design") ? 1 : 0)
             .map((n) => useOne(n, "url")).filter(Boolean);
           // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════
@@ -61608,15 +61688,47 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               "lines - not redrawn, not moved, and not covered by any of the new work."
             : "";
           const evolveAsk = (acted.prompt || said) + cleanUp + _protectOld;
+          // ══ THE THING THAT DRAWS HEARS THE CONVERSATION (2026-09-16, v9.270) ═══════════════
+          // Grok, ChatGPT and Meta do not hand an image model a sentence somebody else wrote. The
+          // conversation model holds the image generation TOOL: it sees the photograph and every
+          // word, writes its own prompt, draws, and says what it drew in the same response. xAI and
+          // OpenAI both document it as `image_generation` on /v1/responses.
+          // Ours sent her rewrite to an edit endpoint that never saw the conversation. Every
+          // failure in the hammer table lived at that handoff - and on pta_af518d910eac5f03 the
+          // sunflowers went over the hammer while her own check said so.
+          // SO WHAT GOES IS WHAT WAS SAID: the turns as the person and she said them, their words
+          // this turn, and the pictures on the table - the photograph they sent and the last
+          // version drawn. Nothing she composed. Her judgement stays where it is strong: she talks
+          // to them, decides WHEN, and checks the result.
+          // A DIAL DECIDES WHETHER THIS LANE RUNS. `config:source:tattoo_talk:provider` and
+          // `:model` both set, and auraGenerateImage uses the tool. Either missing, and `talk` is
+          // ignored - the IMAGE EVOLVE below behaves exactly as v9.269 did.
+          const _turns = (Array.isArray(hist) ? hist : []).filter((h) => h && h.said);
+          if (_turns.length && _turns[_turns.length - 1].role !== "aura" &&
+              String(_turns[_turns.length - 1].said).trim() === said) _turns.pop();
+          const _talkImgs = [];
+          if (refUrl) _talkImgs.push({ label: "This is the photograph they sent you.", url: refUrl });
+          if (_drewNow() && lastDrawn.image !== refUrl)
+            _talkImgs.push({ label: "This is the most recent version you drew for them.", url: lastDrawn.image });
+          for (const u of alsoRefs) {
+            if (u && u !== refUrl && !(lastDrawn && u === lastDrawn.image))
+              _talkImgs.push({ label: "They also pointed at this picture.", url: u });
+          }
           const cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
             JSON.stringify({ prompt: evolveAsk, by: me,
                              res: "2k",
-                             ...(alsoRefs.length ? { with: alsoRefs } : {}) }), env, true);
+                             ...(alsoRefs.length ? { with: alsoRefs } : {}),
+                             talk: { turns: _turns.slice(-12).map((h) => ({ role: h.role, said: String(h.said).slice(0, 2000) })),
+                                     said, images: _talkImgs.slice(0, 4) },
+                             lane: "tattoo_talk" }), env, true);
           const cp = (cr && cr.payload) ? cr.payload : cr;
           const _mockNote = (cp?.ok && cp.image_url) ? await _lookAtMock(cp.image_url) : null;
           drew = (cp?.ok && cp.image_url)
-            ? { design: cp.child, image: cp.image_url, changed: acted.prompt || said,
+            ? { design: cp.child, image: cp.image_url,
+                changed: (cp.talk && cp.talk.prompt) || acted.prompt || said,
                 from: parentId,
+                // What the drawing model itself wrote and said - the lane ran if this is here.
+                ...(cp.talk ? { drawer: cp.talk } : {}),
                 ...(_mockNote ? { she_looked: _mockNote,
                                   placement_ok: /^\s*RIGHT\b/i.test(_mockNote) } : {}),
                 ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) }

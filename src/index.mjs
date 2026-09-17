@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.277.0-2026-09-16-grok-by-the-book";
+const BUILD = "aura-core-v9.277.1-2026-09-16-contract-matches-think";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60409,10 +60409,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "diamond head, decorated handle and laurel leaves exactly as drawn, and their arm, skin, " +
         "pose, lighting and background unchanged.\"\n" +
         "NAME what is already there - short names for what you can see, one after another. Never " +
-        "describe it, never describe the whole scene, never say what not to do - say what stays.\n" +
+        "describe it, never describe the whole scene, never say what not to do - say what stays. " +
+        "On a cover-up, what changes IS the old piece, so it goes in the change, not in the keep.\n" +
         "ONE CHANGE PER INSTRUCTION. If they agreed to more than one change - the sunflowers AND " +
         "her name - write each as its own instruction in that same shape, in order, in `steps`, " +
         "and put the first one in `prompt` too. Each runs on the result of the one before.\n" +
+        "For a brand new piece on white with no photograph, the line above applies: what they " +
+        "asked for, and the job.\n" +
+        // The copy SHE reads is aura-think's mytattoo channel. This one is only used when that
+        // agent is bypassed, and it must say the same thing.
+
         "Beyond naming what stays, do not describe what is already in the picture - the thing that draws it is holding the " +
         "same picture, and everything you describe is something you are asking it to KEEP. On a " +
         "cover-up that is exactly backwards.\n" +

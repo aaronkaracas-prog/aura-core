@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.280.0-2026-09-17-plain-words-dont-remove-my-tattoo";
+const BUILD = "aura-core-v9.281.0-2026-09-17-literal-frames";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60402,25 +60402,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // density and filling was explaining a job the model already knows.
         "WRITING `prompt`: WHAT THEY ASKED FOR, AND THE JOB. \"a dragon, cover-up\". \"add a " +
         "shark\". \"in colour\". \"a koi on the forearm\".\n" +
-        // ══ PLAIN WORDS, AND DON'T REMOVE MY TATTOO (2026-09-17, v9.280) ════════════════════
+        // ══ SHE WRITES THE BLANK; THE FRAME IS FIXED (2026-09-17, v9.281) ═════════════════════
         // The copy SHE reads is aura-think's mytattoo channel; this one is used only when that
-        // agent is bypassed, and says the same thing. MEASURED on the hammer photo: Aaron's plain
-        // sentence beat the structured keep-list on the same model and settings.
-        "WHEN THE PICTURE IS MADE FROM A PICTURE THAT EXISTS, `prompt` is ONE PLAIN SENTENCE in " +
-        "their words - the way they would say it to a friend holding their phone. Nothing about " +
-        "lighting, skin or pose; the picture carries all of that. Never describe what is already " +
-        "in the picture.\n" +
-        "  THE FIRST PICTURE ON THEIR OWN PHOTO, ADDING TO WHAT THEY HAVE: \"This is my existing " +
-        "tattoo. Show me what it would look like if I <what you settled on>. Do not remove any of " +
-        "the current tattoo.\"\n" +
-        "  A CHANGE TO THE PICTURE ON SCREEN: \"This is my tattoo. Show me what it would look like " +
-        "if I <the change>. Don't change anything else.\"\n" +
-        "  A COVER-UP - going over the old piece is the job: \"This is my existing tattoo. Show me " +
-        "what it would look like if I cover it with <what you settled on>.\"\n" +
-        "Example: \"This is my existing tattoo. Show me what it would look like if I add sunflowers " +
-        "with Catherine in script incorporated in it. Do not remove any of the current tattoo.\"\n" +
-        "The blank is what the two of you settled on in the conversation - their idea, or one of " +
-        "yours they said yes to - in plain words, all of it in the one sentence.\n" +
+        // agent is bypassed, and says the same thing.
+        "WHEN THE PICTURE IS MADE FROM A PICTURE THAT EXISTS, `prompt` is ONLY WHAT THEY SETTLED " +
+        "ON, in plain words - the blank in a sentence that is written for you. The image model takes " +
+        "every word literally, so the wording that protects what is already there is fixed and added " +
+        "around your words; anything you add about keeping, removing, covering or changing the " +
+        "existing tattoo fights it.\n" +
+        "  AN ADD-ON, A REWORK, or A CHANGE to the picture on screen: start with what they would do - " +
+        "\"add forget-me-not flowers in colour with the name Catherine in script and the date December " +
+        "5th woven beneath them\", \"make the name bigger\".\n" +
+        "  A COVER-UP: just what goes over it - \"a dragon\".\n" +
+        "Never describe what is already in the picture, and never say what to keep. Their idea, or " +
+        "one of yours they said yes to - all of it, in plain words.\n" +
         "For a brand new piece on white with no photograph, the line above applies: what they " +
         "asked for, and the job.\n" +
         "Do not explain the craft to it either. \"cover-up\" already means bigger, darker and " +
@@ -61602,11 +61597,47 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           //  · ONE RETRY per change if nothing passed, from the same parent, with her reason.
           //  · TWO WRONG RESULTS IN A ROW and the next change restarts from the original photo.
           // One plain sentence per turn (v9.280) - her `steps` are gone.
-          const _asks = [String(acted.prompt || said).trim()];
+          // ══ THE LITERAL FRAMES (2026-09-17, v9.281) ═══════════════════════════════════════
+          // MEASURED on the hammer photo, same model, same settings:
+          //   "...Do not remove any of the current tattoo."  -> laurels REPLACED by flowers
+          //   "...All new artwork should not cover any of the current tattoo." -> everything kept
+          // The image model is literal: "remove" leaves room to swap, "cover" does not. Wording
+          // like that is a contract with the model, not a judgement, so it is fixed here and she
+          // writes only the blank. Each frame is a setting - `config:frame:<job>` - so a model that
+          // needs different literal wording is a KV change, not a deploy. "____" is the blank.
+          //   add    - first picture on their own photo, adding to what they have
+          //   change - a change to the picture already drawn
+          //   cover  - covering the old piece is the job, so nothing protects it
+          //   rework - reworking the old piece is the job
+          // Anything else (a new piece on white, a new piece on bare skin) is her words alone.
+          const _onPhoto = !!refDesign && parentId === refDesign;
+          const _frameKey = !_onPhoto ? (_drewNow() ? "change" : null)
+            : (["add", "cover", "rework"].includes(jobNow) ? jobNow : null);
+          const _FRAMES = {
+            add: "This is my existing tattoo. Show me what it would look like if I ____. All new artwork should not cover any of the current tattoo.",
+            change: "This is my tattoo. Show me what it would look like if I ____. Don't change anything else.",
+            cover: "This is my existing tattoo. Show me what it would look like if I cover it with ____.",
+            rework: "This is my existing tattoo. Show me what it would look like if I ____.",
+          };
+          let _blank = String(acted.prompt || said).trim()
+            .replace(/^this is my[\s\S]*?look like if i\s+/i, "");
+          // Her own protection wording is dropped - the frame carries it, literally.
+          for (let k = 0; k < 3; k++) {
+            _blank = _blank.replace(/[.\s]*(do not|don't|all new artwork|keep|without covering|leave)\b[^.]*\.?\s*$/i, "").trim();
+            _blank = _blank.replace(/,\s*(keeping|without|leaving|not covering)\b[^.]*$/i, "").trim();
+          }
+          _blank = _blank.replace(/[.\s]+$/, "");
+          if (_frameKey === "cover") _blank = _blank.replace(/^(cover (it|this|the old (piece|tattoo)) (up )?with|cover up with|cover it up with)\s+/i, "");
+          let _frame = null;
+          if (_frameKey) {
+            try { _frame = String((await env.AURA_KV.get("config:frame:" + _frameKey)) || "").trim() || null; } catch {}
+            if (!_frame || !_frame.includes("____")) _frame = _FRAMES[_frameKey];
+          }
+          const _asks = [_frame ? _frame.replace("____", _blank || String(said).trim()) : String(acted.prompt || said).trim()];
           const _evolve = async (parent, ask, seed) => {
             try {
               const r = await processCommand("IMAGE EVOLVE " + parent + " " +
-                JSON.stringify({ prompt: ask + cleanUp, by: me, res: "2k", ...(seed ? { seed } : {}) }), env, true);
+                JSON.stringify({ prompt: ask + (_frame ? "" : cleanUp), by: me, res: "2k", ...(seed ? { seed } : {}) }), env, true);
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
           };
@@ -61647,6 +61678,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           drew = (cp?.ok && cp.image_url)
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
+                ...(_frameKey ? { frame: _frameKey, her_words: _blank } : {}),
                 from: parentId,
                 ...(_asks.length > 1 ? { steps: _stepLog } : {}),
                 ...(_retried ? { retried: _retried } : {}),

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.281.0-2026-09-17-literal-frames";
+const BUILD = "aura-core-v9.282.0-2026-09-17-proven-add-frame";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61614,7 +61614,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const _frameKey = !_onPhoto ? (_drewNow() ? "change" : null)
             : (["add", "cover", "rework"].includes(jobNow) ? jobNow : null);
           const _FRAMES = {
-            add: "This is my existing tattoo. Show me what it would look like if I ____. All new artwork should not cover any of the current tattoo.",
+            // PROVEN 2026-09-17 on the hammer photo, twice in a row, word for word (img_mu5p0hahoyiw,
+            // img_mu5p16jqkjrv): old ink kept, new work framing it in matching weight. "flowing with
+            // the current tattoo" is what stops a sticker; "matching its line weight, framing it so
+            // it reads as one piece" is what makes it one design. NOTHING ELSE goes in - an extra
+            // clause ("leaving a little bare skin around it so nothing touches it") got the laurels
+            // cleared away on its first run.
+            add: "This is my existing tattoo. Show me what it would look like if I ____, flowing with the current tattoo, matching its line weight, framing it so it reads as one piece. All new artwork should not cover any of the current tattoo.",
             change: "This is my tattoo. Show me what it would look like if I ____. Don't change anything else.",
             cover: "This is my existing tattoo. Show me what it would look like if I cover it with ____.",
             rework: "This is my existing tattoo. Show me what it would look like if I ____.",
@@ -61627,6 +61633,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             _blank = _blank.replace(/,\s*(keeping|without|leaving|not covering)\b[^.]*$/i, "").trim();
           }
           _blank = _blank.replace(/[.\s]+$/, "");
+          // ══ HER BLANK DESCRIBES ONLY THE NEW WORK (2026-09-17, v9.282) ═════════════════════════
+          // MEASURED: "woven naturally into the existing leafwork around the hammer" got the laurels
+          // redrawn as flowers; the same sentence without that clause kept them. A literal model
+          // edits whatever it is pointed at. So any clause of hers that points at what is already
+          // tattooed - existing, current, original, old - is dropped, and so is any "into / around /
+          // beside the ... tattoo" phrase. The frame says how the new work relates to the old.
+          if (_frameKey) {
+            _blank = _blank.split(/\s*,\s*/)
+              .filter((c, i) => i === 0 || !/\b(existing|current|original|old (piece|tattoo|ink|work))\b/i.test(c))
+              .join(", ")
+              .replace(/\s+(on (the )?bare skin\s+)?((woven|worked|set|placed|growing|tucked|nestled)\s+)?(naturally\s+)?(into|around|through|among|between|within|beside|next to|alongside|behind|across|over|on|under) the\s+([a-z-]+\s+){0,3}(tattoo|piece|ink|leafwork|leaves|scrollwork|linework|design)\b/gi, "")
+              .replace(/\s+(of|with|to) the (existing|current|original) [a-z -]+$/i, "")
+              .replace(/\s*,\s*$/, "").trim();
+            // "...if I Add sunflowers" -> "...if I add sunflowers": it sits mid-sentence.
+            if (/^[A-Z][a-z]/.test(_blank)) _blank = _blank.charAt(0).toLowerCase() + _blank.slice(1);
+          }
           if (_frameKey === "cover") _blank = _blank.replace(/^(cover (it|this|the old (piece|tattoo)) (up )?with|cover up with|cover it up with)\s+/i, "");
           let _frame = null;
           if (_frameKey) {
@@ -61655,15 +61677,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               if (t && t.ok && t.image_url) { got = t; verdict = await _lookAtMock(t.image_url); }
               else got = t;
             }
-            if (got && got.ok && got.image_url && verdict && /^\s*WRONG\b/i.test(verdict)) {
-              const _why = verdict.replace(/^\s*WRONG\b[\s:,.-]*/i, "").trim();
-              console.log("[AGAIN] step " + (si + 1) + " - " + verdict);
-              const t2 = await _evolve(cur, ask + " The last attempt was wrong: " + _why + " Fix that.", null);
-              if (t2 && t2.ok && t2.image_url) {
-                _retried = { step: si + 1, first_image: got.image_url, first_verdict: verdict };
-                got = t2; verdict = await _lookAtMock(t2.image_url);
-              }
-            }
+            // v9.282: no retry. It sent extra words - "The last attempt was wrong: <her reason>. Fix
+            // that." - and her reason usually named the existing tattoo, which is exactly what makes
+            // a literal model redraw it. What reaches the model is the frame and her words, nothing else.
             _stepLog.push({ ask, image: (got && got.image_url) || null, she_looked: verdict || null,
                             ...(got && !got.ok ? { failed: got.error || "COULD_NOT_CHANGE" } : {}) });
             if (!(got && got.ok && got.image_url)) { cp = got; break; }

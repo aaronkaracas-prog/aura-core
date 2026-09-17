@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.279.0-2026-09-17-one-version-honest-chain";
+const BUILD = "aura-core-v9.280.0-2026-09-17-plain-words-dont-remove-my-tattoo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60060,6 +60060,15 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // to their ORIGINAL photograph with everything still wanted in one instruction.
       let badStreak = 0;
       if (me) { try { badStreak = Number(await env.AURA_KV.get("talk:bad:" + me)) || 0; } catch {} }
+      // ══ EACH CHECK IS A SETTING (2026-09-17) ═══════════════════════════════════════════════
+      // The checks exist because two steps are still model redraws. Once a step is proven, its
+      // check is switched off: `config:check:mockup` and `config:check:sheets`, "off" to skip.
+      // Defined HERE, near the top of the turn: v9.279 defined it after the artist-files branch
+      // that calls it, and that branch died with "Cannot access '_checkOn' before initialization".
+      const _checkOn = async (k) => {
+        try { return String((await env.AURA_KV.get("config:check:" + k)) || "").trim().toLowerCase() !== "off"; }
+        catch { return true; }
+      };
 
       // ══ THEY POINTED AT ONE (2026-09-07) ══════════════════════════════════════════════════
       // The wall is a fork, not the tattoo. When somebody taps a photograph, what travels is not
@@ -60278,7 +60287,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // ABSENT IS TODAY. No `use`, and the job starts from the last thing she drew with the
         // parent riding along exactly as it has all week - "add a green ball" is untouched.
         '  "use": ["optional - which pictures this job starts from"],\n' +
-        '  "steps": ["optional - one edit instruction per change when they agreed to more than one"],\n' +
         // ══ WHAT THE ARTIST ACTUALLY PRINTS (2026-09-10, from the trade) ════════════════════
         // Researched rather than assumed, because four attempts at a single "shop sheet" all
         // failed the same way and the reason turned out to be the artefact, not the wording.
@@ -60394,34 +60402,27 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // density and filling was explaining a job the model already knows.
         "WRITING `prompt`: WHAT THEY ASKED FOR, AND THE JOB. \"a dragon, cover-up\". \"add a " +
         "shark\". \"in colour\". \"a koi on the forearm\".\n" +
-        // ══ GROK, BY THE BOOK (2026-09-16, v9.277) ══════════════════════════════════════════
-        // From xAI's editing docs and the people using grok-imagine-image-2.0 every day: the
-        // instruction is the CHANGE first, then a keep-clause that NAMES what is already there.
-        // "Keep the existing tattoo" is too weak; "keep the vertical hammer, diamond head and
-        // laurel leaves exactly as drawn" is the pattern. Describe the change, never the scene.
-        // One change per call, each on the result of the last. Say what stays, not what not to do.
-        "WHEN THE PICTURE IS MADE FROM A PICTURE THAT EXISTS - a change to what is on screen, or " +
-        "the first drawing on the photograph of their own body for an add-on, cover-up or " +
-        "rework - `prompt` is ONE EDIT INSTRUCTION in exactly this shape:\n" +
-        "  <the one change, and where it goes>. Keep <each thing already there, named in a few " +
-        "words> exactly as drawn, and their arm, skin, pose, lighting and background unchanged.\n" +
-        "Example: \"Add sunflowers on the bare skin below the hammer. Keep the vertical hammer, " +
-        "diamond head, decorated handle and laurel leaves exactly as drawn, and their arm, skin, " +
-        "pose, lighting and background unchanged.\"\n" +
-        "NAME what is already there - short names for what you can see, one after another. Never " +
-        "describe it, never describe the whole scene, never say what not to do - say what stays. " +
-        "On a cover-up, what changes IS the old piece, so it goes in the change, not in the keep.\n" +
-        "ONE CHANGE PER INSTRUCTION. If they agreed to more than one change - the sunflowers AND " +
-        "her name - write each as its own instruction in that same shape, in order, in `steps`, " +
-        "and put the first one in `prompt` too. Each runs on the result of the one before.\n" +
+        // ══ PLAIN WORDS, AND DON'T REMOVE MY TATTOO (2026-09-17, v9.280) ════════════════════
+        // The copy SHE reads is aura-think's mytattoo channel; this one is used only when that
+        // agent is bypassed, and says the same thing. MEASURED on the hammer photo: Aaron's plain
+        // sentence beat the structured keep-list on the same model and settings.
+        "WHEN THE PICTURE IS MADE FROM A PICTURE THAT EXISTS, `prompt` is ONE PLAIN SENTENCE in " +
+        "their words - the way they would say it to a friend holding their phone. Nothing about " +
+        "lighting, skin or pose; the picture carries all of that. Never describe what is already " +
+        "in the picture.\n" +
+        "  THE FIRST PICTURE ON THEIR OWN PHOTO, ADDING TO WHAT THEY HAVE: \"This is my existing " +
+        "tattoo. Show me what it would look like if I <what you settled on>. Do not remove any of " +
+        "the current tattoo.\"\n" +
+        "  A CHANGE TO THE PICTURE ON SCREEN: \"This is my tattoo. Show me what it would look like " +
+        "if I <the change>. Don't change anything else.\"\n" +
+        "  A COVER-UP - going over the old piece is the job: \"This is my existing tattoo. Show me " +
+        "what it would look like if I cover it with <what you settled on>.\"\n" +
+        "Example: \"This is my existing tattoo. Show me what it would look like if I add sunflowers " +
+        "with Catherine in script incorporated in it. Do not remove any of the current tattoo.\"\n" +
+        "The blank is what the two of you settled on in the conversation - their idea, or one of " +
+        "yours they said yes to - in plain words, all of it in the one sentence.\n" +
         "For a brand new piece on white with no photograph, the line above applies: what they " +
         "asked for, and the job.\n" +
-        // The copy SHE reads is aura-think's mytattoo channel. This one is only used when that
-        // agent is bypassed, and it must say the same thing.
-
-        "Beyond naming what stays, do not describe what is already in the picture - the thing that draws it is holding the " +
-        "same picture, and everything you describe is something you are asking it to KEEP. On a " +
-        "cover-up that is exactly backwards.\n" +
         "Do not explain the craft to it either. \"cover-up\" already means bigger, darker and " +
         "denser to a model that draws tattoos. Say the job, not the theory.\n" +
         "What you tell THEM is a different thing entirely - talk about what you can see, as much " +
@@ -60434,8 +60435,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.";
       const resetNote = (badStreak >= 2 && refDesign)
         ? "\n\nTHE LAST TWO PICTURES WERE WRONG. The next change starts again from their original " +
-          "photograph: put EVERYTHING they still want into ONE instruction in `prompt`, and leave " +
-          "`steps` out."
+          "photograph: put EVERYTHING they still want into the one sentence in `prompt`."
         : "";
 
       // The roster. Facts only: what is on file and what to call it. Which job wants which
@@ -61420,23 +61420,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // placement to get wrong, so this costs nothing on the catalogue path.
       // IT REPORTS, IT DOES NOT BLOCK. An answer they can see beats a turn that silently refuses,
       // and she is the one who tells them - which is the same rule as the artist sheet.
-      // ══ EACH CHECK IS A SETTING (2026-09-17) ═══════════════════════════════════════════════
-      // The checks exist because two steps are still model redraws. Once a step is proven, its
-      // check is switched off: `config:check:mockup` and `config:check:sheets`, "off" to skip.
-      const _checkOn = async (k) => {
-        try { return String((await env.AURA_KV.get("config:check:" + k)) || "").trim().toLowerCase() !== "off"; }
-        catch { return true; }
-      };
       const _lookAtMock = async (mockUrl) => {
         if (!mockUrl || !me || !seeing) return null;
         if (!(await _checkOn("mockup"))) return null;
         try {
           const look = await proxyToAgent(env,
+            // 95%, not pixel-perfect (Aaron, 2026-09-17): the artist cuts and moves things on paper
+            // anyway. "Unchanged, including the edges and borders" rejected good pictures and sent
+            // a retry that came back worse.
             "[This is the mock-up on their own body. Compare it to the photograph they sent. " +
-            "Is the new work where they asked for it, and is every tattoo they ALREADY had " +
-            "untouched - not just present, but unchanged, including the edges and borders of it? " +
-            "Begin your answer with the single word RIGHT or WRONG, then one short sentence " +
-            "saying why. Nothing else.]",
+            "Is the tattoo they already had still there - not removed or covered over - and is " +
+            "what they asked for there? Begin your answer with the single word RIGHT or WRONG, " +
+            "then one short sentence saying why. Nothing else.]",
             false, me, mockUrl, world);
           if (look && look.reply && !look.failed) {
             return _verdict(look.reply, readAct(look.reply)).slice(0, 240);
@@ -61603,13 +61598,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // ══ GROK, BY THE BOOK (2026-09-16, v9.277) ══════════════════════════════════════════
           // What goes to the editor is the current image and her instruction - nothing from the
           // conversation. The instruction is the change first, then what stays, named.
-          //  · ONE CHANGE PER CALL. If they agreed to several, she lists them in `steps` and each
-          //    runs on the result of the one before (xAI: chain edits, output becomes input).
+          //  · ONE PLAIN SENTENCE, the person's words (v9.280).
           //  · ONE RETRY per change if nothing passed, from the same parent, with her reason.
           //  · TWO WRONG RESULTS IN A ROW and the next change restarts from the original photo.
-          const _stepsIn = (Array.isArray(acted.steps) ? acted.steps : [])
-            .map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4);
-          const _asks = (_resetToPhoto || !_stepsIn.length) ? [String(acted.prompt || said).trim()] : _stepsIn;
+          // One plain sentence per turn (v9.280) - her `steps` are gone.
+          const _asks = [String(acted.prompt || said).trim()];
           const _evolve = async (parent, ask, seed) => {
             try {
               const r = await processCommand("IMAGE EVOLVE " + parent + " " +
@@ -61941,7 +61934,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // words, so the person is never told something that is not true.
       let _said = String(acted.say || "");
       if (drew && drew.failed) {
-        _said += " Honestly, that didn't come out this time - nothing new was made.";
+        // REPLACED, not added to (v9.280): measured, "I've made the artist files... Honestly,
+        // that didn't come out" - one reply saying both.
+        _said = acted.act === "artist"
+          ? "I went to make your artist files, but they didn't come out this time - nothing was made yet."
+          : "I went to make that picture, but it didn't come out this time - nothing new was made yet.";
       } else if (drew && drew.she_looked && /^\s*WRONG\b/i.test(drew.she_looked)) {
         _said += " One thing I can see: " + drew.she_looked.replace(/^\s*WRONG\b[\s:,.-]*/i, "").replace(/\.?$/, ".");
       } else if (drew && drew.for_the_artist && drew.she_checked && /REDONE|WRONG/i.test(drew.she_checked)) {

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.283.0-2026-09-17-touch-and-no-where";
+const BUILD = "aura-core-v9.284.0-2026-09-17-thread-test";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -12441,6 +12441,81 @@ async function successionGate(env) {
         return { cmd: "SETKV", payload: { ok: true, key, bytes: val.length, verified, verification: verified ? "CONFIRMED: page written and read-back matches" : "WARNING: read-back failed or size mismatch - page may not be saved correctly" } };
       }
       return { cmd: "SETKV", payload: { ok: true, key, bytes: val.length } };
+    }
+
+    // ══ THREAD - THE PROVIDER KEEPS THE PICTURES (2026-09-17, v9.284, A TEST) ═══════════════
+    // xAI: "Images generated on a previous turn stay editable on follow-up turns. Continue the
+    // conversation with previous_response_id, and the model can refine its earlier images by
+    // reference." OpenAI is the same. So a tattoo can be one thread: the photo goes in once, then
+    // every step is a short sentence - "add a green snake in the fox's mouth", "now show me only
+    // the artwork you added, on plain white paper". The model made the additions itself, so "the
+    // artwork you added" is its own work, not something it has to guess from pixels.
+    // NOTHING FROM THE CONVERSATION GOES IN. Only these sentences. v9.270 put Aura's chat in a
+    // thread and the model drew her suggestions; that is what is being avoided here.
+    //   THREAD START <image url or id> {"prompt":"..."}      -> first picture, returns a thread id
+    //   THREAD NEXT  <thread id>       {"prompt":"..."}      -> the next step in the same thread
+    // Model and provider are dials: config:source:image_thread:provider (grok|xai|openai) and
+    // config:source:image_thread:model (a conversation model that holds the image tool).
+    case "THREAD": {
+      const thRest = String(rest || "").trim();
+      const thMode = (thRest.split(/\s+/)[0] || "").toUpperCase();
+      const thArg = (thRest.split(/\s+/)[1] || "").trim();
+      const thJson = thRest.indexOf(String.fromCharCode(123));
+      let thP = null; try { thP = JSON.parse(thRest.slice(thJson)); } catch {}
+      const thAsk = String((thP && thP.prompt) || "").trim();
+      if (!["START", "NEXT"].includes(thMode) || !thArg || !thAsk) {
+        return { cmd: "THREAD", payload: { ok: false,
+          error: 'Usage: THREAD START <image url or id> {"prompt":"..."}  |  THREAD NEXT <thread id> {"prompt":"..."}' } };
+      }
+      const thProv = String((await env.AURA_KV.get("config:source:image_thread:provider").catch(() => null)) || "").trim().toLowerCase();
+      const thModel = String((await env.AURA_KV.get("config:source:image_thread:model").catch(() => null)) || "").trim();
+      if (!/^(grok|xai|openai)$/.test(thProv) || !thModel) {
+        return { cmd: "THREAD", payload: { ok: false, error: "set config:source:image_thread:provider and config:source:image_thread:model first" } };
+      }
+      const thOA = thProv === "openai";
+      let thKey = await getSecret(env, thOA ? "openai" : "xai");
+      if (thKey && thKey.trim().charAt(0) === String.fromCharCode(123)) { try { thKey = JSON.parse(thKey).api_key; } catch {} }
+      if (!thKey) return { cmd: "THREAD", payload: { ok: false, error: "no provider key" } };
+      const thImg = /^https?:\/\//i.test(thArg) ? thArg : ("https://" + (await imageHost(env)) + "/image/" + thArg);
+      const thBody = thMode === "START"
+        ? { model: thModel, tools: [{ type: "image_generation", action: "edit" }],
+            input: [{ role: "user", content: [{ type: "input_text", text: thAsk },
+                                              { type: "input_image", image_url: thImg }] }] }
+        : { model: thModel, tools: [{ type: "image_generation" }],
+            previous_response_id: thArg, input: thAsk };
+      try {
+        const thR = await pfetch(env, thOA ? "openai" : "xai", "core:thread",
+          (thOA ? "https://api.openai.com" : "https://api.x.ai") + "/v1/responses", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + thKey, "Content-Type": "application/json" },
+          body: JSON.stringify(thBody) });
+        const thD = await thR.json().catch(() => null);
+        if (!thR.ok || !thD) return { cmd: "THREAD", payload: { ok: false, error: "HTTP " + thR.status + " " + JSON.stringify(thD || {}).slice(0, 300) } };
+        const thOut = Array.isArray(thD.output) ? thD.output : [];
+        const thCalls = thOut.filter((o) => o && o.type === "image_generation_call" && o.result);
+        const thLast = thCalls.length ? thCalls[thCalls.length - 1] : null;
+        const thText = thOut.filter((o) => o && o.type === "message")
+          .flatMap((o) => Array.isArray(o.content) ? o.content : [])
+          .map((c) => (c && (c.text || c.output_text)) || "").filter(Boolean).join("\n").trim();
+        let thUrl = null, thId = null;
+        if (thLast) {
+          const b64 = String(thLast.result).replace(/^data:[^,]+,/, "");
+          thId = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+          await env.AURA_KV.put("image:" + thId, b64);
+          await env.AURA_KV.put("imagemeta:" + thId, JSON.stringify({ id: thId, prompt: thAsk,
+            created: new Date().toISOString(), source: "image_thread", model: thModel,
+            cost_usd: null, url: "https://" + (await imageHost(env)) + "/image/" + thId })).catch(() => {});
+          thUrl = "https://" + (await imageHost(env)) + "/image/" + thId;
+        }
+        return { cmd: "THREAD", payload: { ok: true, thread: thD.id || null, image: thUrl,
+          image_id: thId, said: thText || null,
+          tool_prompt: (thLast && (thLast.prompt || thLast.revised_prompt)) || null,
+          edited: !!(thLast && /^ie_/.test(String(thLast.id || ""))), calls: thCalls.length,
+          model: thModel, usage: thD.usage || null,
+          note: "The provider holds the pictures. THREAD NEXT <thread id> continues from here." } };
+      } catch (e) {
+        return { cmd: "THREAD", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
+      }
     }
 
     case "GETKV": {

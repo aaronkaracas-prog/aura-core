@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.278.0-2026-09-16-three-versions-no-checks";
+const BUILD = "aura-core-v9.279.0-2026-09-17-one-version-honest-chain";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61214,6 +61214,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             } catch { /* her answer is an improvement, never a requirement */ }
           }
           const sheets = [];
+          const _checkSheets = await _checkOn("sheets");
           for (const panel of panelList) {
             // `section: what goes there`. The label before the colon is what the sheet is CALLED
             // and what she is asked to verify it against; the whole phrase is what gets drawn,
@@ -61239,30 +61240,48 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // ONE RETRY, and only when there IS healed ink to protect. If the second is wrong too,
             // her verdict rides in the reply and the gate holds it: two failures mean the piece
             // has no seam to draw around, and asking a third time will not find one.
-            if (fpp && fpp.ok && fpp.image && priorInk && me && seeing) {
+            // ══ ONE CHECK PER SHEET, AND A WRONG ONE IS REDONE - NEVER HELD (2026-09-17) ════════
+            // Aaron: there is no "send them anyway" and no "try again" in this product. The person
+            // edits the picture until it is right, and the files are the next link in the chain.
+            // So a sheet that comes back wrong is fixed by the chain itself: her reason goes back
+            // as the correction, once, and the redone sheet is delivered. It is NOT checked again -
+            // every look puts a full picture into her session, and that is what ran her out of
+            // memory on pta_7f3018e9e74f6517. The note says it was redone and why.
+            // Every sheet is asked, not only add-ons: the flat is a REDRAW of the approved design
+            // and can add or lose things (three sunflowers where the mock-up had two).
+            let _v1 = null, _redone = false;
+            if (fpp && fpp.ok && fpp.image && me && seeing && _checkSheets) {
               try {
                 const look1 = await proxyToAgent(env,
-                  "[This is the line art going to their tattooist for work being ADDED to ink they " +
-                  "already have, so it must contain ONLY the new work and nothing that is already " +
-                  "tattooed on them. Look at it. Begin your answer with the single word RIGHT or " +
-                  "WRONG, then one short sentence saying why. Nothing else.]",
+                  "[This is the flat artwork going to their tattooist" +
+                  (label ? " for the " + label.toUpperCase() : "") +
+                  ". It must show exactly the new design they approved in the mock-up - nothing " +
+                  "missing and nothing added" +
+                  (priorInk ? ", and nothing that is already tattooed on them" : "") +
+                  ". Look at it. Begin your answer with the single word RIGHT or WRONG, then one " +
+                  "short sentence saying why. Nothing else.]",
                   false, me, fpp.image, world);
-                const v1 = (look1 && look1.reply && !look1.failed)
+                _v1 = (look1 && look1.reply && !look1.failed)
                   ? _verdict(look1.reply, readAct(look1.reply)).slice(0, 240) : null;
-                if (v1 && /^\s*WRONG\b/i.test(v1)) {
-                  console.log("[AGAIN] " + (label || "sheet") + " carried existing ink - " + v1);
+                if (_v1 && /^\s*WRONG\b/i.test(_v1)) {
+                  console.log("[AGAIN] " + (label || "sheet") + " - " + _v1);
                   const ar = await processCommand(_ask + " AGAIN " +
-                    v1.replace(/^\s*WRONG\b[\s:,.-]*/i, "") +
-                    " Draw ONLY the new work and leave an empty space where their existing tattoo " +
-                    "sits - their old piece must not be on this sheet at all.", env, true);
+                    _v1.replace(/^\s*WRONG\b[\s:,.-]*/i, "") +
+                    (priorInk
+                      ? " Draw ONLY the new work and leave an empty space where their existing tattoo " +
+                        "sits - their old piece must not be on this sheet at all."
+                      : " Draw exactly the design they approved, nothing added and nothing left out."),
+                    env, true);
                   const ap = (ar && ar.payload) ? ar.payload : ar;
-                  if (ap && ap.ok && ap.image) fpp = ap;
+                  if (ap && ap.ok && ap.image) { fpp = ap; _redone = true; }
                 }
-              } catch { /* the first sheet still stands; the gate checks it either way */ }
+              } catch { /* the sheet still stands */ }
             }
 
             if (fpp && fpp.ok && fpp.image) {
-              sheets.push({ panel: label, asked: panel, flat: fpp.image, id: fpp.design || null });
+              sheets.push({ panel: label, asked: panel, flat: fpp.image, id: fpp.design || null,
+                            checked: _v1 ? (_redone ? "REDONE ONCE - the first came back: " + _v1 : _v1) : null,
+                            ok: _v1 ? (!_redone && /^\s*RIGHT\b/i.test(_v1)) : null });
             }
           }
           const fp = sheets.length ? { ok: true, image: sheets[0].flat, design: sheets[0].id } : null;
@@ -61328,46 +61347,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             }
             pdfSheets = pdfTotal || null;
 
-            // ══ SHE LOOKS AT THE FILE BEFORE IT LEAVES ═══════════════════════════════
-            // ONE vision call per finished design, not one per turn. This is the only output that
-            // LEAVES - a shop prints it and puts it on somebody permanently - and every failure
-            // this week would have been caught here by eye: the hamsa on a sleeve with no hamsa,
-            // the cat's face in the mandala, the bouquet with the right flowers in the wrong
-            // arrangement.
-            // IT REPORTS, IT DOES NOT BLOCK. A refused file on a judgement call is worse than a
-            // flagged one somebody reads.
-            // ══ ONE LOOK PER SHEET, AND IT NAMES THE SHEET (2026-09-15) ═══════════════
-            // MEASURED on a three-panel sleeve: one look at panel 1 returned "none of the existing
-            // ink included" and that verdict was attached to all three. Panel 1 WAS the existing
-            // pec piece. A single check cannot speak for files it never opened, and a false pass is
-            // worse than no check at all - it is what carried this to somebody as a finished job.
-            // EACH SHEET IS ASKED ABOUT ITSELF, and told which section it CLAIMS to be, because
-            // the label came from loop order and the whole question is whether the picture agrees.
+            // ══ THE SHEET VERDICTS (2026-09-17) ══════════════════════════════════════════════
+            // Each sheet was looked at once, when its flat came back, and redone once if wrong -
+            // see ONE CHECK PER SHEET above. The second look at the line art and the hold that
+            // followed it are gone: nothing is ever withheld from the person, and every verdict
+            // rides with the files for their artist.
             let sheetNote = null;
-            for (const sh of sheets) {
-              try {
-                const look = await proxyToAgent(env,
-                  "[This is the line art going to their tattooist" +
-                  (sh.panel ? " for the " + sh.panel.toUpperCase() + " - it should show that " +
-                              "section and no other part of the body" : "") +
-                  (priorInk ? ", and it is an ADD-ON, so it should contain ONLY the new work - the " +
-                              "ink already on them must not be in it" : "") +
-                  ". Look at it. Begin your answer with the single word RIGHT or WRONG, then one " +
-                  "short sentence saying why. Nothing else.]",
-                  false, me, sh.line || sh.flat, world);
-                if (look && look.reply && !look.failed) {
-                  const _sv = readAct(look.reply);
-                  sh.checked = _verdict(look.reply, _sv).slice(0, 240);
-                  // ══ A VERDICT NOBODY CAN READ CANNOT STOP ANYTHING (2026-09-15) ══════
-                  // MEASURED: she failed two of three sheets and `print_pdf` still pointed at the
-                  // first one regardless - a sheet she had just called wrong was the default the
-                  // person would open. The sentence was there and nothing could act on it.
-                  // So the first word is RIGHT or WRONG and her reason follows it. The prose is
-                  // unchanged for a human; the first word is what the code is allowed to use.
-                  sh.ok = /^\s*RIGHT\b/i.test(sh.checked);
-                }
-              } catch {}
-            }
             // Default to a sheet she PASSED. If she passed none, the first is kept and every
             // verdict still rides in the reply saying so - reporting a bad pack beats hiding it.
             const _okSheet = sheets.find((sh) => sh.ok && sh.pdf);
@@ -61376,64 +61361,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             sheetNote = sheets.map((sh) => (sh.panel ? sh.panel + ": " : "") +
                                            (sh.checked || "not checked")).join("  |  ").slice(0, 900);
 
-            // ══ A VERDICT THAT STOPS NOTHING IS DECORATION (2026-09-16) ═══════════════════
-            // MEASURED on one run: she said WRONG about the body - "the dragon has spilled into a
-            // full sleeve on the right arm too, which you never asked for" - and WRONG about the
-            // sheet - "existing ink has been drawn into the new-work-only line art" - and the very
-            // same reply said "I have made your artist files, ready to print".
-            // BOTH CHECKS WERE RIGHT AND NEITHER CHANGED ANYTHING. The entire reason they exist is
-            // that these files LEAVE: a shop prints one and puts it on somebody permanently, and a
-            // sheet carrying their healed ink gets that ink tattooed over itself.
-            // SO A SHEET SHE FAILED IS NOT HANDED OVER. What comes back instead is what she found
-            // wrong, which is the answer a tattooist gives - this is not right yet, let me redo it.
-            // THE PERSON IS NEVER STUCK: `retry_the_drawing` says what happens next, and every
-            // underlying command still answers a direct ask. The gate is on the automatic pack.
-            // ══ PER SHEET, NOT ALL OR NOTHING (2026-09-16) ════════════════════════════════
-            // The gate first blocked the WHOLE pack when any one sheet failed. On a split job that
-            // costs them the good panels to punish the bad one - and the panels are separate
-            // tattoos on separate days, so there is no reason a correct forearm sheet should be
-            // withheld because the stomach sheet came back with healed ink in it.
-            // SO A FAILED SHEET IS DROPPED AND THE REST GO. `held_back` says which and why.
-            // ══ SEND THEM ANYWAY IS AN ANSWER SOMEBODY CAN GIVE (2026-09-16) ══════════════
-            // The gate already tells them "or tell me to send them anyway if you want to look for
-            // yourself" - and nothing was listening, so the offer was a sentence that did nothing.
-            // A person who wants to hold the files and judge them is entitled to. The verdicts ride
-            // along either way, so nobody is being told a bad sheet is a good one.
-            const _sendAnyway = /\b(send (them|it|those)? ?anyway|send anyway|give (them|it) to me anyway|i('| wi)?ll look( for myself)?|print (them|it) anyway|anyway)\b/i
-              .test(String(said || ""));
-            // ══ NOT CHECKED IS NOT PASSED (2026-09-16) ═══════════════════════════════════
-            // MEASURED: a two-panel pack where the arm sheet failed and was held, and the chest
-            // sheet went out with `checked: null` - her verdict never came back, because the look
-            // hit an empty reply from the provider. So a sheet nobody had looked at was handed over
-            // as if it were fine, while the one she HAD looked at was correctly held.
-            // AN UNSEEN SHEET AND A GOOD SHEET ARE NOT THE SAME THING. The whole promise of this
-            // gate is that nothing reaches a shop without being looked at, and silence is not a
-            // pass - it is the absence of one.
-            // IT IS HELD LIKE ANY OTHER FAILURE, with a reason that says what actually happened,
-            // so nobody reads it as her having found something wrong.
-            const _unseen = (sh) => !sh.checked;
-            const _failed = (sh) => sh.checked && /^\s*WRONG\b/i.test(sh.checked);
-            const _bad = _sendAnyway ? []
-              : sheets.filter((sh) => _failed(sh) || _unseen(sh));
-            const _good = _sendAnyway ? sheets
-              : sheets.filter((sh) => !(_failed(sh) || _unseen(sh)));
-            const _heldBack = _bad.length
-              ? _bad.map((sh) => (sh.panel ? sh.panel + ": " : "") +
-                  (sh.checked || "NOT CHECKED - the look at this sheet came back empty, so nobody " +
-                                 "has seen it. Ask me to try again, or to send it anyway."))
-                  .join("  |  ")
-              : null;
-            const _sheetsFailed = _good.length === 0 && _bad.length > 0;
-            if (_sheetsFailed) {
-              drew = {
-                from: shopParent,
-                not_sent: "the artist files were made and they are wrong, so they were not handed " +
-                          "over - a sheet with healed ink in it gets that ink tattooed twice",
-                she_checked: sheetNote,
-                retry_the_drawing: "say what to change and I will draw it again, or tell me to " +
-                                   "send them anyway if you want to look for yourself",
-              };
-            } else {
+            {
             drew = {
               design: lineId || fp.design || null,
               // `image` is what the needle does: the line art, new ink only on an add-on.
@@ -61446,19 +61374,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // line art the needle follows. `flat_artwork` above stays the first sheet so a
               // single-panel job reads exactly as it did before this existed.
               ...(sheets.length > 1
-                ? { panels: _good.map((sh) => ({ section: sh.panel, flat: sh.flat,
+                ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
                                                   line: sh.line || null,
                                                   pdf: sh.pdf || null,
                                                   ok: sh.ok === true,
                                                   // Her verdict on THIS sheet. A panel whose
                                                   // picture disagrees with its label says so here.
                                                   checked: sh.checked || null })),
-                    panel_count: _good.length,
-                    // Named, so nobody has to notice a sheet is missing.
-                    ...(_heldBack ? { held_back: _heldBack } : {}),
-                    // How many of them she actually passed. A pack is finished when this equals
-                    // panel_count and not before.
-                    panels_ok: _good.filter((sh) => sh.ok).length }
+                    panel_count: sheets.length,
+                    panels_ok: sheets.filter((sh) => sh.ok).length }
                 : {}),
               ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,
                              print_sheets: pdfSheets } : {}),
@@ -61496,8 +61420,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // placement to get wrong, so this costs nothing on the catalogue path.
       // IT REPORTS, IT DOES NOT BLOCK. An answer they can see beats a turn that silently refuses,
       // and she is the one who tells them - which is the same rule as the artist sheet.
+      // ══ EACH CHECK IS A SETTING (2026-09-17) ═══════════════════════════════════════════════
+      // The checks exist because two steps are still model redraws. Once a step is proven, its
+      // check is switched off: `config:check:mockup` and `config:check:sheets`, "off" to skip.
+      const _checkOn = async (k) => {
+        try { return String((await env.AURA_KV.get("config:check:" + k)) || "").trim().toLowerCase() !== "off"; }
+        catch { return true; }
+      };
       const _lookAtMock = async (mockUrl) => {
         if (!mockUrl || !me || !seeing) return null;
+        if (!(await _checkOn("mockup"))) return null;
         try {
           const look = await proxyToAgent(env,
             "[This is the mock-up on their own body. Compare it to the photograph they sent. " +
@@ -61673,15 +61605,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // conversation. The instruction is the change first, then what stays, named.
           //  · ONE CHANGE PER CALL. If they agreed to several, she lists them in `steps` and each
           //    runs on the result of the one before (xAI: chain edits, output becomes input).
-          //  · THREE VERSIONS ON THE FIRST DRAWING ON THEIR PHOTO. The API has no seed, so the
-          //    people using it generate a few and pick. Her check picks: the first she calls RIGHT
-          //    wins, and the rest are not checked.
           //  · ONE RETRY per change if nothing passed, from the same parent, with her reason.
           //  · TWO WRONG RESULTS IN A ROW and the next change restarts from the original photo.
           const _stepsIn = (Array.isArray(acted.steps) ? acted.steps : [])
             .map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4);
           const _asks = (_resetToPhoto || !_stepsIn.length) ? [String(acted.prompt || said).trim()] : _stepsIn;
-          const _firstOnPhoto = parentId === refDesign;
           const _evolve = async (parent, ask, seed) => {
             try {
               const r = await processCommand("IMAGE EVOLVE " + parent + " " +
@@ -61691,23 +61619,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           };
           let cur = parentId, cp = null, _mockNote = null;
           const _stepLog = [];
-          let _variants = null, _retried = null;
+          let _retried = null;
           for (let si = 0; si < _asks.length; si++) {
             const ask = _asks[si];
             let got = null, verdict = null;
-            if (si === 0 && _firstOnPhoto) {
-              // ══ THREE VERSIONS, NOT CHECKED (2026-09-16, v9.278) ════════════════════════════
-              // MEASURED on pta_7f3018e9e74f6517: checking each version sent a full 2k picture into
-              // her session; by the third check it held 7-8 images, the request exceeded the model's
-              // body limit (8006) and her Durable Object ran out of memory and reset. TALK returned
-              // nothing, twice. Her check had also called a wrong version RIGHT the run before.
-              // So the three come back unchecked, the person picks by eye, and the first one that
-              // arrived is the current picture. No retry here - there is no verdict to retry on.
-              const tries = await Promise.all([1, 2, 3].map((sd) => _evolve(cur, ask, sd)));
-              _variants = tries.map((t) => (t && t.ok && t.image_url) ? { image: t.image_url, design: t.child } : { failed: (t && t.error) || "no image" });
-              got = tries.find((t) => t && t.ok && t.image_url) || tries[0];
-              verdict = null;
-            } else {
+            // ONE VERSION PER DRAWING (Aaron, 2026-09-17): the person works from the one picture
+            // on screen and evolves it. Three at once broke the link between what they approved
+            // and what the files were made from - measured on pta_4c414b2a09ddab6a.
+            {
               const t = await _evolve(cur, ask, null);
               if (t && t.ok && t.image_url) { got = t; verdict = await _lookAtMock(t.image_url); }
               else got = t;
@@ -61737,7 +61656,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 changed: _asks.join(" | "),
                 from: parentId,
                 ...(_asks.length > 1 ? { steps: _stepLog } : {}),
-                ...(_variants ? { variants: _variants } : {}),
                 ...(_retried ? { retried: _retried } : {}),
                 ...(_resetToPhoto ? { restarted_from_photo: true } : {}),
                 ...(_mockNote ? { she_looked: _mockNote,
@@ -62016,7 +61934,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       phase_ms.total = Date.now() - _t0;
       // Doubled the observed warm total. A number that never fires is not a budget.
       const over_budget = phase_ms.total > 20000;
-      return { ok: true, said: acted.say, act: acted.act, phase_ms, world,
+      // ══ THE REPLY SAYS WHAT HAPPENED (2026-09-17) ═══════════════════════════════════════════
+      // She writes her sentence before the picture or the files exist, so it can promise things
+      // the chain did not do - "files are on their way" beside files that were held, "they're
+      // already yours" about files nobody delivered. What actually happened is added in plain
+      // words, so the person is never told something that is not true.
+      let _said = String(acted.say || "");
+      if (drew && drew.failed) {
+        _said += " Honestly, that didn't come out this time - nothing new was made.";
+      } else if (drew && drew.she_looked && /^\s*WRONG\b/i.test(drew.she_looked)) {
+        _said += " One thing I can see: " + drew.she_looked.replace(/^\s*WRONG\b[\s:,.-]*/i, "").replace(/\.?$/, ".");
+      } else if (drew && drew.for_the_artist && drew.she_checked && /REDONE|WRONG/i.test(drew.she_checked)) {
+        _said += " A note on the files: one sheet needed redoing, and the note for your artist is with it.";
+      }
+      return { ok: true, said: _said, act: acted.act, phase_ms, world,
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),
                brief, intent,

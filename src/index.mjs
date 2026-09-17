@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.275.0-2026-09-16-ink-by-local-contrast";
+const BUILD = "aura-core-v9.277.0-2026-09-16-grok-by-the-book";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18363,18 +18363,6 @@ async function successionGate(env) {
         const L = await smartFileLife(env, db, ent);
         return { cmd: "IMAGE", payload: { ok: true, image: { id: ent.id, name: ent.name, image_url: L.meta.url || L.meta.image_url || null, subject: L.meta.subject || null, created_at: ent.created_at }, life: L.life, event_count: L.life.length, lineage: L.lineage, contributors: L.contributors, note: `This image has lived through ${L.life.length} moment(s) with ${L.contributors.length} contributor(s).` } };
       }
-      // ══ IMAGE MASK - SEE WHAT WOULD BE PROTECTED, FOR NOTHING (2026-09-16, v9.274) ═══════════
-      // Builds exactly the mask IMAGE EVOLVE would send - same function - and returns the picture
-      // of it. No edit, no model call, $0.00. White = free space the edit may draw on, black =
-      // protected.
-      if (sub === "MASK") {
-        let p; try { p = JSON.parse(payloadStr || "null"); } catch { p = null; }
-        let meta = {}; try { meta = JSON.parse(ent.metadata || "null") || {}; } catch {}
-        const parentUrl = meta.url || meta.image_url || null;
-        const mk = await buildEditMask(env, parentUrl, (p && typeof p === "object") ? p : { auto: "protect_ink" });
-        return { cmd: "IMAGE", payload: mk.ok ? { ok: true, of: ent.id, source: parentUrl, ...mk.note }
-                                             : { ok: false, error: "MASK_FAILED: " + mk.error } };
-      }
       if (sub === "EVOLVE") {
         let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "IMAGE", payload: { ok: false, error: 'Usage: IMAGE EVOLVE <ref> {"prompt":"the dog but with a black ear","by?":"<pta>"}' } }; }
         if (!p || !p.prompt) return { cmd: "IMAGE", payload: { ok: false, error: "prompt is required (what the new version should be)" } };
@@ -18425,29 +18413,16 @@ async function successionGate(env) {
         // xAI's own vocabulary, passed through untouched: a ratio like "9:16" and "1k" or "2k".
         const evAsp = typeof p.aspect === "string" ? p.aspect : null;
         const evRes = (p.res === "1k" || p.res === "2k") ? p.res : null;
-        // ══ A MASK: WHERE THE EDIT MAY DRAW (2026-09-16, v9.272 - a test) ══════════════════
-        // `mask: {"edit":[x0,y0,x1,y1]}` - fractions of the parent's width and height. Inside the
-        // box is editable; everything else is protected. Built HERE from the parent's own pixel
-        // size so nobody measures anything, as a PNG in the OpenAI convention (transparent =
-        // edit, opaque = keep), sent inline as a data URI. xAI's own guide documents no mask;
-        // a third-party copy of their schema lists one. This exists to find out whether Grok
-        // honours it. Absent, nothing below changes.
-        let evMask = null, evMaskNote = null;
-        if (p.mask && typeof p.mask === "object") {
-          const mk = await buildEditMask(env, parentUrl, p.mask);
-          if (!mk.ok) return { cmd: "IMAGE", payload: { ok: false, error: "MASK_FAILED: " + mk.error } };
-          evMask = mk.mask; evMaskNote = mk.note;
-        }
+        // A seed makes several versions of one edit distinct asks, so the image cache does not hand
+        // back the same picture three times. xAI takes no seed; it is part of the cache key only.
+        const evSeed = Number.isInteger(p.seed) ? p.seed : null;
         const r = parentUrl
           ? await showIt(p.prompt, env, { source: evAs, parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt,
               refs: [parentUrl, ...withRefs], subject: p.prompt,
               ...(evW ? { width: evW } : {}), ...(evH ? { height: evH } : {}),
               ...(evAsp ? { aspect: evAsp } : {}), ...(evRes ? { res: evRes } : {}),
-              ...(evMask ? { mask: evMask } : {}),
-              // v9.270 - the conversation for the tool lane. Ignored unless its dials are set.
-              ...(p.talk && typeof p.talk === "object" && typeof p.lane === "string" &&
-                  /^[a-z_]{3,24}$/.test(p.lane) ? { talk: p.talk, talk_lane: p.lane } : {}) })
+              ...(evSeed != null ? { seed: evSeed } : {}) })
           : await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
         if (!r || !r.ok) return { cmd: "IMAGE", payload: { ok: false, error: r ? r.error : "evolution failed" } };
@@ -18462,8 +18437,6 @@ async function successionGate(env) {
           // one of them had to be identified by remembering which pin was set. `SHOW_IT` reports
           // this; the reply somebody actually reads when an edit misbehaves did not.
           model: r.model || null, cost_usd: r.cost_usd,
-          ...(r.talk ? { talk: r.talk } : {}),
-          ...(evMaskNote ? { mask_sent: evMaskNote } : {}),
           // Says out loud whether the parent's pixels were actually used. Without this the two
           // cases look identical in the reply and only the picture tells you - which is how this
           // went unnoticed in the first place.
@@ -57609,156 +57582,6 @@ function bytesToB64(ab) {
   return btoa(out);
 }
 
-// ══ THE EDIT MASK - ONE BUILDER FOR IMAGE MASK AND IMAGE EVOLVE (2026-09-16, v9.274) ════════
-// A mask is a yes/no for EVERY pixel: may the edit draw here. Not boxes - the shape follows the
-// ink line for line, and the free skin between leaves and inside curls stays free.
-//
-// FINDING WHAT ALREADY EXISTS USES THE ORIGINAL PHOTO AS ITS OWN REFERENCE. v9.273 used a fixed
-// colour rule for "skin", which varies by person, and let a stippled laurel read as bare skin.
-// Now the photo tells us what THIS person's skin looks like:
-//   1. Loose candidates: pixels in the broad YCbCr skin range (a standard range that holds across
-//      skin tones), not very dark.
-//   2. Their skin = the median brightness and colour of those candidates.
-//   3. Free space = pixels close to THEIR skin colour and not much darker than it. Ink is darker;
-//      grey shading has lost the skin's colour; shirt and background are not skin. All protected.
-//   4. What is not free is grown outward a little, so line edges and stipple are covered.
-// spec: {"auto":"protect_ink"} or {"edit":[x0,y0,x1,y1]} as fractions. Returns {ok, mask, note}.
-async function buildEditMask(env, parentUrl, spec) {
-  try {
-    if (!parentUrl) return { ok: false, error: "the parent has no stored image" };
-    let bytes = null;
-    const own = String(parentUrl).match(/\/image\/(img_[a-z0-9]+)/i);
-    if (own && env.AURA_IMAGES) {
-      const obj = await env.AURA_IMAGES.get(own[1] + ".png").catch(() => null);
-      if (obj) bytes = new Uint8Array(await obj.arrayBuffer());
-    }
-    if (!bytes && own) {
-      const b64 = await env.AURA_KV.get("image:" + own[1]).catch(() => null);
-      if (b64) { const bin = atob(b64); bytes = new Uint8Array(bin.length);
-                 for (let n = 0; n < bin.length; n++) bytes[n] = bin.charCodeAt(n); }
-    }
-    if (!bytes) return { ok: false, error: "could not read the parent's pixels from storage" };
-    const im = PhotonImage.new_from_byteslice(bytes);
-    const W = im.get_width(), H = im.get_height();
-    const px = im.get_raw_pixels();
-    try { im.free(); } catch {}
-    const N = W * H;
-    const free = new Uint8Array(N);
-    let how = null;
-    const isBox = spec && Array.isArray(spec.edit) && spec.edit.length === 4;
-    if (isBox) {
-      const fr = spec.edit.map((v) => Math.min(1, Math.max(0, Number(v) || 0)));
-      const x0 = Math.floor(fr[0] * W), y0 = Math.floor(fr[1] * H);
-      const x1 = Math.ceil(fr[2] * W), y1 = Math.ceil(fr[3] * H);
-      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) free[y * W + x] = 1;
-      how = { box_px: [x0, y0, x1, y1] };
-    } else {
-      // v9.275 - LOCAL CONTRAST, NOT ONE SKIN COLOUR. One colour cannot cover a lit arm: the
-      // shoulder is bright, the shadowed side darker and redder, and v9.274 marked all of the
-      // shadow as "not skin". Lighting changes slowly; ink is sharply darker than what is right
-      // around it. So:
-      //   ink  = a pixel clearly darker than the average of its neighbourhood (a window wider
-      //          than a tattoo line or a filled handle, so solid black still reads as darker).
-      //   skin = a loose skin colour range with no brightness requirement - shadowed skin
-      //          qualifies, a grey-green shirt and a white wall do not.
-      //   free = skin and not ink. Grown by only a few pixels so gaps between leaves stay open.
-      const Y = new Float32Array(N), skinish = new Uint8Array(N);
-      for (let i = 0, j = 0; i < N; i++, j += 4) {
-        const r = px[j], g = px[j + 1], b = px[j + 2];
-        const y = 0.299 * r + 0.587 * g + 0.114 * b;
-        const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
-        const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
-        Y[i] = y;
-        if (y > 35 && cr >= 133 && cr <= 185 && cb >= 70 && cb <= 130) skinish[i] = 1;
-      }
-      // Neighbourhood average via an integral image - one pass, any window size.
-      const IW = W + 1;
-      const integ = new Float64Array(IW * (H + 1));
-      for (let y = 0; y < H; y++) {
-        let rowSum = 0;
-        for (let x = 0; x < W; x++) {
-          rowSum += Y[y * W + x];
-          integ[(y + 1) * IW + (x + 1)] = integ[y * IW + (x + 1)] + rowSum;
-        }
-      }
-      const Rb = Math.max(8, Math.round(Math.min(W, H) * 0.06));
-      const ratio = 0.82, blackFloor = 45;
-      const kept = new Uint8Array(N);
-      for (let y = 0; y < H; y++) {
-        const y0 = Math.max(0, y - Rb), y1 = Math.min(H, y + Rb + 1);
-        for (let x = 0; x < W; x++) {
-          const x0 = Math.max(0, x - Rb), x1 = Math.min(W, x + Rb + 1);
-          const area = (x1 - x0) * (y1 - y0);
-          const sum = integ[y1 * IW + x1] - integ[y0 * IW + x1] - integ[y1 * IW + x0] + integ[y0 * IW + x0];
-          const i = y * W + x;
-          const ink = Y[i] < blackFloor || Y[i] < (sum / area) * ratio;
-          if (skinish[i] && !ink) free[i] = 1;
-          else kept[i] = 1;
-        }
-      }
-      const R = Math.max(1, Math.round(Math.min(W, H) * 0.004));
-      const tmp = new Uint8Array(N), grown = new Uint8Array(N);
-      for (let y = 0; y < H; y++) {
-        const row = y * W; let c = 0;
-        for (let x = 0; x < W + R; x++) {
-          if (x < W && kept[row + x]) c++;
-          const out = x - 2 * R - 1;
-          if (out >= 0 && out < W && kept[row + out]) c--;
-          const cx = x - R;
-          if (cx >= 0 && cx < W) tmp[row + cx] = c > 0 ? 1 : 0;
-        }
-      }
-      for (let x = 0; x < W; x++) {
-        let c = 0;
-        for (let y = 0; y < H + R; y++) {
-          if (y < H && tmp[y * W + x]) c++;
-          const out = y - 2 * R - 1;
-          if (out >= 0 && out < H && tmp[out * W + x]) c--;
-          const cy = y - R;
-          if (cy >= 0 && cy < H) grown[cy * W + x] = c > 0 ? 1 : 0;
-        }
-      }
-      for (let i = 0; i < N; i++) if (grown[i]) free[i] = 0;
-      how = { auto: "protect_ink", method: "local_contrast", window_px: Rb, darker_than: ratio,
-              black_floor: blackFloor, grow_px: R };
-    }
-    let open = 0;
-    const raw = new Uint8Array(N * 4), prev = new Uint8Array(N * 4);
-    for (let i = 0, j = 0; i < N; i++, j += 4) {
-      raw[j + 3] = free[i] ? 0 : 255;
-      const v = free[i] ? 255 : 0;
-      prev[j] = v; prev[j + 1] = v; prev[j + 2] = v; prev[j + 3] = 255;
-      open += free[i];
-    }
-    const mIm = new PhotonImage(raw, W, H);
-    const mPng = mIm.get_bytes();
-    try { mIm.free(); } catch {}
-    // The picture of the mask. A failure here is REPORTED - v9.273 swallowed it and returned null.
-    let preview = null, preview_error = null;
-    try {
-      const vIm = new PhotonImage(prev, W, H);
-      const vPng = vIm.get_bytes();
-      try { vIm.free(); } catch {}
-      const vId = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      // aura-core has no R2 binding - its images live in KV as `image:<id>`, which is what its own
-      // /image/ route serves. R2 is written only where a binding exists.
-      if (env.AURA_IMAGES) {
-        await env.AURA_IMAGES.put(vId + ".png", vPng, { httpMetadata: { contentType: "image/png" } }).catch(() => {});
-      }
-      let b = ""; for (let i = 0; i < vPng.length; i += 8192) b += String.fromCharCode.apply(null, vPng.subarray(i, i + 8192));
-      await env.AURA_KV.put("image:" + vId, btoa(b));
-      await env.AURA_KV.put("imagemeta:" + vId, JSON.stringify({ id: vId, prompt: "edit mask preview", created: new Date().toISOString(),
-        source: "edit_mask", model: "photon-wasm", cost_usd: 0, url: "https://" + (await imageHost(env)) + "/image/" + vId })).catch(() => {});
-      preview = "https://" + (await imageHost(env)) + "/image/" + vId;
-    } catch (e) { preview_error = String(e?.message ?? e).slice(0, 200); }
-    return { ok: true, mask: "data:image/png;base64," + bytesToB64(mPng),
-             note: { width: W, height: H, ...how, editable_pct: +((100 * open) / N).toFixed(1),
-                     png_bytes: mPng.length, preview, ...(preview_error ? { preview_error } : {}) } };
-  } catch (e) {
-    return { ok: false, error: String(e?.message ?? e).slice(0, 200) };
-  }
-}
-
 async function auraGenerateImage(prompt, env, opts = {}) {
   // AGNOSTIC + POLICY-DRIVEN. showIt states intent ("make an image"); AIMARGIN's POLICY decides who fulfills
   // it and at what quality. The operator declares INTENT once - config:policy:image = cheapest | balanced |
@@ -57929,21 +57752,6 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // the wrong tool whatever the catalogue is set to. Overridable, because the day a Workers AI
   // model does image-to-image this should follow the pin again.
   if (isEdit && !CAN_EDIT.test(model)) model = IMAGE_POLICY.edit.model;
-  // ══ THE CONVERSATION LANE (2026-09-16, v9.270) ════════════════════════════════════════════
-  // A caller that holds a conversation passes `talk` and names its lane. The lane runs only when
-  // BOTH dials are set - `config:source:<lane>:provider` (grok | xai | openai) and
-  // `config:source:<lane>:model`, the conversation model that holds the image tool. Named under
-  // `config:` with :provider and :model so AIMARGIN's pin scanner lists them.
-  // Resolved AFTER the edit guard on purpose: the guard replaces any model that cannot edit, and
-  // a conversation model is not an image model - the tool behind it is.
-  let talkLane = null;
-  if (opts.talk && typeof opts.talk === "object" && typeof opts.talk_lane === "string" &&
-      /^[a-z_]{3,24}$/.test(opts.talk_lane)) {
-    const _lp = String((await env.AURA_KV.get("config:source:" + opts.talk_lane + ":provider").catch(() => null)) || "").trim().toLowerCase();
-    const _lm = String((await env.AURA_KV.get("config:source:" + opts.talk_lane + ":model").catch(() => null)) || "").trim();
-    if (/^(grok|xai|openai)$/.test(_lp) && _lm) talkLane = { provider: _lp === "openai" ? "openai" : "xai", model: _lm };
-  }
-  if (talkLane) model = talkLane.model;
   const quality = ((rawQuality && rawQuality.trim()) || resolved.quality || "low").trim();
   const p = String(prompt).slice(0, 4000);
 
@@ -57958,8 +57766,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // served the other person's body. That is the most dangerous line in this change.
   const refs = Array.isArray(opts.refs) ? opts.refs.filter(u => typeof u === "string" && u).slice(0, 6) : [];
   let cacheKey = null;
-  // A conversation is never served from the prompt cache: "try that again" twice is two asks.
-  if (!talkLane) try {
+  try {
     // ══ A SEED IS PART OF WHAT WAS ASKED FOR ═════════════════════════════════════════════════
     // Twenty variations of one design are twenty calls with the SAME prompt and different seeds.
     // Without the seed in this key they would all be one cache entry and the caller would get the
@@ -57967,9 +57774,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     const sig = model + "|" + quality + "|" +
                 (opts.width || 1024) + "x" + (opts.height || 1024) + "|" +
                 (opts.aspect || "") + (opts.res || "") + "|" + refs.join("|") + "|" +
-                (opts.seed != null ? "seed" + opts.seed + "|" : "") +
-                // A masked edit is a different ask from the same words unmasked.
-                (typeof opts.mask === "string" && opts.mask ? "mask" + opts.mask.length + opts.mask.slice(-48) + "|" : "") + p;
+                (opts.seed != null ? "seed" + opts.seed + "|" : "") + p;
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
     cacheKey = "imgcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
     const hitRaw = await env.AURA_KV.get(cacheKey);
@@ -58008,54 +57813,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
 
   const id = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   let b64 = null, err = null, imgUsage = null;
-  let talkOut = null;
   try {
-    if (talkLane) {
-      // ══ image_generation ON /v1/responses - xAI and OpenAI, one shape ══════════════════════
-      // From xAI's docs: the model decides when to call the tool, writes the image prompt, and
-      // returns the image alongside its text. Output items: `image_generation_call` carries
-      // `result` (base64, no data-URL prefix) and `prompt`; `message` carries the text.
-      // `action: "edit"` when pictures are on the table - a change to somebody's photograph must
-      // not become a fresh drawing.
-      const _oa = talkLane.provider === "openai";
-      let key = await getSecret(env, _oa ? "openai" : "xai");
-      if (key && key.startsWith("\x7b")) { try { key = JSON.parse(key).api_key; } catch {} }
-      if (!key) throw new Error("no " + (_oa ? "OpenAI" : "xAI") + " key");
-      const _t = opts.talk;
-      const _input = (Array.isArray(_t.turns) ? _t.turns : [])
-        .filter((x) => x && x.said)
-        .map((x) => ({ role: x.role === "aura" ? "assistant" : "user", content: String(x.said).slice(0, 2000) }));
-      const _content = [{ type: "input_text", text: String(_t.said || p).slice(0, 2000) }];
-      const _imgs = (Array.isArray(_t.images) ? _t.images : []).filter((im) => im && typeof im.url === "string" && /^https?:\/\//i.test(im.url)).slice(0, 4);
-      for (const im of _imgs) {
-        if (im.label) _content.push({ type: "input_text", text: String(im.label).slice(0, 200) });
-        _content.push({ type: "input_image", image_url: im.url });
-      }
-      _input.push({ role: "user", content: _content });
-      const r = await pfetch(env, _oa ? "openai" : "xai", "core:image_talk",
-        (_oa ? "https://api.openai.com" : "https://api.x.ai") + "/v1/responses", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
-        body: JSON.stringify({ model, input: _input,
-          tools: [{ type: "image_generation", action: _imgs.length ? "edit" : "auto" }] })
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));
-      const _out = Array.isArray(d?.output) ? d.output : [];
-      const _calls = _out.filter((o) => o && o.type === "image_generation_call" && o.result);
-      const _last = _calls.length ? _calls[_calls.length - 1] : null;
-      b64 = _last ? String(_last.result).replace(/^data:[^,]+,/, "") : null;
-      const _text = _out.filter((o) => o && o.type === "message")
-        .flatMap((o) => Array.isArray(o.content) ? o.content : [])
-        .map((c) => (c && (c.text || c.output_text)) || "").filter(Boolean).join("\n").trim();
-      talkOut = { said: _text || null, prompt: (_last && (_last.prompt || _last.revised_prompt)) || null,
-                  provider: talkLane.provider, model, images_sent: _imgs.length, image_calls: _calls.length,
-                  edited: !!(_last && /^ie_/.test(String(_last.id || ""))),
-                  response_id: d?.id || null, usage: d?.usage || null };
-      console.log("[IMG-TALK] " + talkLane.provider + " " + model + " images_sent=" + _imgs.length +
-        " calls=" + _calls.length + " id=" + ((_last && _last.id) || "-"));
-      if (!b64) throw new Error("the conversation model answered without drawing: " + (_text || "no text").slice(0, 200));
-    } else if (model.startsWith("@cf/")) {
+    if (model.startsWith("@cf/")) {
       // Cloudflare Workers AI - near-free, no external key, already bound as env.AI. flux-1-schnell returns
       // { image: <base64> }; stream/byte variants return raw bytes - handle both.
       // ══ THE FLUX.2 MODELS ON WORKERS AI WANT MULTIPART, NOT JSON ═════════════════════════
@@ -58530,9 +58289,6 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           (typeof opts.aspect === "string" && /^\d+(\.\d+)?:\d+(\.\d+)?$|^auto$/.test(opts.aspect)
             ? { aspect_ratio: opts.aspect } : {}),
           (opts.res === "1k" || opts.res === "2k" ? { resolution: opts.res } : {}),
-          // v9.272: the mask rides beside the image, same object shape. Edits only.
-          (isEdit && typeof opts.mask === "string" && opts.mask
-            ? { mask: { type: "image_url", url: opts.mask } } : {}),
           (isEdit
             ? (refs.length === 1
                 ? { image: { type: "image_url", url: refs[0] } }
@@ -58857,10 +58613,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       });
     } catch (e) { try { console.warn("[IMG] egress write failed: " + (e && e.message)); } catch {} }
   }
-  if (talkOut) costSource = "responses tool - text tokens from provider usage; the image fee is not in the reply, read the console";
   return { ok: true, id, image_url: meta.url, prompt: meta.prompt, model, quality, tokens,
-           cost_usd: costUsd, cost_source: costSource, neurons,
-           ...(talkOut ? { talk: talkOut } : {}) };
+           cost_usd: costUsd, cost_source: costSource, neurons };
 }
 
 // SHOW IT â€” Aura's universal visual verb. Everywhere she lives, when a moment is better shown
@@ -58910,7 +58664,7 @@ async function showIt(subject, env, opts = {}) {
   // matter which model, which quality tier or which endpoint, and `[XAI-IMG]` printed
   // `asked aspect=- res=-` the moment it was pointed at the right branch. An afternoon of
   // theories about xAI's silent fallbacks, and the parameters never left this worker.
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, talk: opts.talk || null, talk_lane: opts.talk_lane || null, mask: opts.mask || null });
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════
@@ -58924,8 +58678,7 @@ async function showIt(subject, env, opts = {}) {
     // A priced-from-usage figure and a guessed one must not look the same downstream either.
     cost_source: result.cost_source || null, neurons: result.neurons ?? null,
     edited: refs.length ? true : undefined,
-    from_refs: refs.length || undefined,
-    ...(result.talk ? { talk: result.talk } : {}) };
+    from_refs: refs.length || undefined };
   // THE IMAGE IS A LIVING SMART FILE. Register it through the generic Smart File engine as
   // filetype:"image" - it gets the same identity, timeline, lineage, and attributed contributors any
   // file gets. Image is just one filetype; the engine is universal.
@@ -60301,6 +60054,12 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // than a history display.
       let lastDrawn = null;
       if (me) { try { lastDrawn = await env.AURA_KV.get("talk:last:" + me, "json"); } catch {} }
+      // ══ TWO BAD RESULTS AND WE START AGAIN FROM THE PHOTO (2026-09-16, v9.277) ══════════════
+      // Practitioners on stacked edits: every pass re-renders the whole picture and a bad child
+      // only gets worse when patched. After two wrong results in a row, the next change goes back
+      // to their ORIGINAL photograph with everything still wanted in one instruction.
+      let badStreak = 0;
+      if (me) { try { badStreak = Number(await env.AURA_KV.get("talk:bad:" + me)) || 0; } catch {} }
 
       // ══ THEY POINTED AT ONE (2026-09-07) ══════════════════════════════════════════════════
       // The wall is a fork, not the tattoo. When somebody taps a photograph, what travels is not
@@ -60519,6 +60278,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // ABSENT IS TODAY. No `use`, and the job starts from the last thing she drew with the
         // parent riding along exactly as it has all week - "add a green ball" is untouched.
         '  "use": ["optional - which pictures this job starts from"],\n' +
+        '  "steps": ["optional - one edit instruction per change when they agreed to more than one"],\n' +
         // ══ WHAT THE ARTIST ACTUALLY PRINTS (2026-09-10, from the trade) ════════════════════
         // Researched rather than assumed, because four attempts at a single "shop sheet" all
         // failed the same way and the reason turned out to be the artefact, not the wording.
@@ -60634,23 +60394,25 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // density and filling was explaining a job the model already knows.
         "WRITING `prompt`: WHAT THEY ASKED FOR, AND THE JOB. \"a dragon, cover-up\". \"add a " +
         "shark\". \"in colour\". \"a koi on the forearm\".\n" +
-        // ══ AN EDIT INSTRUCTION HAS ONE DOCUMENTED SHAPE (2026-09-16, v9.271) ═══════════════
-        // Conversational image editing, as Google documents it for developers and as the 2026
-        // research on it finds: people say what should CHANGE and leave what should STAY unsaid,
-        // and editors only act on what is said. The planner states both. Google's own template:
-        // "Using the provided image, change only X. Keep everything else exactly the same."
-        // One change, where it goes, and what stays NAMED IN A FEW WORDS - never described.
+        // ══ GROK, BY THE BOOK (2026-09-16, v9.277) ══════════════════════════════════════════
+        // From xAI's editing docs and the people using grok-imagine-image-2.0 every day: the
+        // instruction is the CHANGE first, then a keep-clause that NAMES what is already there.
+        // "Keep the existing tattoo" is too weak; "keep the vertical hammer, diamond head and
+        // laurel leaves exactly as drawn" is the pattern. Describe the change, never the scene.
+        // One change per call, each on the result of the last. Say what stays, not what not to do.
         "WHEN THE PICTURE IS MADE FROM A PICTURE THAT EXISTS - a change to what is on screen, or " +
         "the first drawing on the photograph of their own body for an add-on, cover-up or " +
         "rework - `prompt` is ONE EDIT INSTRUCTION in exactly this shape:\n" +
-        "  Using the provided image, <the one change, and where it goes>. Keep <what they " +
-        "already have, named in a few words> and everything else exactly the same.\n" +
-        "Examples: \"Using the provided image, add sunflowers with Catherine in script below " +
-        "the hammer. Keep their hammer tattoo and everything else exactly the same.\" / " +
-        "\"Using the provided image, make the dragon's scales red. Keep the rest of the dragon " +
-        "and everything else exactly the same.\" / \"Using the provided image, cover their " +
-        "old tattoo with a dragon. Keep their arm and everything else exactly the same.\"\n" +
-        "Name what stays; never describe it. One change per instruction.\n" +
+        "  <the one change, and where it goes>. Keep <each thing already there, named in a few " +
+        "words> exactly as drawn, and their arm, skin, pose, lighting and background unchanged.\n" +
+        "Example: \"Add sunflowers on the bare skin below the hammer. Keep the vertical hammer, " +
+        "diamond head, decorated handle and laurel leaves exactly as drawn, and their arm, skin, " +
+        "pose, lighting and background unchanged.\"\n" +
+        "NAME what is already there - short names for what you can see, one after another. Never " +
+        "describe it, never describe the whole scene, never say what not to do - say what stays.\n" +
+        "ONE CHANGE PER INSTRUCTION. If they agreed to more than one change - the sunflowers AND " +
+        "her name - write each as its own instruction in that same shape, in order, in `steps`, " +
+        "and put the first one in `prompt` too. Each runs on the result of the one before.\n" +
         "Beyond naming what stays, do not describe what is already in the picture - the thing that draws it is holding the " +
         "same picture, and everything you describe is something you are asking it to KEEP. On a " +
         "cover-up that is exactly backwards.\n" +
@@ -60664,6 +60426,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
         : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.";
+      const resetNote = (badStreak >= 2 && refDesign)
+        ? "\n\nTHE LAST TWO PICTURES WERE WRONG. The next change starts again from their original " +
+          "photograph: put EVERYTHING they still want into ONE instruction in `prompt`, and leave " +
+          "`steps` out."
+        : "";
 
       // The roster. Facts only: what is on file and what to call it. Which job wants which
       // picture is hers, per turn, the way the tile grid on mytattoo.world lets Aaron click any
@@ -60770,7 +60537,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // Everything except the contract, or nothing except the contract.
       const fullSys = noBrief
         ? "You are Aura, helping somebody with a tattoo. " + refBlind + CONTRACT
-        : talkSys + stateNote + picNote + refNote + refBlind + CONTRACT;
+        : talkSys + stateNote + resetNote + picNote + refNote + refBlind + CONTRACT;
 
       // ══ THE CONTRACT IS NOT SOMETHING THE CUSTOMER SAID (2026-09-10) ══════════════════════
       // `/turn` has no system parameter - text, channel, image - so everything sent to her agent
@@ -60784,7 +60551,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // channel definition because none of it is the same twice.
       // THE FLOOR KEEPS `fullSys` UNCHANGED - it is a direct model call with its own `system`
       // and never touches a channel, so it must still carry the contract itself.
-      const agentSys = shelf + found + stateNote + picNote + refNote + refBlind;
+      const agentSys = shelf + found + stateNote + resetNote + picNote + refNote + refBlind;
 
       // ══ A GREETING HAS TO LOOK LIKE A GREETING (2026-09-14) ════════════════════
       // Aaron, and it is the only thing this session was ever about: "I can't say hello to an agent."
@@ -61806,7 +61573,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // is their photograph until something has been drawn, then the last drawing - every
           // time. `use` no longer picks the parent: on pta_af518d910eac5f03 she named "photo" on
           // "try that again" and the edit restarted from the bare arm. Nothing else rides along.
-          const parentId = _drewNow() ? lastDrawn.design : (refDesign || lastDrawn.design);
+          const _resetToPhoto = badStreak >= 2 && !!refDesign;
+          const parentId = (_drewNow() && !_resetToPhoto) ? lastDrawn.design : (refDesign || lastDrawn.design);
           const alsoRefs = [];
           // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════
           // Added this morning to give an artist one file per element. Every run produced
@@ -61894,87 +61662,81 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // stays, in the documented shape, and a second author saying it differently is two
           // instructions to reconcile. The constant above is left in place and unused.
           void _protectOld;
-          const evolveAsk = (acted.prompt || said) + cleanUp;
-          // ══ THE THING THAT DRAWS HEARS THE CONVERSATION (2026-09-16, v9.270) ═══════════════
-          // Grok, ChatGPT and Meta do not hand an image model a sentence somebody else wrote. The
-          // conversation model holds the image generation TOOL: it sees the photograph and every
-          // word, writes its own prompt, draws, and says what it drew in the same response. xAI and
-          // OpenAI both document it as `image_generation` on /v1/responses.
-          // Ours sent her rewrite to an edit endpoint that never saw the conversation. Every
-          // failure in the hammer table lived at that handoff - and on pta_af518d910eac5f03 the
-          // sunflowers went over the hammer while her own check said so.
-          // SO WHAT GOES IS WHAT WAS SAID: the turns as the person and she said them, their words
-          // this turn, and the pictures on the table - the photograph they sent and the last
-          // version drawn. Nothing she composed. Her judgement stays where it is strong: she talks
-          // to them, decides WHEN, and checks the result.
-          // A DIAL DECIDES WHETHER THIS LANE RUNS. `config:source:tattoo_talk:provider` and
-          // `:model` both set, and auraGenerateImage uses the tool. Either missing, and `talk` is
-          // ignored - the IMAGE EVOLVE below behaves exactly as v9.269 did.
-          // ══ AN ADD-ON NEVER WRITES OVER THEIR INK (2026-09-16, v9.273) ══════════════════════
-          // Proven on Grok: a mask is obeyed. On an add-on starting from their own photograph, the
-          // existing tattoo is protected pixel by pixel and only bare skin is editable. Only the
-          // FIRST drawing on the photo - once new work exists, protecting all ink would also freeze
-          // the new work, and that case is not built yet. A cover-up is exempt: going over the old
-          // piece is the job.
-          const _protectInk = jobNow === "add" && !!refDesign && parentId === refDesign;
-          const _turns = (Array.isArray(hist) ? hist : []).filter((h) => h && h.said);
-          if (_turns.length && _turns[_turns.length - 1].role !== "aura" &&
-              String(_turns[_turns.length - 1].said).trim() === said) _turns.pop();
-          const _talkImgs = [];
-          if (refUrl) _talkImgs.push({ label: "This is the photograph they sent you.", url: refUrl });
-          if (_drewNow() && lastDrawn.image !== refUrl)
-            _talkImgs.push({ label: "This is the most recent version you drew for them.", url: lastDrawn.image });
-          for (const u of alsoRefs) {
-            if (u && u !== refUrl && !(lastDrawn && u === lastDrawn.image))
-              _talkImgs.push({ label: "They also pointed at this picture.", url: u });
-          }
-          let cr = await processCommand("IMAGE EVOLVE " + parentId + " " +
-            JSON.stringify({ prompt: evolveAsk, by: me,
-                             res: "2k",
-                             ...(alsoRefs.length ? { with: alsoRefs } : {}),
-                             ...(_protectInk ? { mask: { auto: "protect_ink" } } : {}),
-                             talk: { turns: _turns.slice(-12).map((h) => ({ role: h.role, said: String(h.said).slice(0, 2000) })),
-                                     said, images: _talkImgs.slice(0, 4) },
-                             lane: "tattoo_talk" }), env, true);
-          let cp = (cr && cr.payload) ? cr.payload : cr;
-          let _mockNote = (cp?.ok && cp.image_url) ? await _lookAtMock(cp.image_url) : null;
-          // ══ CHECK, THEN ONE RETRY (2026-09-16, v9.271) ════════════════════════════════════
-          // Plan, edit, check - the loop every conversational editing system runs. The check was
-          // here and it reported and stopped. The artist sheets already hand her verdict back as
-          // the correction, once; the mock-up now does the same, from the SAME current image, so
-          // a wrong attempt is never the starting point of the next one. A second WRONG stands
-          // and rides in the reply.
-          let _retried = null;
-          if (cp?.ok && cp.image_url && !cp.talk && _mockNote && /^\s*WRONG\b/i.test(_mockNote)) {
-            const _why = _mockNote.replace(/^\s*WRONG\b[\s:,.-]*/i, "").trim();
-            console.log("[AGAIN] mock-up - " + _mockNote);
+          // ══ GROK, BY THE BOOK (2026-09-16, v9.277) ══════════════════════════════════════════
+          // What goes to the editor is the current image and her instruction - nothing from the
+          // conversation. The instruction is the change first, then what stays, named.
+          //  · ONE CHANGE PER CALL. If they agreed to several, she lists them in `steps` and each
+          //    runs on the result of the one before (xAI: chain edits, output becomes input).
+          //  · THREE VERSIONS ON THE FIRST DRAWING ON THEIR PHOTO. The API has no seed, so the
+          //    people using it generate a few and pick. Her check picks: the first she calls RIGHT
+          //    wins, and the rest are not checked.
+          //  · ONE RETRY per change if nothing passed, from the same parent, with her reason.
+          //  · TWO WRONG RESULTS IN A ROW and the next change restarts from the original photo.
+          const _stepsIn = (Array.isArray(acted.steps) ? acted.steps : [])
+            .map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4);
+          const _asks = (_resetToPhoto || !_stepsIn.length) ? [String(acted.prompt || said).trim()] : _stepsIn;
+          const _firstOnPhoto = parentId === refDesign;
+          const _evolve = async (parent, ask, seed) => {
             try {
-              const cr2 = await processCommand("IMAGE EVOLVE " + parentId + " " +
-                JSON.stringify({ prompt: evolveAsk + " The last attempt was wrong: " + _why + " Fix that.",
-                                 by: me, res: "2k",
-                                 ...(_protectInk ? { mask: { auto: "protect_ink" } } : {}) }), env, true);
-              const cp2 = (cr2 && cr2.payload) ? cr2.payload : cr2;
-              if (cp2?.ok && cp2.image_url) {
-                _retried = { first_image: cp.image_url, first_verdict: _mockNote };
-                cr = cr2; cp = cp2;
-                _mockNote = await _lookAtMock(cp2.image_url);
+              const r = await processCommand("IMAGE EVOLVE " + parent + " " +
+                JSON.stringify({ prompt: ask + cleanUp, by: me, res: "2k", ...(seed ? { seed } : {}) }), env, true);
+              return (r && r.payload) ? r.payload : r;
+            } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
+          };
+          let cur = parentId, cp = null, _mockNote = null;
+          const _stepLog = [];
+          let _variants = null, _retried = null;
+          for (let si = 0; si < _asks.length; si++) {
+            const ask = _asks[si];
+            let got = null, verdict = null;
+            if (si === 0 && _firstOnPhoto) {
+              const tries = await Promise.all([1, 2, 3].map((sd) => _evolve(cur, ask, sd)));
+              _variants = tries.map((t) => (t && t.ok && t.image_url) ? { image: t.image_url } : { failed: (t && t.error) || "no image" });
+              for (let vi = 0; vi < tries.length; vi++) {
+                const t = tries[vi];
+                if (!(t && t.ok && t.image_url)) continue;
+                const v = await _lookAtMock(t.image_url);
+                _variants[vi].she_looked = v || null;
+                if (!got) { got = t; verdict = v; }
+                if (v && /^\s*RIGHT\b/i.test(v)) { got = t; verdict = v; break; }
               }
-            } catch { /* the first attempt still stands, with its verdict */ }
+            } else {
+              const t = await _evolve(cur, ask, null);
+              if (t && t.ok && t.image_url) { got = t; verdict = await _lookAtMock(t.image_url); }
+              else got = t;
+            }
+            if (got && got.ok && got.image_url && verdict && /^\s*WRONG\b/i.test(verdict)) {
+              const _why = verdict.replace(/^\s*WRONG\b[\s:,.-]*/i, "").trim();
+              console.log("[AGAIN] step " + (si + 1) + " - " + verdict);
+              const t2 = await _evolve(cur, ask + " The last attempt was wrong: " + _why + " Fix that.", null);
+              if (t2 && t2.ok && t2.image_url) {
+                _retried = { step: si + 1, first_image: got.image_url, first_verdict: verdict };
+                got = t2; verdict = await _lookAtMock(t2.image_url);
+              }
+            }
+            _stepLog.push({ ask, image: (got && got.image_url) || null, she_looked: verdict || null,
+                            ...(got && !got.ok ? { failed: got.error || "COULD_NOT_CHANGE" } : {}) });
+            if (!(got && got.ok && got.image_url)) { cp = got; break; }
+            cp = got; _mockNote = verdict; cur = got.child;
+          }
+          // The streak: a wrong final result counts, a right one clears it.
+          if (me && cp && cp.ok) {
+            const _bad = !!(_mockNote && /^\s*WRONG\b/i.test(_mockNote));
+            const _next = _resetToPhoto ? (_bad ? 1 : 0) : (_bad ? badStreak + 1 : 0);
+            try { await env.AURA_KV.put("talk:bad:" + me, String(_next), { expirationTtl: 90 * 24 * 3600 }); } catch {}
           }
           drew = (cp?.ok && cp.image_url)
             ? { design: cp.child, image: cp.image_url,
-                changed: (cp.talk && cp.talk.prompt) || acted.prompt || said,
+                changed: _asks.join(" | "),
                 from: parentId,
-                // What the drawing model itself wrote and said - the lane ran if this is here.
-                ...(cp.talk ? { drawer: cp.talk } : {}),
+                ...(_asks.length > 1 ? { steps: _stepLog } : {}),
+                ...(_variants ? { variants: _variants } : {}),
                 ...(_retried ? { retried: _retried } : {}),
-                ...(cp.mask_sent ? { mask: cp.mask_sent } : {}),
+                ...(_resetToPhoto ? { restarted_from_photo: true } : {}),
                 ...(_mockNote ? { she_looked: _mockNote,
-                                  placement_ok: /^\s*RIGHT\b/i.test(_mockNote) } : {}),
-                ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) }
-            : { failed: cp?.error || "COULD_NOT_CHANGE", changed: acted.prompt || said,
-                from: parentId,
-                ...(useRaw.length ? { used: useRaw, with: alsoRefs } : {}) };
+                                  placement_ok: /^\s*RIGHT\b/i.test(_mockNote) } : {}) }
+            : { failed: cp?.error || "COULD_NOT_CHANGE", changed: _asks.join(" | "),
+                from: parentId, ...(_stepLog.length ? { steps: _stepLog } : {}) };
         } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
       } else if (act === "draw" && me) {
         // HER PROMPT, NOT THEIR SENTENCE. This is the expansion the whole redesign was for: she

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.282.0-2026-09-17-proven-add-frame";
+const BUILD = "aura-core-v9.283.0-2026-09-17-touch-and-no-where";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61620,7 +61620,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // it reads as one piece" is what makes it one design. NOTHING ELSE goes in - an extra
             // clause ("leaving a little bare skin around it so nothing touches it") got the laurels
             // cleared away on its first run.
-            add: "This is my existing tattoo. Show me what it would look like if I ____, flowing with the current tattoo, matching its line weight, framing it so it reads as one piece. All new artwork should not cover any of the current tattoo.",
+            // v9.283: "cover" -> "touch". Same photo, same words: "cover" kept the laurels 0 of 1 on
+            // that copy, "touch" 2 of 3. "Cover" still allows placing new work in the old ink's
+            // place; "touch" rules that out. General, not tied to any photo - and a setting
+            // (config:frame:add) if another tattoo shows a better word.
+            add: "This is my existing tattoo. Show me what it would look like if I ____, flowing with the current tattoo, matching its line weight, framing it so it reads as one piece. All new artwork should not touch any of the current tattoo.",
             change: "This is my tattoo. Show me what it would look like if I ____. Don't change anything else.",
             cover: "This is my existing tattoo. Show me what it would look like if I cover it with ____.",
             rework: "This is my existing tattoo. Show me what it would look like if I ____.",
@@ -61643,7 +61647,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             _blank = _blank.split(/\s*,\s*/)
               .filter((c, i) => i === 0 || !/\b(existing|current|original|old (piece|tattoo|ink|work))\b/i.test(c))
               .join(", ")
-              .replace(/\s+(on (the )?bare skin\s+)?((woven|worked|set|placed|growing|tucked|nestled)\s+)?(naturally\s+)?(into|around|through|among|between|within|beside|next to|alongside|behind|across|over|on|under) the\s+([a-z-]+\s+){0,3}(tattoo|piece|ink|leafwork|leaves|scrollwork|linework|design)\b/gi, "")
+              // v9.283 - EVERY "WHERE" PHRASE THAT POINTS AT SOMETHING IN THE PHOTO. MEASURED: "woven
+              // into the laurel branches ... beneath the hammer handle" slipped past a list of part
+              // names and the laurels were redrawn. No part names now: any into / onto / on / around
+              // / beneath / over / beside / through / from ... "the <anything>" goes, up to the next
+              // "with", "and" or comma. "beneath them" - about the new work itself - has no "the"
+              // and stays. The frame decides placement ("framing it").
+              .replace(/(?:\s*,)?\s+(?:(?:woven|worked|set|placed|growing|tucked|nestled|sitting|wrapped|curling|hanging)\s+)?(?:naturally\s+)?(?:into|onto|on|around|beneath|below|above|over|beside|through|between|along|alongside|across|under|within|among|behind|next to|on top of|from|off|against) the\b[^,.]*?(?=\s+(?:with|and)\b|\s*[,.]|$)/gi, "")
+              .replace(/\s{2,}/g, " ").replace(/\s*,\s*,/g, ",")
               .replace(/\s+(of|with|to) the (existing|current|original) [a-z -]+$/i, "")
               .replace(/\s*,\s*$/, "").trim();
             // "...if I Add sunflowers" -> "...if I add sunflowers": it sits mid-sentence.

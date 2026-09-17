@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.277.1-2026-09-16-contract-matches-think";
+const BUILD = "aura-core-v9.278.0-2026-09-16-three-versions-no-checks";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61696,16 +61696,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             const ask = _asks[si];
             let got = null, verdict = null;
             if (si === 0 && _firstOnPhoto) {
+              // ══ THREE VERSIONS, NOT CHECKED (2026-09-16, v9.278) ════════════════════════════
+              // MEASURED on pta_7f3018e9e74f6517: checking each version sent a full 2k picture into
+              // her session; by the third check it held 7-8 images, the request exceeded the model's
+              // body limit (8006) and her Durable Object ran out of memory and reset. TALK returned
+              // nothing, twice. Her check had also called a wrong version RIGHT the run before.
+              // So the three come back unchecked, the person picks by eye, and the first one that
+              // arrived is the current picture. No retry here - there is no verdict to retry on.
               const tries = await Promise.all([1, 2, 3].map((sd) => _evolve(cur, ask, sd)));
-              _variants = tries.map((t) => (t && t.ok && t.image_url) ? { image: t.image_url } : { failed: (t && t.error) || "no image" });
-              for (let vi = 0; vi < tries.length; vi++) {
-                const t = tries[vi];
-                if (!(t && t.ok && t.image_url)) continue;
-                const v = await _lookAtMock(t.image_url);
-                _variants[vi].she_looked = v || null;
-                if (!got) { got = t; verdict = v; }
-                if (v && /^\s*RIGHT\b/i.test(v)) { got = t; verdict = v; break; }
-              }
+              _variants = tries.map((t) => (t && t.ok && t.image_url) ? { image: t.image_url, design: t.child } : { failed: (t && t.error) || "no image" });
+              got = tries.find((t) => t && t.ok && t.image_url) || tries[0];
+              verdict = null;
             } else {
               const t = await _evolve(cur, ask, null);
               if (t && t.ok && t.image_url) { got = t; verdict = await _lookAtMock(t.image_url); }

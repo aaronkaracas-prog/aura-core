@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.291.0-2026-09-18-retry-and-log-the-failures";
+const BUILD = "aura-core-v9.292.0-2026-09-18-name-the-rule-that-cut-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -134,6 +134,32 @@ const TEMPLATE_ASSET = /\/(demo|sample|dummy|stock|template|theme|assets\/img\/d
 // Same disease as the two already recorded here: a rule written for one case eats the real thing.
 // What stays is what names itself: squarespace /demo, shopify placeholder, the stock libraries.
 const BUILDER_STOCK = /(images\.squarespace-cdn\.com\/content\/[^/]*\/demo|cdn\.shopify\.com\/s\/files\/[^/]*\/placeholder|unsplash\.com|pexels\.com|pixabay\.com)/i;
+// ══ WHICH RULE CUT IT (2026-09-18) ════════════════════════════════════════════════════════
+// MEASURED on Sweet T's Tattoos: she read the site perfectly - one artist, a Gallery of 12 pages,
+// 92 images - and the shortlist came out as TWO, both the same skyline background. 90 pictures
+// were killed before anything looked at them, and the reply could only say "nothing survived the
+// filename filter". Three bugs tonight have been a rule quietly deciding a real shop has no work
+// (the Wix stock pattern, the 28 cap, the token budgets), and each cost a round of guessing.
+// So the filter now NAMES ITSELF. Same rules, same order, no behaviour change - it just says
+// which test fired, and the read reports a sample. A filter that cannot be questioned is how a
+// regex ends up deciding what 33,694 businesses look like.
+const chromeRule = (url, alt) => {
+  const u = String(url || "");
+  const file = (u.split("?")[0].split("/").pop() || "");
+  const words = file.replace(/[_+.\-]+/g, " ")
+                    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+                    .replace(/%[0-9a-f]{2}/gi, " ");
+  const a = String(alt || "");
+  if (CHROME.test(words)) return "chrome_word";
+  if (CHROME.test(a)) return "chrome_alt";
+  if (BRAND.test(words)) return "brand";
+  if (isTiny(u)) return "tiny";
+  if (NOT_A_PHOTO.test(u)) return "not_a_photo";
+  if (TEMPLATE_ASSET.test(u)) return "template";
+  if (BUILDER_STOCK.test(u)) return "builder_stock";
+  return null;
+};
+
 const isChromeUrl = (url, alt) => {
   const u = String(url || "");
   const file = (u.split("?")[0].split("/").pop() || "");
@@ -22296,13 +22322,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // the thing deciding the answer, which is the failure every raised cap here has produced.
           const PER_SECTION = 12;
           const shortlist = [];
+          const cutBy = {}; const cutSample = [];
           {
             const queues = cardSections.map((sec) => {
               const seen = new Set(), out = [];
               for (const pth of sec.pages) {
                 for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
                   const u = mm[0];
-                  if (isChromeUrl(u, "") || seen.has(u)) continue;
+                  const why = chromeRule(u, "");
+                  if (why) {
+                    cutBy[why] = (cutBy[why] || 0) + 1;
+                    if (cutSample.length < 12) cutSample.push({ rule: why, u: u.slice(-70) });
+                    continue;
+                  }
+                  if (seen.has(u)) continue;
                   seen.add(u); out.push({ u, page: pth, section: sec.name });
                   if (out.length >= PER_SECTION) break;
                 }
@@ -22415,6 +22448,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                           saw: verdicts.map((v, i) => ((keep.has(i) ? "KEEP " : "drop ") + v.saw.slice(0, 90))) };
             } else cardWhy = { error: kr?.error || "judge failed", looked: verdicts.length };
           } else cardWhy = { looked: 0, failed, note: "nothing survived the filename filter" };
+          // Always report the cuts - on a shop with plenty of work this is the only place the
+          // shortlist's decisions are visible at all.
+          if (cardWhy && Object.keys(cutBy).length) {
+            cardWhy.cut_by = cutBy;
+            cardWhy.cut_sample = cutSample;
+          }
 
           // The trade question was asked and answered BEFORE the split - see above.
 

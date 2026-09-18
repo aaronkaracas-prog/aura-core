@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.307.0-2026-09-18-room-follows-the-pages";
+const BUILD = "aura-core-v9.308.0-2026-09-18-fail-fast-and-say-where-you-are";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22483,7 +22483,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                         "If it is a poster, banner, flyer, business card, logo, sign or screenshot, " +
                         "or if most of the picture is printed words, say so plainly." }, env);
               let vr = await _look();
-              if (!vr.ok) { eyesRetried++; vr = await _look(); }
+              if (!vr.ok) {
+                eyesRetried++;
+                // MEASURED on Fremont after `askBigger` went in: five pictures came back
+                // "3006: Request is too large". Asking the CDN for 1200px made them bigger than the
+                // model accepts - our own doing, and a silent loss of five real tattoos. If it is
+                // too big, ask the same CDN for a smaller one rather than giving up on the picture.
+                if (/too large|TOO_BIG|3006/i.test(String(vr.error || ""))) {
+                  const smaller = c.u.replace(/([,\/])w_\d{3,4}/gi, "$1w_600").replace(/([,\/])h_\d{3,4}/gi, "$1h_600");
+                  if (smaller !== c.u) vr = await seeMedia({ url: smaller, model: srdVis,
+                    prompt: "Describe what this photograph shows, in one short sentence. " +
+                            "If it is a poster, banner, flyer, business card, logo, sign or screenshot, " +
+                            "or if most of the picture is printed words, say so plainly." }, env);
+                } else vr = await _look();
+              }
               if (!vr.ok) { failed++; eyesFailures.push({ u: c.u.slice(-60), why: String(vr.error || "").slice(0, 90) }); continue; }
               bytes += vr.bytes || 0;
               verdicts.push({ ...c, saw: vr.saw });
@@ -24690,17 +24703,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         beRaw = beRaw.replace(/(^|\s)READ(\s|$)/i, " ").replace(/(^|\s)DRAFT(\s|$)/i, " ").trim();
         const beArgs = beRaw.split(/\s+/).filter(Boolean);
         let ids = [];
-        if ((beArgs[0] || "").toUpperCase() === "CITY") {
+        // STATE works the same way as CITY, for going state by state.
+        if ((beArgs[0] || "").toUpperCase() === "STATE") {
+          const st2 = beArgs.slice(1, -1).join(" ") || beArgs[1] || "";
+          const lim2 = Math.min(Number(beArgs[beArgs.length - 1]) || 50, 500);
+          const rows2 = (await env.AURA_MEMORY.prepare(
+            cgMode === "read"
+              ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
+                "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' AND understanding IS NULL LIMIT ?"
+              : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
+                "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL LIMIT ?")
+            .bind(String(st2).toLowerCase(), lim2).all())?.results || [];
+          ids = rows2.map(r => r.id);
+        } else if ((beArgs[0] || "").toUpperCase() === "CITY") {
           const city = beArgs.slice(1, -1).join(" ") || beArgs[1] || "";
           const lim = Math.min(Number(beArgs[beArgs.length - 1]) || 50, 500);
           // Crawling wants shops nobody has crawled. Reading wants shops that HAVE been crawled -
           // the archive is the input - and have no card yet.
+          // RESUME IS THE QUERY. A batch that died at 400 is restarted by running the same command:
+          // crawling skips anything with a verdict already, reading skips anything already carded,
+          // so nothing is done twice and nobody has to remember where it stopped.
           const rows = (await env.AURA_MEMORY.prepare(
             cgMode === "read"
               ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
-                "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' LIMIT ?"
+                "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' AND understanding IS NULL LIMIT ?"
               : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
-                "AND website IS NOT NULL AND website != '' AND (understanding IS NULL) LIMIT ?")
+                "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL LIMIT ?")
             .bind(String(city).toLowerCase(), lim).all())?.results || [];
           ids = rows.map(r => r.id);
         } else ids = beArgs;
@@ -24882,6 +24910,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // those same 16 pages - every one of them present in the page text.
         // WE WERE SORTING 33,694 BUSINESSES BY HOW A WEBMASTER SPELLED A URL. Fixing the
         // underscore buys one builder; the next one writes ?gallery=1 or #work.
+        // ══ A DEAD DOMAIN SHOULD COST A SECOND, NOT A MINUTE (2026-09-18) ══════════════════════
+        // MEASURED on the first Las Vegas batch: 7 of 10 unreachable, and each one walked the whole
+        // path - crawler start, its timeout, the http:// retry, its timeout - before giving up. The
+        // dead shops took longer than the live ones and dominated the run. `shipandanchortattoo
+        // piercing.com` is NXDOMAIN: the browser will never reach it, and one HEAD says so.
+        // The verdict written is identical either way. This only buys back the waiting.
+        if (!resumed) {
+          let quick = null;
+          try {
+            const probe = await fetch(site, { method: "HEAD", redirect: "follow",
+              signal: AbortSignal.timeout(6000) });
+            quick = { ok: true, status: probe.status };
+          } catch (e) { quick = { ok: false, why: String(e?.message ?? e).slice(0, 120) }; }
+          // Only a name that does not resolve or a connection that cannot be made is decisive - a
+          // 403, a 405 or a challenge page still deserves the real crawler.
+          if (!quick.ok && /getaddrinfo|ENOTFOUND|NXDOMAIN|dns|could not be resolved|connection refused|ECONNREFUSED|unreachable/i.test(quick.why)) {
+            try {
+              await db.prepare("UPDATE cg_business SET crawl_verdict = ?, crawled_at = ? WHERE id = ?")
+                .bind("unreachable", new Date().toISOString(), row.id).run();
+            } catch {}
+            return { cmd: "CG_ENRICH", payload: { ok: true, mode: "skipped", business: row.name,
+              site, crawl_verdict: "unreachable", why: quick.why,
+              note: "The domain does not resolve. Nothing was crawled and no browser was opened." } };
+          }
+        }
         const srFlags = "JSON DEPTH 5 LIMIT 30 ";
         const started = resumed
           ? { payload: { ok: true, id: row.crawl_job, resumed: true } }
@@ -32780,8 +32833,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         try {
           const inst = await env.GRID_CRAWL_WORKFLOW.get(id);
           const st = await inst.status();
-          return { cmd: "PTA_CRAWL", payload: { ok: true, id, status: st?.status ?? null, output: st?.output ?? null,
-            error: st?.error ?? null } };
+          // The workflow's own output only exists when it ENDS. The progress line is written as it
+          // goes, so a glance says 40 of 100 instead of "running".
+          let prog = null;
+          try { prog = await env.AURA_KV.get("crawl:progress:" + id, "json"); } catch {}
+          let eta = null;
+          if (prog?.at && prog?.of && prog.started && !prog.finished) {
+            const per = (Date.now() - new Date(prog.started).getTime()) / Math.max(1, prog.at);
+            const left = Math.round((per * (prog.of - prog.at)) / 60000);
+            eta = left > 0 ? ("about " + left + " min left") : "nearly done";
+          }
+          return { cmd: "PTA_CRAWL", payload: { ok: true, id, status: st?.status ?? null,
+            at: prog ? (prog.at + " of " + prog.of) : null,
+            last: prog?.last ?? null, counts: prog?.counts ?? null, eta,
+            output: st?.output ?? null, error: st?.error ?? null } };
         } catch (e) { return { cmd: "PTA_CRAWL", payload: { ok: false, error: String(e?.message ?? e), id } }; }
       }
       let crCells = 300;
@@ -60042,19 +60107,32 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
     if (String(event.payload?.mode || "") === "read") {
       const ids = (event.payload?.ids || []).slice(0, 2000);
       const write = event.payload?.write !== false;   // read-and-publish unless told otherwise
+      const pkey = "crawl:progress:" + (event.instanceId || event.payload?.tag || "read");
+      const startedAt = new Date().toISOString();
       let done = 0, empty = 0, failed = 0; const trouble = [];
       let images = 0, artists = 0;
       for (let i = 0; i < ids.length; i++) {
         const r = await step.do("read-" + i, async () => {
-          const x = await processCommand("SITE_READING " + ids[i] + " LOOK" + (write ? " WRITE" : ""), this.env, true);
-          return (x && x.payload) ? x.payload : x;
+          try {
+            const x = await processCommand("SITE_READING " + ids[i] + " LOOK" + (write ? " WRITE" : ""), this.env, true);
+            return (x && x.payload) ? x.payload : x;
+          } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
         });
-        if (!r?.ok) { failed++; if (trouble.length < 40) trouble.push({ id: ids[i], why: String(r?.error || "unknown").slice(0, 120) }); }
-        else if (r?.brain?.could_not_read) { failed++; if (trouble.length < 40) trouble.push({ id: ids[i], why: "brain unreadable after " + (r.brain.tries || 1) + " tries" }); }
-        else if (!r?.wrote?.images) { empty++; if (trouble.length < 40) trouble.push({ id: ids[i], why: "no pictures survived" }); }
+        const who = { id: ids[i], name: r?.business || null };
+        if (!r?.ok) { failed++; if (trouble.length < 60) trouble.push({ ...who, why: String(r?.error || "unknown").slice(0, 120) }); }
+        else if (r?.brain?.could_not_read) { failed++; if (trouble.length < 60) trouble.push({ ...who, why: "brain unreadable after " + (r.brain.tries || 1) + " tries" }); }
+        else if (!r?.wrote?.images) { empty++; if (trouble.length < 60) trouble.push({ ...who, why: "no pictures survived" }); }
         else { done++; images += r.wrote.images || 0; artists += (r.wrote.artists || []).length; }
+        await mark(pkey, { mode: "read", at: i + 1, of: ids.length, started: startedAt,
+          last: { name: r?.business || ids[i], images: r?.wrote?.images ?? 0,
+                  artists: (r?.wrote?.artists || []).length },
+          counts: { built: done, no_pictures: empty, failed, images, artists },
+          updated: new Date().toISOString() });
         await step.sleep("read-gap-" + i, "2 seconds");
       }
+      await mark(pkey, { mode: "read", at: ids.length, of: ids.length, started: startedAt,
+        counts: { built: done, no_pictures: empty, failed, images, artists },
+        finished: new Date().toISOString() });
       return { ok: true, mode: "read", shops: ids.length, pages_built: done, no_pictures: empty,
                failed, images, artists, trouble };
     }

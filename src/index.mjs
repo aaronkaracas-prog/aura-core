@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.314.0-2026-09-18-ten-good-ones-then-stop";
+const BUILD = "aura-core-v9.315.0-2026-09-18-an-empty-answer-is-still-an-answer";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22672,6 +22672,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (srdWrite && !card.length && cardWhy?.judge_unread) {
           srdWrite = false;
           if (cardWhy) cardWhy.kept_previous_card = "the judge could not be read - nothing was overwritten";
+        }
+        // ══ AN EMPTY ANSWER IS STILL AN ANSWER (2026-09-18) ═══════════════════════════════════
+        // MEASURED: the second ten-shop Nevada read built ONE page, and six of the ten were the
+        // same shops the first run had already found empty - Solace, Downtown, 11th Hour, Crown
+        // Electric, and two that are not tattoo shops at all. A shop with no pictures never got
+        // `sections` written, so the resume query offered it again, and would have offered it on
+        // every run forever. Same disease as the timeouts: a result nobody records is paid for
+        // again and again, and it crowds out the shops that have never been read at all.
+        // So "we looked and there was nothing" gets written down too - `sections: []` with the
+        // reason - and a deliberate re-run still overwrites it.
+        if (srdWrite && !card.length && !cardWhy?.judge_unread) {
+          try {
+            const prev0 = await env.AURA_MEMORY.prepare(
+              "SELECT understanding FROM cg_business WHERE id = ? LIMIT 1").bind(srdId).first();
+            let uz = {}; try { uz = JSON.parse(prev0?.understanding || "{}") || {}; } catch {}
+            uz.sections = [];
+            uz.no_pictures = { when: new Date().toISOString(),
+              looked: cardWhy?.looked ?? 0,
+              why: (cardWhy?.looked ? "nothing the eyes saw was work" : "no picture survived the filters"),
+              pages_in_archive: pages.length };
+            await env.AURA_MEMORY.prepare(
+              "UPDATE cg_business SET understanding = ? WHERE id = ?")
+              .bind(JSON.stringify(uz).slice(0, 24000), srdId).run();
+            wrote = { artists: [], images: 0, sections: [], recorded: "no pictures - this shop will be skipped by default now" };
+          } catch (e) { wrote = { error: String(e?.message ?? e).slice(0, 200) }; }
         }
         if (srdWrite && card.length) {
           try {

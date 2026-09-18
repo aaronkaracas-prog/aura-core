@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.300.0-2026-09-18-every-page-in-the-section-too";
+const BUILD = "aura-core-v9.301.0-2026-09-18-chrome-is-what-repeats";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22348,6 +22348,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const PER_SECTION = 12;
           const shortlist = [];
           const cutBy = {}; const cutSample = [];
+          // ══ CHROME IS WHAT REPEATS (2026-09-18) ═══════════════════════════════════════════════
+          // Sweet T's site puts the same six pictures at the top of every page - a letter K, an
+          // arrow, a bird, a black square, the Instagram and YouTube marks. No filename rule sees
+          // them: the names are hashes. But they appear on ELEVEN pages, and a tattoo appears on
+          // one. That is the same fact the crawl already uses to decide which pages to open, and it
+          // is decisive here too - those six ate the front of every queue, so each round of the
+          // shortlist spent its turn on furniture before reaching any work.
+          // A picture on more than two pages of a site is the site's own decoration. Judge the
+          // pattern, not the pixels, and the vision calls go to work rather than to a logo.
+          const onHowManyPages = {};
+          for (const body of Object.values(bodyOf)) {
+            for (const u of new Set([...String(body || "").matchAll(IMG_RE)].map((m) => m[0]))) {
+              onHowManyPages[u] = (onHowManyPages[u] || 0) + 1;
+            }
+          }
+          const repeats = (u) => (onHowManyPages[u] || 0) > 2;
           {
             // ══ AND ROUND ROBIN THE PAGES INSIDE A SECTION (2026-09-18) ═══════════════════════
             // MEASURED on Sweet T's: 192 pictures in the archive, ONE section (she is a solo
@@ -22365,7 +22381,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 const mine = [];
                 for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
                   const u = mm[0];
-                  const why = chromeRule(u, "");
+                  const why = repeats(u) ? "on_every_page" : chromeRule(u, "");
                   if (why) {
                     cutBy[why] = (cutBy[why] || 0) + 1;
                     if (cutSample.length < 12) cutSample.push({ rule: why, u: u.slice(-70) });

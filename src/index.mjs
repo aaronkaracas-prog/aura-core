@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.290.0-2026-09-18-fill-the-room";
+const BUILD = "aura-core-v9.291.0-2026-09-18-retry-and-log-the-failures";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22030,20 +22030,47 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const USR = row.name + (row.locality ? " - " + row.locality : "") +
               (row.region ? ", " + row.region : "") + "\n" + (row.website || "") + "\n\n" + sitemap;
 
+        // ══ A BATCH MUST SURVIVE A BAD ANSWER (2026-09-18) ══════════════════════════════════
+        // MEASURED, same model, same archive, minutes apart: one run returned all 8 artists, the
+        // next returned `!!!!!!!!!!...` to the token cap - a model losing the plot and repeating one
+        // character. Across 24,000 shops that is not an anomaly, it is a daily event, and a shop
+        // whose page came out empty because of it looks exactly like a shop with nothing to show.
+        // So: ask again once, and if it still cannot be read, SAY SO in a field a batch can count.
+        const _usable = (t) => {
+          const txt = String(t || "").trim();
+          if (txt.length < 12) return false;
+          // one character repeated is the degenerate answer, whatever the character is
+          if (/^(.)\1{40,}$/.test(txt.replace(/\s+/g, ""))) return false;
+          let o2 = txt; try { o2 = JSON.parse(txt); } catch { o2 = repairJson(txt); }
+          o2 = unwrapSchema(o2);
+          if (!o2 || typeof o2 !== "object") return false;
+          return !!(o2.business || (Array.isArray(o2.sections) && o2.sections.length)
+                    || (Array.isArray(o2.people) && o2.people.length));
+        };
         let rr = null, brainUsage = null, brainProvider = "workers-ai", brainModel = null;
+        let brainTries = 0, brainRetried = false;
         if (srdIsCf) {
           // 4000, not 1400: Grok used 506 output tokens on this same site and the crawl's parse log
           // already showed 8 repairs. Truncation has killed this call before - 19 of 30 proposals
           // lost to it once - and the tokens are cheap.
-          rr = await env.AI.run(srdModel, { max_tokens: 4000,
-            messages: [{ role: "system", content: SYS }, { role: "user", content: USR }] });
+          for (brainTries = 1; brainTries <= 2; brainTries++) {
+            rr = await env.AI.run(srdModel, { max_tokens: 4000,
+              messages: [{ role: "system", content: SYS }, { role: "user", content: USR }] });
+            if (_usable(aiText(rr))) break;
+            if (brainTries === 1) { brainRetried = true; console.log("[SITE_READING] unreadable map answer - asking again"); }
+          }
         } else {
           // ══ TWO PATHS, ONE OF THEM STARVED (2026-09-18) ═══════════════════════════════════
           // Same model, same archive, minutes apart: the binding path at 4000 returned 8 artists,
           // 4 sections and 10 pictures; this path at 1400 returned an empty card. Truncation, and
           // `repairJson` salvaged an OBJECT with nothing in it - so it did not even look broken.
           // Both paths now ask for the same room.
-          const cb = await callBrain({ system: SYS, user: USR, max_tokens: 4000, model: srdModel }, env);
+          let cb = null;
+          for (brainTries = 1; brainTries <= 2; brainTries++) {
+            cb = await callBrain({ system: SYS, user: USR, max_tokens: 4000, model: srdModel }, env);
+            if (cb?.ok && _usable(cb.text)) break;
+            if (brainTries === 1) { brainRetried = true; console.log("[SITE_READING] unreadable map answer - asking again"); }
+          }
           if (!cb?.ok) return { cmd: "SITE_READING", payload: { ok: false, model: srdModel,
             provider: cb?.provider || null, error: cb?.error || "brain call failed",
             what_to_do: "The model comes from KV `config:brain:model` unless MODEL is passed. " +
@@ -22073,8 +22100,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           && !(Array.isArray(out.sections) && out.sections.length)
           && !(Array.isArray(out.people) && out.people.length);
         const brainUnread = (!out || typeof out !== "object" || _nothingInIt)
-          ? { could_not_read: true, raw_head: rawHead || "(nothing came back on any known field)" }
-          : null;
+          ? { could_not_read: true, tries: brainTries,
+              raw_head: rawHead || "(nothing came back on any known field)" }
+          : (brainRetried ? { retried: true, tries: brainTries } : null);
 
         // ══ THE CHECK - A CONFIDENT WRONG GROUPING IS THE FAILURE MODE ══════════════════════
         // A wrong regex looked wrong. A wrong answer here looks like a fact. So every path she
@@ -22307,7 +22335,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             }
           }
           const t1 = Date.now();
-          let bytes = 0, failed = 0;
+          let bytes = 0, failed = 0, eyesRetried = 0;
+          const eyesFailures = [];
           const verdicts = [];
           for (const c of shortlist) {
             try {
@@ -22318,11 +22347,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               // reached the live page, because the description was the CONTENT - "a man getting a
               // tattoo" - when the picture is a poster OF a man getting a tattoo. The judge can only
               // judge what it is told, so the difference has to be in the sentence.
-              const vr = await seeMedia({ url: c.u, model: srdVis,
+              // The eyes fail transiently too - MEASURED: "triton error running inference ...
+              // transport error" on a picture that worked on the next run. One retry, then it counts.
+              const _look = async () => await seeMedia({ url: c.u, model: srdVis,
                 prompt: "Describe what this photograph shows, in one short sentence. " +
                         "If it is a poster, banner, flyer, business card, logo, sign or screenshot, " +
                         "or if most of the picture is printed words, say so plainly." }, env);
-              if (!vr.ok) { failed++; continue; }
+              let vr = await _look();
+              if (!vr.ok) { eyesRetried++; vr = await _look(); }
+              if (!vr.ok) { failed++; eyesFailures.push({ u: c.u.slice(-60), why: String(vr.error || "").slice(0, 90) }); continue; }
               bytes += vr.bytes || 0;
               verdicts.push({ ...c, saw: vr.saw });
             } catch { failed++; }
@@ -22372,6 +22405,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                           megabytes: Math.round(bytes / 10485.76) / 100,
                           seconds: Math.round((Date.now() - t1) / 100) / 10,
                           chose: keep.size, judge: kr.model, usage: kr.usage,
+                          ...(eyesRetried ? { eyes_retried: eyesRetried } : {}),
+                          ...(eyesFailures.length ? { eyes_failed: eyesFailures } : {}),
                           // NO LIST AT ALL IS NOT THE SAME AS AN EMPTY ONE. "Fewer is better" makes
                           // `keep: []` a legitimate answer, so a judge that never answered has been
                           // reporting itself as a judge that said no to everything.
@@ -24381,21 +24416,39 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // shops because one job per domain is what the rate limit expects.
       if (!isOp) return { cmd: "CG_ENRICH_BATCH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       try {
-        const beArgs = String(rest || "").trim().split(/\s+/).filter(Boolean);
+        // ══ CRAWL WIDE, READ LATER (2026-09-18) ═══════════════════════════════════════════════
+        // `CG_ENRICH_BATCH READ ...` runs the reading stage over shops already crawled, off the R2
+        // archive, without touching a single website again. `DRAFT` reads without publishing.
+        //   CG_ENRICH_BATCH CITY Las Vegas 25          - crawl 25 uncrawled shops
+        //   CG_ENRICH_BATCH READ CITY Las Vegas 25     - build pages for 25 crawled shops
+        //   CG_ENRICH_BATCH READ DRAFT CITY ... 25     - same, but nothing is published
+        let beRaw = String(rest || "").trim();
+        const cgMode = /(^|\s)READ(\s|$)/i.test(beRaw) ? "read" : "enrich";
+        beRaw = beRaw.replace(/(^|\s)READ(\s|$)/i, " ").replace(/(^|\s)DRAFT(\s|$)/i, " ").trim();
+        const beArgs = beRaw.split(/\s+/).filter(Boolean);
         let ids = [];
         if ((beArgs[0] || "").toUpperCase() === "CITY") {
           const city = beArgs.slice(1, -1).join(" ") || beArgs[1] || "";
           const lim = Math.min(Number(beArgs[beArgs.length - 1]) || 50, 500);
+          // Crawling wants shops nobody has crawled. Reading wants shops that HAVE been crawled -
+          // the archive is the input - and have no card yet.
           const rows = (await env.AURA_MEMORY.prepare(
-            "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
-            "AND website IS NOT NULL AND website != '' AND (understanding IS NULL) LIMIT ?")
+            cgMode === "read"
+              ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
+                "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' LIMIT ?"
+              : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
+                "AND website IS NOT NULL AND website != '' AND (understanding IS NULL) LIMIT ?")
             .bind(String(city).toLowerCase(), lim).all())?.results || [];
           ids = rows.map(r => r.id);
         } else ids = beArgs;
-        if (!ids.length) return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, shops: 0,
-          note: "Nothing to enrich - either none named, or that city has no unenriched shops with a website." } };
-        const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: "enrich", ids } });
+        if (!ids.length) return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, shops: 0, mode: cgMode,
+          note: cgMode === "read"
+            ? "Nothing to read - that city has no shops with a finished crawl."
+            : "Nothing to enrich - either none named, or that city has no unenriched shops with a website." } };
+        const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: cgMode, ids,
+          ...(cgMode === "read" ? { write: !/(^|\s)DRAFT(\s|$)/i.test(String(rest || "")) } : {}) } });
         return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, started: inst.id, shops: ids.length,
+          mode: cgMode,
           watch: "PTA_CRAWL STATUS " + inst.id,
           note: "Running as a Workflow. It survives a redeploy and nobody has to wait." } };
       } catch (e) {
@@ -59639,6 +59692,34 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
     // row that WORKED.
     // A build that runs off one person's machine also puts the catalogue's construction somewhere
     // Aura cannot see - no archive, no meter attribution, no way to answer how it was built.
+    // ══ READING IS ITS OWN STAGE (2026-09-18) ═══════════════════════════════════════════════
+    // `SITE_READING` was a command a human typed, one shop at a time, which is the last thing
+    // standing between 31 crawled shops and 24,032. It is ALSO the step that must not be welded to
+    // the crawl: crawling touches somebody's website and is rate-limited and polite; reading runs
+    // off the archive in R2 and can be re-run as often as we like without hitting them again.
+    // So: mode "enrich" crawls, mode "read" reads. Run every crawl, look at the results, then read.
+    // Each shop is its own `step.do`, so a failure retries that shop instead of the batch, and the
+    // trouble list names the shops to look at rather than burying them in output.
+    if (String(event.payload?.mode || "") === "read") {
+      const ids = (event.payload?.ids || []).slice(0, 2000);
+      const write = event.payload?.write !== false;   // read-and-publish unless told otherwise
+      let done = 0, empty = 0, failed = 0; const trouble = [];
+      let images = 0, artists = 0;
+      for (let i = 0; i < ids.length; i++) {
+        const r = await step.do("read-" + i, async () => {
+          const x = await processCommand("SITE_READING " + ids[i] + " LOOK" + (write ? " WRITE" : ""), this.env, true);
+          return (x && x.payload) ? x.payload : x;
+        });
+        if (!r?.ok) { failed++; if (trouble.length < 40) trouble.push({ id: ids[i], why: String(r?.error || "unknown").slice(0, 120) }); }
+        else if (r?.brain?.could_not_read) { failed++; if (trouble.length < 40) trouble.push({ id: ids[i], why: "brain unreadable after " + (r.brain.tries || 1) + " tries" }); }
+        else if (!r?.wrote?.images) { empty++; if (trouble.length < 40) trouble.push({ id: ids[i], why: "no pictures survived" }); }
+        else { done++; images += r.wrote.images || 0; artists += (r.wrote.artists || []).length; }
+        await step.sleep("read-gap-" + i, "2 seconds");
+      }
+      return { ok: true, mode: "read", shops: ids.length, pages_built: done, no_pictures: empty,
+               failed, images, artists, trouble };
+    }
+
     if (String(event.payload?.mode || "") === "faces") {
       const only = String(event.payload?.category || "").trim();
       const cap = Math.min(Number(event.payload?.max_leaves) || 40, 600);

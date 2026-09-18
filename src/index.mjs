@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.335.0-2026-09-18-facts-do-not-depend-on-pictures";
+const BUILD = "aura-core-v9.336.0-2026-09-18-slower-and-say-what-happened";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60688,7 +60688,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       // there at runtime, and that mismatch is what made STATUS report `at: null` for a whole run.
       const pkey = "crawl:progress:" + (event.payload?.tag || event.instanceId || "enrich");
       const startedAt = new Date().toISOString();
-      let done = 0, failed = 0, unreached = 0; const trouble = [];
+      let done = 0, failed = 0, unreached = 0; const trouble = [], byVerdict = {};
       // ══ SHOPS IN PARALLEL, AND A SHORTER LEASH (2026-09-18) ═══════════════════════════════
       // One shop at a time was the bottleneck, not Cloudflare: Browser Run's default concurrency is
       // 120 browsers from a warm pool, and we were using one. Eight in flight turns a 200-shop state
@@ -60704,7 +60704,12 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       // at one per second on Workers Paid, enforced as a fixed fill rate rather than a burst. So
       // each lane waits its turn to begin - twenty lanes open over twenty-four seconds - and the
       // run stays under the rate instead of collecting 429s that would look like dead shops.
-      const LANES = 20;
+      // ══ SLOWER, AND SAY WHAT HAPPENED (2026-09-18) ══════════════════════════════════════
+      // Aaron, before running a whole state: "I'd rather it take twice as long than to stop during
+      // the batch and have to redo this." Twenty lanes sits inside Cloudflare's limits, but it is
+      // also twenty browsers and twenty small shop servers hit at once, and what that buys is not
+      // speed with a rounding error - it is live shops written off. Ten lanes, longer leash.
+      const LANES = 10;
       for (let g = 0; g < ids.length; g += LANES) {
         const group = ids.slice(g, g + LANES);
         const results = await Promise.all(group.map((id2, gi) => {
@@ -60724,7 +60729,11 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
               const x = await Promise.race([
                 processCommand("CG_ENRICH " + id2, this.env, true),
                 new Promise((res) => setTimeout(() => res({ payload: { ok: false,
-                  error: "TOOK_TOO_LONG", crawl_verdict: "timeout" } }), 150000)),   // 150s, not 240 - see the note above
+                  // 240s. MEASURED on California's first 365: TWENTY-TWO shops hit the old
+                  // 150-second ceiling and were written off. A shop that takes three minutes is
+                  // usually a big site with a lot to give, not a dead one. The ceiling exists so
+                  // one bad shop cannot hang a batch; at ten lanes there is room to be patient.
+                  error: "TOOK_TOO_LONG", crawl_verdict: "timeout" } }), 240000)),
               ]);
               let p2 = (x && x.payload) ? x.payload : x;
               // A RATE LIMIT IS A WAIT, NOT A VERDICT. Recording a good shop as unreachable because
@@ -60763,19 +60772,26 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
           // number somebody reads to decide a run went well.
           // Unreachable is not a failure of ours and not a success either - it gets its own
           // count rather than being folded into one of them.
+          // MEASURED: the status line read "crawled 56, unreachable 38, FAILED 66" and 66 looked
+          // like a disaster - but the database showed timeouts, squatted domains, booking links and
+          // refusals, every one a verdict correctly written. Four real outcomes lumped under the
+          // word for something going wrong. Name them, so a status check tells the truth.
           const verdict = r?.crawl_verdict || null;
+          if (verdict) byVerdict[verdict] = (byVerdict[verdict] || 0) + 1;
           if (r?.ok && (verdict === "unreachable" || verdict === "refused")) {
             unreached++;
             // Names and sites in the trouble list: twice tonight a list of bare uuids meant a D1
             // query just to find out which shops had failed.
             if (trouble.length < 60) trouble.push({ id: ids[i], name: r?.business || null, site: r?.site || null, why: verdict });
           } else if (r?.ok) done++;
-          else { failed++; if (trouble.length < 60) trouble.push({ id: ids[i], name: r?.business || null, site: r?.site || null, why: r?.error || "unknown" }); }
+          else { failed++; byVerdict.error = (byVerdict.error || 0) + 1;
+                 if (trouble.length < 60) trouble.push({ id: ids[i], name: r?.business || null, site: r?.site || null, why: r?.error || "unknown" }); }
           await mark(pkey, { mode: "enrich", at: i + 1, of: ids.length, started: startedAt,
             last: { name: r?.business || ids[i],
                     verdict: verdict || (r?.ok ? "ok" : (r?.error || "failed")),
                     pages: r?.pages ?? null, emails: r?.extracted?.emails ?? null },
             counts: { crawled: done, unreachable: unreached, failed },
+            verdicts: byVerdict,
             updated: new Date().toISOString() });
           // One job per domain is the rule the rate limit enforces; a pause between shops keeps a
           // long run from looking like a flood to anybody's server.
@@ -60785,9 +60801,10 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       }
       await mark(pkey, { mode: "enrich", at: ids.length, of: ids.length, started: startedAt,
         counts: { crawled: done, unreachable: unreached, failed },
+        verdicts: byVerdict,
         finished: new Date().toISOString() });
       return { ok: true, mode: "enrich", shops: ids.length, enriched: done, failed,
-               unreachable: unreached, trouble,
+               unreachable: unreached, verdicts: byVerdict, trouble,
                progress: { key: pkey, writes: kvWrites, trouble: kvTrouble } };
     }
 

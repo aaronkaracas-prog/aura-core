@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.332.0-2026-09-18-read-the-card-before-guarding-it";
+const BUILD = "aura-core-v9.333.0-2026-09-18-say-why-there-are-no-facts";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22781,12 +22781,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // A fact whose sentence is not in the archive is dropped, not published.
         let shopFacts = null;
         try {
+          // ══ SAY WHY THERE ARE NO FACTS (2026-09-18) ═══════════════════════════════════════
+          // Three rounds spent reading symptoms: `facts` came back with eight entries, then one,
+          // then an empty array, then NO FIELD AT ALL - and the reply never said whether the text
+          // was gathered, whether the call ran, or what it answered. Every other silent failure in
+          // this file took a round of guessing to find, and each time the fix was to make the step
+          // report itself. This one reports: which pages fed it, how much text, what came back.
           const wantedFacts = /faq|question|deposit|polic|pricing|price|rate|about|contact|service|aftercare|book|appointment|walk|hour/i;
-          let blob = "";
+          let blob = ""; const blobPages = [];
           for (const pg of parts) {
             const p3 = String(pg.url || "").replace(/^https?:\/\/[^/]+/, "") || "/";
-            if (p3 === "/" || wantedFacts.test(p3)) blob += "\n\n## " + p3 + "\n" + String(pg.body || "").slice(0, 6000);
+            if (p3 === "/" || wantedFacts.test(p3)) {
+              blob += "\n\n## " + p3 + "\n" + String(pg.body || "").slice(0, 6000);
+              if (!blobPages.includes(p3)) blobPages.push(p3);
+            }
             if (blob.length > 30000) break;
+          }
+          if (blob.length <= 400) {
+            shopFacts = { none: "no page matched the fact pages and the homepage gave " +
+              blob.length + " characters", pages_tried: blobPages };
           }
           if (blob.length > 400) {
             const fr = await callBrain({
@@ -22823,6 +22836,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 "quote is the sentence from the text that says it, copied exactly.\n" +
                 "At most 14 entries. Fewer and true beats more.",
               user: blob.slice(0, 30000), max_tokens: 1200 }, env);
+            if (!fr?.ok) shopFacts = { none: "the facts call failed", pages_tried: blobPages,
+              error: String(fr?.error || "unknown").slice(0, 140) };
             if (fr?.ok) {
               let fj = fr.text;
               if (typeof fj === "string") { try { fj = JSON.parse(fj); } catch { fj = repairJson(fj); } }
@@ -22852,6 +22867,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               }
               // Twelve on the page is plenty - it is their page to fill once they claim it, and a
               // wall of detail buries the few things a customer came for. The rest is kept on file.
+              if (!keptFacts.length && !droppedFacts.length)
+                shopFacts = { none: "the model returned no facts from " + blob.length +
+                  " characters", pages_tried: blobPages,
+                  raw_head: String(fr.text || "").slice(0, 200) || "(nothing came back)" };
               if (keptFacts.length || droppedFacts.length)
                 shopFacts = { said: keptFacts.slice(0, 12),
                               ...(keptFacts.length > 12 ? { also: keptFacts.slice(12) } : {}),

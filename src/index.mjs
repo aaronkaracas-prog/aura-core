@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.319.0-2026-09-18-a-thumbnail-is-the-same-tattoo";
+const BUILD = "aura-core-v9.320.0-2026-09-18-hand-the-page-what-they-published";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65814,6 +65814,13 @@ export class PublicEntry extends WorkerEntrypoint {
         socials: String(row.social || "").split("|").filter(Boolean),
         website: String(row.website || "").split("|")[0] || null,
         artists: u.artists || [], styles: u.styles || [],
+        // ══ HAND THE PAGE WHAT THEY PUBLISHED (2026-09-18) ════════════════════════════════════
+        // The read extracts the shop's own answers - minimum, deposit, touch-ups, payment methods,
+        // walk-in rule, consultation, parking - each with the sentence from their site that says
+        // it, verified against the archive. They were being stored and never shown. This is the
+        // material that proves we understand the business, which is the entire pitch of an
+        // unclaimed page, so it belongs on the page rather than in a column.
+        facts: Array.isArray(u.facts) ? u.facts.slice(0, 12) : [],
         walk_ins: u.walk_ins ?? null, consultations: u.consultations ?? null,
         deposit_required: u.deposit_required ?? null, booking_method: u.booking_method || null,
         booking_platforms: u.booking_platforms || [], own_booking_urls: u.own_booking_urls || [],

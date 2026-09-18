@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.333.0-2026-09-18-say-why-there-are-no-facts";
+const BUILD = "aura-core-v9.334.0-2026-09-18-room-to-think-on-the-facts-call";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22835,7 +22835,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 "a is the answer in the shop's own terms, one short line.\n" +
                 "quote is the sentence from the text that says it, copied exactly.\n" +
                 "At most 14 entries. Fewer and true beats more.",
-              user: blob.slice(0, 30000), max_tokens: 1200 }, env);
+              // ══ ROOM TO THINK, THE FOURTH TIME (2026-09-18) ═══════════════════════════════
+              // The diagnostic said it outright: finish_reason "length", content null, and the
+              // reasoning field still mid-sentence. gpt-oss spends OUTPUT tokens thinking before it
+              // answers, so 1200 was gone before it wrote anything - and whether the facts appeared
+              // came down to how long the model happened to ruminate. That is the 8 facts, then 1,
+              // then 0 on the same archive.
+              // Same lesson as the map call at 1400 and the judge at 400. This is the last call in
+              // this file still sized for a model that does not think first.
+              user: blob.slice(0, 30000), max_tokens: 4000 }, env);
             if (!fr?.ok) shopFacts = { none: "the facts call failed", pages_tried: blobPages,
               error: String(fr?.error || "unknown").slice(0, 140) };
             if (fr?.ok) {

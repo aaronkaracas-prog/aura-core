@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.309.0-2026-09-18-we-name-the-run-ourselves";
+const BUILD = "aura-core-v9.310.0-2026-09-18-who-cannot-write-the-line";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24738,11 +24738,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             : "Nothing to enrich - either none named, or that city has no unenriched shops with a website." } };
         // We choose the id so the run has ONE name: the instance and its progress key.
         const runId = crypto.randomUUID();
+        // ══ WHO CANNOT WRITE THE LINE (2026-09-18) ═══════════════════════════════════════════
+        // `STATUS` reported `at: null` for two whole runs and the KV key is genuinely absent, so it
+        // is the WRITE, not a cached read. The binding is right there in wrangler.toml, top level,
+        // same namespace id - so rather than guess a third time, the COMMAND writes the first line
+        // itself, from the worker, before the instance exists.
+        // If this line shows up and never advances, the key and the read path are fine and the
+        // workflow's own env or loop is the problem. If it never shows up at all, the workflow was
+        // never the issue and I have been looking in the wrong place.
+        let kvProof = null;
+        try {
+          await env.AURA_KV.put("crawl:progress:" + runId, JSON.stringify({
+            mode: cgMode, at: 0, of: ids.length, started: new Date().toISOString(),
+            last: { name: "queued", verdict: "not started yet" },
+            counts: { crawled: 0, unreachable: 0, failed: 0 },
+            written_by: "the command, before the run" }), { expirationTtl: 604800 });
+          kvProof = "wrote the first line";
+        } catch (e) { kvProof = "could not write: " + String(e?.message ?? e).slice(0, 120); }
         const inst = await env.GRID_CRAWL_WORKFLOW.create({ id: runId,
           params: { mode: cgMode, ids, tag: runId,
           ...(cgMode === "read" ? { write: !/(^|\s)DRAFT(\s|$)/i.test(String(rest || "")) } : {}) } });
         return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, started: inst.id, shops: ids.length,
-          mode: cgMode,
+          mode: cgMode, progress_line: kvProof,
           watch: "PTA_CRAWL STATUS " + inst.id,
           note: "Running as a Workflow. It survives a redeploy and nobody has to wait." } };
       } catch (e) {
@@ -60061,8 +60078,18 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
     // ══ SAY WHERE YOU ARE WHILE YOU RUN (2026-09-18) ═══════════════════════════════════════
     // Cloudflare hands back a workflow's output only when it ENDS, so a long run says "running"
     // and nothing else for hours. Each step writes one line here; `PTA_CRAWL STATUS` reads it.
+    // A SILENT CATCH IS HOW A FEATURE LOOKS BUILT AND IS NOT. This one swallowed whatever went
+    // wrong for two runs. It now says so in the log and keeps the last failure for the summary.
+    let kvTrouble = null, kvWrites = 0;
     const mark = async (key, body) => {
-      try { await this.env.AURA_KV.put(key, JSON.stringify(body), { expirationTtl: 604800 }); } catch {}
+      try {
+        if (!this.env?.AURA_KV) { kvTrouble = "the workflow has no AURA_KV binding"; return; }
+        await this.env.AURA_KV.put(key, JSON.stringify(body), { expirationTtl: 604800 });
+        kvWrites++;
+      } catch (e) {
+        kvTrouble = String(e?.message ?? e).slice(0, 160);
+        try { console.log("[WORKFLOW] progress write failed: " + kvTrouble); } catch {}
+      }
     };
     if (String(event.payload?.mode || "") === "enrich") {
       const ids = (event.payload?.ids || []).slice(0, 2000);
@@ -60112,7 +60139,8 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         counts: { crawled: done, unreachable: unreached, failed },
         finished: new Date().toISOString() });
       return { ok: true, mode: "enrich", shops: ids.length, enriched: done, failed,
-               unreachable: unreached, trouble };
+               unreachable: unreached, trouble,
+               progress: { key: pkey, writes: kvWrites, trouble: kvTrouble } };
     }
 
     // ══ FACES IS A FOURTH MODE — THE IDENTITY PASS ═════════════════════════════════════════════
@@ -60165,7 +60193,8 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         counts: { built: done, no_pictures: empty, failed, images, artists },
         finished: new Date().toISOString() });
       return { ok: true, mode: "read", shops: ids.length, pages_built: done, no_pictures: empty,
-               failed, images, artists, trouble };
+               failed, images, artists, trouble,
+               progress: { key: pkey, writes: kvWrites, trouble: kvTrouble } };
     }
 
     if (String(event.payload?.mode || "") === "faces") {

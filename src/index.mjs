@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.293.0-2026-09-18-a-thumbnail-is-not-a-small-picture";
+const BUILD = "aura-core-v9.294.0-2026-09-18-look-in-the-dom-not-the-text";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24305,6 +24305,92 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "HANDS_SEE", payload: { ok: true, url: hsUrl, final_url: finalUrl, http: resp ? resp.status() : null, title: title || null, chars: (text || "").length, snippet: (text || "").slice(0, 800), via: "cloudflare browser binding (real headless chrome, post-JS)" } };
         } catch (e) { return { cmd: "HANDS_SEE", payload: { ok: false, error: String(e.message) } }; }
         finally { if (browser) { try { await browser.close(); } catch (e) {} } }
+      }
+    }
+
+    // ══ THE PICTURES WERE NEVER IN THE TEXT (2026-09-18) ═══════════════════════════════════════
+    // MEASURED on Sweet T's Tattoos: her Gallery is 12 pages, the map counted 92 images, and the
+    // archive yielded EIGHT candidates - all of them page furniture (a letter K, an arrow, a play
+    // button, a black background). `HANDS_SEE` on one gallery page returned 84 characters of text:
+    // "Home / The Gallery / Appointment / Realism / (c) 2023 by TAMARA MURRAY". Her tattoos are not
+    // in the text, rendered or not.
+    // Every image rule we have argues about URLs found in MARKDOWN. A gallery widget puts its
+    // pictures in the DOM - `src`, `srcset`, `<source>`, CSS `background-image` - and often only
+    // after a scroll. So this opens the page in the real browser, scrolls it in stages to trigger
+    // the lazy loading, and reads what is actually there, WITH the natural width and height, which
+    // finally lets `tiny` judge the picture instead of a URL parameter.
+    // Its own command first, deliberately: prove it on a shop before it becomes how the crawl sees.
+    case "SITE_IMAGES": {
+      if (!isOp) return { cmd: "SITE_IMAGES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const siUrl = (rest || "").trim().split(/\s+/)[0] || "";
+      if (!/^https?:\/\//i.test(siUrl)) return { cmd: "SITE_IMAGES", payload: { ok: false,
+        error: "Usage: SITE_IMAGES <http(s) url>" } };
+      if (!env.BROWSER) return { cmd: "SITE_IMAGES", payload: { ok: false, error: "no BROWSER binding" } };
+      { let browser = null;
+        const t0 = Date.now();
+        try {
+          browser = await puppeteer.launch(env.BROWSER);
+          const page = await browser.newPage();
+          await page.setViewport({ width: 1400, height: 1000 });
+          const resp = await page.goto(siUrl, { waitUntil: "networkidle0", timeout: 30000 });
+          // Lazy galleries only load what has been scrolled past, so walk the page down and back.
+          await page.evaluate(async () => {
+            const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+            let last = 0;
+            for (let i = 0; i < 12; i++) {
+              window.scrollTo(0, document.body.scrollHeight);
+              await sleep(400);
+              if (document.body.scrollHeight === last) break;
+              last = document.body.scrollHeight;
+            }
+            window.scrollTo(0, 0); await sleep(300);
+          });
+          const found = await page.evaluate(() => {
+            const out = [];
+            const push = (u, w, h, how) => {
+              if (!u || /^data:/i.test(u)) return;
+              try { u = new URL(u, document.baseURI).href; } catch { return; }
+              out.push({ u, w: w || 0, h: h || 0, how });
+            };
+            for (const im of document.querySelectorAll("img")) {
+              // srcset carries the big one; take the widest candidate the page offers.
+              let best = im.currentSrc || im.src, bestW = 0;
+              const ss = im.getAttribute("srcset") || "";
+              for (const part of ss.split(",")) {
+                const bits = part.trim().split(/\s+/);
+                const w = parseInt((bits[1] || "").replace(/\D/g, ""), 10) || 0;
+                if (bits[0] && w > bestW) { best = bits[0]; bestW = w; }
+              }
+              push(best, im.naturalWidth, im.naturalHeight, "img");
+            }
+            for (const s of document.querySelectorAll("source[srcset]")) {
+              const first = (s.getAttribute("srcset") || "").split(",")[0].trim().split(/\s+/)[0];
+              push(first, 0, 0, "source");
+            }
+            for (const el of document.querySelectorAll("*")) {
+              const bg = getComputedStyle(el).backgroundImage || "";
+              const m = bg.match(/url\((['"]?)(.*?)\1\)/);
+              if (m && m[2]) push(m[2], el.clientWidth, el.clientHeight, "background");
+            }
+            return out;
+          });
+          const seen = new Set(); const images = [];
+          for (const f of found) {
+            if (seen.has(f.u)) continue;
+            seen.add(f.u);
+            images.push({ ...f, cut: chromeRule(f.u, "") || null });
+          }
+          const kept = images.filter((x) => !x.cut);
+          return { cmd: "SITE_IMAGES", payload: { ok: true, url: siUrl, final_url: page.url(),
+            http: resp ? resp.status() : null, found: images.length, kept: kept.length,
+            by_how: images.reduce((a, x) => (a[x.how] = (a[x.how] || 0) + 1, a), {}),
+            cut_by: images.reduce((a, x) => (x.cut ? (a[x.cut] = (a[x.cut] || 0) + 1) : 0, a), {}),
+            images: kept.slice(0, 40).map((x) => ({ u: x.u, w: x.w, h: x.h, how: x.how })),
+            ms: Date.now() - t0,
+            note: "Read from the rendered DOM after scrolling - src, srcset, <source> and CSS backgrounds." } };
+        } catch (e) {
+          return { cmd: "SITE_IMAGES", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200), ms: Date.now() - t0 } };
+        } finally { if (browser) { try { await browser.close(); } catch {} } }
       }
     }
 

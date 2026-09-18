@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.289.0-2026-09-18-everyone-gets-seen";
+const BUILD = "aura-core-v9.290.0-2026-09-18-fill-the-room";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22283,12 +22283,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               return out;
             });
             const ceiling = Math.min(84, Math.max(12, cardSections.length * PER_SECTION));
+            // FILL THE ROOM. The rounds end when the SHORTEST queues run out, so a shop with 100
+            // pictures published 17 while Cece's 24-image page gave 4. Rounds first, for fairness -
+            // everyone is seen before anyone gets seconds - then keep going through whoever still
+            // has candidates until the ceiling is reached. Fair AND full, not fair INSTEAD of full.
             for (let round = 0; round < PER_SECTION && shortlist.length < ceiling; round++) {
               for (const q of queues) {
                 if (shortlist.length >= ceiling) break;
                 const pick = q[round];
                 if (!pick || shortlist.some((c) => c.u === pick.u)) continue;
                 shortlist.push(pick);
+              }
+            }
+            if (shortlist.length < ceiling) {
+              for (const q of queues) {
+                for (const pick of q) {
+                  if (shortlist.length >= ceiling) break;
+                  if (shortlist.some((c) => c.u === pick.u)) continue;
+                  shortlist.push(pick);
+                }
+                if (shortlist.length >= ceiling) break;
               }
             }
           }

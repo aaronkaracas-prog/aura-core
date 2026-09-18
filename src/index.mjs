@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.308.0-2026-09-18-fail-fast-and-say-where-you-are";
+const BUILD = "aura-core-v9.309.0-2026-09-18-we-name-the-run-ourselves";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24736,7 +24736,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: cgMode === "read"
             ? "Nothing to read - that city has no shops with a finished crawl."
             : "Nothing to enrich - either none named, or that city has no unenriched shops with a website." } };
-        const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: cgMode, ids,
+        // We choose the id so the run has ONE name: the instance and its progress key.
+        const runId = crypto.randomUUID();
+        const inst = await env.GRID_CRAWL_WORKFLOW.create({ id: runId,
+          params: { mode: cgMode, ids, tag: runId,
           ...(cgMode === "read" ? { write: !/(^|\s)DRAFT(\s|$)/i.test(String(rest || "")) } : {}) } });
         return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, started: inst.id, shops: ids.length,
           mode: cgMode,
@@ -60055,13 +60058,30 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
     // The grid crawl DISCOVERS businesses across map cells; enrichment READS one shop's own site.
     // Different jobs, same durability problem, same solution - so it is a mode here rather than a
     // parallel piece of machinery. One step per shop, deterministic names, replay-safe.
+    // ══ SAY WHERE YOU ARE WHILE YOU RUN (2026-09-18) ═══════════════════════════════════════
+    // Cloudflare hands back a workflow's output only when it ENDS, so a long run says "running"
+    // and nothing else for hours. Each step writes one line here; `PTA_CRAWL STATUS` reads it.
+    const mark = async (key, body) => {
+      try { await this.env.AURA_KV.put(key, JSON.stringify(body), { expirationTtl: 604800 }); } catch {}
+    };
     if (String(event.payload?.mode || "") === "enrich") {
       const ids = (event.payload?.ids || []).slice(0, 2000);
+      // The caller chooses the id BEFORE creating the instance and passes it as `tag`, so the
+      // progress key and the instance id are one string by construction. `event.instanceId` is not
+      // there at runtime, and that mismatch is what made STATUS report `at: null` for a whole run.
+      const pkey = "crawl:progress:" + (event.payload?.tag || event.instanceId || "enrich");
+      const startedAt = new Date().toISOString();
       let done = 0, failed = 0, unreached = 0; const trouble = [];
       for (let i = 0; i < ids.length; i++) {
         const r = await step.do("shop-" + i, async () => {
-          const x = await processCommand("CG_ENRICH " + ids[i], this.env, true);
-          return (x && x.payload) ? x.payload : x;
+          try {
+            const x = await processCommand("CG_ENRICH " + ids[i], this.env, true);
+            return (x && x.payload) ? x.payload : x;
+          } catch (e) {
+            // ONE SHOP MUST NEVER END THE BATCH. A step that exhausts its retries takes the whole
+            // instance with it, so everything after it would never run.
+            return { ok: false, error: String(e?.message ?? e).slice(0, 160) };
+          }
         });
         // ══ `enriched: 1` ON A SHOP WE NEVER REACHED (fixed 2026-08-20) ═════════════════
         // MEASURED twice in one sample: Sunsuite (dead domain) and Granite City (no valid
@@ -60073,13 +60093,24 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         const verdict = r?.crawl_verdict || null;
         if (r?.ok && (verdict === "unreachable" || verdict === "refused")) {
           unreached++;
-          if (trouble.length < 20) trouble.push({ id: ids[i], why: verdict });
+          // Names and sites in the trouble list: twice tonight a list of bare uuids meant a D1
+          // query just to find out which shops had failed.
+          if (trouble.length < 60) trouble.push({ id: ids[i], name: r?.business || null, site: r?.site || null, why: verdict });
         } else if (r?.ok) done++;
-        else { failed++; if (trouble.length < 20) trouble.push({ id: ids[i], why: r?.error || "unknown" }); }
+        else { failed++; if (trouble.length < 60) trouble.push({ id: ids[i], name: r?.business || null, site: r?.site || null, why: r?.error || "unknown" }); }
+        await mark(pkey, { mode: "enrich", at: i + 1, of: ids.length, started: startedAt,
+          last: { name: r?.business || ids[i],
+                  verdict: verdict || (r?.ok ? "ok" : (r?.error || "failed")),
+                  pages: r?.pages ?? null, emails: r?.extracted?.emails ?? null },
+          counts: { crawled: done, unreachable: unreached, failed },
+          updated: new Date().toISOString() });
         // One job per domain is the rule the rate limit enforces; a pause between shops keeps a
         // long run from looking like a flood to anybody's server.
         await step.sleep("gap-" + i, "3 seconds");
       }
+      await mark(pkey, { mode: "enrich", at: ids.length, of: ids.length, started: startedAt,
+        counts: { crawled: done, unreachable: unreached, failed },
+        finished: new Date().toISOString() });
       return { ok: true, mode: "enrich", shops: ids.length, enriched: done, failed,
                unreachable: unreached, trouble };
     }
@@ -60107,7 +60138,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
     if (String(event.payload?.mode || "") === "read") {
       const ids = (event.payload?.ids || []).slice(0, 2000);
       const write = event.payload?.write !== false;   // read-and-publish unless told otherwise
-      const pkey = "crawl:progress:" + (event.instanceId || event.payload?.tag || "read");
+      const pkey = "crawl:progress:" + (event.payload?.tag || event.instanceId || "read");
       const startedAt = new Date().toISOString();
       let done = 0, empty = 0, failed = 0; const trouble = [];
       let images = 0, artists = 0;

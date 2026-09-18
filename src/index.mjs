@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.284.0-2026-09-17-thread-test";
+const BUILD = "aura-core-v9.285.0-2026-09-18-cloudflare-brain-and-wix-images";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -124,7 +124,16 @@ const BRAND = /\b(instagram|facebook|twitter|tiktok|youtube|yelp|google[%\s_-]*p
 const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
 const NOT_A_PHOTO = /\.svg(\?|$)|^data:|\.ico(\?|$)|\.gif(\?|$)/i;
 const TEMPLATE_ASSET = /\/(demo|sample|dummy|stock|template|theme|assets\/img\/default)[-_\/]/i;
-const BUILDER_STOCK = /(images\.squarespace-cdn\.com\/content\/[^/]*\/demo|static\.wixstatic\.com\/media\/[a-f0-9]{6}_[a-f0-9]{32}~mv2|cdn\.shopify\.com\/s\/files\/[^/]*\/placeholder|unsplash\.com|pexels\.com|pixabay\.com)/i;
+// ══ THE WIX RULE WAS EATING EVERY WIX SHOP (2026-09-18) ═══════════════════════════════════
+// MEASURED on Fremont Street Tattoo: `images: found 81, chrome_filtered 81, kept 0`, and in the
+// card 94 candidates became 1. The pattern `static.wixstatic.com/media/[a-f0-9]{6}_[a-f0-9]{32}~mv2`
+// was written for Wix's STOCK template pictures - but that is the shape of EVERY file a Wix site
+// serves, the shop's own uploads included. Eight artists with their own portfolio pages lost all
+// of it. Wix and Squarespace are a large slice of 33,694 businesses, so this one rule was quietly
+// deciding that most of the file has no work to show.
+// Same disease as the two already recorded here: a rule written for one case eats the real thing.
+// What stays is what names itself: squarespace /demo, shopify placeholder, the stock libraries.
+const BUILDER_STOCK = /(images\.squarespace-cdn\.com\/content\/[^/]*\/demo|cdn\.shopify\.com\/s\/files\/[^/]*\/placeholder|unsplash\.com|pexels\.com|pixabay\.com)/i;
 const isChromeUrl = (url, alt) => {
   const u = String(url || "");
   const file = (u.split("?")[0].split("/").pop() || "");
@@ -4180,7 +4189,32 @@ function aiText(rr) {
     }
     return String(v);
   };
-  return pick(rr?.response) || pick(rr?.result?.response) || pick(rr?.result) || pick(rr);
+  // ══ AND A FOURTH SHAPE: CHAT COMPLETIONS / RESPONSES (2026-09-18) ═══════════════════════════
+  // MEASURED on SITE_READING: `@cf/zai-org/glm-5.3-flash` and `@cf/openai/gpt-oss-120b` both
+  // returned business null, people [], every page unaccounted - in 29s and 46s, no error. Two
+  // unrelated models failing IDENTICALLY is the reader, not the models. gpt-oss speaks Chat
+  // Completions on the binding (`choices[0].message.content`) and the Responses shape puts it in
+  // `output[].content[].text`; a reasoning model prints its thinking first. `response` was empty
+  // and a correct answer was thrown away. Same lesson as the three above, one more shape.
+  const fromChoices = (v) => {
+    const m = v?.choices?.[0]?.message;
+    if (typeof m?.content === "string" && m.content.trim()) return m.content;
+    if (Array.isArray(m?.content)) return m.content.map((c) => (typeof c?.text === "string" ? c.text : "")).join("");
+    if (typeof v?.choices?.[0]?.text === "string") return v.choices[0].text;
+    return "";
+  };
+  const fromOutput = (v) => (Array.isArray(v?.output)
+    ? v.output.flatMap((o) => (Array.isArray(o?.content) ? o.content : []))
+        .map((c) => (typeof c?.text === "string" ? c.text : (typeof c?.output_text === "string" ? c.output_text : "")))
+        .join("")
+    : "");
+  const raw = pick(rr?.response) || pick(rr?.result?.response) || fromChoices(rr) || fromChoices(rr?.result)
+           || fromOutput(rr) || fromOutput(rr?.result) || pick(rr?.result) || pick(rr);
+  // The thinking is not the answer. Strip it before anyone tries to parse what is left.
+  return String(raw || "")
+    .replace(/<(think|thinking|reasoning|analysis)>[\s\S]*?<\/(think|thinking|reasoning|analysis)>/gi, "")
+    .replace(/^[\s\S]*?<\/(think|thinking|reasoning|analysis)>/i, "")
+    .trim();
 }
 
 const PTA_CAP_REMEMBER = "remember";
@@ -21953,7 +21987,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         let rr = null, brainUsage = null, brainProvider = "workers-ai", brainModel = null;
         if (srdIsCf) {
-          rr = await env.AI.run(srdModel, { max_tokens: 1400,
+          // 4000, not 1400: Grok used 506 output tokens on this same site and the crawl's parse log
+          // already showed 8 repairs. Truncation has killed this call before - 19 of 30 proposals
+          // lost to it once - and the tokens are cheap.
+          rr = await env.AI.run(srdModel, { max_tokens: 4000,
             messages: [{ role: "system", content: SYS }, { role: "user", content: USR }] });
         } else {
           const cb = await callBrain({ system: SYS, user: USR, max_tokens: 1400, model: srdModel }, env);
@@ -21968,9 +22005,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           brainModel = cb.model || null;
         }
         const ms = Date.now() - t0;
-        let out = rr?.response;
+        // `aiText` knows every shape the binding answers in; the provider path already put a string
+        // on `response` above, so both meet here.
+        let out = srdIsCf ? aiText(rr) : rr?.response;
+        const rawHead = typeof out === "string" ? out.slice(0, 400) : null;
         if (typeof out === "string") { try { out = JSON.parse(out); } catch { out = repairJson(out); } }
         out = unwrapSchema(out);
+        // SILENCE WAS THE WORST PART OF THIS. An unreadable answer returned an empty card that
+        // looked like "this shop has nothing to show", and two runs went on guessing which it was.
+        // Now the reply says what actually arrived.
+        const brainUnread = (!out || typeof out !== "object")
+          ? { could_not_read: true, raw_head: rawHead || "(nothing came back on any known field)" }
+          : null;
 
         // ══ THE CHECK - A CONFIDENT WRONG GROUPING IS THE FAILURE MODE ══════════════════════
         // A wrong regex looked wrong. A wrong answer here looks like a fact. So every path she
@@ -22318,6 +22364,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         return { cmd: "SITE_READING", payload: { ok: true, business: row.name, id: srdId,
           card, card_why: cardWhy || undefined, looked: looked || undefined, wrote: wrote || undefined,
+          brain: brainUnread || undefined,
           written: srdWrite ? undefined : "read-only - add WRITE to publish this card",
           // What the ROUTER actually used, not what was asked for - a pin that silently
           // falls back to policy is exactly the kind of thing that goes unnoticed for days.

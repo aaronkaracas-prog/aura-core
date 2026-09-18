@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.286.0-2026-09-18-callbrain-speaks-workers-ai";
+const BUILD = "aura-core-v9.287.0-2026-09-18-same-room-both-paths";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22038,7 +22038,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           rr = await env.AI.run(srdModel, { max_tokens: 4000,
             messages: [{ role: "system", content: SYS }, { role: "user", content: USR }] });
         } else {
-          const cb = await callBrain({ system: SYS, user: USR, max_tokens: 1400, model: srdModel }, env);
+          // ══ TWO PATHS, ONE OF THEM STARVED (2026-09-18) ═══════════════════════════════════
+          // Same model, same archive, minutes apart: the binding path at 4000 returned 8 artists,
+          // 4 sections and 10 pictures; this path at 1400 returned an empty card. Truncation, and
+          // `repairJson` salvaged an OBJECT with nothing in it - so it did not even look broken.
+          // Both paths now ask for the same room.
+          const cb = await callBrain({ system: SYS, user: USR, max_tokens: 4000, model: srdModel }, env);
           if (!cb?.ok) return { cmd: "SITE_READING", payload: { ok: false, model: srdModel,
             provider: cb?.provider || null, error: cb?.error || "brain call failed",
             what_to_do: "The model comes from KV `config:brain:model` unless MODEL is passed. " +
@@ -22059,7 +22064,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // SILENCE WAS THE WORST PART OF THIS. An unreadable answer returned an empty card that
         // looked like "this shop has nothing to show", and two runs went on guessing which it was.
         // Now the reply says what actually arrived.
-        const brainUnread = (!out || typeof out !== "object")
+        // AN EMPTY OBJECT IS NOT AN ANSWER EITHER. The silence fix caught "not an object"; a
+        // truncated reply that `repairJson` closes into `{}` slipped straight through it and came
+        // back as a card saying this shop has nothing. If the business, the sections and the people
+        // are ALL missing, say what arrived instead of publishing nothing.
+        const _nothingInIt = out && typeof out === "object"
+          && !out.business
+          && !(Array.isArray(out.sections) && out.sections.length)
+          && !(Array.isArray(out.people) && out.people.length);
+        const brainUnread = (!out || typeof out !== "object" || _nothingInIt)
           ? { could_not_read: true, raw_head: rawHead || "(nothing came back on any known field)" }
           : null;
 

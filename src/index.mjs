@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.329.0-2026-09-18-thirty-a-page-split-by-artist";
+const BUILD = "aura-core-v9.330.0-2026-09-18-a-crawl-adds-it-never-resets";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22907,7 +22907,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "SELECT understanding FROM cg_business WHERE id = ? LIMIT 1").bind(srdId).first();
             let u0 = {}; try { u0 = JSON.parse(prev?.understanding || "{}") || {}; } catch {}
             if (shopFacts?.said?.length) {
-              u0.facts = shopFacts.said;
+              // ══ AND THE FACTS MERGE (2026-09-18) ══════════════════════════════════════════
+              // MEASURED: one read returned eight facts - the Sezzle terms, pay in full, same day,
+              // who they tattoo - and the next returned only `about`, and the write replaced the
+              // lot. Eight true things the shop had published disappeared because one later run
+              // happened to answer a different question. The model returns a different subset every
+              // time; the shop's own statements do not come and go. Keep what was verified, add
+              // what is new, and let a fresh answer update its own key.
+              const wasFacts = Array.isArray(u0.facts) ? u0.facts : [];
+              const byQ = new Map();
+              for (const f2 of wasFacts) if (f2 && f2.q) byQ.set(String(f2.q), f2);
+              for (const f2 of shopFacts.said) if (f2 && f2.q) byQ.set(String(f2.q), f2);
+              u0.facts = [...byQ.values()].slice(0, 16);
               // ══ WHAT THEY SAY BEATS WHAT A KEYWORD GUESSED (2026-09-18) ═══════════════════
               // MEASURED on Mantle: the page shows a "Walk-ins welcome" chip while their own FAQ
               // says "Mantle Tattoo operates by appointment only". The chip comes from the crawl
@@ -26061,7 +26072,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // A POST IS NOT A PROFILE. Bang Bang's page embeds six individual Instagram posts
         // (/p/BjThtBIDV3l/) and they came back as "socials" alongside the actual account - so the
         // listing would offer a stranger six links to single photographs instead of the shop's feed.
-        const socials = [...new Set((md.match(/https?:\/\/(?:www\.)?(?:instagram|facebook|tiktok|twitter|youtube)\.com\/[\w./@-]+/gi) || [])
+        // ══ YELP IS WHERE THEIR REVIEWS LIVE (2026-09-18) ═════════════════════════════════════
+        // Instagram, TikTok, Facebook, X and YouTube were matched; Yelp was not, so `yelp.to/Ac8yr`
+        // and `yelp.com/biz/...` were read and dropped. A shop's Yelp page is where their reviews
+        // are, which is the one thing an unclaimed page cannot show them about themselves yet.
+        // Google Maps and Places are deliberately NOT here: we hold every shop's street address,
+        // so a map link is DERIVED for all 33,694 rather than crawled for the few who publish one.
+        const socials = [...new Set((md.match(/https?:\/\/(?:www\.)?(?:instagram|facebook|tiktok|twitter|youtube)\.com\/[\w./@-]+|https?:\/\/(?:www\.)?yelp\.(?:com|to)\/[\w./@-]+/gi) || [])
           .map(u => u.replace(/[).,]+$/, ""))
           .filter(u => !/\/(p|reel|reels|tv|stories|posts|photo|videos|watch|share)\//i.test(u))
           .filter(u => !/\/(sharer|dialog|plugins|intent)/i.test(u)))].slice(0, 8);
@@ -27057,15 +27074,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // there before rather than overwriting a good earlier read with a failure.
         const understandingToWrite = (crawlVerdict === "unreachable") ? null
           : ((understanding || booking.length || icsFeeds.length) ? "yes" : null);
+        // ══ A CRAWL ADDS, IT NEVER RESETS (2026-09-18) ════════════════════════════════════════
+        // MEASURED on Spinner Ink: the crawl found instagram.com/spinnerinktattoos and reported it,
+        // and the page still showed only Facebook - because this UPDATE never wrote `social` AT ALL.
+        // That Facebook came from Overture at ingest. Every handle we have ever found on a shop's
+        // own site was reported in the reply and then dropped on the floor.
+        // The same shape of bug bit emails and phones: each run REPLACED them, so a run that found
+        // one number erased two. A crawl is a visit, not a reset. Union with what is already known.
+        const prevRow = await db.prepare(
+          "SELECT email_found, phone_found, social FROM cg_business WHERE id = ? LIMIT 1")
+          .bind(row.id).first().catch(() => null);
+        const mergePipe = (was, now, cap) => {
+          const out = [];
+          for (const v of [...String(was || "").split("|"), ...(now || [])]) {
+            const t = String(v || "").trim();
+            if (t && !out.some(x => x.toLowerCase() === t.toLowerCase())) out.push(t);
+          }
+          return out.slice(0, cap);
+        };
+        const emailsMerged = mergePipe(prevRow?.email_found, ranked.map(x => x.email), 8);
+        const phonesMerged = mergePipe(prevRow?.phone_found, phones, 8);
+        const socialsMerged = mergePipe(prevRow?.social, socials, 12);
         await db.prepare(
-          "UPDATE cg_business SET crawled_at = ?, email_found = ?, phone_found = ?, " +
+          "UPDATE cg_business SET crawled_at = ?, email_found = ?, phone_found = ?, social = ?, " +
           "understanding = COALESCE(?, understanding), raw_key = ?, crawl_verdict = ?, " +
           "crawl_job = NULL WHERE id = ?")
           // PIPE-JOINED, ALL OF THEM. Storing one and dropping four is throwing away the thing the
           // crawl was run to get. Same shape the Overture columns already use.
           .bind(new Date().toISOString(),
-                ranked.length ? ranked.map(x => x.email).join("|") : null,
-                phones.length ? phones.join("|") : null,
+                emailsMerged.length ? emailsMerged.join("|") : null,
+                phonesMerged.length ? phonesMerged.join("|") : null,
+                socialsMerged.length ? socialsMerged.join("|") : null,
                 // Booking rides INSIDE understanding - it is industry-shaped like artists and styles,
                 // and a column per platform is the mistake this file already refused once.
                 (understandingToWrite && (understanding || booking.length || icsFeeds.length))

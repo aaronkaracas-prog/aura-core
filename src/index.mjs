@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.285.0-2026-09-18-cloudflare-brain-and-wix-images";
+const BUILD = "aura-core-v9.286.0-2026-09-18-callbrain-speaks-workers-ai";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -421,7 +421,14 @@ async function _brainRoute(env, override) {
   if (pin && pin.trim()) {
     const m = pin.trim();
     r.model = m;
-    r.provider = /^claude/i.test(m) ? "anthropic"
+    // ══ `@cf/` IS A PLACE, NOT A VENDOR (2026-09-18) ═══════════════════════════════════════
+    // MEASURED: pinning `@cf/openai/gpt-oss-120b` sent the call to api.openai.com, which answered
+    // "invalid model ID". Nothing here tested for the binding, so every name that was not claude,
+    // grok, gemini or muse fell through to openai - and this model's name happens to contain the
+    // word. The prefix decides WHERE it runs; the vendor inside the path is just the family.
+    // This goes FIRST, before any name test, or the fall-through owns it again.
+    r.provider = /^@cf\//i.test(m) ? "workers-ai"
+               : /^claude/i.test(m) ? "anthropic"
                : /^grok/i.test(m) ? "grok"
                : /^gemini/i.test(m) ? "gemini"
                : /^muse/i.test(m) ? "meta" : "openai";
@@ -450,6 +457,44 @@ async function callBrain({ system, user, messages = null, max_tokens = 2000, mod
   env = env || _BRAIN_ENV;
   const route = await _brainRoute(env, model);
   const cap = Math.max(16, Math.min(16000, parseInt(max_tokens, 10) || 2000));
+
+  // ══ THE BINDING WAS NEVER A PROVIDER HERE (2026-09-18) ══════════════════════════════════════
+  // `callBrain` spoke anthropic, grok, openai, gemini and meta over HTTP and had NO path to
+  // Workers AI, which is why SITE_READING grew its own `srdIsCf` shortcut and why every other
+  // caller - the image judge included - could never reach the binding no matter what was pinned.
+  // One branch, and a `@cf/` pin moves the whole worker's thinking onto Cloudflare.
+  // NO KEY, NO ENDPOINT, NO GATEWAY: the binding is already inside the runtime.
+  // `aiText` reads whatever shape comes back (response, choices, output, reasoning wrapper).
+  // Workers AI returns no usage line, so usage is zeros rather than an invented number.
+  if (route.provider === "workers-ai") {
+    if (!env?.AI?.run) return { ok: false, error: "no AI binding on this worker", provider: route.provider, model: route.model };
+    const msgs = [];
+    if (system) msgs.push({ role: "system", content: String(system) });
+    if (Array.isArray(messages) && messages.length) {
+      for (const m of messages) {
+        if (!m || !m.role) continue;
+        const c = typeof m.content === "string" ? m.content
+          : Array.isArray(m.content) ? m.content.map((b) => (b && b.text) || "").join("")
+          : String(m.content ?? "");
+        msgs.push({ role: m.role === "assistant" ? "assistant" : "user", content: c });
+      }
+    } else {
+      msgs.push({ role: "user", content: String(user || "") });
+    }
+    try {
+      const rr = image
+        ? await env.AI.run(route.model, { max_tokens: cap, image: String(image),
+            prompt: msgs.map((m) => m.content).filter(Boolean).join("\n\n") })
+        : await env.AI.run(route.model, { max_tokens: cap, messages: msgs,
+            ...(temperature != null ? { temperature } : {}) });
+      const text = aiText(rr);
+      if (!text) return { ok: false, error: "the binding returned nothing readable", provider: route.provider, model: route.model };
+      return { ok: true, text, structured: null, provider: route.provider, model: route.model,
+               usage: { in: 0, out: 0 } };
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e).slice(0, 200), provider: route.provider, model: route.model };
+    }
+  }
 
   if (route.provider === "anthropic") {
     const key = await getSecret(env, "anthropic");

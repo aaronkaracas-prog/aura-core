@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.316.0-2026-09-18-what-a-customer-asks-before-booking";
+const BUILD = "aura-core-v9.317.0-2026-09-18-the-menu-before-the-blog";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22746,6 +22746,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const prev0 = await env.AURA_MEMORY.prepare(
               "SELECT understanding FROM cg_business WHERE id = ? LIMIT 1").bind(srdId).first();
             let uz = {}; try { uz = JSON.parse(prev0?.understanding || "{}") || {}; } catch {}
+            // ══ NEVER DOWNGRADE A SHOP (2026-09-18) ═══════════════════════════════════════════
+            // MEASURED on Mantle: it had eleven real tattoos on its page, this run found none
+            // because the crawl had spent its budget on their blog, and the empty marker replaced
+            // the lot. I guarded against the JUDGE failing and not against this - same harm, one
+            // case wider. A shop that already has pictures keeps them; the empty result is recorded
+            // beside them as a note, so the next run can still improve on it.
+            if (Array.isArray(uz.images) && uz.images.length) {
+              uz.last_empty_read = { when: new Date().toISOString(), looked: cardWhy?.looked ?? 0,
+                pages_in_archive: pages.length,
+                note: "this read found nothing - the pictures already on file were kept" };
+              await env.AURA_MEMORY.prepare("UPDATE cg_business SET understanding = ? WHERE id = ?")
+                .bind(JSON.stringify(uz).slice(0, 24000), srdId).run();
+              wrote = { kept_existing: uz.images.length,
+                        note: "this read found no pictures; the ones already on file were left alone" };
+              throw { handled: true };
+            }
             uz.sections = [];
             uz.no_pictures = { when: new Date().toISOString(),
               looked: cardWhy?.looked ?? 0,
@@ -22755,7 +22771,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "UPDATE cg_business SET understanding = ? WHERE id = ?")
               .bind(JSON.stringify(uz).slice(0, 24000), srdId).run();
             wrote = { artists: [], images: 0, sections: [], recorded: "no pictures - this shop will be skipped by default now" };
-          } catch (e) { wrote = { error: String(e?.message ?? e).slice(0, 200) }; }
+          } catch (e) { if (!e?.handled) wrote = { error: String(e?.message ?? e).slice(0, 200) }; }
         }
         if (srdWrite && card.length) {
           try {
@@ -25544,10 +25560,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Bounded hard: 6 pages, one job, and only above a threshold that a normal shop never meets.
         let deeper = null;
         try {
-          const subj = [...new Set([...md.matchAll(/\[!\[[^\]]*\]\([^)\s]+[^)]*\)\]\((https?:\/\/[^)\s]+)\)/g)]
+          // ══ THE MENU BEFORE THE BLOG (2026-09-18) ═════════════════════════════════════════
+          // MEASURED on Mantle Tattoo: 30 pages crawled, and TWENTY of them were blog articles.
+          // Their menu lists Our Work with six style pages - Delicate, Realism, Traditional, Fine
+          // Line, Neo Trad, Script - which is where their tattoos actually are, and not one of them
+          // was fetched. The budget went to "Can You Put Ice on a Tattoo?".
+          // A shop that writes content marketing is not a shop without work; it is a shop whose
+          // work is one link further from the crawler's first grab. Work-shaped paths go first,
+          // article paths last, and the ones we never reached go before the ones we already have.
+          const WORK_PATH = /\/(gallery|galleries|portfolio|work|our-work|styles?|artists?|team|staff|tattoos?|flash|shop)(\/|$)/i;
+          const ARTICLE_PATH = /\/(posts?|blog|news|articles?|guides?|category|tag)(\/|$)/i;
+          const already = new Set(kept_pages.map(p => String(p.url || "")));
+          const subj = [...new Set([...md.matchAll(/\[!?\[?[^\]]*\]?\([^)\s]*\)?\]?\((https?:\/\/[^)\s]+)\)/g)]
             .map(m => m[1].replace(/[).,]+$/, ""))
             .filter(u => { try { return new URL(u).hostname.replace(/^www\./, "") === new URL(site).hostname.replace(/^www\./, ""); } catch { return false; } })
-            .filter(u => !/\/(privacy|terms|accessibility|legal|cookie)/i.test(u)))];
+            .filter(u => !/\/(privacy|terms|accessibility|legal|cookie)/i.test(u)))]
+            .sort((a, b) => {
+              const score = (u) => (already.has(u) ? 4 : 0) + (ARTICLE_PATH.test(u) ? 2 : 0) - (WORK_PATH.test(u) ? 3 : 0);
+              return score(a) - score(b);
+            });
           if (subj.length >= 8) {
             // One job per domain, still - seeded at the deepest subject page so the crawler walks
             // siblings from there rather than re-walking the homepage we already have.

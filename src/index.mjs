@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.323.0-2026-09-18-go-and-get-the-people-pages-too";
+const BUILD = "aura-core-v9.324.0-2026-09-18-the-links-are-the-roster";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25736,9 +25736,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // because the crawl reads it off their own pages. So match by NAME: a same-host link
           // whose path or anchor text is one of their artists is that artist's page.
           // Same move as the work pages, aimed at the other half of a shop's site.
+          // MEASURED on Spinner Ink: matching by roster name fetched NOTHING, because the roster
+          // the crawl had was BARON MORDO, BEATRIX KIDDO, AMY BRONX - placeholder names left in the
+          // WordPress template. Their real artists, big will and VICKI and Koryn, are only named in
+          // the links themselves: `[VICKI](https://spinnerinktattoos.com/vicki/)`.
+          // So do not ask who the artists are first. A link whose anchor text IS its own path - the
+          // word in the text matching the last segment of the URL - is a person's page, whatever
+          // that person is called. `[VICKI](/vicki/)` says so without anybody naming a roster, and
+          // it cannot be fooled by a template, because the template's fake names have no pages.
           const roster = [...new Set((peopleClean || []).map(p => String(p.name || "").trim()).filter(Boolean))];
           const nameKeys = roster.map(n => n.toLowerCase().replace(/[^a-z0-9]+/g, ""))
                                  .filter(k => k.length >= 3);
+          const anchorIsItsOwnPath = (u, anchor) => {
+            const a = String(anchor || "").trim();
+            // A person's name, not a sentence and not a nav word.
+            if (!a || a.length > 32 || a.split(/\s+/).length > 3) return false;
+            if (/^(home|about|contact|book|booking|shop|menu|gallery|portfolio|blog|posts?|more|here|read more|faq|services?)$/i.test(a)) return false;
+            const ak = a.toLowerCase().replace(/[^a-z0-9]+/g, "");
+            if (ak.length < 3) return false;
+            const tail = String(u).replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "")
+                                  .split("/").pop().toLowerCase().replace(/[^a-z0-9]+/g, "");
+            if (!tail || tail.length < 3) return false;
+            // The PATH must be the name, not merely contain a word from a sentence: "Read our
+            // aftercare guide" -> /posts/aftercare/ matched the other way round and would have
+            // fetched an article. A person's link is /vicki for "VICKI".
+            return tail === ak || tail.startsWith(ak) || ak.startsWith(tail);
+          };
           const looksLikePerson = (u, anchor) => {
             const tail = String(u).replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "")
                                   .split("/").pop().toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -25758,7 +25781,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             if (host1 !== host0) continue;
             const clean = L.u.replace(/\/$/, "");
             if (have.has(clean) || seenW.has(clean)) continue;
-            if (!(WORKISH.test(clean) || looksLikePerson(clean, L.anchor))) continue;
+            if (!(WORKISH.test(clean) || looksLikePerson(clean, L.anchor) || anchorIsItsOwnPath(clean, L.anchor))) continue;
             seenW.add(clean); wanted.push(clean);
             if (wanted.length >= 10) break;
           }

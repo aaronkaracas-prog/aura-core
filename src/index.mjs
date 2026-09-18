@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.298.0-2026-09-18-put-them-on-the-right-page";
+const BUILD = "aura-core-v9.299.0-2026-09-18-one-block-per-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25321,16 +25321,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               const p = (r && r.payload) ? r.payload : r;
               const got = (p?.ok && Array.isArray(p.images)) ? p.images.map((x) => x.u) : [];
               if (got.length) {
-                // ══ ON THE PAGE THEY CAME FROM (2026-09-18) ═══════════════════════════════════
-                // MEASURED: 13 pages opened, 101 pictures found, and the reading still saw the same
-                // eight icons. The archive is split on `\n\n---\n\n` and each block's path comes
-                // from its `<!--PAGE url -->` marker; my blocks had no marker, so 101 tattoos
-                // parsed as thirteen extra pages all keyed to "/" - visible in `page_types` as
-                // thirteen `{"url":"/"}` rows - and belonged to nothing.
-                // With the marker they land on /gallery/realism and the rest, and every rule that
-                // already works on text works on them unchanged.
-                md += "\n\n---\n\n<!--PAGE " + u + " -->\n## " + u +
-                      "\n\n" + got.map((x) => "![](" + x + ")").join("\n");
+                // ══ ONE BLOCK PER PAGE (2026-09-18) ═══════════════════════════════════════════
+                // Two attempts before this one. Appended with no marker, 101 tattoos parsed as
+                // thirteen extra pages keyed to "/" and belonged to nothing. Appended WITH the
+                // marker they keyed correctly but were still a SECOND block for the same page, so
+                // every gallery page appeared twice in the sitemap - once with eight icons, once
+                // with twelve tattoos - and `invented_paths` fired on all eleven, which is how a
+                // shop with a full portfolio published four pictures.
+                // The archive is one block per page. These pictures belong INSIDE their page's
+                // block, next to the text that was already read from it.
+                const links = "\n\n" + got.map((x) => "![](" + x + ")").join("\n");
+                const marker = "<!--PAGE " + u + " -->";
+                const at = md.indexOf(marker);
+                if (at >= 0) {
+                  // End of that page's block, or the end of the document for the last one.
+                  const end = md.indexOf("\n\n---\n\n", at);
+                  md = end >= 0 ? (md.slice(0, end) + links + md.slice(end)) : (md + links);
+                } else {
+                  md += "\n\n---\n\n" + marker + links;
+                }
                 added += got.length;
                 perPage.push({ page: String(u).replace(/^https?:\/\/[^/]+/, ""), images: got.length });
               }

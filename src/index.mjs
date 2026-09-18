@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.313.0-2026-09-18-sections-is-the-marker";
+const BUILD = "aura-core-v9.314.0-2026-09-18-ten-good-ones-then-stop";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22467,41 +22467,38 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           let bytes = 0, failed = 0, eyesRetried = 0;
           const eyesFailures = [];
           const verdicts = [];
-          for (const c of shortlist) {
+          // ══ TEN GOOD ONES, THEN STOP (2026-09-18) ═════════════════════════════════════════════
+          // This looked at EVERY shortlisted picture before anyone judged any of them - up to 84
+          // vision calls, one after another, to publish a grid of about ten. On Sweet T's that was
+          // 19 looks for 11 kept; on a deep roster it is 84 looks for the same ten a customer sees.
+          // Two changes, same work. The eyes run in PARALLEL, six at a time, because each call is a
+          // fetch plus a model round trip and none of them depend on each other. And it goes in
+          // chunks: look at twelve, judge those twelve, count what was kept, STOP at twelve good
+          // pictures. A shop with a deep gallery now costs about what a small one costs.
+          // The judge is unchanged, it just runs per chunk - which also means a degenerate answer
+          // costs one chunk instead of the whole shop.
+          const ENOUGH = 12, CHUNK = 12, AT_ONCE = 6;
+          const lookOnce = async (c) => {
+            const ask = (u) => seeMedia({ url: u, model: srdVis,
+              prompt: "Describe what this photograph shows, in one short sentence. " +
+                      "If it is a poster, banner, flyer, business card, logo, sign or screenshot, " +
+                      "or if most of the picture is printed words, say so plainly." }, env);
             try {
-              // Was an inline fetch + env.AI.run here. Same work, one reader now - see `seeMedia`.
-              // Behaviour is unchanged: same model, same prompt, same 4MB cap, same answer.
-              // ══ SAY WHEN IT IS A POSTER (2026-09-18) ═════════════════════════════════════════
-              // MEASURED on Fremont Street: a shop logo, a "Javier" banner and a "Justin" banner
-              // reached the live page, because the description was the CONTENT - "a man getting a
-              // tattoo" - when the picture is a poster OF a man getting a tattoo. The judge can only
-              // judge what it is told, so the difference has to be in the sentence.
-              // The eyes fail transiently too - MEASURED: "triton error running inference ...
-              // transport error" on a picture that worked on the next run. One retry, then it counts.
-              const _look = async () => await seeMedia({ url: c.u, model: srdVis,
-                prompt: "Describe what this photograph shows, in one short sentence. " +
-                        "If it is a poster, banner, flyer, business card, logo, sign or screenshot, " +
-                        "or if most of the picture is printed words, say so plainly." }, env);
-              let vr = await _look();
+              let vr = await ask(c.u);
               if (!vr.ok) {
                 eyesRetried++;
-                // MEASURED on Fremont after `askBigger` went in: five pictures came back
-                // "3006: Request is too large". Asking the CDN for 1200px made them bigger than the
-                // model accepts - our own doing, and a silent loss of five real tattoos. If it is
-                // too big, ask the same CDN for a smaller one rather than giving up on the picture.
+                // Our own `askBigger` can ask for a picture larger than the model accepts; ask the
+                // same CDN for a smaller one rather than losing a real tattoo.
                 if (/too large|TOO_BIG|3006/i.test(String(vr.error || ""))) {
                   const smaller = c.u.replace(/([,\/])w_\d{3,4}/gi, "$1w_600").replace(/([,\/])h_\d{3,4}/gi, "$1h_600");
-                  if (smaller !== c.u) vr = await seeMedia({ url: smaller, model: srdVis,
-                    prompt: "Describe what this photograph shows, in one short sentence. " +
-                            "If it is a poster, banner, flyer, business card, logo, sign or screenshot, " +
-                            "or if most of the picture is printed words, say so plainly." }, env);
-                } else vr = await _look();
+                  vr = smaller !== c.u ? await ask(smaller) : await ask(c.u);
+                } else vr = await ask(c.u);
               }
-              if (!vr.ok) { failed++; eyesFailures.push({ u: c.u.slice(-60), why: String(vr.error || "").slice(0, 90) }); continue; }
+              if (!vr.ok) { failed++; eyesFailures.push({ u: c.u.slice(-60), why: String(vr.error || "").slice(0, 90) }); return null; }
               bytes += vr.bytes || 0;
-              verdicts.push({ ...c, saw: vr.saw });
-            } catch { failed++; }
-          }
+              return { ...c, saw: vr.saw };
+            } catch { failed++; return null; }
+          };
           // WHAT THE WORK LOOKS LIKE IS THE BUSINESS'S OWN QUESTION, so she answers it about
           // her own descriptions rather than us matching words. One text call, no images.
           // Her own descriptions, grouped by section - so the section-picker sees what each
@@ -22517,7 +22514,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // this is the single call where a degenerate reply wipes out a whole shop's grid.
           let keep = new Set();
           let judgeTries = 0;
-          if (verdicts.length) {
+          // The judge reads sentences, never pictures, so it can run on a chunk exactly as it ran
+          // on the whole list. `base` keeps the numbering local to the chunk - the model counts
+          // from 1 every time, and we map back.
+          const judgeChunk = async (chunk, base) => {
             const askJudge = async () => await callBrain({
               system:
                 "Someone looked at each photograph on a business's website and wrote down what " +
@@ -22533,15 +22533,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 "the work even when it shows the work - do not keep it.\n" +
                 "Fewer is better than wrong. An empty list is a correct answer.",
               user: "Business: " + (out?.business || row.name) + "\n\n" +
-                verdicts.map((v, i) => (i + 1) + ". [" + v.section + "] " + v.saw).join("\n"),
-              // ══ 400 TOKENS IS NOT ROOM TO THINK (2026-09-18) ═══════════════════════════════
-              // MEASURED on Fremont Street with the brain pinned to @cf/openai/gpt-oss-120b:
-              // `chose: 0` out of 28, dropping "a tattoo of a tiger on a person's arm" and "a
-              // tattoo of a butterfly". That is not a judgement, it is an empty list - a reasoning
-              // model spends OUTPUT tokens thinking before it answers, 400 ran out mid-thought,
-              // `repairJson` closed it into an object with no `keep`, and every picture read as a
-              // drop. Third time tonight that a budget sized for a non-reasoning model looked like
-              // a model being wrong.
+                chunk.map((v, i) => (i + 1) + ". [" + v.section + "] " + v.saw).join("\n"),
               max_tokens: 2000 }, env);
             let kr = null;
             for (judgeTries = 1; judgeTries <= 2; judgeTries++) {
@@ -22551,27 +22543,50 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               if (kr?.ok && t && !degenerate) break;
               if (judgeTries === 1) console.log("[SITE_READING] judge unreadable - asking again");
             }
-            if (kr?.ok) {
-              let kj = kr.text;
-              if (typeof kj === "string") { try { kj = JSON.parse(kj); } catch { kj = repairJson(kj); } }
-              kj = unwrapSchema(kj);
-              const keepList = Array.isArray(kj?.keep) ? kj.keep : null;
-              for (const n of (keepList || []))
-                if (Number.isInteger(n) && n >= 1 && n <= verdicts.length) keep.add(n - 1);
+            if (!kr?.ok) return { kr, keepList: null };
+            let kj = kr.text;
+            if (typeof kj === "string") { try { kj = JSON.parse(kj); } catch { kj = repairJson(kj); } }
+            kj = unwrapSchema(kj);
+            const keepList = Array.isArray(kj?.keep) ? kj.keep : null;
+            for (const n of (keepList || []))
+              if (Number.isInteger(n) && n >= 1 && n <= chunk.length) keep.add(base + n - 1);
+            return { kr, keepList };
+          };
+
+          let lastKr = null, lastKeepList = null, judgeUnreadOnce = false;
+          for (let at = 0; at < shortlist.length && keep.size < ENOUGH; at += CHUNK) {
+            const slice = shortlist.slice(at, at + CHUNK);
+            // Six at a time: each look is a fetch plus a model round trip, and they are independent.
+            const seenHere = [];
+            for (let k = 0; k < slice.length; k += AT_ONCE) {
+              const got = await Promise.all(slice.slice(k, k + AT_ONCE).map(lookOnce));
+              for (const g of got) if (g) seenHere.push(g);
+            }
+            if (!seenHere.length) continue;
+            const base = verdicts.length;
+            for (const v of seenHere) verdicts.push(v);
+            const res = await judgeChunk(seenHere, base);
+            lastKr = res.kr;
+            if (res.keepList) lastKeepList = res.keepList; else judgeUnreadOnce = true;
+          }
+
+          if (verdicts.length) {
+            if (lastKr?.ok) {
               cardWhy = { eyes: srdVis, looked: verdicts.length, failed,
                           megabytes: Math.round(bytes / 10485.76) / 100,
                           seconds: Math.round((Date.now() - t1) / 100) / 10,
-                          chose: keep.size, judge: kr.model, usage: kr.usage,
+                          chose: keep.size, judge: lastKr.model, usage: lastKr.usage,
+                          stopped_early: keep.size >= ENOUGH && verdicts.length < shortlist.length,
                           ...(judgeTries > 1 ? { judge_tries: judgeTries } : {}),
                           ...(eyesRetried ? { eyes_retried: eyesRetried } : {}),
                           ...(eyesFailures.length ? { eyes_failed: eyesFailures } : {}),
                           // NO LIST AT ALL IS NOT THE SAME AS AN EMPTY ONE. "Fewer is better" makes
-                          // `keep: []` a legitimate answer, so a judge that never answered has been
+                          // `keep: []` a legitimate answer, so a judge that never answered had been
                           // reporting itself as a judge that said no to everything.
-                          ...(keepList ? {} : { judge_unread: true,
-                              raw_head: String(kr.text || "").slice(0, 200) || "(nothing came back)" }),
+                          ...((lastKeepList || !judgeUnreadOnce) ? {} : { judge_unread: true,
+                              raw_head: String(lastKr.text || "").slice(0, 200) || "(nothing came back)" }),
                           saw: verdicts.map((v, i) => ((keep.has(i) ? "KEEP " : "drop ") + v.saw.slice(0, 90))) };
-            } else cardWhy = { error: kr?.error || "judge failed", looked: verdicts.length };
+            } else cardWhy = { error: lastKr?.error || "judge failed", looked: verdicts.length };
           } else cardWhy = { looked: 0, failed, note: "nothing survived the filename filter" };
           // Always report the cuts - on a shop with plenty of work this is the only place the
           // shortlist's decisions are visible at all.
@@ -24946,6 +24961,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // dead shops took longer than the live ones and dominated the run. `shipandanchortattoo
         // piercing.com` is NXDOMAIN: the browser will never reach it, and one HEAD says so.
         // The verdict written is identical either way. This only buys back the waiting.
+        // ══ THAT IS NOT THEIR WEBSITE (2026-09-18) ═══════════════════════════════════════════
+        // MEASURED on the first ten Nevada reads: Solace Tattoo's "website" is an Acuity booking
+        // link, so the crawl walked into Acuity's own marketing site and archived FOURTEEN pages of
+        // it - pricing, enterprise, and the same homepage in German, Italian, French, Portuguese
+        // and Spanish. Black Apple's is an Etsy shop; Freshwater's is a reputation-management
+        // listing. We were crawling somebody else's site and calling it the shop's.
+        // A shop with a booking link instead of a site is not a failure - it is a shop with no
+        // site of its own, which is a better claim pitch, not a worse one. Naming it keeps their
+        // page honest and keeps another company's pages out of our archive.
+        const NOT_THEIR_SITE = /(^|\.)((app\.)?acuityscheduling|squareup|square\.site|booksy|vagaro|fresha|styleseat|schedulicity|calendly|linktr\.ee|linktree|etsy|facebook|instagram|yelp|tripadvisor|publicreputation|wixsite\.com\/?$|google\.com)\./i;
+        try {
+          const host = new URL(site).hostname.replace(/^www\./i, "");
+          if (NOT_THEIR_SITE.test(host + ".")) {
+            await db.prepare("UPDATE cg_business SET crawl_verdict = ?, crawled_at = ? WHERE id = ?")
+              .bind("not_their_site", new Date().toISOString(), row.id).run();
+            return { cmd: "CG_ENRICH", payload: { ok: true, mode: "skipped", business: row.name,
+              site, crawl_verdict: "not_their_site", host,
+              note: "This link belongs to a booking or listing service, not to the shop. Nothing " +
+                    "was crawled - archiving someone else's marketing pages as this shop's site is " +
+                    "worse than having none." } };
+          }
+        } catch {}
         if (!resumed) {
           let quick = null;
           try {
@@ -60115,53 +60152,82 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       const pkey = "crawl:progress:" + (event.payload?.tag || event.instanceId || "enrich");
       const startedAt = new Date().toISOString();
       let done = 0, failed = 0, unreached = 0; const trouble = [];
-      for (let i = 0; i < ids.length; i++) {
-        const r = await step.do("shop-" + i, async () => {
-          try {
-            // ══ NO ONE SHOP HOLDS THE BATCH (2026-09-18) ══════════════════════════════════════
-            // MEASURED: a five-shop run sat on "1 of 5" for twenty minutes. Shop two answered a
-            // HEAD - so fail-fast passed it - and then hung, and nothing above it had a clock, so
-            // one slow domain could hold a 200-shop run all night.
-            // Four minutes is already twice the slowest healthy shop measured tonight (Fremont at
-            // 242s was the outlier, and most land under 100s). A shop that cannot be read in four
-            // minutes is not a shop we are losing - it is one to come back to, and the verdict
-            // says so rather than pretending it failed.
-            const x = await Promise.race([
-              processCommand("CG_ENRICH " + ids[i], this.env, true),
-              new Promise((res) => setTimeout(() => res({ payload: { ok: false,
-                error: "TOOK_TOO_LONG", crawl_verdict: "timeout" } }), 240000)),
-            ]);
-            return (x && x.payload) ? x.payload : x;
-          } catch (e) {
-            // ONE SHOP MUST NEVER END THE BATCH. A step that exhausts its retries takes the whole
-            // instance with it, so everything after it would never run.
-            return { ok: false, error: String(e?.message ?? e).slice(0, 160) };
-          }
-        });
-        // ══ `enriched: 1` ON A SHOP WE NEVER REACHED (fixed 2026-08-20) ═════════════════
-        // MEASURED twice in one sample: Sunsuite (dead domain) and Granite City (no valid
-        // certificate) both returned `enriched: 1, failed: 0`. The Workflow counted ok:true,
-        // and ok:true only ever meant "the command did not throw". At batch scale that is the
-        // number somebody reads to decide a run went well.
-        // Unreachable is not a failure of ours and not a success either - it gets its own
-        // count rather than being folded into one of them.
-        const verdict = r?.crawl_verdict || null;
-        if (r?.ok && (verdict === "unreachable" || verdict === "refused")) {
-          unreached++;
-          // Names and sites in the trouble list: twice tonight a list of bare uuids meant a D1
-          // query just to find out which shops had failed.
-          if (trouble.length < 60) trouble.push({ id: ids[i], name: r?.business || null, site: r?.site || null, why: verdict });
-        } else if (r?.ok) done++;
-        else { failed++; if (trouble.length < 60) trouble.push({ id: ids[i], name: r?.business || null, site: r?.site || null, why: r?.error || "unknown" }); }
-        await mark(pkey, { mode: "enrich", at: i + 1, of: ids.length, started: startedAt,
-          last: { name: r?.business || ids[i],
-                  verdict: verdict || (r?.ok ? "ok" : (r?.error || "failed")),
-                  pages: r?.pages ?? null, emails: r?.extracted?.emails ?? null },
-          counts: { crawled: done, unreachable: unreached, failed },
-          updated: new Date().toISOString() });
-        // One job per domain is the rule the rate limit enforces; a pause between shops keeps a
-        // long run from looking like a flood to anybody's server.
-        await step.sleep("gap-" + i, "3 seconds");
+      // ══ SHOPS IN PARALLEL, AND A SHORTER LEASH (2026-09-18) ═══════════════════════════════
+      // One shop at a time was the bottleneck, not Cloudflare: Browser Run's default concurrency is
+      // 120 browsers from a warm pool, and we were using one. Eight in flight turns a 200-shop state
+      // from hours into tens of minutes and still leaves room for several states at once.
+      // And the leash is 150 seconds instead of 240. MEASURED: the slowest HEALTHY shop was Fremont
+      // at 242s and it is the outlier - most land under 100 - while about 40 stalled shops across
+      // two states burned roughly two and a half hours waiting for nothing.
+      // Each shop is still its own `step.do`, so a failure is still that shop's failure.
+      const LANES = 8;
+      for (let g = 0; g < ids.length; g += LANES) {
+        const group = ids.slice(g, g + LANES);
+        const results = await Promise.all(group.map((id2, gi) => {
+          const i = g + gi;
+          return step.do("shop-" + i, async () => {
+            try {
+              // ══ NO ONE SHOP HOLDS THE BATCH (2026-09-18) ══════════════════════════════════════
+              // MEASURED: a five-shop run sat on "1 of 5" for twenty minutes. Shop two answered a
+              // HEAD - so fail-fast passed it - and then hung, and nothing above it had a clock, so
+              // one slow domain could hold a 200-shop run all night.
+              // Four minutes is already twice the slowest healthy shop measured tonight (Fremont at
+              // 242s was the outlier, and most land under 100s). A shop that cannot be read in four
+              // minutes is not a shop we are losing - it is one to come back to, and the verdict
+              // says so rather than pretending it failed.
+              const x = await Promise.race([
+                processCommand("CG_ENRICH " + id2, this.env, true),
+                new Promise((res) => setTimeout(() => res({ payload: { ok: false,
+                  error: "TOOK_TOO_LONG", crawl_verdict: "timeout" } }), 150000)),   // 150s, not 240 - see the note above
+              ]);
+              const p2 = (x && x.payload) ? x.payload : x;
+              // A TIMEOUT THAT IS NOT WRITTEN IS PAID FOR AGAIN EVERY RUN. The resume query asks
+              // for shops with no verdict, so the 40 that stalled last night would be picked up by
+              // the next Nevada run and stall it again. Written down, they are skipped by default
+              // and can be re-run deliberately.
+              if (p2?.crawl_verdict === "timeout") {
+                try {
+                  await this.env.AURA_MEMORY.prepare(
+                    "UPDATE cg_business SET crawl_verdict = 'timeout', crawled_at = ? WHERE id = ?")
+                    .bind(new Date().toISOString(), id2).run();
+                } catch {}
+              }
+              return p2;
+            } catch (e) {
+              // ONE SHOP MUST NEVER END THE BATCH. A step that exhausts its retries takes the whole
+              // instance with it, so everything after it would never run.
+              return { ok: false, error: String(e?.message ?? e).slice(0, 160) };
+            }
+          });
+        }));
+        for (let gi = 0; gi < group.length; gi++) {
+          const i = g + gi, r = results[gi];
+          // ══ `enriched: 1` ON A SHOP WE NEVER REACHED (fixed 2026-08-20) ═════════════════
+          // MEASURED twice in one sample: Sunsuite (dead domain) and Granite City (no valid
+          // certificate) both returned `enriched: 1, failed: 0`. The Workflow counted ok:true,
+          // and ok:true only ever meant "the command did not throw". At batch scale that is the
+          // number somebody reads to decide a run went well.
+          // Unreachable is not a failure of ours and not a success either - it gets its own
+          // count rather than being folded into one of them.
+          const verdict = r?.crawl_verdict || null;
+          if (r?.ok && (verdict === "unreachable" || verdict === "refused")) {
+            unreached++;
+            // Names and sites in the trouble list: twice tonight a list of bare uuids meant a D1
+            // query just to find out which shops had failed.
+            if (trouble.length < 60) trouble.push({ id: ids[i], name: r?.business || null, site: r?.site || null, why: verdict });
+          } else if (r?.ok) done++;
+          else { failed++; if (trouble.length < 60) trouble.push({ id: ids[i], name: r?.business || null, site: r?.site || null, why: r?.error || "unknown" }); }
+          await mark(pkey, { mode: "enrich", at: i + 1, of: ids.length, started: startedAt,
+            last: { name: r?.business || ids[i],
+                    verdict: verdict || (r?.ok ? "ok" : (r?.error || "failed")),
+                    pages: r?.pages ?? null, emails: r?.extracted?.emails ?? null },
+            counts: { crawled: done, unreachable: unreached, failed },
+            updated: new Date().toISOString() });
+          // One job per domain is the rule the rate limit enforces; a pause between shops keeps a
+          // long run from looking like a flood to anybody's server.
+          await step.sleep("gap-" + i, "3 seconds");
+        }
+        await step.sleep("gap-" + g, "1 seconds");
       }
       await mark(pkey, { mode: "enrich", at: ids.length, of: ids.length, started: startedAt,
         counts: { crawled: done, unreachable: unreached, failed },
@@ -60198,19 +60264,29 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       const startedAt = new Date().toISOString();
       let done = 0, empty = 0, failed = 0; const trouble = [];
       let images = 0, artists = 0;
-      for (let i = 0; i < ids.length; i++) {
-        const r = await step.do("read-" + i, async () => {
+      // Reading is the same shape of work: independent shops, model calls that wait on nothing
+      // else. Four lanes rather than eight, because each read is already running its own eyes six
+      // at a time underneath.
+      const READ_LANES = 4;
+      for (let g = 0; g < ids.length; g += READ_LANES) {
+      const group = ids.slice(g, g + READ_LANES);
+      const results = await Promise.all(group.map((id2, gi) => {
+        const i = g + gi;
+        return step.do("read-" + i, async () => {
           try {
             // Reading is usually under a minute; four is the same ceiling as the crawl, and a shop
             // whose pictures cannot be judged in that time is one to come back to.
             const x = await Promise.race([
-              processCommand("SITE_READING " + ids[i] + " LOOK" + (write ? " WRITE" : ""), this.env, true),
+              processCommand("SITE_READING " + id2 + " LOOK" + (write ? " WRITE" : ""), this.env, true),
               new Promise((res) => setTimeout(() => res({ payload: { ok: false,
                 error: "TOOK_TOO_LONG" } }), 240000)),
             ]);
             return (x && x.payload) ? x.payload : x;
           } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
         });
+      }));
+      for (let gi = 0; gi < group.length; gi++) {
+        const i = g + gi, r = results[gi];
         const who = { id: ids[i], name: r?.business || null };
         if (!r?.ok) { failed++; if (trouble.length < 60) trouble.push({ ...who, why: String(r?.error || "unknown").slice(0, 120) }); }
         else if (r?.brain?.could_not_read) { failed++; if (trouble.length < 60) trouble.push({ ...who, why: "brain unreadable after " + (r.brain.tries || 1) + " tries" }); }
@@ -60221,7 +60297,8 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
                   artists: (r?.wrote?.artists || []).length },
           counts: { built: done, no_pictures: empty, failed, images, artists },
           updated: new Date().toISOString() });
-        await step.sleep("read-gap-" + i, "2 seconds");
+      }
+      await step.sleep("read-gap-" + g, "1 seconds");
       }
       await mark(pkey, { mode: "read", at: ids.length, of: ids.length, started: startedAt,
         counts: { built: done, no_pictures: empty, failed, images, artists },

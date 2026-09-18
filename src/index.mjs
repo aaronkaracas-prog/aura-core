@@ -27107,19 +27107,35 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 socialsMerged.length ? socialsMerged.join("|") : null,
                 // Booking rides INSIDE understanding - it is industry-shaped like artists and styles,
                 // and a column per platform is the mistake this file already refused once.
+                // ══ THE CRAWL NEVER OVERWRITES THE CARD (2026-09-18) ═════════════════════════
+                // MEASURED on Spinner Ink: a read had built six artists with 38 pictures and their
+                // story. Re-crawling the same shop replaced all of it with the crawl's own guess -
+                // BARON MORDO, BEATRIX KIDDO and AMY BRONX, the WordPress template's placeholder
+                // names, and seven pictures in one nameless "gallery".
+                // The crawl sees a site in one pass and guesses. The read walks every artist's page
+                // and verifies. When both have written, the read wins: the crawl may FILL what is
+                // missing and must never replace what somebody looked at properly. The order two
+                // commands happen to run in cannot decide whether a shop has a page.
                 (understandingToWrite && (understanding || booking.length || icsFeeds.length))
-                  ? JSON.stringify({ ...(understanding || {}), booking_platforms: booking,
-                      ics_feeds: icsFeeds, own_booking_urls: ownBooking,
-                      deposit_mentioned: depositSaid,
-                      // `p` IS THE PAGE THE IMAGE CAME FROM (added 2026-08-20). It was attached to
-                      // every image at scan time and then dropped at the write, so the one field
-                      // that makes an image auditable never survived - a stored image could not
-                      // be traced to the page that justified it without re-reading the archive.
-                      // Sixty images at ~15 characters each; the 24,000 cap is nowhere near.
-                      // It is also the provenance the display pass will want when Aura decides
-                      // what to show.
-                      images: kept.map(i => ({ u: i.url, s: i.subject, src: i.from, a: i.alt,
-                                               p: i.page || null })) }).slice(0, 24000)
+                  ? (() => {
+                      let prevU = {}; try { prevU = JSON.parse(prevRow?.understanding || "{}") || {}; } catch {}
+                      const readHasCard = Array.isArray(prevU.sections) && prevU.sections.length > 0;
+                      const merged = { ...(understanding || {}), booking_platforms: booking,
+                        ics_feeds: icsFeeds, own_booking_urls: ownBooking,
+                        deposit_mentioned: depositSaid,
+                        images: kept.map(i => ({ u: i.url, s: i.subject, src: i.from, a: i.alt,
+                                                 p: i.page || null })) };
+                      if (readHasCard) {
+                        merged.sections = prevU.sections;
+                        if (Array.isArray(prevU.images) && prevU.images.length) merged.images = prevU.images;
+                        if (Array.isArray(prevU.artists) && prevU.artists.length) merged.artists = prevU.artists;
+                      }
+                      // Facts are the shop's own verified words. A crawl never has them and must
+                      // never blank them.
+                      if (Array.isArray(prevU.facts) && prevU.facts.length) merged.facts = prevU.facts;
+                      if (prevU.no_pictures && !readHasCard) merged.no_pictures = prevU.no_pictures;
+                      return JSON.stringify(merged).slice(0, 24000);
+                    })()
                   : null,
                 "crawl/" + row.id + "/" + new Date().toISOString().slice(0, 10) + ".md",
                 crawlVerdict,

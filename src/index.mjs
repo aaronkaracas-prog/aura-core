@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.331.0-2026-09-18-the-crawl-never-overwrites-the-card";
+const BUILD = "aura-core-v9.332.0-2026-09-18-read-the-card-before-guarding-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -27081,8 +27081,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // own site was reported in the reply and then dropped on the floor.
         // The same shape of bug bit emails and phones: each run REPLACED them, so a run that found
         // one number erased two. A crawl is a visit, not a reset. Union with what is already known.
+        // `understanding` HAS TO BE IN THIS SELECT. Without it `prevRow.understanding` is
+        // undefined, the guard below decides there is no card to protect, and the crawl overwrites
+        // the read exactly as before - the protection ran on every crawl and could never fire.
         const prevRow = await db.prepare(
-          "SELECT email_found, phone_found, social FROM cg_business WHERE id = ? LIMIT 1")
+          "SELECT email_found, phone_found, social, understanding FROM cg_business WHERE id = ? LIMIT 1")
           .bind(row.id).first().catch(() => null);
         const mergePipe = (was, now, cap) => {
           const out = [];

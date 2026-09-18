@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.320.0-2026-09-18-hand-the-page-what-they-published";
+const BUILD = "aura-core-v9.321.0-2026-09-18-that-domain-is-not-theirs-anymore";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25663,6 +25663,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // those specifically. Same move `SITE_IMAGES` already makes for pictures, one level up.
         // This is not about one shop - any site with a content-marketing blog loses its gallery to
         // the crawler's first thirty, and those sites are common.
+        // ══ THAT DOMAIN IS NOT THEIRS ANYMORE (2026-09-18) ════════════════════════════════════
+        // MEASURED on Sacred Art Tattoo: sacredartla.com is now an Indonesian gambling site. We
+        // crawled it, believed it, and published "Rp 10.000 minimum", deposit bonuses and
+        // "Peak time 20:00-01:00 WIB" on a Los Angeles tattoo shop's page as verified facts.
+        // The sentence check could not save us - those sentences WERE on the site we fetched. It
+        // answers "did they write this", not "is this still their site".
+        // Expired domains get bought and refilled constantly, so this is not one shop. The test
+        // that costs nothing: a tattoo shop's website says the word somewhere. If the whole archive
+        // never mentions the trade, we are not looking at their site, and publishing anything from
+        // it is worse than publishing nothing - it puts a stranger's gambling promo under their name.
+        let wrongSite = null;
+        try {
+          const TRADE_WORDS = /\b(tattoo|tattoos|tattooed|tattooing|tattoist|tattooist|ink|piercing|piercings|body art|flash|artist|artists|studio)\b/i;
+          const hay0 = String(md || "");
+          if (hay0.length > 200 && !TRADE_WORDS.test(hay0)) {
+            await db.prepare("UPDATE cg_business SET crawl_verdict = ?, crawled_at = ?, understanding = NULL WHERE id = ?")
+              .bind("wrong_site", new Date().toISOString(), row.id).run();
+            return { cmd: "CG_ENRICH", payload: { ok: true, mode: "rejected", business: row.name,
+              site, crawl_verdict: "wrong_site", chars: hay0.length,
+              head: hay0.replace(/\s+/g, " ").slice(0, 200),
+              note: "Nothing on this site mentions tattooing, piercing or a studio. The domain has " +
+                    "almost certainly lapsed and been taken by somebody else, so nothing from it was " +
+                    "kept - a stranger's content under this shop's name is worse than an empty page." } };
+          }
+        } catch (e) { wrongSite = String(e?.message ?? e).slice(0, 140); }
+
         let missedWork = null;
         try {
           const WORKISH = /\/(gallery|galleries|portfolio|our-work|work|styles?|artists?|team|staff|flash|tattoos)(\/|$)/i;
@@ -60355,13 +60381,22 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       // at 242s and it is the outlier - most land under 100 - while about 40 stalled shops across
       // two states burned roughly two and a half hours waiting for nothing.
       // Each shop is still its own `step.do`, so a failure is still that shop's failure.
-      const LANES = 8;
+      // ══ TWENTY LANES, STARTED ONE AT A TIME (2026-09-18) ═════════════════════════════════
+      // Eight worked; the ceiling is far higher. Browser Run's default is 120 concurrent browsers
+      // from a warm pool, so twenty shops in flight is comfortably inside it even with the DOM
+      // passes each crawl spawns. What twenty CANNOT do is start at once: new browsers are allowed
+      // at one per second on Workers Paid, enforced as a fixed fill rate rather than a burst. So
+      // each lane waits its turn to begin - twenty lanes open over twenty-four seconds - and the
+      // run stays under the rate instead of collecting 429s that would look like dead shops.
+      const LANES = 20;
       for (let g = 0; g < ids.length; g += LANES) {
         const group = ids.slice(g, g + LANES);
         const results = await Promise.all(group.map((id2, gi) => {
           const i = g + gi;
           return step.do("shop-" + i, async () => {
             try {
+              // The stagger. Lane 0 goes immediately, lane 19 begins 22.8 seconds later.
+              if (gi) await new Promise((r) => setTimeout(r, gi * 1200));
               // ══ NO ONE SHOP HOLDS THE BATCH (2026-09-18) ══════════════════════════════════════
               // MEASURED: a five-shop run sat on "1 of 5" for twenty minutes. Shop two answered a
               // HEAD - so fail-fast passed it - and then hung, and nothing above it had a clock, so
@@ -60375,7 +60410,15 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
                 new Promise((res) => setTimeout(() => res({ payload: { ok: false,
                   error: "TOOK_TOO_LONG", crawl_verdict: "timeout" } }), 150000)),   // 150s, not 240 - see the note above
               ]);
-              const p2 = (x && x.payload) ? x.payload : x;
+              let p2 = (x && x.payload) ? x.payload : x;
+              // A RATE LIMIT IS A WAIT, NOT A VERDICT. Recording a good shop as unreachable because
+              // the browser pool was busy is the expensive kind of error: nobody sees it until the
+              // page comes out empty, and the resume query then skips it forever.
+              if (p2 && !p2.ok && /429|rate limit|too many requests/i.test(String(p2.error || ""))) {
+                await new Promise((r) => setTimeout(r, 15000 + Math.floor(Math.random() * 10000)));
+                const again = await processCommand("CG_ENRICH " + id2, this.env, true);
+                p2 = (again && again.payload) ? again.payload : again;
+              }
               // A TIMEOUT THAT IS NOT WRITTEN IS PAID FOR AGAIN EVERY RUN. The resume query asks
               // for shops with no verdict, so the 40 that stalled last night would be picked up by
               // the next Nevada run and stall it again. Written down, they are skipped by default
@@ -60462,7 +60505,9 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       // Reading is the same shape of work: independent shops, model calls that wait on nothing
       // else. Four lanes rather than eight, because each read is already running its own eyes six
       // at a time underneath.
-      const READ_LANES = 4;
+      // Reads are mostly Workers AI calls rather than browsers, so they answer to a different
+      // limit; six at a time, each already running its own eyes six wide underneath.
+      const READ_LANES = 6;
       for (let g = 0; g < ids.length; g += READ_LANES) {
       const group = ids.slice(g, g + READ_LANES);
       const results = await Promise.all(group.map((id2, gi) => {

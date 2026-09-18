@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.317.0-2026-09-18-the-menu-before-the-blog";
+const BUILD = "aura-core-v9.318.0-2026-09-18-go-and-get-the-work-pages";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25624,6 +25624,49 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Contact pages and blogs cost nothing here because they are not the shape that qualifies.
         // The URLs are appended to the archive, so the reading stays a pure text step and every
         // existing rule keeps working on them unchanged.
+        // ══ GO AND GET THE WORK PAGES (2026-09-18) ════════════════════════════════════════════
+        // MEASURED on Mantle Tattoo, twice: 30 pages crawled and TWENTY were blog articles, while
+        // the six style pages their menu calls "Our Work" - Delicate, Realism, Traditional, Fine
+        // Line, Neo Trad, Script - were never fetched at all. Their tattoos are on those pages.
+        // We do not choose those 30. We POST {url, limit, depth} and Cloudflare's crawler walks the
+        // site itself, so a shop that links twenty articles from its homepage spends the whole
+        // budget on them. Sorting our own second pass did nothing, because that pass only reads
+        // image-links and their menu is plain text links.
+        // So: read the archive's own links, find the work-shaped pages we did not get, and fetch
+        // those specifically. Same move `SITE_IMAGES` already makes for pictures, one level up.
+        // This is not about one shop - any site with a content-marketing blog loses its gallery to
+        // the crawler's first thirty, and those sites are common.
+        let missedWork = null;
+        try {
+          const WORKISH = /\/(gallery|galleries|portfolio|our-work|work|styles?|artists?|team|staff|flash|tattoos)(\/|$)/i;
+          const have = new Set(kept_pages.map(p => String(p.url || "").replace(/\/$/, "")));
+          const host0 = new URL(site).hostname.replace(/^www\./, "");
+          const wanted = [...new Set([...md.matchAll(/\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1].replace(/[).,]+$/, ""))
+            .filter(u => { try { return new URL(u).hostname.replace(/^www\./, "") === host0; } catch { return false; } })
+            .filter(u => WORKISH.test(u))
+            .map(u => u.replace(/\/$/, ""))
+            .filter(u => !have.has(u)))].slice(0, 8);
+          if (wanted.length) {
+            let added = 0; const got = [];
+            for (const u of wanted) {
+              const one = await processCommand("SITE_READ JSON DEPTH 1 LIMIT 1 " + u, env, true);
+              const op = (one && one.payload) ? one.payload : one;
+              if (!op?.ok || !op.id) continue;
+              for (let t = 0; t < 8; t++) {
+                await new Promise(r => setTimeout(r, 2500));
+                const stx = await processCommand("SITE_READ STATUS " + op.id, env, true);
+                const sx = (stx && stx.payload) ? stx.payload : stx;
+                if (sx?.status && sx.status !== "running") {
+                  if (sx.markdown) { md += "\n\n---\n\n" + sx.markdown; added++; got.push(u.replace(/^https?:\/\/[^/]+/, "")); }
+                  break;
+                }
+              }
+            }
+            if (added) refreshPool();
+            missedWork = { looked_for: wanted.length, fetched: added, pages: got };
+          }
+        } catch (e) { missedWork = { error: String(e?.message ?? e).slice(0, 140) }; }
+
         let domImages = null;
         try {
           // ══ FURNITURE REPEATS; ARTWORK DOES NOT (2026-09-18) ═════════════════════════════
@@ -26642,6 +26685,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             verdict: booking.length ? "on " + booking.join(" + ")
                    : ownBooking.length ? "own booking page, no third-party platform detected"
                    : "NO PLATFORM FOUND - nothing to migrate, easiest to move" },
+          ...(missedWork ? { work_pages_fetched: missedWork } : {}),
           ...(domImages ? { dom_images: domImages } : {}),
           extracted: { emails: ranked.length, phones: phones.length, socials: socials.length,
             booking_platforms: booking.length, ics: icsFeeds.length,

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.321.0-2026-09-18-that-domain-is-not-theirs-anymore";
+const BUILD = "aura-core-v9.322.0-2026-09-18-whatever-they-tell-a-customer";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22710,17 +22710,35 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
           if (blob.length > 400) {
             const fr = await callBrain({
+              // ══ WHATEVER THEY TELL A CUSTOMER (2026-09-18) ═════════════════════════════════
+              // This asked TEN fixed questions, and MEASURED on Kitsune that was the wrong shape:
+              // their about page says "Specializing in: Neo-Traditional Japanese, Custom Sleeves &
+              // Back Pieces", and offers private bookings for weddings, birthdays and a workshop
+              // with two students a session. None of it fits a slot called minimum or parking, so
+              // all of it was thrown away - while the page it belongs on is the one thing meant to
+              // prove we understand their business.
+              // The job is not filling in a form about them. It is carrying their own site across.
+              // So: bring back what they tell a customer, in their words, each with the sentence it
+              // came from. The familiar labels are still named because a customer looks for those
+              // first, but they are examples now, not the whole list.
               system:
                 "Below is text from a business's own website. Answer only from it.\n\n" +
                 'Return ONLY JSON: {"facts":[{"q":"","a":"","quote":""}]}\n\n' +
-                "One entry per question you can answer, and NOTHING for a question the text does " +
-                "not answer - a missing answer is correct, an invented one is damage, because this " +
-                "goes on a public page about a business that has not agreed to anything.\n" +
-                "q is one of: minimum, deposit, touch_ups, payment, walk_ins, consultation, " +
-                "age, parking, hours, languages.\n" +
-                "a is the answer in the shop's own terms, one short line - the amount, the rule, " +
-                "the list. If they say appointment only, that is the walk_ins answer.\n" +
-                "quote is the sentence from the text that says it, copied exactly.",
+                "Return what this business TELLS A CUSTOMER ABOUT ITSELF - the things someone " +
+                "deciding whether to go there would want to know, and would not know unless the " +
+                "shop said so.\n" +
+                "Nothing invented, ever: this goes on a public page about a business that has not " +
+                "agreed to anything, so a missing answer is correct and a guessed one is damage.\n" +
+                "Leave out anything that is not about THIS business: general advice, aftercare " +
+                "instructions, articles, guides, opinions about tattoos.\n\n" +
+                "q is a short lowercase key you choose. Use these when they fit, because a customer " +
+                "looks for them first: minimum, deposit, touch_ups, payment, walk_ins, " +
+                "consultation, hours, age, parking, languages, specialties, services.\n" +
+                "Where nothing in that list fits, name the key yourself in a word or two - " +
+                "whatever the shop is actually telling people.\n" +
+                "a is the answer in the shop's own terms, one short line.\n" +
+                "quote is the sentence from the text that says it, copied exactly.\n" +
+                "At most 14 entries. Fewer and true beats more.",
               user: blob.slice(0, 30000), max_tokens: 1200 }, env);
             if (fr?.ok) {
               let fj = fr.text;
@@ -22736,12 +22754,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 if (!q || !a) continue;
                 // The sentence has to be THEIRS. A paraphrase is how "appointment only" became
                 // "walk-ins welcome" the first time.
-                const probe = quote.replace(/\s+/g, " ").toLowerCase().slice(0, 60);
-                if (probe.length >= 15 && hay.includes(probe)) keptFacts.push({ q, a, quote: quote.slice(0, 300) });
+                // MEASURED on Kitsune: their about page says "No walk-ins." - twelve characters -
+                // and the model answered it correctly, and this check threw it away for being
+                // shorter than fifteen. A short true sentence is still true. Eight characters is
+                // enough to be somebody's actual words rather than a paraphrase, and when the whole
+                // sentence is not found, its first clause still has to be.
+                const flat = quote.replace(/\s+/g, " ").toLowerCase();
+                const probe = flat.slice(0, 60);
+                const clause = flat.split(/[.;:!?]/)[0].trim();
+                const found = (probe.length >= 8 && hay.includes(probe))
+                           || (clause.length >= 8 && hay.includes(clause));
+                if (found) keptFacts.push({ q, a, quote: quote.slice(0, 300) });
                 else droppedFacts.push({ q, a, why: "that sentence is not in their text" });
               }
+              // Twelve on the page is plenty - it is their page to fill once they claim it, and a
+              // wall of detail buries the few things a customer came for. The rest is kept on file.
               if (keptFacts.length || droppedFacts.length)
-                shopFacts = { said: keptFacts, ...(droppedFacts.length ? { not_verified: droppedFacts } : {}) };
+                shopFacts = { said: keptFacts.slice(0, 12),
+                              ...(keptFacts.length > 12 ? { also: keptFacts.slice(12) } : {}),
+                              ...(droppedFacts.length ? { not_verified: droppedFacts } : {}) };
             }
           }
         } catch (e) { shopFacts = { error: String(e?.message ?? e).slice(0, 140) }; }

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.324.0-2026-09-18-the-links-are-the-roster";
+const BUILD = "aura-core-v9.325.0-2026-09-18-a-jpeg-is-not-a-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25774,17 +25774,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             .map(m => ({ anchor: m[1], u: m[2].replace(/[).,]+$/, "") }));
           const bare = [...md.matchAll(/\((https?:\/\/[^)\s]+)\)/g)]
             .map(m => ({ anchor: "", u: m[1].replace(/[).,]+$/, "") }));
-          const seenW = new Set(); const wanted = [];
+          // ══ A JPEG IS NOT A PAGE, AND PEOPLE COME FIRST (2026-09-18) ══════════════════════
+          // MEASURED on the run after the last change: SIX of ten fetches were image files -
+          // `/wp-content/uploads/2022/09/20220415_193300-scaled.jpg` and friends. WordPress wraps a
+          // photograph in a link to itself, so the anchor really did match its own path, and the
+          // rule could not tell a person's page from a picture of a tattoo. They also ate the
+          // budget: the six artist pages this change existed to reach were never fetched at all,
+          // and /aftercare took a slot instead.
+          // So: an asset is never a page, and the people go to the front of the queue. A shop's
+          // artists are the reason for this whole step; a policy page is a bonus.
+          const ASSET = /\.(jpe?g|png|gif|webp|avif|svg|ico|bmp|tiff?|pdf|mp4|mov|webm|zip|gz|css|js|json|xml)(\?|$)/i;
+          const UPLOADS = /\/(wp-content\/uploads|uploads|assets|static|media|files)\//i;
+          const NOT_WORK_PATH = /\/(aftercare|promo|events?|news|blog|posts?|privacy|terms|cart|checkout|account|login)(\/|$)/i;
+          const people = [], places = [];
           for (const L of [...linked, ...bare]) {
             let host1 = null;
             try { host1 = new URL(L.u).hostname.replace(/^www\./, ""); } catch { continue; }
             if (host1 !== host0) continue;
             const clean = L.u.replace(/\/$/, "");
-            if (have.has(clean) || seenW.has(clean)) continue;
-            if (!(WORKISH.test(clean) || looksLikePerson(clean, L.anchor) || anchorIsItsOwnPath(clean, L.anchor))) continue;
-            seenW.add(clean); wanted.push(clean);
-            if (wanted.length >= 10) break;
+            if (ASSET.test(clean) || UPLOADS.test(clean)) continue;
+            if (have.has(clean)) continue;
+            const isPerson = looksLikePerson(clean, L.anchor) || anchorIsItsOwnPath(clean, L.anchor);
+            if (isPerson) { if (!people.includes(clean)) people.push(clean); continue; }
+            if (NOT_WORK_PATH.test(clean)) continue;
+            if (WORKISH.test(clean) && !places.includes(clean)) places.push(clean);
           }
+          const wanted = [...people, ...places].slice(0, 10);
           if (wanted.length) {
             // MEASURED: fetching these one at a time took Mantle's crawl from 83 seconds to 267 -
             // past the 150-second leash, so in a batch it would have been killed for being slow at

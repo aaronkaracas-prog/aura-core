@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.328.0-2026-09-18-four-each-not-twelve-total";
+const BUILD = "aura-core-v9.329.0-2026-09-18-thirty-a-page-split-by-artist";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22296,9 +22296,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           for (const pth of sec.pages) if (!byName[k].pages.includes(pth)) byName[k].pages.push(pth);
         }
         const imgsOn = (pth) => ((pages.find(p3 => p3.path === pth) || {}).images || 0);
+        // WHOSE PAGE IS IT. A section named for one person, whose pages nobody else is named on,
+        // is that person's own work - `/vicki/` is Vicki's, and that is the shop's filing, not our
+        // guess. A page that lists everybody - a `/portfolio/` index - belongs to no one artist, so
+        // it can feed the shop's gallery but must never be published as somebody's portfolio.
+        const nameOf = Object.values(byName).map(x => x.name);
+        const pageIsShared = (pth) => nameOf.filter(n => {
+          const body = (parts.find(pt => String(pt.url).replace(/^https?:\/\/[^/]+/, "") === pth) || {}).body || "";
+          return new RegExp("\\b" + String(n).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i").test(body);
+        }).length > 1;
         const cardSections = Object.values(byName)
-          .map(sec => ({ name: sec.name,
-                         pages: [...sec.pages].sort((a, b) => imgsOn(b) - imgsOn(a)) }))
+          .map(sec => {
+            const pages = [...sec.pages].sort((a, b) => imgsOn(b) - imgsOn(a));
+            const own = pages.filter(pth => !pageIsShared(pth));
+            return { name: sec.name, pages: own.length ? own : pages,
+                     people: own.length ? 1 : 2 };
+          })
           .filter(sec => sec.pages.some(pth => imgsOn(pth) > 1));
 
         const bodyOf = {};
@@ -22507,7 +22520,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // section has four, or until there is nothing left to look at. The shop's grid still
           // takes the best twelve across all of them; the rest stay on file for the artist's own
           // page. More looking per shop, which is the point rather than the cost.
-          const PER_ARTIST = 4, ENOUGH = 12, CHUNK = 12;
+          // ══ THIRTY A PAGE, SPLIT BY ARTIST (2026-09-18) ═══════════════════════════════════
+          // Aaron's model, and it collapses the two tiers this had: if the artists have their own
+          // pages then the artists ARE the gallery - a separate "shop portfolio" is a fiction,
+          // because even the owner files his work under his own name. So a page carries thirty
+          // pictures at most, divided among whoever is on it: six artists get five each, two get
+          // fifteen. A shop that publishes no artist pages is one subject and gets twelve.
+          // The division is a CAP, not a target - an artist with six good pictures shows six
+          // rather than having twenty-four mediocre ones dredged up to fill a quota.
+          const PAGE_MAX = 30;
+          const namedArtists = cardSections.filter(sec => (sec.people || 0) === 1).length;
+          const PER_ARTIST = namedArtists
+            ? Math.max(3, Math.floor(PAGE_MAX / namedArtists))
+            : 12;
+          const ENOUGH = namedArtists ? PAGE_MAX : 12;
+          const CHUNK = 12;
           // TWO at a time, not four. MEASURED: fifteen pictures came back 429 from one small
           // WordPress host even after backing off - it blocks a client for a window rather than
           // throttling per second, so the only thing that works is not bursting at it.
@@ -22576,6 +22603,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 "words printed on a graphic - do not keep it.\n" +
                 "A poster, banner, flyer, sign, business card or screenshot is not an example of " +
                 "the work even when it shows the work - do not keep it.\n" +
+                // MEASURED: portraits of artists reached the page because everyone in them is
+                // covered in ink, so "is a tattoo visible" cannot be the test. What the picture is
+                // OF is the test: the artwork, or the person.
+                "A photograph OF A PERSON is not the work, however tattooed that person is - a " +
+                "portrait, someone posing, someone sitting in a chair, someone smiling at the " +
+                "camera. Keep a photograph only when a tattoo is its subject.\n" +
                 "Fewer is better than wrong. An empty list is a correct answer.",
               user: "Business: " + (out?.business || row.name) + "\n\n" +
                 chunk.map((v, i) => (i + 1) + ". [" + v.section + "] " + v.saw).join("\n"),
@@ -22778,9 +22811,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 "agreed to anything, so a missing answer is correct and a guessed one is damage.\n" +
                 "Leave out anything that is not about THIS business: general advice, aftercare " +
                 "instructions, articles, guides, opinions about tattoos.\n\n" +
+                "Include ONE entry with q of \"about\" when the site tells their story - who founded " +
+                "it, how long they have been doing this, what they say they are about. Two sentences " +
+                "at most, their words, and only if the site actually says it.\n" +
                 "q is a short lowercase key you choose. Use these when they fit, because a customer " +
                 "looks for them first: minimum, deposit, touch_ups, payment, walk_ins, " +
-                "consultation, hours, age, parking, languages, specialties, services.\n" +
+                "consultation, hours, age, parking, languages, specialties, services, about.\n" +
                 "Where nothing in that list fits, name the key yourself in a word or two - " +
                 "whatever the shop is actually telling people.\n" +
                 "a is the answer in the shop's own terms, one short line.\n" +

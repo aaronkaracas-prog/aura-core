@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.305.0-2026-09-18-the-judge-gets-a-second-ask";
+const BUILD = "aura-core-v9.306.0-2026-09-18-show-the-shortlist-working";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22347,7 +22347,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // the thing deciding the answer, which is the failure every raised cap here has produced.
           const PER_SECTION = 12;
           const shortlist = [];
-          const cutBy = {}; const cutSample = [];
+          const cutBy = {}; const cutSample = []; const pickLog = [];
           // ══ EACH PICTURE ONCE (2026-09-18) ════════════════════════════════════════════════════
           // "A picture on many pages is chrome" was WRONG, and the evidence killed it: on Sweet T's
           // the tattoo `5c26d2_00c5bb34...` is on NINE gallery pages, while her furniture is on
@@ -22423,6 +22423,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   if (q[round]) out.push(q[round]);
                 }
               }
+              // TWICE I HAVE CHANGED THIS LOOP FROM READING A REPLY AND BEEN WRONG. It says what it
+              // did: what each page offered after the cuts, the room it had, and what it took.
+              // `looked: 12` against a ceiling of 84 is either pages offering nothing or rounds
+              // ending early, and these three numbers tell which without another guess.
+              pickLog.push({ section: sec.name, pages: sec.pages.length,
+                             offered: byPage.map((q) => q.length), room, took: out.length });
               return out;
             });
             const ceiling = Math.min(84, Math.max(12, cardSections.length * PER_SECTION));
@@ -22552,6 +22558,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             cardWhy.cut_by = cutBy;
             cardWhy.cut_sample = cutSample;
           }
+          if (cardWhy) cardWhy.shortlist = { ceiling: Math.min(84, Math.max(12, cardSections.length * 12)),
+                                             took: shortlist.length, by_section: pickLog };
 
           // The trade question was asked and answered BEFORE the split - see above.
 

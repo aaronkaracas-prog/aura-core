@@ -1,0 +1,311 @@
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Your shop &mdash; openforbusiness.world</title>
+<meta name=robots content="noindex">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#07090f;color:#f8fafc;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:56rem;margin:0 auto;padding:0 20px 5rem}
+header{padding:.9rem 0;border-bottom:1px solid rgba(251,191,36,.15);margin-bottom:1.6rem}
+.logo{font-size:1rem;font-weight:800}.logo b{color:#fbbf24}
+.hero{display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;border-radius:16px;overflow:hidden;margin-bottom:1.6rem}
+.hero img{width:100%;height:clamp(115px,16vw,180px);object-fit:cover;display:block;background:#0f172a}
+.hero img:first-child{grid-column:span 2;grid-row:span 2;height:100%;min-height:238px}
+@media(max-width:640px){.hero{grid-template-columns:repeat(2,1fr)}.hero img:first-child{min-height:200px}}
+h1{font-size:clamp(1.7rem,5vw,2.6rem);font-weight:800;letter-spacing:-.03em;line-height:1.05}
+.where{color:#94a3b8;margin-top:.35rem;font-size:.95rem}
+.badges{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.9rem}
+.badge{background:rgba(180,83,9,.18);border:1px solid rgba(251,191,36,.35);color:#fcd34d;
+border-radius:999px;padding:.25rem .75rem;font-size:.78rem;font-weight:700}
+.acts{display:flex;gap:.6rem;flex-wrap:wrap;margin:1.5rem 0 .4rem}
+.act{padding:.7rem 1.3rem;border-radius:11px;background:#0f1420;border:1px solid rgba(251,191,36,.25);
+color:#e2e8f0;font-weight:600;font-size:.95rem}
+.act.go{background:#b45309;border-color:#b45309;color:#fff;font-weight:700}
+.more{color:#64748b;font-size:.85rem;margin-top:.7rem;display:inline-block;cursor:pointer}
+.more:hover{color:#fbbf24}
+.drawer{display:none;margin-top:.8rem;background:#0b0e15;border:1px solid rgba(251,191,36,.12);
+border-radius:12px;padding:.9rem 1.2rem}
+.drawer.on{display:block}
+.drawer b{display:block;color:#64748b;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;margin:.7rem 0 .3rem}
+.drawer a,.drawer span{display:block;color:#cbd5e1;font-size:.88rem;line-height:1.7;word-break:break-word}
+.drawer a{color:#fbbf24}
+h2{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:#64748b;font-weight:700;
+margin:2.3rem 0 .8rem;border-top:1px solid rgba(251,191,36,.1);padding-top:1.3rem}
+.chips{display:flex;flex-wrap:wrap;gap:.45rem}
+.chip{background:#0f1420;border:1px solid rgba(251,191,36,.2);border-radius:999px;
+padding:.35rem .9rem;font-size:.87rem;color:#e2e8f0}
+.chip.who{background:#b45309;border-color:#b45309;color:#fff;font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.5rem}
+.grid img{width:100%;height:150px;object-fit:cover;border-radius:10px;background:#0f172a;display:block}
+.qr{text-align:center;padding:.5rem 0 .5rem}
+.qr img{background:#fff;padding:12px;border-radius:14px;display:block;margin:0 auto}
+.qr p{color:#94a3b8;font-size:.88rem;margin-top:.9rem;max-width:26rem;margin-left:auto;margin-right:auto}
+.qr code{display:block;color:#64748b;font-size:.78rem;margin-top:.5rem;font-family:ui-monospace,Menlo,Consolas,monospace}
+.claim{margin-top:2.8rem;background:#0f1420;border:1px solid rgba(251,191,36,.25);border-radius:14px;
+padding:1.4rem 1.5rem}
+.claim h3{font-size:1.05rem;font-weight:700;margin-bottom:.4rem}
+.claim p{color:#94a3b8;font-size:.92rem}
+footer{color:#475569;font-size:.78rem;padding:2.4rem 0 1rem;line-height:1.7}
+.facts{margin-top:.4rem;border:1px solid rgba(251,191,36,.15);border-radius:13px;overflow:hidden}
+.facts div{display:flex;gap:1rem;padding:.7rem 1rem;border-top:1px solid rgba(251,191,36,.09);
+font-size:.92rem;align-items:baseline}
+.facts div:first-child{border-top:0}
+.facts b{color:#94a3b8;font-weight:600;font-size:.78rem;text-transform:uppercase;
+letter-spacing:.06em;min-width:7.5rem;flex:0 0 7.5rem}
+.facts span{color:#e2e8f0}
+.bad{background:rgba(220,38,38,.12);border:1px solid rgba(248,113,113,.28);color:#fecaca;
+padding:1rem 1.2rem;border-radius:12px}
+</style></head><body>
+<header><div class=wrap><a href="/" class=logo id=brand>openforbusiness<b>.world</b></a></div></header>
+<div class=wrap id=root><p style="color:#64748b">Loading&hellip;</p></div>
+<script>
+var id=(location.pathname.split('/').filter(Boolean)[1]||'');
+// One page, two hosts. It is served on openforbusiness.world/lead/<id> AND on
+// tattooparlors.world/b/<id>, so the brand has to come from where the visitor actually is -
+// a hardcoded logo told a tattooparlors visitor they were somewhere else.
+(function(){var h=location.hostname.replace(/^www\./,''),n=h.split('.');
+ var b=document.getElementById('brand');
+ if(b&&n.length>1) b.innerHTML=n[0]+'<b>.'+n.slice(1).join('.')+'</b>';})();
+function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML}
+
+// Two spellings of one number are one number. "503-236-2873" and "(503) 236-2873" are a
+// formatting difference, not a second way to reach them.
+function dedupePhones(list){var seen={},out=[];
+  (list||[]).forEach(function(p){var k=(p||'').replace(/\D/g,'').slice(-10);
+    if(k&&!seen[k]){seen[k]=1;out.push(p)}});return out}
+
+// The SHOP's account before an artist's. A handle echoing the domain is the business one.
+function shopFirst(list,host){
+  var stem=(host||'').replace(/^www\./,'').split('.')[0].replace(/[^a-z0-9]/gi,'').toLowerCase();
+  return (list||[]).slice().sort(function(a,b){
+    var A=(a||'').toLowerCase().replace(/[^a-z0-9]/g,''),B=(b||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    return (stem&&A.indexOf(stem)>=0?0:1)-(stem&&B.indexOf(stem)>=0?0:1)})}
+
+fetch('/_lead?id='+encodeURIComponent(id)).then(function(r){return r.json()}).then(function(d){
+  var el=document.getElementById('root');
+  if(!d||!d.ok){el.innerHTML='<div class=bad>'+esc((d&&d.error)||'Could not load this record.')+'</div>';return}
+
+  var host=''; try{host=new URL(d.website||'http://x').hostname}catch(e){}
+  var phones=dedupePhones(d.phones), emails=shopFirst(d.emails,host), socials=shopFirst(d.socials,host);
+  var phone=phones[0], email=emails[0], social=socials[0];
+
+  // Artist-attributed images already sort first server-side. The card shows a handful as PROOF;
+  // the full set stays in the payload for the shop once they claim.
+  // ── The hero should be WORK, not headshots ──────────────────────────────────────────────
+  // First version took the first five images and got five artist portraits, because an
+  // artist-attributed image sorts first server-side and a person's page leads with their face.
+  // The tell is GROUP SIZE, and it is structural rather than a guess about any one site: a
+  // portrait appears ONCE under a person's name; a portfolio appears as several images under one
+  // heading. Lady Luck - Jeanine 1, Aj 1, Chelsea 7. Bang Bang - one portrait per artist on the
+  // homepage, eight tattoos on each artist's own page.
+  // So galleries lead and single portraits follow. A shop with only portraits still gets a hero.
+  // A CURATED GALLERY IS NOT RE-SORTED. The group-size and skip-the-portrait rules below exist to
+  // make sense of a crawl nobody arranged. A shop that dragged their photos into an order MEANT it,
+  // and reordering their work would be the product telling an owner they arranged it wrong.
+  var groups=d.curated
+    ? (d.image_groups||[])
+    : (d.image_groups||[]).slice().sort(function(a,b){
+        return (b.urls||[]).length-(a.urls||[]).length});
+  // A gallery page LEADS WITH THE PERSON and then shows their work, so the first image of a big
+  // group is nearly always a portrait - which is why the large hero slot was still a headshot.
+  // For the hero only, skip the leading image of any group with three or more; it goes back into
+  // the grid below, so nothing is lost and a small shop with one image each is untouched.
+  // ══ NOBODY PICKS A HERO EXCEPT THE SHOP (2026-08-18) ═══════════════════════════════════
+  // A large tile is a CLAIM: "this is the best picture of this business." Across 33,694 shops we
+  // cannot make that claim honestly. Filename cannot. Position cannot. Group size got closer and
+  // was still guessing - Lady Luck's large tile was a portrait, correctly, because that is the
+  // order that existed. The rule was right and the arrangement was not, and no rule fixes that.
+  // So an UNCLAIMED page gets a UNIFORM GRID - every tile the same size, no claim made. A neutral
+  // grid cannot be wrong; a large tile is a promise we cannot keep.
+  // The moment they claim, the FIRST IMAGE IS THE HERO BECAUSE THEY PUT IT THERE - a fact, not a
+  // guess. It makes the big tile earned, and it is a reason to claim: your page picks nothing for
+  // you; arrange it yourself and the first one leads.
+  var all=[]; groups.forEach(function(g){(g.urls||[]).forEach(function(x){all.push(x)})});
+  var hero = d.curated ? all.slice(0,5) : [];
+  var rest = d.curated ? all.slice(5,17) : all.slice(0,18);
+
+  var h='';
+  if(hero.length) h+='<div class=hero>'+hero.map(function(u){
+    return '<img loading=lazy src="'+esc(u)+'" alt="">'}).join('')+'</div>';
+  else if(rest.length) h+='<div class=grid style="margin-bottom:1.6rem">'+
+    rest.slice(0,6).map(function(u){return '<img loading=lazy src="'+esc(u)+'" alt="">'}).join('')+'</div>';
+
+  h+='<h1>'+esc(d.name||'')+'</h1>';
+  h+='<div class=where>'+esc([d.street,d.where].filter(Boolean).join(' \u00b7 '))+'</div>';
+
+  // ══ A CHIP MUST NOT CONTRADICT THEIR OWN WORDS ════════════════════════════════════════
+  // Mantle's page said "Walk-ins welcome" while their FAQ says "Mantle Tattoo operates by
+  // appointment only". The chip came from the crawl spotting the word "walk-in" somewhere on the
+  // site; the fact below comes from the sentence that refuses them, checked against their text.
+  // When both exist, their sentence wins. A wrong claim on a stranger's page is the one thing
+  // this page cannot afford.
+  var facts = d.facts || [];
+  function factFor(q){ for(var i=0;i<facts.length;i++) if(facts[i] && facts[i].q===q) return facts[i]; return null }
+  var wf = factFor('walk_ins');
+  var saysAppointmentOnly = wf && /appointment only|by appointment|no walk|not accept walk/i
+    .test(String(wf.a||'')+' '+String(wf.quote||''));
+
+  var b=[];
+  if(d.walk_ins===true && !saysAppointmentOnly) b.push('Walk-ins welcome');
+  if(saysAppointmentOnly) b.push('By appointment');
+  if(d.consultations===true) b.push('Consultations');
+  if(d.deposit_required===true) b.push('Deposit required');
+  if(d.piercing===true) b.push('Piercing');
+  if(b.length) h+='<div class=badges>'+b.map(function(x){return '<span class=badge>'+esc(x)+'</span>'}).join('')+'</div>';
+
+  // ONE action per thing. If there is no booking platform the honest CTA is a phone call,
+  // not an empty field labelled "none detected".
+  var acts=[], plat=(d.booking_platforms||[])[0], bookUrl=(d.own_booking_urls||[])[0];
+  if(plat||bookUrl) acts.push('<a class="act go" href="'+esc(bookUrl||d.website||'#')+'" target=_blank rel=noopener>'+
+      (plat?'Book via '+esc(plat.replace(/_/g,' ')):'Book')+'</a>');
+  // "Call to book" promised a booking flow that a phone tap does not deliver - this branch only
+  // runs when the shop has NO booking system, so calling IS how you reach them. Say that instead.
+  else if(phone) acts.push('<a class="act go" href="tel:'+esc(phone.replace(/[^\d+]/g,''))+'">Call the shop</a>');
+  if(phone) acts.push('<a class=act href="tel:'+esc(phone.replace(/[^\d+]/g,''))+'">'+esc(phone)+'</a>');
+  if(email) acts.push('<a class=act href="mailto:'+esc(email)+'">Email</a>');
+  if(social) acts.push('<a class=act href="'+esc(social)+'" target=_blank rel=noopener>'+
+      (/facebook/i.test(social)?'Facebook':'Instagram')+'</a>');
+  if(d.website) acts.push('<a class=act href="'+esc(d.website)+'" target=_blank rel=noopener>Website</a>');
+  h+='<div class=acts>'+acts.join('')+'</div>';
+
+  // Depth behind a toggle. A visitor needs one way in; the shop gets everything once they claim.
+  var xe=emails.slice(1), xp=phones.slice(1), xs=socials.slice(1);
+  if(xe.length||xp.length||xs.length){
+    h+='<span class=more id=mt>More ways to reach them \u2193</span><div class=drawer id=dw>'+
+      (xe.length?'<b>Other email</b>'+xe.map(function(x){return '<a href="mailto:'+esc(x)+'">'+esc(x)+'</a>'}).join(''):'')+
+      (xp.length?'<b>Other phone</b>'+xp.map(function(x){return '<span>'+esc(x)+'</span>'}).join(''):'')+
+      (xs.length?'<b>Artist accounts</b>'+xs.map(function(x){return '<a href="'+esc(x)+'" target=_blank rel=noopener>'+
+          esc(x.replace(/^https?:\/\/(www\.)?/,''))+'</a>'}).join(''):'')+'</div>';
+  }
+
+  if((d.artists||[]).length) h+='<h2>Artists</h2><div class=chips>'+
+      d.artists.slice(0,20).map(function(a){return '<span class="chip who">'+esc(a)+'</span>'}).join('')+'</div>';
+  if((d.styles||[]).length) h+='<h2>Styles</h2><div class=chips>'+
+      d.styles.slice(0,8).map(function(s){return '<span class=chip>'+esc(s)+'</span>'}).join('')+'</div>';
+  // What the shop has published about booking and money. Shown in their own terms, and only for
+  // the questions their own site answers - an absent answer is absent, never guessed at.
+  var LABEL = { minimum:'Shop minimum', deposit:'Deposit', touch_ups:'Touch-ups',
+                payment:'Payment', walk_ins:'Walk-ins', consultation:'Consultations',
+                age:'Age', parking:'Parking', hours:'Hours', languages:'Languages' };
+  var ORDER = ['minimum','deposit','touch_ups','payment','walk_ins','consultation','age','parking','hours','languages'];
+  var rows = [];
+  for (var oi=0; oi<ORDER.length; oi++){
+    var ft = factFor(ORDER[oi]);
+    if (ft && ft.a) rows.push('<div><b>'+esc(LABEL[ORDER[oi]])+'</b><span>'+esc(ft.a)+'</span></div>');
+  }
+  if(rows.length) h+='<h2>Good to know</h2><div class=facts>'+rows.join('')+'</div>';
+
+  var more = hero.length ? rest : rest.slice(6);
+  if(more.length) h+='<h2>More of their work</h2><div class=grid>'+
+      more.map(function(u){return '<img loading=lazy src="'+esc(u)+'" alt="">'}).join('')+'</div>';
+
+  // ══ THE QR IS THEIRS FROM DAY ONE ═════════════════════════════════════════════════════
+  // Ratified doctrine: ONE QR CODE, FOREVER - derived from the business, never issued. It exists
+  // before any payment, so the pitch is "this is already your code and it already works" rather
+  // than "pay and we will give you one". Paying changes what it opens and who controls it, never
+  // the code itself - which is why a sticker on a window survives an upgrade, a lapse and a return.
+  var qrUrl=location.origin+'/b/'+encodeURIComponent(d.id||id);
+  h+='<h2>Their code</h2><div class=qr>'+
+     // Ours, from /qr/<id>.svg - no third party between a shop and the code on their window.
+     '<img src="/qr/'+encodeURIComponent(d.id||id)+'.svg" alt="QR code" width=200 height=200>'+
+     '<p>This code opens this page. Put it in the window, on a card, on a receipt — '+
+     'it never changes.</p></div>';
+
+  // The claim card is the onboarding DOOR - it has to actually start the flow, not just describe it.
+  h+='<div class=claim><h3>'+(d.claimed?'This shop is claimed':'Is this your shop?')+'</h3><p>'+
+     (d.claimed
+       ? 'It is being managed by its owner.'
+       : 'This page was assembled from public sources and your own website. Claim it and it becomes '+
+         'yours to edit \u2014 and the QR code above becomes yours to use.')+'</p>'+
+     (d.claimed?'':'<button class="act go" id=claimgo style="margin-top:1rem;border:0;cursor:pointer">'+
+       'Claim this shop</button><div id=claimbox></div>')+'</div>';
+  // A shop owner should never read a dataset name. What matters to THEM is that nothing was
+  // invented and we are not holding their photographs.
+  h+='<footer>Put together from public information and this shop\u2019s own website'+
+     (d.crawled_at?', read '+esc(String(d.crawled_at).slice(0,10)):'')+'.<br>'+
+     (d.curated
+       ? 'The pictures are theirs, arranged by them.'
+       : 'Pictures load from their own site \u2014 nothing is copied or stored here.')+
+     ' Nothing is recorded about anyone who opens this page.</footer>';
+  el.innerHTML=h;
+  var mt=document.getElementById('mt');
+  if(mt) mt.onclick=function(){document.getElementById('dw').classList.toggle('on')};
+
+  // Claiming, in place. We only ever send a code to a contact ALREADY PUBLISHED on their own site,
+  // and we show it masked - only the shop can read a message sent to their own number.
+  // ── Claiming, end to end, in place ────────────────────────────────────────────────────────
+  // Masked contact -> send -> code -> success. We only ever send to a contact ALREADY PUBLISHED on
+  // their own site, and it is shown masked: only the shop can read a message sent to their own
+  // number. Every failure leaves the box usable so a wrong digit is not a dead end.
+  var cg=document.getElementById('claimgo');
+  if(cg) cg.onclick=function(){
+    var box=document.getElementById('claimbox');
+    var cgid=d.id||id;
+    var say=function(html){box.innerHTML=html};
+    var msg=function(t,good){return '<p style="color:'+(good?'#bbf7d0':'#fecaca')+';margin-top:1rem">'+esc(t)+'</p>'};
+
+    function askCode(sent){
+      say((sent.dry_run?msg(sent.what_to_say,true)
+                       :msg(sent.what_to_say||'We sent a six-digit code.',!!sent.sent))+
+        '<label style="display:block;color:#94a3b8;font-size:.82rem;margin:1rem 0 .35rem">Six-digit code</label>'+
+        '<input id=cgcode inputmode=numeric maxlength=6 autocomplete=one-time-code '+
+        'style="width:100%;max-width:12rem;padding:.7rem .9rem;font-size:1.1rem;letter-spacing:.2em;'+
+        'border:1px solid rgba(251,191,36,.3);border-radius:10px;background:#0f1420;color:#f8fafc">'+
+        '<br><button class="act go" id=cgverify style="border:0;cursor:pointer;margin-top:.8rem">Verify</button>');
+      var inp=document.getElementById('cgcode'); if(inp) inp.focus();
+      document.getElementById('cgverify').onclick=function(){
+        var c=(document.getElementById('cgcode')||{}).value||'';
+        if(c.replace(/\D/g,'').length<6){say(msg('Enter all six digits.')+box.innerHTML);return}
+        this.disabled=true;this.textContent='Checking\u2026';
+        fetch('/_leadclaim?id='+encodeURIComponent(cgid)+'&step=VERIFY&arg='+encodeURIComponent(c))
+          .then(function(r){return r.json()}).then(function(v){
+            if(v&&v.ok){
+              // The page is theirs now. Do not offer to claim it again.
+              say('<p style="color:#bbf7d0;margin-top:1rem;font-weight:700">'+
+                esc(v.what_to_say||'Verified. This shop is yours.')+'</p>'+
+                '<p style="color:#94a3b8;font-size:.9rem;margin-top:.5rem">'+
+                'The page and the QR above are yours. '+
+                (v.identity&&v.identity.action==='fused'
+                  ? 'Linked to the identity you already had with us.'
+                  : 'A new identity was created for this shop.')+'</p>'+
+                '<button class="act go" style="border:0;cursor:pointer;margin-top:1rem" '+
+                'onclick="location.reload()">See your page</button>');
+            } else {
+              askCodeAgain(v);
+            }
+          }).catch(function(){askCodeAgain({error:'Could not reach the server.'})});
+      };
+    }
+    function askCodeAgain(v){
+      say(msg((v&&(v.what_to_say||v.error))||'That code did not match.')+
+        '<button class="act" id=cgretry style="border:0;cursor:pointer;margin-top:.8rem">Try again</button>');
+      document.getElementById('cgretry').onclick=function(){cg.onclick()};
+    }
+
+    say('<p style="color:#94a3b8;margin-top:1rem">Checking\u2026</p>');
+    fetch('/_leadclaim?id='+encodeURIComponent(cgid)).then(function(r){return r.json()})
+      .then(function(c){
+        if(!c||!c.ok){say(msg((c&&(c.what_to_say||c.error))||'Could not start.'));return}
+        if(!(c.options||[]).length){say(msg(c.what_to_say||'No contact on file for this shop.'));return}
+        say('<p style="color:#94a3b8;margin:1rem 0 .6rem">'+esc(c.what_to_say||'')+'</p>'+
+          c.options.map(function(o,i){return '<button class=act data-v="'+esc(o.raw||'')+'" '+
+            'style="border:0;cursor:pointer;margin:.2rem .3rem 0 0">'+
+            (o.kind==='phone'?'Text ':'Email ')+esc(o.masked)+'</button>'}).join(''));
+        Array.prototype.forEach.call(box.querySelectorAll('button'),function(b){
+          b.onclick=function(){
+            say('<p style="color:#94a3b8;margin-top:1rem">Sending\u2026</p>');
+            fetch('/_leadclaim?id='+encodeURIComponent(cgid)+'&step=SEND'+
+                  (b.getAttribute('data-v')?'&arg='+encodeURIComponent(b.getAttribute('data-v')):''))
+              .then(function(r){return r.json()}).then(function(x){
+                if(x&&x.ok) askCode(x); else askCodeAgain(x);
+              }).catch(function(){askCodeAgain({error:'Could not reach the server.'})});
+          };
+        });
+      }).catch(function(){say(msg('Could not reach the server.'))});
+  };
+
+}).catch(function(){
+  document.getElementById('root').innerHTML='<div class=bad>Could not reach the server.</div>';
+});
+</script></body></html>

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.306.0-2026-09-18-show-the-shortlist-working";
+const BUILD = "aura-core-v9.307.0-2026-09-18-room-follows-the-pages";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22431,7 +22431,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                              offered: byPage.map((q) => q.length), room, took: out.length });
               return out;
             });
-            const ceiling = Math.min(84, Math.max(12, cardSections.length * PER_SECTION));
+            // ══ ROOM FOLLOWS THE PAGES, NOT THE PEOPLE (2026-09-18) ═══════════════════════════
+            // MEASURED on Sweet T's: the section selected 19 distinct pictures and this line handed
+            // back 12, because the ceiling counted SECTIONS and she is one artist. Seven pictures
+            // were chosen and then discarded. A solo artist with eleven gallery pages has as much
+            // work to show as four artists with one page each - the budget has to follow where the
+            // work actually lives. 84 still caps the total.
+            const workPages = new Set();
+            for (const sec of cardSections) for (const p2 of sec.pages) workPages.add(p2);
+            const ceiling = Math.min(84, Math.max(12, workPages.size * PER_SECTION));
             // FILL THE ROOM. The rounds end when the SHORTEST queues run out, so a shop with 100
             // pictures published 17 while Cece's 24-image page gave 4. Rounds first, for fairness -
             // everyone is seen before anyone gets seconds - then keep going through whoever still
@@ -22558,8 +22566,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             cardWhy.cut_by = cutBy;
             cardWhy.cut_sample = cutSample;
           }
-          if (cardWhy) cardWhy.shortlist = { ceiling: Math.min(84, Math.max(12, cardSections.length * 12)),
-                                             took: shortlist.length, by_section: pickLog };
+          if (cardWhy) cardWhy.shortlist = { took: shortlist.length, by_section: pickLog };
 
           // The trade question was asked and answered BEFORE the split - see above.
 
@@ -22573,7 +22580,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // By PAGE, not by section name: after the split a section is called "Ryan Lientz",
             // and the trade was decided about the pages he sits under.
             .filter(sec => !vertical || sec.pages.some(pth => verticalPages.has(pth)))
-            .map(sec => ({ name: sec.name, images: bySec[sec.name].slice(0, 4) }));
+            // 4 was a display cap from when a section meant one artist. The judge has already
+            // thrown out everything that is not work, so showing six of what it kept is not a
+            // looser standard - it is the standard, applied to what survived it.
+            .map(sec => ({ name: sec.name, images: bySec[sec.name].slice(0, 12) }));
           if (cardWhy && vertical) cardWhy.vertical = vertical;
         } catch (e) { cardWhy = { error: String(e?.message ?? e).slice(0, 200) }; }
 

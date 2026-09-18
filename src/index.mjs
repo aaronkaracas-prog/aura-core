@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.322.0-2026-09-18-whatever-they-tell-a-customer";
+const BUILD = "aura-core-v9.323.0-2026-09-18-go-and-get-the-people-pages-too";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25725,11 +25725,43 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const WORKISH = /\/(gallery|galleries|portfolio|our-work|work|styles?|artists?|team|staff|flash|tattoos)(\/|$)/i;
           const have = new Set(kept_pages.map(p => String(p.url || "").replace(/\/$/, "")));
           const host0 = new URL(site).hostname.replace(/^www\./, "");
-          const wanted = [...new Set([...md.matchAll(/\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1].replace(/[).,]+$/, ""))
-            .filter(u => { try { return new URL(u).hostname.replace(/^www\./, "") === host0; } catch { return false; } })
-            .filter(u => WORKISH.test(u))
-            .map(u => u.replace(/\/$/, ""))
-            .filter(u => !have.has(u)))].slice(0, 8);
+          // ══ AND THE PEOPLE PAGES (2026-09-18) ═════════════════════════════════════════════
+          // MEASURED on Spinner Ink: their /portfolio page is a LIST OF ARTISTS - big will, VICKI,
+          // Koryn, dame, rhea, Eduardo - and each name links to that artist's own page full of
+          // their work. `pages_in_archive: 2`. We never fetched one of them, so the only pictures
+          // available were the six profile portraits on the index, and that is exactly what the
+          // page published.
+          // The work rule looks for paths shaped like /gallery or /portfolio. An artist page is
+          // shaped like /vicki. No path rule will ever catch that - but we already know the roster,
+          // because the crawl reads it off their own pages. So match by NAME: a same-host link
+          // whose path or anchor text is one of their artists is that artist's page.
+          // Same move as the work pages, aimed at the other half of a shop's site.
+          const roster = [...new Set((peopleClean || []).map(p => String(p.name || "").trim()).filter(Boolean))];
+          const nameKeys = roster.map(n => n.toLowerCase().replace(/[^a-z0-9]+/g, ""))
+                                 .filter(k => k.length >= 3);
+          const looksLikePerson = (u, anchor) => {
+            const tail = String(u).replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "")
+                                  .split("/").pop().toLowerCase().replace(/[^a-z0-9]+/g, "");
+            const anc = String(anchor || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+            return nameKeys.some(k => (tail && (tail === k || tail.includes(k)))
+                                   || (anc && (anc === k || anc.includes(k))));
+          };
+          // Links with their anchor text, so a name in the text counts even when the path is a slug.
+          const linked = [...md.matchAll(/\[([^\]]{0,80})\]\((https?:\/\/[^)\s]+)\)/g)]
+            .map(m => ({ anchor: m[1], u: m[2].replace(/[).,]+$/, "") }));
+          const bare = [...md.matchAll(/\((https?:\/\/[^)\s]+)\)/g)]
+            .map(m => ({ anchor: "", u: m[1].replace(/[).,]+$/, "") }));
+          const seenW = new Set(); const wanted = [];
+          for (const L of [...linked, ...bare]) {
+            let host1 = null;
+            try { host1 = new URL(L.u).hostname.replace(/^www\./, ""); } catch { continue; }
+            if (host1 !== host0) continue;
+            const clean = L.u.replace(/\/$/, "");
+            if (have.has(clean) || seenW.has(clean)) continue;
+            if (!(WORKISH.test(clean) || looksLikePerson(clean, L.anchor))) continue;
+            seenW.add(clean); wanted.push(clean);
+            if (wanted.length >= 10) break;
+          }
           if (wanted.length) {
             // MEASURED: fetching these one at a time took Mantle's crawl from 83 seconds to 267 -
             // past the 150-second leash, so in a batch it would have been killed for being slow at

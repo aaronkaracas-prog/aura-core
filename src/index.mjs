@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.292.0-2026-09-18-name-the-rule-that-cut-it";
+const BUILD = "aura-core-v9.293.0-2026-09-18-a-thumbnail-is-not-a-small-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -115,10 +115,35 @@ const TINY = /[?&/](?:w|width)[_=](\d{1,3})(?:[,&/]|$)/i;
 // logo". Aaron: "we already took the junk out, so keep the junk out and don't have Aura analyse
 // junk." Nobody displays work at 32 pixels. Same rule, second way of writing it.
 const TINY_FILE = /[_\-\/.](\d{2,4})x(\d{2,4})\.(?:jpe?g|png|gif|webp|avif)(?:\?|$)/i;
+// ══ A THUMBNAIL IS NOT A SMALL PICTURE (2026-09-18) ═══════════════════════════════════════
+// MEASURED on Sweet T's Tattoos: `cut_by: { tiny: 102 }`. She read the site perfectly - a Gallery
+// of 12 pages, 92 images - and 102 of 104 candidates were cut by THIS rule, leaving two copies of
+// the skyline she uses as a background. Her entire portfolio is served as Wix thumbnails under
+// 200px wide.
+// On these CDNs `w_288,h_144` is a TRANSFORM INSTRUCTION, not the file: the same photograph is
+// also available at 1200px by changing the URL. Judging the artwork by the size the page happened
+// to ask for is judging a print by the size of the contact sheet. So on a known image CDN the
+// transform is ignored - and `askBigger` below asks for the full-size version before anyone looks.
+// The rule still stands everywhere else: nobody displays work at 32 pixels, and `fb_32x32.png` is
+// still an icon.
+// `blur_` is new and is not about size: Wix serves a deliberately blurred placeholder behind a
+// lazy-loaded image, and one reached the card at 288px wide. A blurred placeholder is never work.
+const CDN_TRANSFORM = /(static\.wixstatic\.com|images\.squarespace-cdn\.com|cdn\.shopify\.com|images\.unsplash\.com|cdn\.prod\.website-files\.com|i0\.wp\.com|res\.cloudinary\.com)/i;
 const isTiny = (u) => {
-  const m = u.match(TINY); if (m && parseInt(m[1], 10) < 200) return true;
+  if (/[,\/_]blur_\d/i.test(u)) return true;
   const f = u.match(TINY_FILE);
-  return !!(f && parseInt(f[1], 10) < 200 && parseInt(f[2], 10) < 200);
+  if (f && parseInt(f[1], 10) < 200 && parseInt(f[2], 10) < 200) return true;
+  if (CDN_TRANSFORM.test(u)) return false;
+  const m = u.match(TINY); if (m && parseInt(m[1], 10) < 200) return true;
+  return false;
+};
+// The size lives in the URL, so ask for a big one. The eyes see the artwork instead of a
+// 180px thumbnail, and the page links a picture worth looking at.
+const askBigger = (u) => {
+  const s0 = String(u || "");
+  if (!CDN_TRANSFORM.test(s0)) return s0;
+  return s0.replace(/([,\/])w_(\d{2,4})/gi, (mm, sep, w) => (parseInt(w, 10) < 900 ? sep + "w_1200" : mm))
+           .replace(/([,\/])h_(\d{2,4})/gi, (mm, sep, h) => (parseInt(h, 10) < 900 ? sep + "h_1200" : mm));
 };
 const BRAND = /\b(instagram|facebook|twitter|tiktok|youtube|yelp|google[%\s_-]*places|google[%\s_-]*maps|pinterest|snapchat|linkedin|whatsapp|tripadvisor)\b/i;
 const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
@@ -22336,7 +22361,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                     continue;
                   }
                   if (seen.has(u)) continue;
-                  seen.add(u); out.push({ u, page: pth, section: sec.name });
+                  // The eyes look at what the page will link, so ask for the big one HERE, once.
+                  seen.add(u); out.push({ u: askBigger(u), page: pth, section: sec.name });
                   if (out.length >= PER_SECTION) break;
                 }
                 if (out.length >= PER_SECTION) break;

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.288.0-2026-09-18-the-judge-can-think";
+const BUILD = "aura-core-v9.289.0-2026-09-18-everyone-gets-seen";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22257,17 +22257,39 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // business's trade is refused. Describing beats labelling.
         let card = [], cardWhy = null;
         try {
+          // ══ EVERYONE GETS SEEN BEFORE ANYONE GETS SECONDS (2026-09-18) ══════════════════════
+          // This filled 8 from the first section, 8 from the next, and stopped at 28 - so on a shop
+          // with eight artists the last four were never looked at. Already recorded once here:
+          // "Rose Ulinski, Kyle Weeks and Erin Kraepel have chips and no work because the first four
+          // consumed the shortlist." MEASURED again on Fremont Street: 13 pictures on the page from
+          // a site with ~50 on the pages she called work.
+          // ROUND ROBIN: one picture per section, then the next round. The cap scales with the shop
+          // (12 each, 84 ceiling) so a big roster is not punished for being big - a FLAT cap becomes
+          // the thing deciding the answer, which is the failure every raised cap here has produced.
+          const PER_SECTION = 12;
           const shortlist = [];
-          for (const sec of cardSections) {
-            let n = 0;
-            for (const pth of sec.pages) {
-              for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
-                if (n >= 8 || shortlist.length >= 28) break;
-                const u = mm[0];
-                if (isChromeUrl(u, "") || shortlist.some(c => c.u === u)) continue;
-                shortlist.push({ u, page: pth, section: sec.name }); n++;
+          {
+            const queues = cardSections.map((sec) => {
+              const seen = new Set(), out = [];
+              for (const pth of sec.pages) {
+                for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
+                  const u = mm[0];
+                  if (isChromeUrl(u, "") || seen.has(u)) continue;
+                  seen.add(u); out.push({ u, page: pth, section: sec.name });
+                  if (out.length >= PER_SECTION) break;
+                }
+                if (out.length >= PER_SECTION) break;
               }
-              if (n >= 8 || shortlist.length >= 28) break;
+              return out;
+            });
+            const ceiling = Math.min(84, Math.max(12, cardSections.length * PER_SECTION));
+            for (let round = 0; round < PER_SECTION && shortlist.length < ceiling; round++) {
+              for (const q of queues) {
+                if (shortlist.length >= ceiling) break;
+                const pick = q[round];
+                if (!pick || shortlist.some((c) => c.u === pick.u)) continue;
+                shortlist.push(pick);
+              }
             }
           }
           const t1 = Date.now();
@@ -22277,8 +22299,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             try {
               // Was an inline fetch + env.AI.run here. Same work, one reader now - see `seeMedia`.
               // Behaviour is unchanged: same model, same prompt, same 4MB cap, same answer.
+              // ══ SAY WHEN IT IS A POSTER (2026-09-18) ═════════════════════════════════════════
+              // MEASURED on Fremont Street: a shop logo, a "Javier" banner and a "Justin" banner
+              // reached the live page, because the description was the CONTENT - "a man getting a
+              // tattoo" - when the picture is a poster OF a man getting a tattoo. The judge can only
+              // judge what it is told, so the difference has to be in the sentence.
               const vr = await seeMedia({ url: c.u, model: srdVis,
-                prompt: "Describe what this photograph shows, in one short sentence." }, env);
+                prompt: "Describe what this photograph shows, in one short sentence. " +
+                        "If it is a poster, banner, flyer, business card, logo, sign or screenshot, " +
+                        "or if most of the picture is printed words, say so plainly." }, env);
               if (!vr.ok) { failed++; continue; }
               bytes += vr.bytes || 0;
               verdicts.push({ ...c, saw: vr.saw });
@@ -22304,6 +22333,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 "storefront, a poster or flyer, a portrait of a staff member, a screenshot.\n" +
                 "A description that is only the name of the trade, with nothing described, is " +
                 "words printed on a graphic - do not keep it.\n" +
+                "A poster, banner, flyer, sign, business card or screenshot is not an example of " +
+                "the work even when it shows the work - do not keep it.\n" +
                 "Fewer is better than wrong. An empty list is a correct answer.",
               user: "Business: " + (out?.business || row.name) + "\n\n" +
                 verdicts.map((v, i) => (i + 1) + ". [" + v.section + "] " + v.saw).join("\n"),

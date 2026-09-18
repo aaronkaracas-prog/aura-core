@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.318.0-2026-09-18-go-and-get-the-work-pages";
+const BUILD = "aura-core-v9.319.0-2026-09-18-a-thumbnail-is-the-same-tattoo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22368,10 +22368,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // in the shortlist.
           // The FILE is the identity: on these CDNs that is the media id in the path. Count the
           // distinct page paths a file appears on, and chrome is what shows up on several of them.
+          // ══ A THUMBNAIL IS THE SAME TATTOO (2026-09-18) ═══════════════════════════════════════
+          // MEASURED on Mantle: the page published twelve pictures that are SIX tattoos, each one
+          // twice. NextGEN (and most WordPress galleries) serve the small copy from a /thumbs/
+          // folder with a `thumbs_` prefix - `gallery/portfolio/thumbs/thumbs_realism_bicep_wing
+          // .jpg` beside `gallery/portfolio/realism_bicep_wing.jpg` - so the identity check saw two
+          // different files and the judge dutifully described the angel wing twice.
+          // Aaron wants twelve UNIQUE tattoos. The same photograph at a second size, in a second
+          // folder, under a generated suffix, is one tattoo. Strip what the gallery plugin added
+          // and compare what is left: the thumbs folder, the thumbs_ prefix, WordPress's own
+          // -300x200 size suffix, and -scaled.
           const fileId = (u) => {
             const s0 = String(u || "").split("?")[0];
             const m = s0.match(/\/media\/([^/]+)/i) || s0.match(/\/([^/]+\.(?:jpe?g|png|gif|webp|avif))$/i);
-            return (m ? m[1] : s0).toLowerCase();
+            let id = (m ? m[1] : s0).toLowerCase();
+            id = id.replace(/^thumbs[_-]/, "")
+                   .replace(/[-_](?:thumb|thumbnail|small|medium|large|scaled)(?=\.|$)/g, "")
+                   .replace(/-\d{2,4}x\d{2,4}(?=\.|$)/, "");
+            return id;
           };
           // One set for the whole site: the first page to offer a file keeps it, and no other
           // section, page or round can spend a slot on it again.
@@ -22778,7 +22792,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const prev = await env.AURA_MEMORY.prepare(
               "SELECT understanding FROM cg_business WHERE id = ? LIMIT 1").bind(srdId).first();
             let u0 = {}; try { u0 = JSON.parse(prev?.understanding || "{}") || {}; } catch {}
-            if (shopFacts?.said?.length) u0.facts = shopFacts.said;
+            if (shopFacts?.said?.length) {
+              u0.facts = shopFacts.said;
+              // ══ WHAT THEY SAY BEATS WHAT A KEYWORD GUESSED (2026-09-18) ═══════════════════
+              // MEASURED on Mantle: the page shows a "Walk-ins welcome" chip while their own FAQ
+              // says "Mantle Tattoo operates by appointment only". The chip comes from the crawl
+              // spotting the word "walk-in" somewhere; the fact comes from the sentence that
+              // refuses them, verified against their text. When both exist, the sentence wins -
+              // a wrong chip on a stranger's page is the one thing this whole build is careful
+              // about.
+              const wi = shopFacts.said.find(x => x.q === "walk_ins");
+              if (wi) u0.walk_ins = !/appointment only|by appointment|no walk|not accept/i.test(wi.a + " " + wi.quote);
+              const dep = shopFacts.said.find(x => x.q === "deposit");
+              if (dep) u0.deposit_required = true;
+            }
             // Only what the card owns is replaced. Styles, booking, hours and everything else
             // the crawl learned stay exactly as they were.
             // ARTIST CHIPS ARE PEOPLE, NOT SECTION NAMES. The first card wrote section names
@@ -25647,20 +25674,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             .map(u => u.replace(/\/$/, ""))
             .filter(u => !have.has(u)))].slice(0, 8);
           if (wanted.length) {
-            let added = 0; const got = [];
+            // MEASURED: fetching these one at a time took Mantle's crawl from 83 seconds to 267 -
+            // past the 150-second leash, so in a batch it would have been killed for being slow at
+            // the exact moment it started working. They are independent pages; start them all, then
+            // collect. Cloudflare's browser pool is 120 wide and we are asking for eight.
+            const jobs = [];
             for (const u of wanted) {
               const one = await processCommand("SITE_READ JSON DEPTH 1 LIMIT 1 " + u, env, true);
               const op = (one && one.payload) ? one.payload : one;
-              if (!op?.ok || !op.id) continue;
-              for (let t = 0; t < 8; t++) {
-                await new Promise(r => setTimeout(r, 2500));
-                const stx = await processCommand("SITE_READ STATUS " + op.id, env, true);
+              if (op?.ok && op.id) jobs.push({ u, id: op.id });
+            }
+            let added = 0; const got = [];
+            for (let t = 0; t < 10 && jobs.some(j => !j.done); t++) {
+              await new Promise(r => setTimeout(r, 2500));
+              await Promise.all(jobs.filter(j => !j.done).map(async (j) => {
+                const stx = await processCommand("SITE_READ STATUS " + j.id, env, true);
                 const sx = (stx && stx.payload) ? stx.payload : stx;
                 if (sx?.status && sx.status !== "running") {
-                  if (sx.markdown) { md += "\n\n---\n\n" + sx.markdown; added++; got.push(u.replace(/^https?:\/\/[^/]+/, "")); }
-                  break;
+                  j.done = true;
+                  if (sx.markdown) { md += "\n\n---\n\n" + sx.markdown; added++; got.push(j.u.replace(/^https?:\/\/[^/]+/, "")); }
                 }
-              }
+              }));
             }
             if (added) refreshPool();
             missedWork = { looked_for: wanted.length, fetched: added, pages: got };

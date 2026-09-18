@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.302.0-2026-09-18-count-pages-not-copies";
+const BUILD = "aura-core-v9.303.0-2026-09-18-show-the-evidence";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22396,7 +22396,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   const why = repeats(u) ? "on_every_page" : chromeRule(u, "");
                   if (why) {
                     cutBy[why] = (cutBy[why] || 0) + 1;
-                    if (cutSample.length < 12) cutSample.push({ rule: why, u: u.slice(-70) });
+                    // TWICE NOW I HAVE CHANGED THIS RULE FROM READING URLS IN A REPLY AND BEEN
+                    // WRONG. The sample carries the evidence instead: the file identity the counter
+                    // actually used, and the page paths it was actually found on. If a tattoo is
+                    // genuinely on eleven pages the archive says so; if the counting is broken,
+                    // this says that too. No third guess.
+                    if (cutSample.length < 12) cutSample.push({ rule: why, u: u.slice(-70),
+                      ...(why === "on_every_page"
+                        ? { file: fileId(u), on: [...(pagesOfFile[fileId(u)] || [])].slice(0, 12) }
+                        : {}) });
                     continue;
                   }
                   // Same file at two sizes is one picture, not two.

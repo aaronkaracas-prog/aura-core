@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.315.0-2026-09-18-an-empty-answer-is-still-an-answer";
+const BUILD = "aura-core-v9.316.0-2026-09-18-what-a-customer-asks-before-booking";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22673,6 +22673,65 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           srdWrite = false;
           if (cardWhy) cardWhy.kept_previous_card = "the judge could not be read - nothing was overwritten";
         }
+        // ══ WHAT A CUSTOMER ASKS BEFORE BOOKING (2026-09-18) ══════════════════════════════════
+        // MEASURED on Mantle Tattoo: their homepage states a $150 shop minimum, a $100 non-
+        // refundable deposit that goes toward the tattoo, a free touch-up within the first year,
+        // eight payment methods, free virtual consultations and where to park. We read every word
+        // of it, archived it, and kept NONE of it - while recording `walk_ins: true` from a page
+        // that says the opposite: appointment only, same day when they can. A regex found the words
+        // "walk-in" in a sentence that refused them.
+        // That FAQ block is the most valuable text on a shop's site and no two shops write it the
+        // same way - "$100 deposit", "50% down", "half up front" - so patterns cannot do it. The
+        // model that already reads this archive is asked instead, and every answer must come back
+        // with the SENTENCE it came from, checked against their own text the way artist names are.
+        // A fact whose sentence is not in the archive is dropped, not published.
+        let shopFacts = null;
+        try {
+          const wantedFacts = /faq|question|deposit|polic|pricing|price|rate|about|contact|service|aftercare|book|appointment|walk|hour/i;
+          let blob = "";
+          for (const pg of parts) {
+            const p3 = String(pg.url || "").replace(/^https?:\/\/[^/]+/, "") || "/";
+            if (p3 === "/" || wantedFacts.test(p3)) blob += "\n\n## " + p3 + "\n" + String(pg.body || "").slice(0, 6000);
+            if (blob.length > 30000) break;
+          }
+          if (blob.length > 400) {
+            const fr = await callBrain({
+              system:
+                "Below is text from a business's own website. Answer only from it.\n\n" +
+                'Return ONLY JSON: {"facts":[{"q":"","a":"","quote":""}]}\n\n' +
+                "One entry per question you can answer, and NOTHING for a question the text does " +
+                "not answer - a missing answer is correct, an invented one is damage, because this " +
+                "goes on a public page about a business that has not agreed to anything.\n" +
+                "q is one of: minimum, deposit, touch_ups, payment, walk_ins, consultation, " +
+                "age, parking, hours, languages.\n" +
+                "a is the answer in the shop's own terms, one short line - the amount, the rule, " +
+                "the list. If they say appointment only, that is the walk_ins answer.\n" +
+                "quote is the sentence from the text that says it, copied exactly.",
+              user: blob.slice(0, 30000), max_tokens: 1200 }, env);
+            if (fr?.ok) {
+              let fj = fr.text;
+              if (typeof fj === "string") { try { fj = JSON.parse(fj); } catch { fj = repairJson(fj); } }
+              fj = unwrapSchema(fj);
+              const rawFacts = Array.isArray(fj?.facts) ? fj.facts : [];
+              const hay = blob.replace(/\s+/g, " ").toLowerCase();
+              const keptFacts = [], droppedFacts = [];
+              for (const it of rawFacts) {
+                const q = String(it?.q || "").trim().toLowerCase();
+                const a = String(it?.a || "").trim();
+                const quote = String(it?.quote || "").trim();
+                if (!q || !a) continue;
+                // The sentence has to be THEIRS. A paraphrase is how "appointment only" became
+                // "walk-ins welcome" the first time.
+                const probe = quote.replace(/\s+/g, " ").toLowerCase().slice(0, 60);
+                if (probe.length >= 15 && hay.includes(probe)) keptFacts.push({ q, a, quote: quote.slice(0, 300) });
+                else droppedFacts.push({ q, a, why: "that sentence is not in their text" });
+              }
+              if (keptFacts.length || droppedFacts.length)
+                shopFacts = { said: keptFacts, ...(droppedFacts.length ? { not_verified: droppedFacts } : {}) };
+            }
+          }
+        } catch (e) { shopFacts = { error: String(e?.message ?? e).slice(0, 140) }; }
+
         // ══ AN EMPTY ANSWER IS STILL AN ANSWER (2026-09-18) ═══════════════════════════════════
         // MEASURED: the second ten-shop Nevada read built ONE page, and six of the ten were the
         // same shops the first run had already found empty - Solace, Downtown, 11th Hour, Crown
@@ -22703,6 +22762,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const prev = await env.AURA_MEMORY.prepare(
               "SELECT understanding FROM cg_business WHERE id = ? LIMIT 1").bind(srdId).first();
             let u0 = {}; try { u0 = JSON.parse(prev?.understanding || "{}") || {}; } catch {}
+            if (shopFacts?.said?.length) u0.facts = shopFacts.said;
             // Only what the card owns is replaced. Styles, booking, hours and everything else
             // the crawl learned stay exactly as they were.
             // ARTIST CHIPS ARE PEOPLE, NOT SECTION NAMES. The first card wrote section names
@@ -22738,6 +22798,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // falls back to policy is exactly the kind of thing that goes unnoticed for days.
           model: brainModel || srdModel, model_asked: srdModel || "(from KV)",
           provider: brainProvider, usage: brainUsage || undefined,
+          facts: shopFacts || undefined,
           archive: newest.key, pages_in_archive: pages.length, ms,
           split: splitLog.length ? splitLog : undefined,
           she_says: { business: out?.business || null, people: peopleReport,

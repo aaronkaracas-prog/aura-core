@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.287.0-2026-09-18-same-room-both-paths";
+const BUILD = "aura-core-v9.288.0-2026-09-18-the-judge-can-think";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22307,17 +22307,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 "Fewer is better than wrong. An empty list is a correct answer.",
               user: "Business: " + (out?.business || row.name) + "\n\n" +
                 verdicts.map((v, i) => (i + 1) + ". [" + v.section + "] " + v.saw).join("\n"),
-              max_tokens: 400 }, env);
+              // ══ 400 TOKENS IS NOT ROOM TO THINK (2026-09-18) ═══════════════════════════════
+              // MEASURED on Fremont Street with the brain pinned to @cf/openai/gpt-oss-120b:
+              // `chose: 0` out of 28, dropping "a tattoo of a tiger on a person's arm" and "a
+              // tattoo of a butterfly". That is not a judgement, it is an empty list - a reasoning
+              // model spends OUTPUT tokens thinking before it answers, 400 ran out mid-thought,
+              // `repairJson` closed it into an object with no `keep`, and every picture read as a
+              // drop. Third time tonight that a budget sized for a non-reasoning model looked like
+              // a model being wrong.
+              max_tokens: 2000 }, env);
             if (kr?.ok) {
               let kj = kr.text;
               if (typeof kj === "string") { try { kj = JSON.parse(kj); } catch { kj = repairJson(kj); } }
               kj = unwrapSchema(kj);
-              for (const n of (Array.isArray(kj?.keep) ? kj.keep : []))
+              const keepList = Array.isArray(kj?.keep) ? kj.keep : null;
+              for (const n of (keepList || []))
                 if (Number.isInteger(n) && n >= 1 && n <= verdicts.length) keep.add(n - 1);
               cardWhy = { eyes: srdVis, looked: verdicts.length, failed,
                           megabytes: Math.round(bytes / 10485.76) / 100,
                           seconds: Math.round((Date.now() - t1) / 100) / 10,
                           chose: keep.size, judge: kr.model, usage: kr.usage,
+                          // NO LIST AT ALL IS NOT THE SAME AS AN EMPTY ONE. "Fewer is better" makes
+                          // `keep: []` a legitimate answer, so a judge that never answered has been
+                          // reporting itself as a judge that said no to everything.
+                          ...(keepList ? {} : { judge_unread: true,
+                              raw_head: String(kr.text || "").slice(0, 200) || "(nothing came back)" }),
                           saw: verdicts.map((v, i) => ((keep.has(i) ? "KEEP " : "drop ") + v.saw.slice(0, 90))) };
             } else cardWhy = { error: kr?.error || "judge failed", looked: verdicts.length };
           } else cardWhy = { looked: 0, failed, note: "nothing survived the filename filter" };

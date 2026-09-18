@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.303.0-2026-09-18-show-the-evidence";
+const BUILD = "aura-core-v9.304.0-2026-09-18-each-picture-once";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22348,15 +22348,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const PER_SECTION = 12;
           const shortlist = [];
           const cutBy = {}; const cutSample = [];
-          // ══ CHROME IS WHAT REPEATS (2026-09-18) ═══════════════════════════════════════════════
-          // Sweet T's site puts the same six pictures at the top of every page - a letter K, an
-          // arrow, a bird, a black square, the Instagram and YouTube marks. No filename rule sees
-          // them: the names are hashes. But they appear on ELEVEN pages, and a tattoo appears on
-          // one. That is the same fact the crawl already uses to decide which pages to open, and it
-          // is decisive here too - those six ate the front of every queue, so each round of the
-          // shortlist spent its turn on furniture before reaching any work.
-          // A picture on more than two pages of a site is the site's own decoration. Judge the
-          // pattern, not the pixels, and the vision calls go to work rather than to a logo.
+          // ══ EACH PICTURE ONCE (2026-09-18) ════════════════════════════════════════════════════
+          // "A picture on many pages is chrome" was WRONG, and the evidence killed it: on Sweet T's
+          // the tattoo `5c26d2_00c5bb34...` is on NINE gallery pages, while her furniture is on
+          // eleven. Her category pages serve the SAME set of pictures - the categories are labels,
+          // not separate collections - so no threshold can separate art from decoration there, and
+          // the rule cut all 209 candidates.
+          // The real disease underneath was never chrome: it was COUNTING THE SAME PICTURE OVER AND
+          // OVER. 187 image references on her site are about twenty distinct files. Dedupe by file
+          // identity across the WHOLE site and the furniture takes six slots once instead of eighty,
+          // every tattoo is looked at once, and the judge drops the letter K for what it is rather
+          // than for where it appears.
+          // Identity is the file, not the address: `w_250` and `w_1200` are one photograph.
           // MEASURED, first attempt: `on_every_page: 213` - it cut EVERYTHING. Two mistakes, both
           // about identity. It counted occurrences rather than distinct pages, and her pages carry
           // each picture several times over (grid thumbnail, full size, lightbox), so one tattoo on
@@ -22370,12 +22373,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const m = s0.match(/\/media\/([^/]+)/i) || s0.match(/\/([^/]+\.(?:jpe?g|png|gif|webp|avif))$/i);
             return (m ? m[1] : s0).toLowerCase();
           };
-          const pagesOfFile = {};
-          for (const [pth, body] of Object.entries(bodyOf)) {
-            const here = new Set([...String(body || "").matchAll(IMG_RE)].map((m) => fileId(m[0])));
-            for (const id of here) (pagesOfFile[id] = pagesOfFile[id] || new Set()).add(pth);
-          }
-          const repeats = (u) => ((pagesOfFile[fileId(u)] || { size: 0 }).size) > 2;
+          // One set for the whole site: the first page to offer a file keeps it, and no other
+          // section, page or round can spend a slot on it again.
+          const takenFiles = new Set();
           {
             // ══ AND ROUND ROBIN THE PAGES INSIDE A SECTION (2026-09-18) ═══════════════════════
             // MEASURED on Sweet T's: 192 pictures in the archive, ONE section (she is a solo
@@ -22393,7 +22393,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 const mine = [];
                 for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
                   const u = mm[0];
-                  const why = repeats(u) ? "on_every_page" : chromeRule(u, "");
+                  const why = chromeRule(u, "");
                   if (why) {
                     cutBy[why] = (cutBy[why] || 0) + 1;
                     // TWICE NOW I HAVE CHANGED THIS RULE FROM READING URLS IN A REPLY AND BEEN
@@ -22401,15 +22401,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                     // actually used, and the page paths it was actually found on. If a tattoo is
                     // genuinely on eleven pages the archive says so; if the counting is broken,
                     // this says that too. No third guess.
-                    if (cutSample.length < 12) cutSample.push({ rule: why, u: u.slice(-70),
-                      ...(why === "on_every_page"
-                        ? { file: fileId(u), on: [...(pagesOfFile[fileId(u)] || [])].slice(0, 12) }
-                        : {}) });
+                    if (cutSample.length < 12) cutSample.push({ rule: why, u: u.slice(-70) });
                     continue;
                   }
-                  // Same file at two sizes is one picture, not two.
+                  // Same file at two sizes is one picture, not two - and once taken anywhere on
+                  // the site, it is not taken again.
                   const id = fileId(u);
-                  if (seen.has(id)) continue;
+                  if (seen.has(id) || takenFiles.has(id)) continue;
+                  takenFiles.add(id);
                   // The eyes look at what the page will link, so ask for the big one HERE, once.
                   seen.add(id); mine.push({ u: askBigger(u), page: pth, section: sec.name });
                   if (mine.length >= PER_SECTION) break;

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.327.0-2026-09-18-do-not-hammer-their-server";
+const BUILD = "aura-core-v9.328.0-2026-09-18-four-each-not-twelve-total";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22499,7 +22499,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // That is our fault, not theirs, and it will happen at every small shop in the file. Four
           // at a time instead of six, a breath between requests, and a 429 WAITS before asking
           // again. Slower by a few seconds per shop; the difference between twelve pictures and two.
-          const ENOUGH = 12, CHUNK = 12, AT_ONCE = 4;
+          // ══ FOUR EACH, NOT TWELVE TOTAL (2026-09-18) ══════════════════════════════════════
+          // MEASURED on Spinner Ink: six artists, and the run stopped at twelve kept - all of them
+          // Vicki's and Pablo's and Rhea's, because those pages came first. Big Will got a chip on
+          // the page with nothing behind it. The shop tier worked and the artist tier did not exist.
+          // An artist IS the asset here, so the target is per section: keep going until every
+          // section has four, or until there is nothing left to look at. The shop's grid still
+          // takes the best twelve across all of them; the rest stay on file for the artist's own
+          // page. More looking per shop, which is the point rather than the cost.
+          const PER_ARTIST = 4, ENOUGH = 12, CHUNK = 12;
+          // TWO at a time, not four. MEASURED: fifteen pictures came back 429 from one small
+          // WordPress host even after backing off - it blocks a client for a window rather than
+          // throttling per second, so the only thing that works is not bursting at it.
+          const AT_ONCE = 2;
           let rateLimited = 0;
           const lookOnce = async (c) => {
             const ask = (u) => seeMedia({ url: u, model: srdVis,
@@ -22586,8 +22598,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             return { kr, keepList };
           };
 
+          // Who still needs pictures. A section is done at four; the run is done when nobody is
+          // short and the shop has its twelve.
+          const perSection = {};
+          const sectionsWanting = () => cardSections.some(sec => (perSection[sec.name] || 0) < PER_ARTIST);
           let lastKr = null, lastKeepList = null, judgeUnreadOnce = false;
-          for (let at = 0; at < shortlist.length && keep.size < ENOUGH; at += CHUNK) {
+          for (let at = 0; at < shortlist.length && (keep.size < ENOUGH || sectionsWanting()); at += CHUNK) {
             const slice = shortlist.slice(at, at + CHUNK);
             // Six at a time: each look is a fetch plus a model round trip, and they are independent.
             const seenHere = [];
@@ -22595,12 +22611,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               const got = await Promise.all(slice.slice(k, k + AT_ONCE).map(lookOnce));
               for (const g of got) if (g) seenHere.push(g);
               // A breath between batches. A shop's own server is not a CDN.
-              if (k + AT_ONCE < slice.length) await new Promise((r) => setTimeout(r, 900));
+              if (k + AT_ONCE < slice.length) await new Promise((r) => setTimeout(r, 1800));
             }
             if (!seenHere.length) continue;
             const base = verdicts.length;
             for (const v of seenHere) verdicts.push(v);
             const res = await judgeChunk(seenHere, base);
+            for (let vi = base; vi < verdicts.length; vi++) {
+              if (keep.has(vi)) {
+                const nm = verdicts[vi].section;
+                perSection[nm] = (perSection[nm] || 0) + 1;
+              }
+            }
             lastKr = res.kr;
             if (res.keepList) lastKeepList = res.keepList; else judgeUnreadOnce = true;
           }
@@ -22611,7 +22633,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                           megabytes: Math.round(bytes / 10485.76) / 100,
                           seconds: Math.round((Date.now() - t1) / 100) / 10,
                           chose: keep.size, judge: lastKr.model, usage: lastKr.usage,
-                          stopped_early: keep.size >= ENOUGH && verdicts.length < shortlist.length,
+                          stopped_early: keep.size >= ENOUGH && !sectionsWanting() && verdicts.length < shortlist.length,
+                          per_section_kept: perSection,
                           ...(judgeTries > 1 ? { judge_tries: judgeTries } : {}),
                           ...(eyesRetried ? { eyes_retried: eyesRetried } : {}),
                           ...(rateLimited ? { rate_limited: rateLimited } : {}),
@@ -22647,7 +22670,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // 4 was a display cap from when a section meant one artist. The judge has already
             // thrown out everything that is not work, so showing six of what it kept is not a
             // looser standard - it is the standard, applied to what survived it.
-            .map(sec => ({ name: sec.name, images: bySec[sec.name].slice(0, 12) }));
+            // Each section keeps its own set - an artist's page wants their work, not the shop's
+            // twelve. The shop grid is built from these by the renderer, so nothing is lost here.
+            .map(sec => ({ name: sec.name, images: bySec[sec.name].slice(0, 8) }));
           if (cardWhy && vertical) cardWhy.vertical = vertical;
         } catch (e) { cardWhy = { error: String(e?.message ?? e).slice(0, 200) }; }
 

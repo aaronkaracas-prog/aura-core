@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.299.0-2026-09-18-one-block-per-page";
+const BUILD = "aura-core-v9.300.0-2026-09-18-every-page-in-the-section-too";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22349,9 +22349,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const shortlist = [];
           const cutBy = {}; const cutSample = [];
           {
+            // ══ AND ROUND ROBIN THE PAGES INSIDE A SECTION (2026-09-18) ═══════════════════════
+            // MEASURED on Sweet T's: 192 pictures in the archive, ONE section (she is a solo
+            // artist), twelve gallery pages inside it - and three tattoos on her page. The
+            // shortlist walked page one to its limit and stopped: `/gallery/colored` opens with
+            // eight pieces of template furniture and four tattoos, so the furniture WAS the quota.
+            // Fairness between sections was not enough when a section is a whole gallery. Take one
+            // from each page, then go round again. Eleven pages that never contributed now do, and
+            // the furniture - which sits at the top of every page - is diluted instead of decisive.
+            // A section spanning a dozen pages also gets a dozen pages' worth of room; the 84
+            // ceiling still holds the total.
             const queues = cardSections.map((sec) => {
-              const seen = new Set(), out = [];
+              const seen = new Set(); const byPage = [];
               for (const pth of sec.pages) {
+                const mine = [];
                 for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
                   const u = mm[0];
                   const why = chromeRule(u, "");
@@ -22362,10 +22373,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   }
                   if (seen.has(u)) continue;
                   // The eyes look at what the page will link, so ask for the big one HERE, once.
-                  seen.add(u); out.push({ u: askBigger(u), page: pth, section: sec.name });
-                  if (out.length >= PER_SECTION) break;
+                  seen.add(u); mine.push({ u: askBigger(u), page: pth, section: sec.name });
+                  if (mine.length >= PER_SECTION) break;
                 }
-                if (out.length >= PER_SECTION) break;
+                if (mine.length) byPage.push(mine);
+              }
+              const room = Math.min(84, Math.max(PER_SECTION, byPage.length * PER_SECTION));
+              const out = [];
+              for (let round = 0; round < PER_SECTION && out.length < room; round++) {
+                for (const q of byPage) {
+                  if (out.length >= room) break;
+                  if (q[round]) out.push(q[round]);
+                }
               }
               return out;
             });

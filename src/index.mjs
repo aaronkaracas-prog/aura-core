@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.295.0-2026-09-18-judge-the-picture-not-the-url";
+const BUILD = "aura-core-v9.296.0-2026-09-18-the-crawl-opens-the-gallery";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25066,6 +25066,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { bucket: "other", why: "could not tell" };
         };
 
+        // Same shape as the reader's IMG_RE, kept separate because this one is only ever asked
+        // "does this page have any image at all".
+        const IMG_ANY = /https?:\/\/[^\s"'()<>\]]+\.(?:jpe?g|png|gif|webp|avif)(?:\?[^\s"'()<>\]]*)?/i;
         let kept_pages = [], dropped_pages = [];
         const refreshPool = () => {
           kept_pages = []; dropped_pages = [];
@@ -25274,6 +25277,45 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // text still exists as it was on the day we looked.
         // R2 because it is object storage: cheap per GB, no row limit, and it never competes with D1
         // for the query budget. Keyed by the CityGuide id so a row and its source find each other.
+        // ══ A PAGE THAT CLAIMS PICTURES AND YIELDS NONE GETS OPENED (2026-09-18) ═══════════════
+        // MEASURED on Sweet T's Tattoos: 12 gallery pages, 92 images counted by the map, and the
+        // archive gave EIGHT candidates - all page furniture. `HANDS_SEE` on one of those pages
+        // returned 84 characters of text. Her tattoos live in the DOM, not the markdown, which is
+        // where every image rule we own has been arguing. `SITE_IMAGES` on that one page returned
+        // ELEVEN of her realism tattoos at full size.
+        // A gallery widget is normal on Wix and Squarespace, which is a large slice of 33,694
+        // businesses, so this is not a special case - it is most of the file.
+        // ONLY where it is needed: a page the crawler kept, whose text yields no image at all.
+        // Contact pages and blogs cost nothing here because they are not the shape that qualifies.
+        // The URLs are appended to the archive, so the reading stays a pure text step and every
+        // existing rule keeps working on them unchanged.
+        let domImages = null;
+        try {
+          const blind = [];
+          for (const pg of kept_pages) {
+            const body = String(pg.body || "");
+            if (IMG_ANY.test(body)) { IMG_ANY.lastIndex = 0; continue; }
+            IMG_ANY.lastIndex = 0;
+            if (pg.url) blind.push(pg.url);
+            if (blind.length >= 14) break;
+          }
+          if (blind.length && env.BROWSER) {
+            let added = 0; const perPage = [];
+            for (const u of blind) {
+              const r = await processCommand("SITE_IMAGES " + u, env, true);
+              const p = (r && r.payload) ? r.payload : r;
+              const got = (p?.ok && Array.isArray(p.images)) ? p.images.map((x) => x.u) : [];
+              if (got.length) {
+                md += "\n\n---\n\n## " + u + "\n\n" + got.map((x) => "![](" + x + ")").join("\n");
+                added += got.length;
+                perPage.push({ page: String(u).replace(/^https?:\/\/[^/]+/, ""), images: got.length });
+              }
+            }
+            if (added) { refreshPool(); domImages = { pages_opened: blind.length, images_found: added, per_page: perPage }; }
+            else domImages = { pages_opened: blind.length, images_found: 0 };
+          }
+        } catch (e) { domImages = { error: String(e?.message ?? e).slice(0, 140) }; }
+
         try {
           if (env.AURA_KNOWLEDGE_RAW) {
             await env.AURA_KNOWLEDGE_RAW.put("crawl/" + row.id + "/" + new Date().toISOString().slice(0, 10) + ".md", md, {
@@ -26232,6 +26274,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             verdict: booking.length ? "on " + booking.join(" + ")
                    : ownBooking.length ? "own booking page, no third-party platform detected"
                    : "NO PLATFORM FOUND - nothing to migrate, easiest to move" },
+          ...(domImages ? { dom_images: domImages } : {}),
           extracted: { emails: ranked.length, phones: phones.length, socials: socials.length,
             booking_platforms: booking.length, ics: icsFeeds.length,
             artists: understanding?.artists?.length || 0, styles: understanding?.styles?.length || 0,

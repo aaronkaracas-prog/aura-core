@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.334.0-2026-09-18-room-to-think-on-the-facts-call";
+const BUILD = "aura-core-v9.335.0-2026-09-18-facts-do-not-depend-on-pictures";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22763,6 +22763,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // good one turns one bad reply into a page that has lost its pictures - and across a batch
         // nobody would know which shops it happened to. If the judge could not be read, the card
         // that is already live stays live.
+        // ══ FACTS DO NOT DEPEND ON PICTURES (2026-09-18) ══════════════════════════════════════
+        // MEASURED on Tinta Rebelde: ten verified facts came back - walk-ins always welcome,
+        // American traditional "bold lines, saturated color, built to last", full-body piercing,
+        // the DTLA studio, their aftercare - and not one reached the page. Every picture on that
+        // site is served through Next.js's /_next/image optimizer and every fetch returned 400, so
+        // the read took its no-pictures branch, which writes `sections: []` and never touches
+        // `facts`. The text step succeeded and its work was discarded because a different step
+        // failed. Facts come from their words; they have nothing to do with whether a photograph
+        // loaded. One merge, used by every write path.
+        const applyFacts = (uObj) => {
+          if (!shopFacts?.said?.length) return;
+          const wasFacts = Array.isArray(uObj.facts) ? uObj.facts : [];
+          const byQ = new Map();
+          for (const f2 of wasFacts) if (f2 && f2.q) byQ.set(String(f2.q), f2);
+          for (const f2 of shopFacts.said) if (f2 && f2.q) byQ.set(String(f2.q), f2);
+          uObj.facts = [...byQ.values()].slice(0, 16);
+          const wi = shopFacts.said.find(x => x.q === "walk_ins");
+          if (wi) uObj.walk_ins = !/appointment only|by appointment|no walk|not accept/i.test(wi.a + " " + wi.quote);
+          const dep = shopFacts.said.find(x => x.q === "deposit");
+          if (dep) uObj.deposit_required = true;
+        };
+
         if (srdWrite && !card.length && cardWhy?.judge_unread) {
           srdWrite = false;
           if (cardWhy) cardWhy.kept_previous_card = "the judge could not be read - nothing was overwritten";
@@ -22907,6 +22929,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // the lot. I guarded against the JUDGE failing and not against this - same harm, one
             // case wider. A shop that already has pictures keeps them; the empty result is recorded
             // beside them as a note, so the next run can still improve on it.
+            applyFacts(uz);
             if (Array.isArray(uz.images) && uz.images.length) {
               uz.last_empty_read = { when: new Date().toISOString(), looked: cardWhy?.looked ?? 0,
                 pages_in_archive: pages.length,
@@ -22914,6 +22937,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               await env.AURA_MEMORY.prepare("UPDATE cg_business SET understanding = ? WHERE id = ?")
                 .bind(JSON.stringify(uz).slice(0, 24000), srdId).run();
               wrote = { kept_existing: uz.images.length,
+                        ...(shopFacts?.said?.length ? { facts_written: shopFacts.said.length } : {}),
                         note: "this read found no pictures; the ones already on file were left alone" };
               throw { handled: true };
             }
@@ -22925,7 +22949,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             await env.AURA_MEMORY.prepare(
               "UPDATE cg_business SET understanding = ? WHERE id = ?")
               .bind(JSON.stringify(uz).slice(0, 24000), srdId).run();
-            wrote = { artists: [], images: 0, sections: [], recorded: "no pictures - this shop will be skipped by default now" };
+            wrote = { artists: [], images: 0, sections: [],
+                      ...(shopFacts?.said?.length ? { facts_written: shopFacts.said.length } : {}),
+                      recorded: "no pictures - this shop will be skipped by default now" };
           } catch (e) { if (!e?.handled) wrote = { error: String(e?.message ?? e).slice(0, 200) }; }
         }
         if (srdWrite && card.length) {
@@ -22933,31 +22959,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const prev = await env.AURA_MEMORY.prepare(
               "SELECT understanding FROM cg_business WHERE id = ? LIMIT 1").bind(srdId).first();
             let u0 = {}; try { u0 = JSON.parse(prev?.understanding || "{}") || {}; } catch {}
-            if (shopFacts?.said?.length) {
-              // ══ AND THE FACTS MERGE (2026-09-18) ══════════════════════════════════════════
-              // MEASURED: one read returned eight facts - the Sezzle terms, pay in full, same day,
-              // who they tattoo - and the next returned only `about`, and the write replaced the
-              // lot. Eight true things the shop had published disappeared because one later run
-              // happened to answer a different question. The model returns a different subset every
-              // time; the shop's own statements do not come and go. Keep what was verified, add
-              // what is new, and let a fresh answer update its own key.
-              const wasFacts = Array.isArray(u0.facts) ? u0.facts : [];
-              const byQ = new Map();
-              for (const f2 of wasFacts) if (f2 && f2.q) byQ.set(String(f2.q), f2);
-              for (const f2 of shopFacts.said) if (f2 && f2.q) byQ.set(String(f2.q), f2);
-              u0.facts = [...byQ.values()].slice(0, 16);
-              // ══ WHAT THEY SAY BEATS WHAT A KEYWORD GUESSED (2026-09-18) ═══════════════════
-              // MEASURED on Mantle: the page shows a "Walk-ins welcome" chip while their own FAQ
-              // says "Mantle Tattoo operates by appointment only". The chip comes from the crawl
-              // spotting the word "walk-in" somewhere; the fact comes from the sentence that
-              // refuses them, verified against their text. When both exist, the sentence wins -
-              // a wrong chip on a stranger's page is the one thing this whole build is careful
-              // about.
-              const wi = shopFacts.said.find(x => x.q === "walk_ins");
-              if (wi) u0.walk_ins = !/appointment only|by appointment|no walk|not accept/i.test(wi.a + " " + wi.quote);
-              const dep = shopFacts.said.find(x => x.q === "deposit");
-              if (dep) u0.deposit_required = true;
-            }
+            applyFacts(u0);
             // Only what the card owns is replaced. Styles, booking, hours and everything else
             // the crawl learned stay exactly as they were.
             // ARTIST CHIPS ARE PEOPLE, NOT SECTION NAMES. The first card wrote section names

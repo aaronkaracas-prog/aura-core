@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.326.0-2026-09-18-look-again-after-the-index-lands";
+const BUILD = "aura-core-v9.327.0-2026-09-18-do-not-hammer-their-server";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22491,7 +22491,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // pictures. A shop with a deep gallery now costs about what a small one costs.
           // The judge is unchanged, it just runs per chunk - which also means a degenerate answer
           // costs one chunk instead of the whole shop.
-          const ENOUGH = 12, CHUNK = 12, AT_ONCE = 6;
+          // ══ DO NOT HAMMER THEIR SERVER (2026-09-18) ═══════════════════════════════════════
+          // MEASURED on Spinner Ink: ten of twenty-four pictures came back FETCH_429. Their whole
+          // site is one small WordPress host, we asked it for fourteen images inside twenty seconds
+          // six at a time, and it said no - then the retry fired instantly into the same wall and
+          // lost them for good.
+          // That is our fault, not theirs, and it will happen at every small shop in the file. Four
+          // at a time instead of six, a breath between requests, and a 429 WAITS before asking
+          // again. Slower by a few seconds per shop; the difference between twelve pictures and two.
+          const ENOUGH = 12, CHUNK = 12, AT_ONCE = 4;
+          let rateLimited = 0;
           const lookOnce = async (c) => {
             const ask = (u) => seeMedia({ url: u, model: srdVis,
               prompt: "Describe what this photograph shows, in one short sentence. " +
@@ -22506,6 +22515,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 if (/too large|TOO_BIG|3006/i.test(String(vr.error || ""))) {
                   const smaller = c.u.replace(/([,\/])w_\d{3,4}/gi, "$1w_600").replace(/([,\/])h_\d{3,4}/gi, "$1h_600");
                   vr = smaller !== c.u ? await ask(smaller) : await ask(c.u);
+                } else if (/429|rate.?limit|too many/i.test(String(vr.error || ""))) {
+                  // Their server asked us to slow down. Asking again in the same breath is not a
+                  // retry, it is the same request - so wait, then wait longer.
+                  rateLimited++;
+                  await new Promise((r) => setTimeout(r, 3000));
+                  vr = await ask(c.u);
+                  if (!vr.ok && /429|rate.?limit|too many/i.test(String(vr.error || ""))) {
+                    await new Promise((r) => setTimeout(r, 6000));
+                    vr = await ask(c.u);
+                  }
                 } else vr = await ask(c.u);
               }
               if (!vr.ok) { failed++; eyesFailures.push({ u: c.u.slice(-60), why: String(vr.error || "").slice(0, 90) }); return null; }
@@ -22575,6 +22594,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             for (let k = 0; k < slice.length; k += AT_ONCE) {
               const got = await Promise.all(slice.slice(k, k + AT_ONCE).map(lookOnce));
               for (const g of got) if (g) seenHere.push(g);
+              // A breath between batches. A shop's own server is not a CDN.
+              if (k + AT_ONCE < slice.length) await new Promise((r) => setTimeout(r, 900));
             }
             if (!seenHere.length) continue;
             const base = verdicts.length;
@@ -22593,6 +22614,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                           stopped_early: keep.size >= ENOUGH && verdicts.length < shortlist.length,
                           ...(judgeTries > 1 ? { judge_tries: judgeTries } : {}),
                           ...(eyesRetried ? { eyes_retried: eyesRetried } : {}),
+                          ...(rateLimited ? { rate_limited: rateLimited } : {}),
                           ...(eyesFailures.length ? { eyes_failed: eyesFailures } : {}),
                           // NO LIST AT ALL IS NOT THE SAME AS AN EMPTY ONE. "Fewer is better" makes
                           // `keep: []` a legitimate answer, so a judge that never answered had been

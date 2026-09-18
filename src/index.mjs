@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.296.0-2026-09-18-the-crawl-opens-the-gallery";
+const BUILD = "aura-core-v9.297.0-2026-09-18-furniture-repeats-art-does-not";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25291,12 +25291,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // existing rule keeps working on them unchanged.
         let domImages = null;
         try {
+          // ══ FURNITURE REPEATS; ARTWORK DOES NOT (2026-09-18) ═════════════════════════════
+          // First attempt asked "does this page have no images at all", and Sweet T's gallery pages
+          // failed that test - each one DOES carry eight image URLs. They are the same eight every
+          // time: a letter K, an arrow, a bird, the Instagram logo. The template's furniture, served
+          // on every page, while her tattoos live only in the DOM.
+          // So the test is not how many, it is whether any of them belong to THIS page. A picture
+          // that appears on most of the site is the site's chrome; a tattoo appears once. A work
+          // page with nothing of its own is a page whose pictures we cannot see.
+          const onPages = {};
+          for (const pg of kept_pages) {
+            for (const u of new Set([...String(pg.body || "").matchAll(new RegExp(IMG_ANY.source, "gi"))].map((m) => m[0]))) {
+              onPages[u] = (onPages[u] || 0) + 1;
+            }
+          }
           const blind = [];
           for (const pg of kept_pages) {
-            const body = String(pg.body || "");
-            if (IMG_ANY.test(body)) { IMG_ANY.lastIndex = 0; continue; }
-            IMG_ANY.lastIndex = 0;
-            if (pg.url) blind.push(pg.url);
+            if (!pg.url) continue;
+            const mine = [...new Set([...String(pg.body || "").matchAll(new RegExp(IMG_ANY.source, "gi"))].map((m) => m[0]))]
+              .filter((u) => (onPages[u] || 0) <= 2);
+            if (mine.length >= 3) continue;
+            blind.push(pg.url);
             if (blind.length >= 14) break;
           }
           if (blind.length && env.BROWSER) {

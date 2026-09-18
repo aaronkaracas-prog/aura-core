@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.310.0-2026-09-18-who-cannot-write-the-line";
+const BUILD = "aura-core-v9.311.0-2026-09-18-no-shop-holds-the-batch";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -32862,6 +32862,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const per = (Date.now() - new Date(prog.started).getTime()) / Math.max(1, prog.at);
             const left = Math.round((per * (prog.of - prog.at)) / 60000);
             eta = left > 0 ? ("about " + left + " min left") : "nearly done";
+            // AN ESTIMATE THAT GROWS IS A STALL, AND IT SHOULD SAY SO. Dividing elapsed time by
+            // shops FINISHED made a stuck shop look like a slow run - four checks in a row read
+            // "1 of 5" while the estimate climbed from 7 minutes to 22.
+            const since = Date.now() - new Date(prog.updated || prog.started).getTime();
+            if (since > 180000) eta = "no movement for " + Math.round(since / 60000) +
+              " min - the shop being read now is stuck, and the clock will drop it";
           }
           return { cmd: "PTA_CRAWL", payload: { ok: true, id, status: st?.status ?? null,
             at: prog ? (prog.at + " of " + prog.of) : null,
@@ -60102,7 +60108,19 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       for (let i = 0; i < ids.length; i++) {
         const r = await step.do("shop-" + i, async () => {
           try {
-            const x = await processCommand("CG_ENRICH " + ids[i], this.env, true);
+            // ══ NO ONE SHOP HOLDS THE BATCH (2026-09-18) ══════════════════════════════════════
+            // MEASURED: a five-shop run sat on "1 of 5" for twenty minutes. Shop two answered a
+            // HEAD - so fail-fast passed it - and then hung, and nothing above it had a clock, so
+            // one slow domain could hold a 200-shop run all night.
+            // Four minutes is already twice the slowest healthy shop measured tonight (Fremont at
+            // 242s was the outlier, and most land under 100s). A shop that cannot be read in four
+            // minutes is not a shop we are losing - it is one to come back to, and the verdict
+            // says so rather than pretending it failed.
+            const x = await Promise.race([
+              processCommand("CG_ENRICH " + ids[i], this.env, true),
+              new Promise((res) => setTimeout(() => res({ payload: { ok: false,
+                error: "TOOK_TOO_LONG", crawl_verdict: "timeout" } }), 240000)),
+            ]);
             return (x && x.payload) ? x.payload : x;
           } catch (e) {
             // ONE SHOP MUST NEVER END THE BATCH. A step that exhausts its retries takes the whole
@@ -60173,7 +60191,13 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       for (let i = 0; i < ids.length; i++) {
         const r = await step.do("read-" + i, async () => {
           try {
-            const x = await processCommand("SITE_READING " + ids[i] + " LOOK" + (write ? " WRITE" : ""), this.env, true);
+            // Reading is usually under a minute; four is the same ceiling as the crawl, and a shop
+            // whose pictures cannot be judged in that time is one to come back to.
+            const x = await Promise.race([
+              processCommand("SITE_READING " + ids[i] + " LOOK" + (write ? " WRITE" : ""), this.env, true),
+              new Promise((res) => setTimeout(() => res({ payload: { ok: false,
+                error: "TOOK_TOO_LONG" } }), 240000)),
+            ]);
             return (x && x.payload) ? x.payload : x;
           } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
         });

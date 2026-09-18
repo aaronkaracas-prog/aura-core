@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.301.0-2026-09-18-chrome-is-what-repeats";
+const BUILD = "aura-core-v9.302.0-2026-09-18-count-pages-not-copies";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22357,13 +22357,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // shortlist spent its turn on furniture before reaching any work.
           // A picture on more than two pages of a site is the site's own decoration. Judge the
           // pattern, not the pixels, and the vision calls go to work rather than to a logo.
-          const onHowManyPages = {};
-          for (const body of Object.values(bodyOf)) {
-            for (const u of new Set([...String(body || "").matchAll(IMG_RE)].map((m) => m[0]))) {
-              onHowManyPages[u] = (onHowManyPages[u] || 0) + 1;
-            }
+          // MEASURED, first attempt: `on_every_page: 213` - it cut EVERYTHING. Two mistakes, both
+          // about identity. It counted occurrences rather than distinct pages, and her pages carry
+          // each picture several times over (grid thumbnail, full size, lightbox), so one tattoo on
+          // one page counted as eleven. And it compared whole URLs, so `w_250` and `w_1200` of the
+          // same photograph were two different pictures - which also let one tattoo take two slots
+          // in the shortlist.
+          // The FILE is the identity: on these CDNs that is the media id in the path. Count the
+          // distinct page paths a file appears on, and chrome is what shows up on several of them.
+          const fileId = (u) => {
+            const s0 = String(u || "").split("?")[0];
+            const m = s0.match(/\/media\/([^/]+)/i) || s0.match(/\/([^/]+\.(?:jpe?g|png|gif|webp|avif))$/i);
+            return (m ? m[1] : s0).toLowerCase();
+          };
+          const pagesOfFile = {};
+          for (const [pth, body] of Object.entries(bodyOf)) {
+            const here = new Set([...String(body || "").matchAll(IMG_RE)].map((m) => fileId(m[0])));
+            for (const id of here) (pagesOfFile[id] = pagesOfFile[id] || new Set()).add(pth);
           }
-          const repeats = (u) => (onHowManyPages[u] || 0) > 2;
+          const repeats = (u) => ((pagesOfFile[fileId(u)] || { size: 0 }).size) > 2;
           {
             // ══ AND ROUND ROBIN THE PAGES INSIDE A SECTION (2026-09-18) ═══════════════════════
             // MEASURED on Sweet T's: 192 pictures in the archive, ONE section (she is a solo
@@ -22387,9 +22399,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                     if (cutSample.length < 12) cutSample.push({ rule: why, u: u.slice(-70) });
                     continue;
                   }
-                  if (seen.has(u)) continue;
+                  // Same file at two sizes is one picture, not two.
+                  const id = fileId(u);
+                  if (seen.has(id)) continue;
                   // The eyes look at what the page will link, so ask for the big one HERE, once.
-                  seen.add(u); mine.push({ u: askBigger(u), page: pth, section: sec.name });
+                  seen.add(id); mine.push({ u: askBigger(u), page: pth, section: sec.name });
                   if (mine.length >= PER_SECTION) break;
                 }
                 if (mine.length) byPage.push(mine);

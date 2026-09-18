@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.294.0-2026-09-18-look-in-the-dom-not-the-text";
+const BUILD = "aura-core-v9.295.0-2026-09-18-judge-the-picture-not-the-url";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24349,7 +24349,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const out = [];
             const push = (u, w, h, how) => {
               if (!u || /^data:/i.test(u)) return;
-              try { u = new URL(u, document.baseURI).href; } catch { return; }
+              // MEASURED: icons came back as `https://site.com/gallery/quality_auto/x.png` - a
+              // fragment of a CDN path resolved against the page. If it does not start as a real
+              // URL or a proper root/relative path, it is a fragment, not an address.
+              const raw = String(u).trim();
+              if (!/^(https?:)?\/\//i.test(raw) && !/^\//.test(raw) && !/^\.{1,2}\//.test(raw)) return;
+              try { u = new URL(raw, document.baseURI).href; } catch { return; }
+              if (!/^https?:\/\//i.test(u)) return;
               out.push({ u, w: w || 0, h: h || 0, how });
             };
             for (const im of document.querySelectorAll("img")) {
@@ -24374,11 +24380,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             }
             return out;
           });
+          // ══ NOW THE SIZE IS THE PICTURE'S OWN (2026-09-18) ═══════════════════════════════
+          // Every argument about `w_250` was an argument about a URL. The DOM hands us
+          // naturalWidth and naturalHeight, so furniture can be cut for being small - 68x68 and
+          // 57x57 on this page were the icons - while a 250px GRID THUMBNAIL of a 2048px
+          // photograph is kept and asked for at full size. Judge the picture, not the address.
+          const SMALL = 120;
           const seen = new Set(); const images = [];
           for (const f of found) {
-            if (seen.has(f.u)) continue;
-            seen.add(f.u);
-            images.push({ ...f, cut: chromeRule(f.u, "") || null });
+            const u = askBigger(f.u);
+            if (seen.has(u)) continue;
+            seen.add(u);
+            const small = (f.w && f.w < SMALL) || (f.h && f.h < SMALL);
+            images.push({ ...f, u, cut: small ? "small" : (chromeRule(u, "") || null) });
           }
           const kept = images.filter((x) => !x.cut);
           return { cmd: "SITE_IMAGES", payload: { ok: true, url: siUrl, final_url: page.url(),

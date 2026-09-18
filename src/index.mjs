@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.304.0-2026-09-18-each-picture-once";
+const BUILD = "aura-core-v9.305.0-2026-09-18-the-judge-gets-a-second-ask";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -21971,7 +21971,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // WRITE turns the read into the writer. Same code path, one writer - a second command
       // would mean two programs deciding what goes on a page, which is the disease this whole
       // day has been about. Without it nothing is written, exactly as before.
-      const srdWrite = /(^|\s)WRITE(\s|$)/i.test(srdRaw);
+      let srdWrite = /(^|\s)WRITE(\s|$)/i.test(srdRaw);
       srdRaw = srdRaw.replace(/(^|\s)WRITE(\s|$)/i, " ").trim();
       // LOOK actually downloads the pictures and shows them to a vision model. Nothing in this
       // system has ever done that - nine deploys, every one asking a question about a FILENAME.
@@ -22482,9 +22482,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // are both plausible on a tattoo site until you read what is in them.
           const bySecAll = {};
           for (const v of verdicts) (bySecAll[v.section] = bySecAll[v.section] || []).push(v.saw);
+          // ══ AND THE JUDGE GETS A SECOND ASK TOO (2026-09-18) ═══════════════════════════════
+          // MEASURED: the eyes finally described Groot, Thanos, Iron Man and the chest piece - her
+          // real portfolio reaching the judge for the first time - and the judge answered with a
+          // wall of exclamation marks. Every picture read as a drop, because there was no answer at
+          // all. The retry built earlier covered the map call and the eyes and MISSED this one, and
+          // this is the single call where a degenerate reply wipes out a whole shop's grid.
           let keep = new Set();
+          let judgeTries = 0;
           if (verdicts.length) {
-            const kr = await callBrain({
+            const askJudge = async () => await callBrain({
               system:
                 "Someone looked at each photograph on a business's website and wrote down what " +
                 "it shows. Below are those descriptions, numbered.\n\n" +
@@ -22509,6 +22516,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               // drop. Third time tonight that a budget sized for a non-reasoning model looked like
               // a model being wrong.
               max_tokens: 2000 }, env);
+            let kr = null;
+            for (judgeTries = 1; judgeTries <= 2; judgeTries++) {
+              kr = await askJudge();
+              const t = String(kr?.text || "").trim();
+              const degenerate = /^(.)\1{40,}$/.test(t.replace(/\s+/g, ""));
+              if (kr?.ok && t && !degenerate) break;
+              if (judgeTries === 1) console.log("[SITE_READING] judge unreadable - asking again");
+            }
             if (kr?.ok) {
               let kj = kr.text;
               if (typeof kj === "string") { try { kj = JSON.parse(kj); } catch { kj = repairJson(kj); } }
@@ -22520,6 +22535,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                           megabytes: Math.round(bytes / 10485.76) / 100,
                           seconds: Math.round((Date.now() - t1) / 100) / 10,
                           chose: keep.size, judge: kr.model, usage: kr.usage,
+                          ...(judgeTries > 1 ? { judge_tries: judgeTries } : {}),
                           ...(eyesRetried ? { eyes_retried: eyesRetried } : {}),
                           ...(eyesFailures.length ? { eyes_failed: eyesFailures } : {}),
                           // NO LIST AT ALL IS NOT THE SAME AS AN EMPTY ONE. "Fewer is better" makes
@@ -22603,6 +22619,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
 
         let wrote = null;
+        // A JUDGE THAT NEVER ANSWERED IS NOT A SHOP WITH NO WORK. Publishing an empty grid over a
+        // good one turns one bad reply into a page that has lost its pictures - and across a batch
+        // nobody would know which shops it happened to. If the judge could not be read, the card
+        // that is already live stays live.
+        if (srdWrite && !card.length && cardWhy?.judge_unread) {
+          srdWrite = false;
+          if (cardWhy) cardWhy.kept_previous_card = "the judge could not be read - nothing was overwritten";
+        }
         if (srdWrite && card.length) {
           try {
             const prev = await env.AURA_MEMORY.prepare(

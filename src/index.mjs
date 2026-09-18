@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.312.0-2026-09-18-the-card-is-the-marker";
+const BUILD = "aura-core-v9.313.0-2026-09-18-sections-is-the-marker";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24708,16 +24708,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const st2 = beArgs.slice(1, -1).join(" ") || beArgs[1] || "";
           const lim2 = Math.min(Number(beArgs[beArgs.length - 1]) || 50, 500);
           const rows2 = (await env.AURA_MEMORY.prepare(
-            // ══ THE CARD IS THE MARKER, NOT THE COLUMN (2026-09-18) ═══════════════════════════
-            // `CG_ENRICH_BATCH READ STATE NV 10` returned ZERO shops. The resume clause asked for
-            // `understanding IS NULL`, but the CRAWL already writes that column - artists, styles,
-            // booking - so every crawled shop looked done and the read stage could never pick one
-            // up. The thing that means "this shop has been read" is the CARD, and only the read
-            // stage writes `images` into it.
+            // ══ `sections` IS THE MARKER (2026-09-18) ═════════════════════════════════════════
+            // Two wrong answers before this one. `understanding IS NULL` excluded everything,
+            // because the CRAWL writes that column too - artists, styles, booking. Then `images`,
+            // which was no better: MEASURED in D1, all 192 Nevada shops with verdict `ok` already
+            // carry an `images` key, because the crawl writes its own image proposal there.
+            // Only the read stage writes `sections` - it is built from the card itself, one entry
+            // per artist or gallery - so that is what "this shop has been read" actually looks like.
+            // The lesson both times: ask the database what is stored, do not reason about it.
             cgMode === "read"
               ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
                 "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
-                "AND (understanding IS NULL OR understanding NOT LIKE '%\"images\"%') LIMIT ?"
+                "AND (understanding IS NULL OR understanding NOT LIKE '%\"sections\"%') LIMIT ?"
               : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
                 "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL LIMIT ?")
             .bind(String(st2).toLowerCase(), lim2).all())?.results || [];
@@ -24734,7 +24736,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             cgMode === "read"
               ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
                 "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
-                "AND (understanding IS NULL OR understanding NOT LIKE '%\"images\"%') LIMIT ?"
+                "AND (understanding IS NULL OR understanding NOT LIKE '%\"sections\"%') LIMIT ?"
               : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
                 "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL LIMIT ?")
             .bind(String(city).toLowerCase(), lim).all())?.results || [];

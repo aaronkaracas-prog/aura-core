@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.297.0-2026-09-18-furniture-repeats-art-does-not";
+const BUILD = "aura-core-v9.298.0-2026-09-18-put-them-on-the-right-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25321,7 +25321,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               const p = (r && r.payload) ? r.payload : r;
               const got = (p?.ok && Array.isArray(p.images)) ? p.images.map((x) => x.u) : [];
               if (got.length) {
-                md += "\n\n---\n\n## " + u + "\n\n" + got.map((x) => "![](" + x + ")").join("\n");
+                // ══ ON THE PAGE THEY CAME FROM (2026-09-18) ═══════════════════════════════════
+                // MEASURED: 13 pages opened, 101 pictures found, and the reading still saw the same
+                // eight icons. The archive is split on `\n\n---\n\n` and each block's path comes
+                // from its `<!--PAGE url -->` marker; my blocks had no marker, so 101 tattoos
+                // parsed as thirteen extra pages all keyed to "/" - visible in `page_types` as
+                // thirteen `{"url":"/"}` rows - and belonged to nothing.
+                // With the marker they land on /gallery/realism and the rest, and every rule that
+                // already works on text works on them unchanged.
+                md += "\n\n---\n\n<!--PAGE " + u + " -->\n## " + u +
+                      "\n\n" + got.map((x) => "![](" + x + ")").join("\n");
                 added += got.length;
                 perPage.push({ page: String(u).replace(/^https?:\/\/[^/]+/, ""), images: got.length });
               }

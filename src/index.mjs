@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.325.0-2026-09-18-a-jpeg-is-not-a-page";
+const BUILD = "aura-core-v9.326.0-2026-09-18-look-again-after-the-index-lands";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25785,7 +25785,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // artists are the reason for this whole step; a policy page is a bonus.
           const ASSET = /\.(jpe?g|png|gif|webp|avif|svg|ico|bmp|tiff?|pdf|mp4|mov|webm|zip|gz|css|js|json|xml)(\?|$)/i;
           const UPLOADS = /\/(wp-content\/uploads|uploads|assets|static|media|files)\//i;
-          const NOT_WORK_PATH = /\/(aftercare|promo|events?|news|blog|posts?|privacy|terms|cart|checkout|account|login)(\/|$)/i;
+          // Aftercare, terms and privacy are never portfolio pages, whatever their link text says -
+          // and a nav link whose text matches its own path ("Aftercare" -> /aftercare) was reaching
+          // the people queue and spending a slot. The rule has to sit in front of BOTH queues.
+          const NEVER_FETCH = /\/(aftercare|after-care|care|promo|promos|promotions|events?|news|blog|posts?|privacy|privacy-policy|terms|terms-conditions|conditions|policy|policies|cart|checkout|account|login|register|shop|store|gift|faq|contact|contact-us)(\/|$)/i;
           const people = [], places = [];
           for (const L of [...linked, ...bare]) {
             let host1 = null;
@@ -25794,9 +25797,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const clean = L.u.replace(/\/$/, "");
             if (ASSET.test(clean) || UPLOADS.test(clean)) continue;
             if (have.has(clean)) continue;
+            if (NEVER_FETCH.test(clean)) continue;
             const isPerson = looksLikePerson(clean, L.anchor) || anchorIsItsOwnPath(clean, L.anchor);
             if (isPerson) { if (!people.includes(clean)) people.push(clean); continue; }
-            if (NOT_WORK_PATH.test(clean)) continue;
             if (WORKISH.test(clean) && !places.includes(clean)) places.push(clean);
           }
           const wanted = [...people, ...places].slice(0, 10);
@@ -25824,6 +25827,48 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               }));
             }
             if (added) refreshPool();
+
+            // ══ LOOK AGAIN AFTER THE INDEX LANDS (2026-09-18) ══════════════════════════════════
+            // MEASURED on Spinner Ink, twice: the artist links live ON /portfolio, and /portfolio is
+            // fetched in THIS pass - so when the list was built, `[VICKI](/vicki/)` was not in the
+            // archive yet and could not be wanted. One pass can only ever reach pages the homepage
+            // links to; a portfolio index that lists its artists is two levels down, which is the
+            // ordinary shape of a shop with a roster.
+            // So look once more, now that those pages are in `md`. Two rounds is the whole depth
+            // this needs: home -> index -> person.
+            if (added) {
+              const round2 = [];
+              for (const m2 of md.matchAll(/\[([^\]]{0,80})\]\((https?:\/\/[^)\s]+)\)/g)) {
+                const u2 = m2[2].replace(/[).,]+$/, "").replace(/\/$/, "");
+                let h2 = null;
+                try { h2 = new URL(u2).hostname.replace(/^www\./, ""); } catch { continue; }
+                if (h2 !== host0) continue;
+                if (ASSET.test(u2) || UPLOADS.test(u2) || NEVER_FETCH.test(u2)) continue;
+                if (have.has(u2) || wanted.includes(u2) || got.includes(u2.replace(/^https?:\/\/[^/]+/, "")) || round2.includes(u2)) continue;
+                if (looksLikePerson(u2, m2[1]) || anchorIsItsOwnPath(u2, m2[1])) round2.push(u2);
+                if (round2.length >= 10) break;
+              }
+              if (round2.length) {
+                const jobs2 = [];
+                for (const u of round2) {
+                  const one = await processCommand("SITE_READ JSON DEPTH 1 LIMIT 1 " + u, env, true);
+                  const op = (one && one.payload) ? one.payload : one;
+                  if (op?.ok && op.id) jobs2.push({ u, id: op.id });
+                }
+                for (let t = 0; t < 10 && jobs2.some(j => !j.done); t++) {
+                  await new Promise(r => setTimeout(r, 2500));
+                  await Promise.all(jobs2.filter(j => !j.done).map(async (j) => {
+                    const stx = await processCommand("SITE_READ STATUS " + j.id, env, true);
+                    const sx = (stx && stx.payload) ? stx.payload : stx;
+                    if (sx?.status && sx.status !== "running") {
+                      j.done = true;
+                      if (sx.markdown) { md += "\n\n---\n\n" + sx.markdown; added++; got.push(j.u.replace(/^https?:\/\/[^/]+/, "")); }
+                    }
+                  }));
+                }
+                refreshPool();
+              }
+            }
             missedWork = { looked_for: wanted.length, fetched: added, pages: got };
           }
         } catch (e) { missedWork = { error: String(e?.message ?? e).slice(0, 140) }; }

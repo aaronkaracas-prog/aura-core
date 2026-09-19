@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.337.0-2026-09-18-ten-lanes-is-a-hundred-browsers";
+const BUILD = "aura-core-v9.338.0-2026-09-19-photo-reaches-the-conversation";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -27725,7 +27725,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const hasApex = routes.some(x => x.script === TARGET && x.pattern === z.name + "/*");
           const hasWww = routes.some(x => x.script === TARGET && x.pattern === "www." + z.name + "/*");
           const right = hasApex && hasWww;
-          rows.push({ zone: z.name, routes: routes.map(x => x.pattern + " -> " + (x.script || "(none)")),
+          // One domain: say what resolves too, so STATUS shows a routed-but-unresolvable domain.
+          let dnsNow;
+          if (drOne) {
+            const dq = await cf("GET", "/zones/" + z.id + "/dns_records?per_page=100");
+            dnsNow = dq.ok ? (dq.result || []).filter(r => r.type === "A" || r.type === "AAAA" || r.type === "CNAME")
+              .map(r => r.name + " " + r.type + (r.proxied ? " proxied" : "")) : "could not read";
+          }
+          rows.push({ zone: z.name, ...(drOne ? { dns: dnsNow } : {}),
+                      routes: routes.map(x => x.pattern + " -> " + (x.script || "(none)")),
                       serves_correctly: right, wrong_target: wrong.length || undefined });
 
           if (!drConfirm || drStatusOnly) continue;
@@ -27742,10 +27750,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             else failed.push({ zone: z.name, pattern,
               error: (c.errors[0] && c.errors[0].message) || ("http " + c.status) });
           }
-          if (made.length || wrong.length) {
+          // ══ A ROUTE WITH NO RECORD SERVES NOTHING (2026-09-19) ═════════════════════════════
+          // MEASURED on tattooartist.world and shareyourink.world straight after SPACESHIP_SYNC_ALL:
+          // zone present, zero DNS records, live fetch 530. A brand-new zone has no records, and a
+          // Worker route only fires on a hostname that resolves through the proxy - so this command
+          // could report a domain fixed while it still could not load. launchDomain's step 2b
+          // already knew this for the apex; this covers the apex AND www, because the route above
+          // creates both. Only where no A/AAAA/CNAME exists - an existing record is never touched.
+          const dnsMade = [];
+          const dr = await cf("GET", "/zones/" + z.id + "/dns_records?per_page=100");
+          if (!dr.ok) {
+            failed.push({ zone: z.name, error: "could not read DNS records: " +
+              ((dr.errors[0] && dr.errors[0].message) || ("http " + dr.status)) });
+          } else {
+            for (const hostName of [z.name, "www." + z.name]) {
+              const hasRec = (dr.result || []).some(r => r.name === hostName &&
+                (r.type === "A" || r.type === "AAAA" || r.type === "CNAME"));
+              if (hasRec) continue;
+              // A proxied A to the documentation address: the aura-host route intercepts before any
+              // origin is contacted, which is the same record launchDomain has always written.
+              const c = await cf("POST", "/zones/" + z.id + "/dns_records",
+                { type: "A", name: hostName, content: "192.0.2.1", proxied: true, ttl: 1 });
+              if (c.ok) dnsMade.push(hostName);
+              else failed.push({ zone: z.name, dns: hostName,
+                error: (c.errors[0] && c.errors[0].message) || ("http " + c.status) });
+            }
+          }
+          if (made.length || wrong.length || dnsMade.length) {
             changed++;
             fixed.push({ zone: z.name, added: made.length ? made : undefined,
-              removed: wrong.length || undefined, now: "-> " + TARGET });
+              removed: wrong.length || undefined,
+              dns_added: dnsMade.length ? dnsMade : undefined, now: "-> " + TARGET });
           }
         }
 
@@ -64224,8 +64259,34 @@ export class PublicEntry extends WorkerEntrypoint {
         // path customers are about to stand on. A streamed reply returns its Response in
         // milliseconds and finishes on the wire, so the ceiling stops applying to how long she
         // takes. The speed fix and the cliff fix are one change.
+        // ══ THE PHOTO REACHES THE CONVERSATION (2026-09-19) ══════════════════════════════════
+        // Every mytattoo test starts `TALK <pta> REF <photo> ::: this is my current tattoo`, and
+        // inside auraTalk a photograph only ever arrives as `opts.ref`. This door passed `from` and
+        // `world` and nothing else, so the add / change / cover chain that was proven from
+        // PowerShell could not be started by a person on a page - there was no way to hand her
+        // their arm. Now the page sends `photo` (a data URI) or `ref` (an https URL) and it goes in
+        // exactly as REF does. auraTalk is not touched: page and terminal run the identical chain.
+        // STORED THE WAY `import` STORES IT, with the ON ME lifetime: IMAGE IMPORT inside auraTalk
+        // copies the bytes into its own store, so this temporary key only has to outlive the turn.
+        let _ref = null;
+        const _refIn = String(b.ref || "").trim();
+        const _photoIn = String(b.photo || "").trim();
+        if (/^https:\/\//i.test(_refIn)) _ref = _refIn;
+        else if (/^data:image\//i.test(_photoIn)) {
+          const _b64 = _photoIn.replace(/^data:[^,]+,/, "");
+          // Same ceiling ON ME and PORTFOLIO ADD use - base64 is 4/3 of the bytes.
+          if (_b64.length * 0.75 > 6 * 1024 * 1024) return { ok: false, error: "TOO_BIG",
+            say: "That photo is over six megabytes. A normal phone picture is well under it." };
+          const _tmp = "img_t" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
+            .map(x => x.toString(16).padStart(2, "0")).join("");
+          await env.AURA_KV.put("image:" + _tmp, _b64, { expirationTtl: 2 * 3600 });
+          _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
+        }
         if (!b.stream) {
-          return await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world });
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref });
+          // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
+          // lost the picture is visible in the output rather than looking like her judgement.
+          return (_ref && _o && typeof _o === "object") ? { ..._o, ref: _ref } : _o;
         }
         const { readable, writable } = new TransformStream();
         const _w = writable.getWriter();
@@ -64239,7 +64300,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world,
+              from: b.from || null, world, ref: _ref,
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
             });
           } catch (e) {
@@ -64248,6 +64309,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // THE FINAL FRAME IS THE CONTRACT. The deltas are her sentence and nothing else; every
           // field the page acts on - intent, brief, ready_to_draw, show_me, the drawn image - rides
           // here, so a page that missed every delta still behaves exactly as it does today.
+          if (_ref && out && typeof out === "object") out = { ...out, ref: _ref };
           await _send("event: final\ndata: " + JSON.stringify(out || { ok: false }) + "\n\n");
           try { await _w.close(); } catch { /* already closed */ }
         })();

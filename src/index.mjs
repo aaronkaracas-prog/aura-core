@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.336.0-2026-09-18-slower-and-say-what-happened";
+const BUILD = "aura-core-v9.337.0-2026-09-18-ten-lanes-is-a-hundred-browsers";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25312,7 +25312,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (!ceDry) await setVerdict(/disallow|robots|purpose/i.test(
             JSON.stringify(sp?.detail || sp?.error || "")) ? "refused" : "unreachable");
         }
+        // The verdict IS written above - this payload just never carried it, so the batch counted
+        // a correctly-recorded unreachable shop as an unexplained error.
         if (!sp?.ok || !sp.id) return { cmd: "CG_ENRICH", payload: { ok: false, error: "CRAWL_NOT_STARTED",
+          crawl_verdict: /disallow|robots|purpose/i.test(JSON.stringify(sp?.detail || sp?.error || "")) ? "refused" : "unreachable",
           reason: sp?.error || null,
           api_said: sp?.detail ? JSON.stringify(sp.detail).slice(0, 400) : null,
           asked_for: { url: site, limit: 45 },
@@ -25925,7 +25928,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             if (isPerson) { if (!people.includes(clean)) people.push(clean); continue; }
             if (WORKISH.test(clean) && !places.includes(clean)) places.push(clean);
           }
-          const wanted = [...people, ...places].slice(0, 10);
+          // ══ TEN LANES IS A HUNDRED BROWSERS (2026-09-18) ══════════════════════════════════
+          // MEASURED: EIGHTY-NINE of 500 California shops timed out, up from eight in the previous
+          // run - and the leash had just been made LONGER. Slower lanes did not cause it; this did.
+          // Every shop now opens its own crawl, then up to ten more browser jobs for work pages,
+          // then up to ten more in round two. Ten lanes x twenty jobs is two hundred browsers
+          // against a pool of a hundred and twenty, so shops queue behind each other and run out
+          // the clock. The extra pages were built and proven on ONE shop at a time, where there was
+          // no queue to join.
+          // Six is enough to reach a roster - Spinner Ink's six artists fit exactly - and keeps a
+          // ten-lane batch inside the pool.
+          const wanted = [...people, ...places].slice(0, 6);
           if (wanted.length) {
             // MEASURED: fetching these one at a time took Mantle's crawl from 83 seconds to 267 -
             // past the 150-second leash, so in a batch it would have been killed for being slow at
@@ -25969,7 +25982,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 if (ASSET.test(u2) || UPLOADS.test(u2) || NEVER_FETCH.test(u2)) continue;
                 if (have.has(u2) || wanted.includes(u2) || got.includes(u2.replace(/^https?:\/\/[^/]+/, "")) || round2.includes(u2)) continue;
                 if (looksLikePerson(u2, m2[1]) || anchorIsItsOwnPath(u2, m2[1])) round2.push(u2);
-                if (round2.length >= 10) break;
+                if (round2.length >= 6) break;
               }
               if (round2.length) {
                 const jobs2 = [];
@@ -60786,7 +60799,13 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
           } else if (r?.ok) done++;
           else { failed++; byVerdict.error = (byVerdict.error || 0) + 1;
                  if (trouble.length < 60) trouble.push({ id: ids[i], name: r?.business || null, site: r?.site || null, why: r?.error || "unknown" }); }
-          await mark(pkey, { mode: "enrich", at: i + 1, of: ids.length, started: startedAt,
+          // MEASURED: "KV PUT failed: 429 Too Many Requests" after 498 writes - one per shop, plus
+          // a trouble line. KV's write limit is per key per second and a long batch walks straight
+          // into it, which loses the status line for the rest of the run. Every tenth shop, the
+          // first, and the last: the line a human reads does not need to be perfect, it needs to
+          // exist for the whole run.
+          const sayNow = (i === 0) || ((i + 1) % 10 === 0) || (i + 1 === ids.length);
+          if (sayNow) await mark(pkey, { mode: "enrich", at: i + 1, of: ids.length, started: startedAt,
             last: { name: r?.business || ids[i],
                     verdict: verdict || (r?.ok ? "ok" : (r?.error || "failed")),
                     pages: r?.pages ?? null, emails: r?.extracted?.emails ?? null },

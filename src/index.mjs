@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.338.0-2026-09-19-photo-reaches-the-conversation";
+const BUILD = "aura-core-v9.339.0-2026-09-19-a-visitor-reaches-her-agent";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -533,10 +533,31 @@ async function callBrain({ system, user, messages = null, max_tokens = 2000, mod
       msgs.push({ role: "user", content: String(user || "") });
     }
     try {
-      const rr = image
-        ? await env.AI.run(route.model, { max_tokens: cap, image: String(image),
-            prompt: msgs.map((m) => m.content).filter(Boolean).join("\n\n") })
-        : await env.AI.run(route.model, { max_tokens: cap, messages: msgs,
+      // ══ A PICTURE IS SEEN BY THE EYES, NOT PASTED INTO A TEXT MODEL (2026-09-19) ════════
+      // MEASURED on a photo turn through the page: `said` came back as the model's entire internal
+      // reasoning, down to "assistantfinal", starting with a stray word continued from the prompt.
+      // This branch sent `image` as a URL plus the whole conversation flattened into one `prompt`
+      // string to the pinned brain - a chat model that cannot see, run in raw completion mode.
+      // So it was blind AND unformatted. Now the picture goes through `seeMedia`, the one reader
+      // for "what is in this picture" (its own dial, bytes not links), what the eyes saw rides on
+      // the last user message as text, and the brain runs in normal chat mode like every other
+      // call. If the eyes cannot see it, that is said in the same place rather than hidden.
+      if (image) {
+        let _saw = null, _why = null;
+        try {
+          const _seen = await seeMedia({ url: String(image), prompt: "Describe what this photograph shows.",
+            max_tokens: 300 }, env);
+          if (_seen && _seen.ok && _seen.saw) _saw = String(_seen.saw).trim();
+          else _why = (_seen && _seen.error) || "no answer";
+        } catch (e) { _why = String(e?.message ?? e).slice(0, 120); }
+        const _note = _saw
+          ? "\n\n[The photograph attached to this message, as your eyes describe it: " + _saw + "]"
+          : "\n\n[A photograph was attached to this message and could not be seen (" + _why + ").]";
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === "user") { msgs[i] = { ...msgs[i], content: msgs[i].content + _note }; break; }
+        }
+      }
+      const rr = await env.AI.run(route.model, { max_tokens: cap, messages: msgs,
             ...(temperature != null ? { temperature } : {}) });
       const text = aiText(rr);
       if (!text) return { ok: false, error: "the binding returned nothing readable", provider: route.provider, model: route.model };
@@ -21980,7 +22001,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const srdLook = /(^|\s)LOOK(\s|$)/i.test(srdRaw);
       srdRaw = srdRaw.replace(/(^|\s)LOOK(\s|$)/i, " ").trim();
       const srdVisM = srdRaw.match(/(^|\s)EYES\s+(\S+)/i);
-      const srdVis = srdVisM ? srdVisM[2] : "@cf/llava-hf/llava-1.5-7b-hf";
+      // The default is the eyes DIAL, not a model name written into this handler (2026-09-19).
+      // `EYES <model>` on the command line still overrides it for a bake-off.
+      const srdVis = srdVisM ? srdVisM[2]
+        : String((await env.AURA_KV.get("config:source:eyes:model").catch(() => null)) ||
+                 (await env.AURA_KV.get("config:eyes:model").catch(() => null)) || DEFAULT_EYES).trim();
       srdRaw = srdRaw.replace(/(^|\s)EYES\s+\S+/i, " ").trim();
       const srdModelM = srdRaw.match(/(^|\s)MODEL\s+(\S+)/i);
       // ══ THE POLICY SAID NEURONS FIRST, THEN GROK. NEURONS ARE NOW MEASURED ════════════
@@ -45862,6 +45887,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       report.verdict = report.kv_page_chars && report.live?.chars && Math.abs(report.kv_page_chars - report.live.chars) < 300
         ? "SERVING_FROM_KV_OK"
         : (report.live?.status === 530 && apexDns.length === 0 ? "NO_DNS_RECORD_530"
+        // Routed to aura-host, resolvable, and no page written yet: correct plumbing, nothing to
+        // show. This used to fall through to MISMATCH and read like a routing fault (2026-09-19).
+        : ((report.zone_routes || []).some(r => r.script === "aura-host" && r.pattern === dDomain + "/*") &&
+           apexDns.length > 0 && !report.kv_page_chars && report.live?.status === 404) ? "ROUTED_NO_PAGE_YET"
         : (report.custom_domains?.length ? "CUSTOM_DOMAIN_LIKELY_OVERRIDING_ROUTES" : "MISMATCH_CAUSE_IN_ROUTES_OR_DNS"));
       return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: true, ...report } };
     }
@@ -56429,7 +56458,11 @@ async function seeMedia(opts, env) {
   const prompt = String(o.prompt || "Describe what this photograph shows, in one short sentence.");
   const cap = Math.max(16, Math.min(1024, Number(o.max_tokens) || 60));
   try {
-    const model = String(o.model || (await env.AURA_KV.get("config:eyes:model").catch(() => null)) || DEFAULT_EYES).trim();
+    // THE DIAL FOLLOWS THE CONVENTION (2026-09-19): `config:source:eyes:model`, which AIMARGIN's pin
+    // scanner lists. The old `config:eyes:model` sat outside it - an invisible lever - and is still
+    // read second so nothing already set stops working.
+    const model = String(o.model || (await env.AURA_KV.get("config:source:eyes:model").catch(() => null)) ||
+      (await env.AURA_KV.get("config:eyes:model").catch(() => null)) || DEFAULT_EYES).trim();
 
     // ══ NEVER FETCH OUR OWN DOMAIN FROM INSIDE THE WORKER (fixed 2026-08-24) ═══════════════
     // MEASURED: `FETCH_522` after 19.6 seconds on `auras.guide/image/<id>`. Once auras.guide was
@@ -56614,7 +56647,7 @@ async function seeMedia(opts, env) {
     // Anything else is a model nobody has wired yet. Say so rather than quietly returning nothing -
     // a silent blind spot is how "she cannot see" went unnoticed for weeks.
     return { ok: false, error: "NO_EYES_FOR_MODEL", model, ms: Date.now() - t0,
-      what_to_do: "Only @cf/* (Workers AI) and claude* are wired. Set config:eyes:model to one of those." };
+      what_to_do: "Only @cf/* (Workers AI) and claude* are wired. Set config:source:eyes:model to one of those." };
   } catch (e) {
     return { ok: false, error: String((e && e.message) || e).slice(0, 200), ms: Date.now() - t0 };
   }
@@ -62190,7 +62223,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // Which rung answered, carried out of the block below so the extractor can see it. Null on the
       // local floor, which is correct - the floor is a model call and may well have read something.
       let proxied_rung = null;
-      if (me && stage === "pta") {
+      // ══ A VISITOR REACHES HER AGENT, NOT ONLY A PTA (2026-09-19) ═════════════════════════
+      // MEASURED through the real page door (hello -> talk, forest photo): `via: "local"`,
+      // `agent: 0`. This read `stage === "pta"`, and every mytattoo test created its person with
+      // PTA_CREATE - so every proof ran through aura-think while every real visitor, who arrives
+      // from `hello` as a lead, fell to the local floor. Same chain in the tests, a different one
+      // on the page. agentInstanceFor already gives any identity its own instance, and the three
+      // other agent calls in this function were only ever gated on `me`. What stays PTA-only is
+      // everything that WRITES a person's chain - a lead has no chain until they say who they are.
+      if (me) {
         try {
           const proxied = await proxyToAgent(env, agentLine,
             false, me, seeing ? refUrl : null, world, _fwdDelta);

@@ -84,6 +84,17 @@ service = "aura-media"
 binding = "AURA_STREAM"
 service = "aura-stream"
 
+# ── ONE SHOP, ONE INVOCATION (2026-09-20) ─────────────────────────────────────────────────────────
+# aura-core calling itself, at the CrawlLane entrypoint. A crawl batch ran ten shops inside ONE
+# invocation, so they shared one CPU budget: one heavy site used it up and all ten were killed, the
+# innocent nine with it. Through this binding every shop runs as its own invocation with its own
+# budget - Cloudflare's own answer to "exceeded CPU time limit" is to split work across invocations.
+# A named entrypoint is not reachable from the internet; only a binding like this one can call it.
+[[services]]
+binding = "CRAWL_LANE"
+service = "aura-core-v2"
+entrypoint = "CrawlLane"
+
 [[durable_objects.bindings]]
 name = "ENTITY_DO"
 class_name = "EntityDO"
@@ -349,3 +360,6 @@ head_sampling_rate = 1
 # Cloudflare killed the ten shops beside them each time, until the whole California batch stopped.
 [limits]
 cpu_ms = 300000
+# A workflow run may make 10,000 outside calls by default (fetch, KV, D1, R2). A 500-shop batch makes
+# far more than that, so the ceiling is raised; the documented maximum is ten million.
+subrequests = 1000000

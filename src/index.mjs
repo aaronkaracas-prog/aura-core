@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.345.0-2026-09-20-where-it-landed-not-where-it-started";
+const BUILD = "aura-core-v9.346.0-2026-09-20-one-shop-one-invocation";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60938,7 +60938,9 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
               // minutes is not a shop we are losing - it is one to come back to, and the verdict
               // says so rather than pretending it failed.
               const x = await Promise.race([
-                processCommand("CG_ENRICH " + id2, this.env, true),
+                // Its own invocation through the lane when the binding exists; in-process otherwise.
+                this.env.CRAWL_LANE ? this.env.CRAWL_LANE.enrich(id2).then((p) => ({ payload: p }))
+                                    : processCommand("CG_ENRICH " + id2, this.env, true),
                 new Promise((res) => setTimeout(() => res({ payload: { ok: false,
                   // 240s. MEASURED on California's first 365: TWENTY-TWO shops hit the old
                   // 150-second ceiling and were written off. A shop that takes three minutes is
@@ -60952,7 +60954,8 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
               // page comes out empty, and the resume query then skips it forever.
               if (p2 && !p2.ok && /429|rate limit|too many requests/i.test(String(p2.error || ""))) {
                 await new Promise((r) => setTimeout(r, 15000 + Math.floor(Math.random() * 10000)));
-                const again = await processCommand("CG_ENRICH " + id2, this.env, true);
+                const again = this.env.CRAWL_LANE ? { payload: await this.env.CRAWL_LANE.enrich(id2) }
+                                                  : await processCommand("CG_ENRICH " + id2, this.env, true);
                 p2 = (again && again.payload) ? again.payload : again;
               }
               // A TIMEOUT THAT IS NOT WRITTEN IS PAID FOR AGAIN EVERY RUN. The resume query asks
@@ -60973,12 +60976,18 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
               return { ok: false, error: String(e?.message ?? e).slice(0, 160) };
             }
           }).catch(async (e) => {
+            // A FAILED SHOP GOES BACK IN THE QUEUE ONCE (2026-09-20). It may have been the victim of
+            // a neighbour, not the cause. Only a second failure, in a later batch, writes it off.
+            let n = 0;
             try {
-              await this.env.AURA_MEMORY.prepare(
+              n = (Number(await this.env.AURA_KV.get("crawl:fail:" + id2)) || 0) + 1;
+              await this.env.AURA_KV.put("crawl:fail:" + id2, String(n), { expirationTtl: 30 * 86400 });
+              if (n >= 2) await this.env.AURA_MEMORY.prepare(
                 "UPDATE cg_business SET crawl_verdict = 'error', crawled_at = ? WHERE id = ?")
                 .bind(new Date().toISOString(), id2).run();
             } catch {}
-            return { ok: false, error: "STEP_FAILED: " + String(e?.message ?? e).slice(0, 140) };
+            return { ok: false, error: "STEP_FAILED" + (n >= 2 ? " (second time - written off)" : " (back in the queue)") +
+              ": " + String(e?.message ?? e).slice(0, 120) };
           });
         }));
         for (let gi = 0; gi < group.length; gi++) {
@@ -61076,7 +61085,8 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
             // Reading is usually under a minute; four is the same ceiling as the crawl, and a shop
             // whose pictures cannot be judged in that time is one to come back to.
             const x = await Promise.race([
-              processCommand("SITE_READING " + id2 + " LOOK" + (write ? " WRITE" : ""), this.env, true),
+              this.env.CRAWL_LANE ? this.env.CRAWL_LANE.read(id2, write).then((p) => ({ payload: p }))
+                                  : processCommand("SITE_READING " + id2 + " LOOK" + (write ? " WRITE" : ""), this.env, true),
               new Promise((res) => setTimeout(() => res({ payload: { ok: false,
                 error: "TOOK_TOO_LONG" } }), 240000)),
             ]);
@@ -63743,6 +63753,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                kept: stage === "pta",
                // Which Aura answered: her own instance, or the local floor beneath it.
                via: agentVia || "local" };
+}
+
+// ONE SHOP, ONE INVOCATION (2026-09-20). The crawl batch calls this through the CRAWL_LANE service
+// binding (aura-core calling itself), so each shop is read in its own invocation with its own CPU
+// budget. Before this, ten shops ran inside one invocation and one heavy site ended all ten.
+// Not public: a named entrypoint can only be reached through a binding, and only aura-core has this one.
+export class CrawlLane extends WorkerEntrypoint {
+  async enrich(id) {
+    const r = await processCommand("CG_ENRICH " + String(id || ""), this.env, true);
+    return (r && r.payload) ? r.payload : r;
+  }
+  async read(id, write) {
+    const r = await processCommand("SITE_READING " + String(id || "") + " LOOK" + (write ? " WRITE" : ""), this.env, true);
+    return (r && r.payload) ? r.payload : r;
+  }
 }
 
 export class PublicEntry extends WorkerEntrypoint {

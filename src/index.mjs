@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.350.0-2026-09-20-what-this-turn-cost";
+const BUILD = "aura-core-v9.351.0-2026-09-20-name-the-engine-in-the-call";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18940,7 +18940,7 @@ async function successionGate(env) {
       // wrong answer, which is the most expensive kind.
       let subject = after, ctx = null, nm = null, viaP = null, hostP = null;
       let refsP = null, rawP = false, parentP = null, creatorP = null;
-      let aspP = null, resP = null;
+      let aspP = null, resP = null, modelP = null;
       if (/^\s*\{/.test(after)) {
         try {
           const p = JSON.parse(after);
@@ -18954,6 +18954,13 @@ async function successionGate(env) {
             // failure the comment above describes: a field the caller sent and the parser lost.
             aspP = typeof p.aspect === "string" ? p.aspect : null;
             resP = (p.res === "1k" || p.res === "2k") ? p.res : null;
+            // NAME THE ENGINE IN THE CALL (2026-09-20). A model pin is KV, and KV holds a read for
+            // up to a minute - so a comparison that set the pin and drew immediately kept drawing
+            // on the PREVIOUS model, hit the image cache on model+prompt, and handed back the last
+            // picture labelled with the new model's name. Three bake-offs read as nonsense because
+            // of it. A caller that names the model is exact and immediate; showIt already passes it
+            // through, only this door never accepted it.
+            modelP = (typeof p.model === "string" && p.model.trim()) ? p.model.trim() : null;
           }
         } catch (e) {}
       }
@@ -18973,7 +18980,8 @@ async function successionGate(env) {
       // Optional, so every existing caller is unchanged.
       const r = await showIt(subject, env, { source: "show_it_cmd", context: ctx || subject, name: nm,
         via: viaP, host: hostP, refs: refsP || undefined, raw: rawP, parent: parentP, creator: creatorP,
-        ...(aspP ? { aspect: aspP } : {}), ...(resP ? { res: resP } : {}) });
+        ...(aspP ? { aspect: aspP } : {}), ...(resP ? { res: resP } : {}),
+        ...(modelP ? { model: modelP } : {}) });
       return { cmd: "SHOW_IT", payload: r };
     }
 

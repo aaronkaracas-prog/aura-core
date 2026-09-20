@@ -1,0 +1,1262 @@
+<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name=theme-color content="#000000">
+<title>mytattoo.world</title>
+<style>
+/* ══ THE SHELL ════════════════════════════════════════════════════════════════════════════════
+   One chrome, five stages. Header, composer and tab bar never move. Only the middle changes -
+   which is what lets the parlor console be this same file with five different words in the bar.
+
+   NOTHING HERE GENERATES AN IMAGE. Every picture is a URL from `catalog`, which reads `card:tree`
+   and `face:v1:` and cannot draw. A leaf with no banked tile shows its words and stays quiet.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#000;--card:#141418;--line:#232329;--ink:#fff;--dim:#8b8b96;
+  --violet:#a855f7;--violet-dim:#6d28d9;--tap:44px;--gut:18px;--tile:140px;
+}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{background:var(--bg);color:var(--ink);height:100dvh;display:flex;flex-direction:column;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased}
+
+header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+  padding:calc(env(safe-area-inset-top) + 10px) var(--gut) 12px;
+  max-width:var(--wide,none);margin:0 auto;width:100%}
+.mark{font-size:1.45rem;font-weight:800;letter-spacing:-.035em;background:none;border:0;
+  color:inherit;font-family:inherit;cursor:pointer;padding:0}
+.mark:focus-visible{outline:2px solid var(--violet);outline-offset:3px;border-radius:6px}
+.mark i{font-style:normal;color:var(--violet)}
+.me{width:38px;height:38px;border-radius:50%;border:1.5px solid var(--line);background:#1c1c22;
+  cursor:pointer;flex:0 0 auto;display:grid;place-items:center;font-size:.8rem;font-weight:700;color:var(--dim)}
+.me:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+
+/* ── the pager. Native scroll-snap: real momentum, and no JS runs while the thumb moves. ──── */
+/* ══ THE THREAD CANNOT REACH THE COMPOSER (2026-09-07) ═════════════════════════════════════
+   MEASURED on desktop: the conversation locked the input out, and a tap somewhere else was the
+   only way to get it back. The thread was `position:fixed; bottom:0` - occupying the SAME region
+   as the composer and merely painting behind it. Yesterday's z-index patch treated the symptom:
+   paint order cannot help two elements that share space. On a phone the thread rarely grows tall
+   enough to overlap, which is why it only ever failed on the wide screen.
+   `#stage` is the bounded area between the header and the composer. The pager fills it and the
+   thread is absolutely positioned INSIDE it, so the thread's ceiling is the stage's ceiling and
+   the bar somebody types into is structurally out of its reach.
+   The catalogue still never unmounts - it is behind the thread, dimmed, exactly as Grok specced. */
+#stage{flex:1 1 auto;position:relative;min-height:0;display:flex}
+#pager{flex:1 1 auto;min-width:0;display:flex;overflow-x:auto;overflow-y:hidden;
+  scroll-snap-type:x mandatory;scroll-behavior:smooth;scrollbar-width:none}
+#pager::-webkit-scrollbar{display:none}
+.panel{flex:0 0 100%;width:100%;scroll-snap-align:start;scroll-snap-stop:always;
+  overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;padding-bottom:8px;scrollbar-width:none}
+.panel::-webkit-scrollbar{display:none}
+.inner{max-width:var(--wide,none);margin:0 auto;width:100%}
+
+.head{display:flex;align-items:baseline;justify-content:space-between;padding:14px var(--gut) 10px}
+.head h2{font-size:1.32rem;font-weight:700;letter-spacing:-.02em}
+.head span{color:var(--dim);font-size:.85rem;font-weight:500}
+/* The same three numbers the walk page prints, so a category screen can be checked against it
+   at a glance instead of counted by eye. */
+.tally{color:var(--dim);font-size:.85rem;padding:0 var(--gut) 12px;margin-top:-4px}
+.tally b{color:#c4b5fd;font-weight:600}
+.tally i{font-style:normal;color:#4a4a55;padding:0 5px}
+
+/* A rail: horizontal, free-scrolling, deliberately NOT snapped. A snapped rail inside a snapped
+   pager fights it and the phone cannot tell which you meant. When the rail runs out the gesture
+   chains to the pager - the behaviour every photo app already taught them. */
+.rail{display:flex;gap:10px;overflow-x:auto;padding:0 var(--gut) 4px;scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.tile{flex:0 0 auto;width:var(--tile);cursor:pointer;border:0;background:none;color:inherit;
+  text-align:left;padding:0;font:inherit}
+.tile .pic{width:100%;aspect-ratio:1;border-radius:14px;background:var(--card);
+  border:2px solid transparent;overflow:hidden;display:grid;place-items:center}
+.tile.on .pic{border-color:var(--violet)}
+.tile img{width:100%;height:100%;object-fit:cover;display:block}
+.tile b{display:block;font-size:.86rem;font-weight:500;padding:7px 2px 0;line-height:1.3}
+.tile small{display:block;color:var(--dim);font-size:.74rem;padding:1px 2px 0}
+/* No banked picture: words, no spinner, no placeholder art, and above all no request. */
+.pic.bare{border:1px dashed var(--line) !important}
+.pic.bare span{font-size:.8rem;color:var(--dim);padding:10px;text-align:center;line-height:1.35}
+
+.picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));
+  gap:12px;padding:0 var(--gut)}
+.picks .tile{width:100%}
+
+/* ══ ONE STEP AT A TIME, NOT A SCROLLER (2026-09-06) ═══════════════════════════════════════
+   This was a horizontal scroll-snap pager nested inside the tab pager, which is also scroll-snap.
+   MEASURED on the live shell: tapping a category advanced `step`, lit the right dot and wrote the
+   right sentence, and the screen stayed on question one. A snap container re-snaps to the nearest
+   valid position after its children change, so setting scrollLeft immediately after replacing the
+   markup was undone before it painted - every time, invisibly.
+   The outer pager is fine because nothing rewrites it mid-gesture. The fix is not a better scroll
+   call; it is having no inner scroller at all. One step is in the DOM, swipe is a touch handler,
+   and there is no position for anything to reset. */
+#ladder{position:relative}
+.step{width:100%;padding-bottom:10px}
+.ask{padding:6px var(--gut) 14px}
+.ask h3{font-size:1.5rem;font-weight:700;letter-spacing:-.025em;line-height:1.2}
+.ask p{color:var(--dim);font-size:.9rem;margin-top:4px}
+
+.dots{display:flex;gap:6px;justify-content:center;padding:12px 0 6px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--line);transition:all .18s;
+  border:0;padding:0;cursor:pointer}
+.dots{gap:10px}
+.dot:focus-visible{outline:2px solid var(--violet);outline-offset:3px}
+.dot.on{background:var(--violet);width:20px;border-radius:3px}
+.dot.done{background:var(--violet-dim)}
+
+/* The breadcrumb IS the navigation. Every step you have answered is a way back to it, so
+   returning to browse another category is one tap from anywhere and needs no back button. */
+.sentence{margin:14px var(--gut) 0;padding:9px 12px;border-radius:12px;background:#0e0e12;
+  border:1px solid var(--line);font-size:.88rem;color:var(--dim);line-height:1.4;
+  display:flex;flex-wrap:wrap;align-items:center;gap:2px}
+.crumb{background:none;border:0;color:var(--ink);font:inherit;font-weight:600;cursor:pointer;
+  padding:3px 6px;border-radius:7px}
+.crumb:hover{background:#1b1b22}
+.crumb.top{color:var(--violet)}
+.sentence i{font-style:normal;color:#4a4a55;padding:0 1px}
+
+/* ── the piece: one design, large, and the styles that change it ────────────────────────── */
+.piece{padding:4px var(--gut) 0}
+.piece .shot{width:100%;max-width:420px;margin:0 auto;aspect-ratio:1;border-radius:18px;
+  overflow:hidden;background:var(--card);display:grid;place-items:center;position:relative}
+.piece .shot img{width:100%;height:100%;object-fit:cover;display:block}
+.piece .shot.busy::after{content:'';position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.piece .cap{text-align:center;padding:12px 0 2px;font-size:1.05rem;font-weight:600}
+.piece .sub{text-align:center;color:var(--dim);font-size:.85rem}
+.styles{display:flex;gap:8px;overflow-x:auto;padding:16px var(--gut) 4px;scrollbar-width:none}
+.styles::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;background:#16161c;border:1px solid var(--line);border-radius:999px;
+  color:#d6d6de;padding:9px 16px;font:inherit;font-size:.88rem;cursor:pointer;
+  min-height:var(--tap);white-space:nowrap}
+.chip:hover{border-color:#3a3a44}
+.chip.on{background:var(--violet-dim);border-color:var(--violet);color:#fff}
+.chip:disabled{opacity:.4;cursor:default}
+/* ── the banked variations: pose, expression, crop, and any style already drawn ────────────
+   These are pictures, not words, and every one is free - so they get the visual weight of a
+   real choice and sit ABOVE the style chips, which are the ones that spend. */
+.vary{padding:14px var(--gut) 0}
+.vary h4{font-size:.72rem;font-weight:600;color:var(--dim);letter-spacing:.06em;
+  text-transform:uppercase;margin-bottom:8px}
+.vrow{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.vrow::-webkit-scrollbar{display:none}
+.vopt{flex:0 0 auto;width:86px;border:0;background:none;padding:0;cursor:pointer;color:inherit;font:inherit}
+.vopt .pic{width:86px;height:86px;border-radius:11px;overflow:hidden;background:var(--card);
+  border:2px solid transparent}
+.vopt.on .pic{border-color:var(--violet)}
+.vopt img{width:100%;height:100%;object-fit:cover;display:block}
+.vopt span{display:block;font-size:.72rem;color:var(--dim);padding:5px 1px 0;line-height:1.25}
+.vopt.on span{color:var(--ink)}
+/* ── what has been answered, collapsed ────────────────────────────────────────────────────
+   Aaron: "I pick A, B, C and now I'm on my end result - I don't need to be seeing everything
+   again, however it needs to be an obvious click how to get back to anything."
+   So an answered question stops being a wall of pictures and becomes one word you can tap. */
+/* ── everything made so far, in order ────────────────────────────────────────────────────
+   Aaron: "we need to bring up tiles to show them what they've already done." Each style and
+   each change is a real picture that was paid for; without this they exist for one render and
+   are then unreachable, so trying a second style silently throws the first away. */
+.made{display:flex;gap:7px;overflow-x:auto;padding:14px var(--gut) 0;scrollbar-width:none;
+  justify-content:center}
+.made::-webkit-scrollbar{display:none}
+.made button{flex:0 0 auto;width:56px;border:0;background:none;padding:0;cursor:pointer}
+.made .pic{width:56px;height:56px;border-radius:9px;overflow:hidden;background:var(--card);
+  border:2px solid transparent}
+.made button.on .pic{border-color:var(--violet)}
+.made img{width:100%;height:100%;object-fit:cover;display:block}
+.made span{display:block;font-size:.64rem;color:var(--dim);padding:4px 1px 0;line-height:1.2;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.done-row{display:flex;flex-wrap:wrap;gap:6px;padding:12px var(--gut) 0;justify-content:center}
+.done-row button{background:#16161c;border:1px solid var(--line);border-radius:999px;
+  color:var(--dim);font:inherit;font-size:.8rem;padding:6px 12px;min-height:34px;cursor:pointer}
+.done-row button:hover{border-color:var(--violet);color:var(--ink)}
+.done-row button b{color:var(--ink);font-weight:600}
+.skip{display:block;margin:10px auto 0;background:none;border:0;color:var(--dim);
+  font:inherit;font-size:.85rem;text-decoration:underline;cursor:pointer;min-height:var(--tap)}
+.skip:hover{color:var(--ink)}
+/* ── everything drawn for this leaf, in one grid ──────────────────────────────────────────
+   Aaron: "for a tattoo there's no bad image." The chain is for somebody who wants walking
+   through it; this is for somebody who would rather just look. Same banked records, no gate,
+   no order, nothing generated. */
+.allbtn{display:block;margin:16px auto 0;background:#16161c;border:1px solid var(--line);
+  border-radius:999px;color:var(--ink);font:inherit;font-size:.88rem;padding:10px 20px;
+  min-height:var(--tap);cursor:pointer}
+.allbtn:hover{border-color:var(--violet)}
+.allbtn b{color:var(--violet);font-weight:600}
+.allgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:9px;
+  padding:14px var(--gut) 0}
+.allgrid button{border:0;background:none;padding:0;cursor:pointer;color:inherit;font:inherit}
+.allgrid .pic{width:100%;aspect-ratio:1;border-radius:11px;overflow:hidden;background:var(--card);
+  border:2px solid transparent}
+.allgrid button.on .pic{border-color:var(--violet)}
+.allgrid img{width:100%;height:100%;object-fit:cover;display:block}
+.allgrid span{display:block;font-size:.7rem;color:var(--dim);padding:5px 1px 0;line-height:1.25}
+.allgrid i{font-style:normal;color:#5a5a66}
+@media (min-width:900px){ .allgrid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))} }
+.paid{padding:18px var(--gut) 0}
+.paid h4{font-size:.72rem;font-weight:600;color:var(--dim);letter-spacing:.06em;
+  text-transform:uppercase;margin-bottom:2px}
+.paid p{font-size:.78rem;color:#5a5a66;margin-bottom:8px}
+.note{color:var(--dim);font-size:.82rem;padding:10px var(--gut) 0;line-height:1.5;text-align:center}
+.note b{color:#c4b5fd;font-weight:600}
+@media (min-width:900px){ .styles{flex-wrap:wrap;overflow:visible} }
+
+.empty{padding:52px 34px;text-align:center;color:var(--dim);max-width:34rem;margin:0 auto}
+.empty h3{color:var(--ink);font-size:1.1rem;font-weight:600;margin-bottom:6px}
+.empty p{font-size:.9rem;line-height:1.55}
+.empty code{background:#17171d;padding:2px 7px;border-radius:5px;color:#c4b5fd;font-size:.85rem}
+
+/* ABOVE THE THREAD. The thread is fixed to the bottom of the viewport and was painting over the
+   composer, so the input vanished the moment she answered and only came back when a tap
+   dismissed the thread. The bar somebody types into cannot be the thing that disappears. */
+#composer{position:relative;z-index:10;flex:0 0 auto;display:flex;align-items:center;gap:10px;width:100%;
+  max-width:var(--wide,none);margin:8px auto 6px;padding:7px 8px 7px 7px;
+  background:#131318;border:1px solid var(--line);border-radius:999px}
+#composer .glyph{width:36px;height:36px;border-radius:50%;flex:0 0 auto;display:grid;
+  place-items:center;background:linear-gradient(140deg,#7c3aed,#c084fc);font-size:1.05rem}
+#composer input{flex:1;min-width:0;background:none;border:0;outline:none;color:var(--ink);
+  font:inherit;font-size:.95rem;padding:4px 0}
+#composer input::placeholder{color:#6a6a76}
+#composer .send{width:var(--tap);height:36px;border:0;background:none;color:var(--violet);
+  font-size:1.15rem;cursor:pointer;flex:0 0 auto;border-radius:999px}
+
+nav{position:relative;z-index:10;flex:0 0 auto;display:flex;border-top:1px solid var(--line);background:var(--bg);
+  padding-bottom:env(safe-area-inset-bottom)}
+nav .bar{display:flex;width:100%;max-width:var(--wide,none);margin:0 auto}
+nav button{flex:1;min-height:var(--tap);border:0;background:none;cursor:pointer;font:inherit;
+  display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 7px;color:var(--dim)}
+nav button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+nav button span{font-size:.66rem;font-weight:500}
+nav button.on{color:var(--violet)}
+nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;border-radius:8px}
+
+/* THEIR PHOTO, AND THE FILES FOR THEIR ARTIST (2026-09-19)
+   The camera sits in the composer because a photo is something you SAY to her, not a separate
+   screen. Once one is picked, the button shows it, so there is no doubt what is about to go. */
+#composer .cam{width:36px;height:36px;border-radius:50%;flex:0 0 auto;border:1px solid var(--line);
+  background:#1c1c22;color:var(--dim);display:grid;place-items:center;cursor:pointer;padding:0;overflow:hidden}
+#composer .cam svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+#composer .cam.on{border-color:var(--violet)}
+#composer .cam img{width:100%;height:100%;object-fit:cover}
+.turn .shot{display:block;max-width:180px;border-radius:12px;margin:0 0 6px auto;border:1px solid var(--line)}
+.files{margin:2px 0 14px;max-width:34rem}
+.files .note{color:var(--dim);font-size:.82rem}
+.files .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin:8px 0}
+.files a.f{display:block;background:#141418;border:1px solid var(--line);border-radius:12px;padding:6px;
+  text-decoration:none;color:var(--ink);font-size:.8rem}
+.files a.f img{width:100%;aspect-ratio:1;object-fit:contain;background:#fff;border-radius:8px;display:block;margin-bottom:5px}
+.files a.pdf{display:inline-block;background:var(--violet-dim);border:1px solid var(--violet);color:#fff;
+  border-radius:999px;padding:9px 16px;text-decoration:none;font-size:.88rem;margin-top:4px}
+
+/* ══ THE THREAD GROWS UP FROM THE COMPOSER, OVER THE STAGE ═════════════════════════════════
+   Grok's brief, and it is right: the conversation is not a screen. Browse and Design never
+   unmount because somebody typed - the catalogue stays behind her, dimmed but there, so nothing
+   is lost by asking a question. When she is done it collapses to one line on the pill.
+   NOT a Chat tab. NOT a full-screen transcript. */
+#thread{
+  position:absolute;left:0;right:0;bottom:0;z-index:7;
+  display:flex;flex-direction:column-reverse;
+  max-height:100%;overflow-y:auto;overscroll-behavior:contain;
+  padding:18px var(--gut) 10px;scrollbar-width:none;
+  background:linear-gradient(to top,rgba(0,0,0,.94) 55%,rgba(0,0,0,.72) 80%,transparent);
+  pointer-events:none;opacity:0;transition:opacity .2s;
+}
+#thread.up{opacity:1;pointer-events:auto}
+#thread::-webkit-scrollbar{display:none}
+#thread .wrap{max-width:var(--wide,none);margin:0 auto;width:100%}
+.turn{margin:0 0 12px;font-size:.95rem;line-height:1.5;max-width:34rem}
+.turn.them{margin-left:auto;text-align:right;color:#c9c9d4}
+.turn.aura{color:var(--ink)}
+.turn.them b{display:inline-block;background:#1c1c24;border-radius:16px 16px 4px 16px;
+  padding:8px 13px;font-weight:400}
+.turn.aura b{font-weight:400}
+.thinking{color:var(--dim);font-size:.9rem}
+/* Her last line, parked on the pill. Tap to reopen; older turns live on the chain, not here. */
+#chip{
+  display:none;position:relative;z-index:10;
+  max-width:var(--wide,none);margin:0 auto;width:100%;
+  padding:0 var(--gut) 6px;
+}
+#chip.up{display:block}
+#chip button{
+  width:100%;text-align:left;background:#131318;border:1px solid var(--line);
+  border-radius:14px;color:var(--dim);font:inherit;font-size:.86rem;padding:9px 14px;
+  cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:38px;
+}
+#chip button:hover{border-color:var(--violet);color:var(--ink)}
+#chip b{color:var(--violet);font-weight:600}
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);opacity:0;pointer-events:none;
+  transition:opacity .22s;z-index:8}
+#scrim.up{opacity:1;pointer-events:auto}
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:9;background:#101015;
+  border-top:1px solid var(--line);border-radius:20px 20px 0 0;
+  padding:8px 0 calc(env(safe-area-inset-bottom) + 14px);
+  transform:translateY(102%);transition:transform .26s cubic-bezier(.32,.72,0,1)}
+#sheet.up{transform:translateY(0)}
+#sheet .in{max-width:34rem;margin:0 auto}
+#sheet .grab{width:36px;height:4px;border-radius:2px;background:var(--line);margin:6px auto 12px}
+#sheet a{display:flex;align-items:center;min-height:var(--tap);padding:0 22px;color:var(--ink);
+  text-decoration:none;font-size:.98rem;cursor:pointer}
+#sheet a:active,#sheet a:hover{background:#17171d}
+#sheet .rule{height:1px;background:var(--line);margin:8px 22px}
+#sheet small{display:block;padding:10px 22px 0;color:#5a5a66;font-size:.78rem}
+
+/* ══ DESKTOP ═════════════════════════════════════════════════════════════════════════════════
+   Not a stretched phone. Above 900px the chrome centres in a readable column and the rails
+   become wrapping grids, because a mouse has no swipe and a 1900px row of 140px tiles is a
+   scrollbar, not a browse. Tabs still change with a click, and with the arrow keys. */
+@media (min-width:900px){
+  :root{--wide:1080px;--gut:28px;--tile:172px}
+  .rail{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));
+    gap:16px;overflow:visible;padding-bottom:6px}
+  .tile{width:100%}
+  .tile:hover .pic{border-color:#3a3a44}
+  .head h2{font-size:1.5rem}
+  .ask h3{font-size:1.9rem}
+  nav button span{font-size:.75rem}
+  #composer{margin-bottom:10px}
+}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms !important;scroll-behavior:auto !important}}
+</style></head><body>
+
+<header>
+  <button class=mark id=homeBtn>mytattoo<i>.world</i></button>
+  <button class=me id=meBtn aria-label="Account and settings">A</button>
+</header>
+
+<div id=stage>
+  <main id=pager></main>
+  <div id=thread><div class=wrap id=threadIn></div></div>
+</div>
+
+<div id=chip><button id=chipBtn></button></div>
+
+<div id=composer>
+  <div class=glyph aria-hidden=true>&#10022;</div>
+  <button class=cam id=camBtn aria-label="Add a photo of your tattoo"></button>
+  <input type=file id=file accept="image/*" style="display:none">
+  <input id=say placeholder="Ask Aura or pick a category" autocomplete=off>
+  <button class=send id=sendBtn aria-label=Send>&#10003;</button>
+</div>
+
+<nav><div class=bar id=tabs></div></nav>
+
+<div id=scrim></div>
+<div id=sheet><div class=in>
+  <div class=grab></div>
+  <a>Account</a><a>Saved designs</a><a>Notifications</a>
+  <div class=rule></div>
+  <a>Help</a><a>Privacy</a><a>Sign out</a>
+  <small>Settings and account only. Anything you do often is a tab.</small>
+</div></div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   Reads `/_design` action `catalog` and nothing else. That action reads `card:tree` and
+   `face:v1:` - the real catalogue, 89 categories - and has no path to a generator. Browsing
+   this app cannot cost a penny.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+var TABS = [
+  {id:'explore',label:'Explore',icon:'<circle cx="12" cy="12" r="9"/><path d="M15 9l-2 5-5 2 2-5z"/>'},
+  {id:'design', label:'Design', icon:'<path d="M15.5 4.5l4 4L8 20H4v-4z"/><path d="M13.5 6.5l4 4"/>'},
+  {id:'mine',   label:'My Tattoos',icon:'<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>'},
+  {id:'shops',  label:'Shops',  icon:'<path d="M4 9.5V20h16V9.5"/><path d="M3 9.5l1.6-5h14.8L21 9.5z"/><path d="M9.5 20v-5h5v5"/>'},
+  {id:'me',     label:'Me',     icon:'<circle cx="12" cy="8" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0114.4 0"/>'}
+];
+
+/* Three real depths, taken from the tree as it actually is. No invented steps - a question this
+   file cannot fill with banked pictures is a question it does not ask. */
+var STEPS = [
+  {field:'category', ask:'What do you want?',   hint:'Every picture here is already drawn.'},
+  {field:'kind',     ask:'Which kind?',         hint:''},
+  {field:'leaf',     ask:'Which one?',          hint:'Pick the one closest to it. Aura changes it from there.'}
+];
+
+var at=0, step=0, chosen={}, index=null, cache={}, SESSION=null;
+var piece={}, finishes=null, busy=false, busyStyle='', catAll=false, thread=[];
+var sets=null, chosenSet={}, skipped={}, gate=null, reopen=null, showAll=false;
+function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML}
+/* The caption under a tile. Things always; pictures only where the count is banked, because a
+   category nobody has walked has no honest number to show and a zero would be a lie. */
+function count(it){
+  if(it.things==null) return '';
+  var out = it.things + (it.things===1?' thing':' things');
+  if(typeof it.pictures==='number') out += ' \u00b7 ' + it.pictures + ' pictures';
+  return out;
+}
+
+/* ══ A HUMAN EXISTS BEFORE ANYTHING ELSE DOES ═══════════════════════════════════════════════
+   `design` refuses every action but `hello` without a person - line 59020, and it is the spine
+   of the whole system, not a formality. Browsing is no exception: a lead is minted first and
+   the session rides on every call after it.
+   The session is kept, so a reload continues as the same person instead of minting a fresh lead
+   on every page load - which would fill the graph with strangers who each looked at one screen. */
+function hello(){
+  var kept=null; try{ kept=localStorage.getItem('mt:session') }catch(e){}
+  if(kept){ SESSION=kept; return Promise.resolve(true) }
+  return fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'hello'})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d&&d.ok&&d.session){ SESSION=d.session;
+        try{ localStorage.setItem('mt:session',SESSION) }catch(e){}
+        return true }
+      return false;
+    }).catch(function(){ return false });
+}
+
+function ask(body){
+  return fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(Object.assign({action:'catalog',session:SESSION},body||{}))})
+    .then(function(r){return r.json()})
+    .then(function(d){
+      /* A session can expire under somebody mid-browse. Mint a new one and retry once rather
+         than showing them a dead screen they have no way to act on. */
+      if(d&&d.error==='NO_SESSION'){
+        try{ localStorage.removeItem('mt:session') }catch(e){}
+        SESSION=null;
+        return hello().then(function(){ return fetch('/_design',{method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(Object.assign({action:'catalog',session:SESSION},body||{}))})
+          .then(function(r){return r.json()}) });
+      }
+      return d;
+    })
+    .catch(function(){return {ok:false,error:'UNREACHABLE'}});
+}
+function cached(key,body){
+  if(cache[key]) return Promise.resolve(cache[key]);
+  return ask(body).then(function(d){ cache[key]=d; return d });
+}
+
+/* `image` present means banked. Absent means words - and nothing else happens. */
+function tile(it,on,sub){
+  return '<button class="tile'+(on?' on':'')+'" data-v="'+esc(it.value)+'" data-l="'+esc(it.label)+'">'+
+    (it.image ? '<div class=pic><img loading=lazy src="'+esc(it.image)+'" alt=""></div>'
+              : '<div class="pic bare"><span>'+esc(it.label)+'</span></div>')+
+    '<b>'+esc(it.label)+'</b>'+(sub?'<small>'+esc(sub)+'</small>':'')+'</button>';
+}
+
+document.getElementById('tabs').innerHTML = TABS.map(function(t,i){
+  return '<button data-i="'+i+'"'+(i===0?' class=on':'')+'>'+
+    '<svg viewBox="0 0 24 24" aria-hidden=true>'+t.icon+'</svg><span>'+esc(t.label)+'</span></button>';
+}).join('');
+document.getElementById('pager').innerHTML = TABS.map(function(t){
+  return '<section class=panel id="p-'+t.id+'"><div class=inner></div></section>' }).join('');
+
+var pager=document.getElementById('pager'), tabBtns=document.querySelectorAll('nav button');
+function panel(id){ return document.querySelector('#p-'+id+' .inner') }
+function go(i){ pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'}) }
+
+tabBtns.forEach(function(b){ b.onclick=function(){
+  var i=+b.dataset.i;
+  /* Tapping the tab you are on returns you to the top of it. The standard everywhere, and how
+     somebody gets home without a back button. */
+  if(i===at){ document.getElementById('p-'+TABS[i].id).scrollTo({top:0,behavior:'smooth'});
+              if(TABS[i].id==='design') goStep(0); return }
+  go(i);
+}});
+/* A mouse cannot swipe, so desktop gets the keyboard. */
+addEventListener('keydown',function(e){
+  if(document.activeElement===document.getElementById('say')) return;
+  if(e.key==='ArrowRight'&&at<TABS.length-1) go(at+1);
+  if(e.key==='ArrowLeft'&&at>0) go(at-1);
+});
+
+var raf=0;
+pager.addEventListener('scroll',function(){
+  if(raf) return;
+  raf=requestAnimationFrame(function(){ raf=0;
+    var i=Math.round(pager.scrollLeft/pager.clientWidth);
+    if(i!==at&&i>=0&&i<TABS.length){ at=i;
+      tabBtns.forEach(function(b){b.classList.toggle('on',+b.dataset.i===at)});
+      document.getElementById('say').placeholder =
+        at===1?'Tell Aura what you are picturing':at===3?'Ask about a shop, or a city'
+        :'Ask Aura or pick a category';
+    }});
+},{passive:true});
+
+/* ── EXPLORE: the 89 categories, one KV read ─────────────────────────────────────────────── */
+/* The offered list comes from the worker, never a copy in this file. `styles:offered` in KV is
+   the dial; a second list here would be a second source of truth and one deploy behind. */
+function loadFinishes(){
+  return fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'finishes',session:SESSION})})
+    .then(function(r){return r.json()}).then(function(d){
+      finishes = (d&&d.ok&&d.finishes)||[]; return finishes;
+    }).catch(function(){ finishes=[]; return finishes });
+}
+
+hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(function(d){
+  index=d;
+  var el=panel('explore');
+  if(!d||!d.ok){
+    el.innerHTML='<div class=empty><h3>Cannot reach the catalogue</h3>'+
+      '<p>The browse door answered '+esc((d&&d.error)||'nothing')+'.</p></div>'; return;
+  }
+  if(!d.items.length){
+    el.innerHTML='<div class=empty><h3>The index has not been built yet</h3>'+
+      '<p>'+esc(d.categories||0)+' categories are in the tree. Run <code>BROWSE</code> to bank a '+
+      'cover for each. It reads only - nothing is drawn.</p></div>'; return;
+  }
+  el.innerHTML='<div class=head><h2>Browse</h2></div>'+
+    '<div class=tally><b>'+(d.categories||d.items.length)+'</b> categories<i>\u00b7</i>'+
+      '<b>'+(d.things||0)+'</b> things<i>\u00b7</i><b>'+(d.pictures||0)+'</b> pictures</div>'+
+    '<div class=rail>'+ d.items.map(function(it){
+      return tile(it,false,count(it)) }).join('') +'</div>';
+  el.addEventListener('click',function(e){
+    var t=e.target.closest('.tile'); if(!t) return;
+    chosen={category:{value:t.dataset.v,label:t.dataset.l}}; catAll=false;
+    step=1; loadKinds(t.dataset.l).then(function(){ go(1) });
+  });
+});
+
+/* ── DESIGN: category -> kind -> design, every picture already banked ─────────────────────── */
+function loadKinds(cat){
+  return cached('c:'+cat,{category:cat}).then(function(d){ drawLadder(); return d });
+}
+function loadLeaves(kind){
+  return cached('k:'+kind,{kind:kind}).then(function(d){
+    /* A kind with no leaves IS its own leaf - the worker says so with `self`. Asking "which one?"
+       over a single answer is a screen nobody should have to tap through, so it goes straight to
+       the piece with the thing they already chose. */
+    if(d && d.ok && d.self && d.items && d.items.length){
+      var it = d.items[0];
+      chosen.leaf = { value: it.value, label: it.label };
+      piece = { url: it.image || null, label: it.label, style:null, made:null,
+                history: it.image ? [{ url:it.image, label:'original', made:false }] : [] };
+      step = 3; loadSets(it.label); return d;
+    }
+    drawLadder(); return d;
+  });
+}
+
+/* Every variation already banked for this leaf. One read of the list plus one per set, and it
+   cannot draw - so swapping pose or expression costs nothing at all. */
+function loadSets(leaf){
+  sets = null; chosenSet = {}; skipped = {}; gate = null; reopen = null; showAll = false; drawLadder();
+  return cached('l:'+leaf,{leaf:leaf}).then(function(d){
+    sets = (d && d.ok && d.sets) || [];
+    gate = (d && d.gate) || {};
+    if(step===3) drawPiece();
+    return d;
+  });
+}
+function optsFor(i){
+  if(i===0) return (index&&index.items)||[];
+  if(i===1){
+    var c=chosen.category; if(!c) return [];
+    if(catAll){ var a=cache['a:'+c.label]; return (a&&a.items)||[] }
+    var d=cache['c:'+c.label]; return (d&&d.items)||[];
+  }
+  var k=chosen.kind; var e=k&&cache['k:'+k.label]; return (e&&e.items)||[];
+}
+function sentence(){
+  /* ══ A CRUMB OPENS THE THING IT NAMES ══════════════════════════════════════════════════════
+     MEASURED 2026-09-06: tapping "Flowers & Plants" showed all 89 categories under the heading
+     "What do you want?". Each crumb linked to the step that ASKS for it - the category crumb
+     went to the category question - which is one short of what a breadcrumb means everywhere
+     else. "Flowers & Plants" has to go INTO Flowers & Plants, so it is the step after.
+     Browse stays at 0, because Browse IS the category question. */
+  var out = '<div class=sentence><button class="crumb top" data-s="0">Browse</button>';
+  var last = null;
+  STEPS.forEach(function(x,i){
+    var c = chosen[x.field]; if(!c) return;
+    /* A kind with no leaves is its own leaf, so both crumbs carry the same word - "Sunflower >
+       Sunflower" reads like a bug. One of them is enough. */
+    if(last && vslug(last) === vslug(c.label)) return;
+    last = c.label;
+    out += '<i>\u203a</i><button class=crumb data-s="'+(i+1)+'">'+esc(c.label)+'</button>';
+  });
+  return out + '</div>';
+}
+/* Four stops: three questions and the piece they end at. A stop nobody has reached is disabled
+   rather than hidden - it shows how far this goes without pretending it is available. */
+function dots(){
+  return '<div class=dots>'+[0,1,2,3].map(function(i){
+    var done = i<3 ? !!chosen[STEPS[i].field] : !!chosen.leaf;
+    var reach = i===0 || (i<=3 && chosen[STEPS[i-1].field]);
+    return '<button class="dot'+(i===step?' on':(done?' done':''))+'" data-s="'+i+'"'+
+           (reach?'':' disabled')+' aria-label="stage '+(i+1)+'"></button>';
+  }).join('')+'</div>';
+}
+
+function drawLadder(){
+  if(step===3) return drawPiece();
+  var s = STEPS[step], opts = optsFor(step);
+  var meta = step===1 && chosen.category ? cache['c:'+chosen.category.label] : null;
+  if(step===1 && catAll){
+    /* Every tile here is a DESIGN, not a kind, so the question changes with the view. */
+    s = { field:'leaf', ask:'Pick any one', hint:'Everything in this category, already drawn.' };
+  }
+  panel('design').innerHTML =
+    dots()+
+    sentence()+
+    '<div id=ladder><div class=step>'+
+      '<div class=ask><h3>'+esc(s.ask)+'</h3>'+(s.hint?'<p>'+esc(s.hint)+'</p>':'')+'</div>'+
+      /* On the kinds screen this is the line to check against /walk/<category>. It reports what
+         the walk page reports, from the same banked key, so the two cannot disagree. */
+      (meta && meta.ok
+        ? '<div class=tally><b>'+(meta.kinds||0)+'</b> kinds<i>\u00b7</i><b>'+(meta.things||0)+
+          '</b> things'+(meta.banked&&typeof meta.banked.pictures==='number'
+            ? '<i>\u00b7</i><b>'+meta.banked.pictures+'</b> pictures' : '')+
+          (meta.banked&&meta.banked.no_tile ? '<i>\u00b7</i>'+meta.banked.no_tile+' with no tile' : '')+
+          '</div>'
+        : '')+
+      /* ══ THE WHOLE CATEGORY AT ONCE ══════════════════════════════════════════════════════
+         Aaron: "it's just so difficult to see what's there." Forty-four covers standing in for
+         224 pictures is a map, not a browse. This is the same view the walk page gives, on the
+         consumer side, and every tile in it goes straight to that design. */
+      (step===1 && chosen.category && meta && meta.ok
+        ? '<button class=allbtn data-catall="'+(catAll?'0':'1')+'">'+
+          (catAll ? 'Back to the '+(meta.kinds||0)+' kinds'
+                  : 'Show every design in '+esc(chosen.category.label)+' \u00b7 <b>'+
+                    (meta.things||0)+'</b>')+'</button>'
+        : '')+
+      (opts.length
+        ? '<div class=picks>'+opts.map(function(it){
+            return tile(it, chosen[s.field]&&chosen[s.field].value===it.value,
+                        count(it)) }).join('')+'</div>'
+        : '<div class=empty><h3>'+(step===0?'Nothing banked yet':'Nothing here')+'</h3>'+
+          '<p>'+(step===0?'Run <code>BROWSE</code> to build the index.'
+                         :'Tell Aura below what you are after.')+'</p></div>')+
+    '</div></div>';
+
+  var host = panel('design');
+  wireNav(host);
+  host.querySelectorAll('[data-catall]').forEach(function(b){
+    b.onclick = function(){
+      catAll = b.dataset.catall==='1';
+      if(catAll && !cache['a:'+chosen.category.label]){
+        cached('a:'+chosen.category.label, { category: chosen.category.label, all: true })
+          .then(function(){ drawLadder() });
+        return;
+      }
+      drawLadder();
+    };
+  });
+  host.querySelector('#ladder').addEventListener('click', function(e){
+    var b = e.target.closest('.tile'); if(!b) return;
+    var here = step, f = STEPS[here].field;
+    /* In the flat view a tile IS a design - it skips the kind question entirely. */
+    if(here===1 && catAll){
+      chosen.kind = null; chosen.leaf = { value:b.dataset.v, label:b.dataset.l };
+      var u1 = b.querySelector('img') ? b.querySelector('img').src : null;
+      piece = { url:u1, label:b.dataset.l, style:null, made:null,
+                history: u1 ? [{ url:u1, label:'original', made:false }] : [] };
+      step = 3; loadSets(b.dataset.l); return;
+    }
+    chosen[f] = { value:b.dataset.v, label:b.dataset.l };
+    /* THE CHOICE IS THE ADVANCE. There is no Next control in this file - a single-select tap has
+       already said everything a Next could say. */
+    if(here===0){ chosen.kind=null; chosen.leaf=null; step=1; loadKinds(b.dataset.l) }
+    else if(here===1){ chosen.leaf=null; step=2; loadLeaves(b.dataset.l) }
+    else {
+      /* The leaf is the last question. Picking one carries its BANKED picture through to the
+         piece - that image is already drawn and paid for, and it is what every style is applied
+         to from here. */
+      var u0 = b.querySelector('img') ? b.querySelector('img').src : null;
+      piece = { url: u0, label: b.dataset.l, style: null, made: null,
+                history: u0 ? [{ url:u0, label:'original', made:false }] : [] };
+      step = 3; loadSets(b.dataset.l);
+    }
+  });
+  swipeOn(host.querySelector('#ladder'));
+}
+
+/* ══ THE PIECE — WHERE BROWSING ENDS AND MAKING BEGINS ═══════════════════════════════════════
+   Everything before this screen was free: banked pictures out of KV, no model, no bill. This is
+   the first place in the whole flow that can spend money, and it spends it only when somebody
+   taps a style - which is a person saying "this one, like that", not a person looking around.
+   The picture they arrive with is the catalogue tile itself. `finish` style-transfers from that
+   URL, so the thing they chose is the thing that gets changed. */
+/* ══ WHICH WALLS APPLY, AND WHICH COMPETE ══════════════════════════════════════════════════
+   A set carries the conditions it was drawn under - `{crop:"full-body"}` - and the gate carries
+   the product rule for walls drawn before those conditions existed. Both have to pass. */
+function vslug(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') }
+/* Does this leaf even HAVE that question? MEASURED: Tabby has pose and expression and no crop
+   wall, so a crop gate demanded an answer that could never be given and hid both. A rule that
+   hides real pictures because a different question does not exist is worse than no rule. */
+function asks(stepName){
+  return (sets||[]).some(function(g){ return g.step===stepName });
+}
+function applies(g){
+  for(var k in (g.needs||{})) if(vslug(chosenSet[k]) !== vslug(g.needs[k])) return false;
+  var rule = gate && gate[g.step];
+  if(rule) for(var k2 in rule){
+    if(!asks(k2)) continue;                      // this leaf never asks it - the gate cannot bind
+    var cur = vslug(chosenSet[k2]);
+    if(!cur) return false;                       // its gating question is not answered yet
+    if(rule[k2].map(vslug).indexOf(cur) < 0) return false;
+  }
+  return true;
+}
+/* ══ THE WALLS ARE ALTERNATIVES, NOT A SEQUENCE (2026-09-06) ═══════════════════════════════
+   MEASURED on Wolves: choosing a growling expression and then a standing-alert pose replaced a
+   HEAD with a WHOLE BODY. Every tile in every wall is a complete independent render of the leaf,
+   so picking from a second wall does not refine the first - it discards it. Asking them one
+   after another promised they compose. They do not.
+   CROP IS THE EXCEPTION and it really is a first step: it says how much of the thing you see,
+   and walls conditioned on it were drawn for that framing. Everything else shares one choice.
+   Dogs looked right before only because their crop gate happened to hide one of the two. */
+function cropSet(){
+  return (sets||[]).filter(applies).find(function(g){ return g.step==='crop' });
+}
+function lookSets(){
+  return (sets||[]).filter(applies)
+    .filter(function(g){ return g.step!=='crop' && g.guided!==false });
+}
+/* Every option banked for this leaf, flattened. No gate, no conditions, no order - the whole
+   point is that nothing is hidden. */
+function everything(){
+  var out = [];
+  (sets||[]).forEach(function(g){
+    g.items.forEach(function(it){
+      out.push({ step:g.step, value:it.value, label:it.label, image:it.image });
+    });
+  });
+  return out;
+}
+
+function drawPiece(){
+  var shown = piece.made || piece.url;
+  var crop  = cropSet();
+  var looks = lookSets();
+  var allOf = everything();
+  var needCrop = !showAll && crop && !chosenSet.crop && !skipped.crop && reopen!=='__look__';
+  var pickedLook = looks.find(function(g){ return chosenSet[g.step] });
+  // The alternatives screen shows while nothing is picked from it, or when reopened on purpose.
+  var showLooks = !showAll && !needCrop && looks.length && (!pickedLook || reopen==='__look__');
+
+  var sub = showAll     ? 'Every version already drawn'
+          : piece.style ? 'in '+esc(piece.style)
+          : needCrop    ? 'How much of it do you want to see'
+          : showLooks   ? 'Pick the one you want'
+          : 'Pick a style and Aura redraws it that way.';
+
+  var wall = function(g, cls){
+    return '<div class=vary><h4>'+esc(g.label)+'</h4><div class=vrow>'+
+      g.items.map(function(it){
+        return '<button class="vopt'+(chosenSet[g.step]===it.value?' on':'')+'" '+
+          'data-g="'+esc(g.step)+'" data-v="'+esc(it.value)+'" data-u="'+esc(it.image)+'" '+
+          'data-x="'+(cls||'')+'">'+
+          '<div class=pic><img loading=lazy src="'+esc(it.image)+'" alt=""></div>'+
+          '<span>'+esc(it.label)+'</span></button>';
+      }).join('')+'</div></div>';
+  };
+
+  panel('design').innerHTML =
+    dots() + sentence() +
+    '<div class=piece>'+
+      '<div class="shot'+(busy?' busy':'')+'">'+
+        (shown ? '<img src="'+esc(shown)+'" alt="">'
+               : '<span style="color:var(--dim);padding:20px;text-align:center">'+esc(piece.label)+'</span>')+
+      '</div>'+
+      '<div class=cap>'+esc(piece.label)+'</div>'+
+      '<div class=sub>'+sub+'</div>'+
+    '</div>'+
+
+    /* Every version made in this session. The first is the catalogue tile they picked; the rest
+       are styles and changes, each one already paid for. Tapping one brings it back. */
+    (piece.history && piece.history.length > 1
+      ? '<div class=made>'+ piece.history.map(function(h,i){
+          return '<button class="'+((piece.made||piece.url)===h.url?'on':'')+'" data-h="'+i+'">'+
+            '<div class=pic><img loading=lazy src="'+esc(h.url)+'" alt=""></div>'+
+            '<span>'+esc(h.label)+'</span></button>';
+        }).join('') +'</div>'
+      : '')+
+
+    /* What has been settled, as words. Tap one to reopen it. */
+    '<div class=done-row>'+
+      (chosenSet.crop && !needCrop
+        ? '<button data-back="crop">crop <b>'+esc(labelOf('crop',chosenSet.crop))+'</b></button>' : '')+
+      (pickedLook && !showLooks
+        ? '<button data-back="__look__">'+esc(pickedLook.label.toLowerCase())+' <b>'+
+          esc(labelOf(pickedLook.step, chosenSet[pickedLook.step]))+'</b></button>' : '')+
+    '</div>'+
+
+    (needCrop ? wall(crop) : '')+
+
+    /* ONE SELECTION ACROSS ALL OF THEM. Each tile is a whole picture, so choosing a pose and
+       choosing an expression are the same act done twice - the second simply replaces the first.
+       They sit on one screen, labelled by what they are, and picking any one ends the question. */
+    (showLooks ? looks.map(function(g){ return wall(g,'look') }).join('') : '')+
+
+    ((needCrop||showLooks)
+      ? '<button class=skip data-skip="1">'+(needCrop?'Skip crop':'None of these')+'</button>'
+      : '')+
+
+    /* ONE TAP TO SEE THE LOT. Not the default: a leaf with four pictures makes a poor grid and
+       a fine chain, and switching on a count is a rule nobody could predict. Peacock has
+       twenty-five and this is the better way to look at them. */
+    (allOf.length
+      ? (showAll
+          ? '<div class=allgrid>'+ allOf.map(function(it,i){
+              return '<button class="'+((piece.made||piece.url)===it.image?'on':'')+'" data-a="'+i+'">'+
+                '<div class=pic><img loading=lazy src="'+esc(it.image)+'" alt=""></div>'+
+                '<span>'+esc(it.label)+' <i>'+esc(it.step)+'</i></span></button>';
+            }).join('') +'</div>'+
+            '<button class=allbtn data-all="0">Back to the guided pick</button>'
+          : '<button class=allbtn data-all="1">Show everything drawn for this \u00b7 <b>'+
+            allOf.length+'</b></button>')
+      : '')+
+
+    (needCrop || showLooks || showAll ? ''
+      : '<div class=paid><h4>Redraw it in a style</h4>'+
+        '<p>'+((sets&&sets.length) ? 'Everything above is already drawn. These are made fresh.'
+                                   : 'Made fresh from the picture above.')+'</p>'+
+        '<div class=styles>'+ (finishes||[]).map(function(f){
+          return '<button class="chip'+(piece.style===f?' on':'')+'" data-f="'+esc(f)+'"'+
+                 (busy?' disabled':'')+'>'+esc(f)+'</button>' }).join('') +'</div></div>')+
+
+    '<div class=note>'+(busy
+      ? (piece.style===busyStyle ? 'Drawing it in <b>' : 'Changing it: <b>')+esc(busyStyle)+'</b>&hellip;'
+      : sets===null ? 'Looking for the versions already drawn&hellip;'
+      : piece.made ? 'Tell Aura below what to change, or try another style.'
+      : (needCrop||showLooks) ? '' : 'Everything up to here was already drawn.')+
+    '</div>';
+
+  wireNav(panel('design'));
+  panel('design').querySelectorAll('.chip').forEach(function(c){
+    c.onclick = function(){ applyStyle(c.dataset.f) };
+  });
+  panel('design').querySelectorAll('[data-h]').forEach(function(b){
+    b.onclick = function(){
+      var h = piece.history[+b.dataset.h]; if(!h) return;
+      /* Tapping a version SELECTS IT AS THE PARENT. The next thing they say stacks on this one,
+         so a conversation can branch instead of only ever running forward. */
+      piece.made = h.made ? h.url : null;
+      if(!h.made) piece.url = h.url;
+      piece.style = h.style || null;
+      piece.parent = h.design || piece.parent;
+      drawPiece();
+    };
+  });
+  panel('design').querySelectorAll('[data-back]').forEach(function(b){
+    b.onclick = function(){ reopen = b.dataset.back; drawPiece() };
+  });
+  panel('design').querySelectorAll('[data-all]').forEach(function(b){
+    b.onclick = function(){ showAll = b.dataset.all==='1'; reopen=null; drawPiece();
+      panel('design').parentNode.scrollTo({top:0,behavior:'smooth'}) };
+  });
+  panel('design').querySelectorAll('[data-a]').forEach(function(b){
+    b.onclick = function(){
+      if(busy) return;
+      var it = allOf[+b.dataset.a]; if(!it) return;
+      /* Taking a picture from the grid IS the answer to whichever wall it came from, so the
+         chain agrees with the screen if they go back to it. Everything else clears - one
+         picture, one choice, the same rule the guided rows follow. */
+      (sets||[]).forEach(function(g){ delete chosenSet[g.step]; delete skipped[g.step] });
+      chosenSet[it.step] = it.value;
+      piece.url = it.image; piece.made = null; piece.style = null;
+      piece.history = [{ url:it.image, label:'original', made:false }];
+      showAll = false; reopen = null;
+      drawPiece();
+    };
+  });
+  var sk = panel('design').querySelector('[data-skip]');
+  if(sk) sk.onclick = function(){
+    if(needCrop){ skipped.crop = true }
+    else { looks.forEach(function(g){ delete chosenSet[g.step] });
+           piece.url = piece.history && piece.history[0] ? piece.history[0].url : piece.url;
+           looks.forEach(function(g){ skipped[g.step] = true }) }
+    reopen = null; drawPiece();
+  };
+  panel('design').querySelectorAll('.vopt').forEach(function(v){
+    v.onclick = function(){
+      if(busy) return;
+      if(v.dataset.x==='look'){
+        /* Every other wall on this screen is an alternative to this one, not a companion. */
+        looks.forEach(function(g){ if(g.step!==v.dataset.g) delete chosenSet[g.step] });
+      }
+      chosenSet[v.dataset.g] = v.dataset.v;
+      /* Changing crop can make a conditioned wall impossible - poses drawn for full body are
+         not answers to a headshot. Anything that no longer applies is dropped rather than
+         riding along silently into the prompt. */
+      (sets||[]).forEach(function(g){
+        if(g.step!==v.dataset.g && !applies(g)){ delete chosenSet[g.step]; delete skipped[g.step] }
+      });
+      piece.url = v.dataset.u; piece.made = null; piece.style = null;
+      piece.history = [{ url:v.dataset.u, label:'original', made:false }];
+      reopen = null;
+      drawPiece();
+    };
+  });
+  swipeOn(panel('design').querySelector('.piece'));
+}
+/* The one call in this file that generates. Style transfer from whatever picture is showing:
+   `from_url` is the URL the browser has already loaded successfully, which per the note on the
+   `finish` handler is the one address the edit lane is guaranteed to be able to read - a design
+   id is a PTA entity and /image/<entity> points at nothing. */
+function applyStyle(name){
+  if(busy || !(piece.made || piece.url)) return;
+  busy = true; busyStyle = name; drawPiece();
+  var src = String(piece.made || piece.url);
+  var m = src.match(/\/image\/(img_[A-Za-z0-9_-]+)/);
+  fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'finish',session:SESSION,
+      from:(m&&m[1])||'', from_url:src, style:name })})
+    .then(function(r){return r.json()}).then(function(d){
+      busy = false;
+      if(d && d.ok && d.image){
+        piece.made = d.image; piece.style = d.style || name; piece.design = d.design || null;
+        remember(d.image, d.style || name, name);
+      } else { piece.error = (d&&(d.say||d.error)) || 'That did not draw.' }
+      drawPiece();
+      if(piece.error){ flash(piece.error + ' Try another style.'); piece.error=null }
+    })
+    .catch(function(){ busy=false; drawPiece(); flash('Could not reach the server. Try again.') });
+}
+
+function labelOf(st,val){
+  var g = (sets||[]).find(function(x){ return x.step===st }); if(!g) return val;
+  var it = g.items.find(function(i){ return i.value===val });
+  return it ? it.label : val;
+}
+
+/* Every generated picture is banked in the strip. Same list for styles and for changes,
+   because to the person they are the same thing: a version of their tattoo that now exists. */
+function remember(url, label, style, design){
+  piece.history = piece.history || [];
+  if(piece.history.some(function(h){ return h.url===url })) return;
+  piece.history.push({ url:url, label:label, made:true, style:style||null,
+                       design: design || (piece.parent || null) });
+}
+
+/* ══ THE COMPOSER TALKS TO HER ═════════════════════════════════════════════════════════════
+   Everything the terminal proved, on the surface that ships: `talk` reads this person's own
+   chain, answers from it, and writes the round back. Same `auraTalk` the TALK command runs.
+
+   WHEN IT EVOLVES INSTEAD. On a piece with a picture, a typed sentence is nearly always an
+   instruction to change what is on screen - "put a red ball" - and `evolve` already does that
+   well and cheaply. Everywhere else she talks.
+   This split is a RULE I CHOSE and it is the weakest part of this file. The right version is
+   her deciding, the way she already decides between DRAW, SHOW and NOT_YET - but her classifier
+   has no "this is a change to the picture in front of them" answer, so there is nothing to read.
+   A regex on the sentence would be guessing, and this codebase's own note says the judgement of
+   which moment is which is exactly what a model has and a regex does not. So: an honest rule,
+   named as one, until she can be asked. */
+/* ══ ONE ROUTE (2026-09-07) ═══════════════════════════════════════════════════════════════
+   This used to send a typed sentence to `evolve` when a piece was on screen and to `talk`
+   everywhere else - a rule I chose and named at the time as the weakest thing in this file.
+   It is gone: `talk` now decides draw-or-change itself, in the same call that writes her reply,
+   so the surface has nothing left to guess at. */
+function sayIt(){
+  var el = document.getElementById('say');
+  var said = (el.value||'').trim();
+  if(busy) return;
+  /* A photo goes WITH what they say about it - the photo turn in every passing test is a
+     sentence and a picture together. Nothing is written for them. */
+  if(!said){ if(pendingPhoto){ el.placeholder='Tell Aura about this photo'; el.focus(); } return; }
+  el.value=''; el.blur();
+  askAura(said);
+}
+
+/* The thread. Newest at the bottom, catalogue still behind it, never a page of its own. */
+function paintThread(){
+  var box = document.getElementById('thread'), inn = document.getElementById('threadIn');
+  if(!thread.length){ box.classList.remove('up'); return }
+  box.classList.add('up');
+  document.getElementById('chip').classList.remove('up');
+  /* Reversed: the container is column-reverse so the newest turn sits against the composer and
+     the older ones climb away from the thumb. */
+  inn.innerHTML = thread.slice().reverse().map(function(t){
+    if(t.files) return filesHtml(t.files);
+    return '<div class="turn '+esc(t.who)+'">'+
+      (t.photo ? '<img class=shot src="'+esc(t.photo)+'" alt="">' : '')+
+      '<b>'+esc(t.said)+'</b></div>';
+  }).join('');
+}
+/* Collapse. Her last line stays on the pill; the rest is on the chain, not on the glass. */
+function collapseThread(){
+  var last = null;
+  for(var i=thread.length-1;i>=0;i--) if(thread[i].who==='aura' && thread[i].said){ last=thread[i]; break }
+  document.getElementById('thread').classList.remove('up');
+  if(last){
+    document.getElementById('chipBtn').innerHTML = '<b>Aura</b> \u00b7 ' + esc(last.said);
+    document.getElementById('chip').classList.add('up');
+  }
+}
+
+/* THE PAGE STREAMS, LIKE mt-design ALREADY DOES (2026-09-19)
+   MEASURED on the standing test: the photo turn took 42.8s, the drawing turn 60.1s. aura-host gives
+   a non-streamed `/_design` call 40 seconds, so on this page the turn that draws was the turn that
+   failed. A streamed reply resolves at once and finishes on the wire, which is what host passes
+   straight through. The reader is mt-design's `apiStream`, not a new one. */
+function talkStream(body, onText){
+  return fetch('/_design',{method:'POST',
+    headers:{'Content-Type':'application/json','Accept':'text/event-stream'},
+    body:JSON.stringify(Object.assign({stream:true},body))})
+  .then(function(r){
+    var ct=(r.headers.get('content-type')||'');
+    if(ct.indexOf('text/event-stream')<0) return r.json();
+    var reader=r.body.getReader(), dec=new TextDecoder(), buf='', fin=null;
+    function pump(){
+      return reader.read().then(function(res){
+        if(res.done) return fin;
+        buf+=dec.decode(res.value,{stream:true});
+        var cut;
+        while((cut=buf.indexOf('\n\n'))!==-1){
+          var frame=buf.slice(0,cut); buf=buf.slice(cut+2);
+          var ev='message', data='';
+          frame.split('\n').forEach(function(ln){
+            if(ln.indexOf('event:')===0) ev=ln.slice(6).trim();
+            else if(ln.indexOf('data:')===0) data+=ln.slice(5).trim();
+          });
+          if(!data) continue;
+          if(ev==='final'){ try{ fin=JSON.parse(data) }catch(e){} }
+          else { try{ var d=JSON.parse(data); if(d&&typeof d.delta==='string'&&onText) onText(d.delta) }catch(e){} }
+        }
+        return pump();
+      });
+    }
+    return pump();
+  });
+}
+
+/* The files for their artist. When she makes the package the reply is marked `for_the_artist`
+   and carries the flat artwork, the line art, how it will look, and the print PDF - one entry
+   per panel on a multi-panel job. This page used to read only `drew.image`, so the line art was
+   shown as if it were a new design and the PDF never reached anybody. */
+function filesHtml(f){
+  var cards=[];
+  function card(url,label){ if(url) cards.push('<a class=f href="'+esc(url)+'" target=_blank rel=noopener>'+
+    '<img loading=lazy src="'+esc(url)+'" alt=""><span>'+esc(label)+'</span></a>') }
+  if(f.panels && f.panels.length){
+    f.panels.forEach(function(p,i){
+      var name = p.section || ('Panel '+(i+1));
+      card(p.flat, name+' \u00b7 artwork'); card(p.line, name+' \u00b7 line art');
+    });
+  } else {
+    card(f.flat_artwork,'Flat artwork');
+    if(f.image && f.image!==f.flat_artwork) card(f.image,'Line art');
+  }
+  card(f.shows_finished,'How it will look');
+  return '<div class=files><div class=note>For your artist</div><div class=grid>'+cards.join('')+'</div>'+
+    (f.print_pdf ? '<a class=pdf href="'+esc(f.print_pdf)+'" target=_blank rel=noopener>Print file (PDF)</a>' : '')+
+    '</div>';
+}
+
+function askAura(said){
+  var photo = pendingPhoto; clearPhoto();
+  thread.push({ who:'them', said:said, photo:photo||null });
+  var pend = { who:'aura', said:'\u2026', pending:true };
+  thread.push(pend);
+  paintThread();
+  busy = true;
+  var sofar = '';
+  talkStream({action:'talk',session:SESSION,said:said,
+              /* WHICH VERSION THEY ARE BRANCHING FROM. Absent, she stacks on the last
+                 thing she drew; set by tapping a thumbnail, she stacks on that one. */
+              from: piece.parent || null,
+              /* Their photo goes in exactly as REF does from the terminal (core v9.338). */
+              photo: photo || undefined,
+              history:thread.filter(function(t){return !t.pending && t.said})
+                            .slice(-12).map(function(t){
+                              return { role:t.who==='aura'?'aura':'them', said:t.said } })},
+    function(delta){ sofar += delta; pend.said = sofar; paintThread(); })
+    .then(function(d){
+      busy = false;
+      thread = thread.filter(function(t){ return !t.pending });
+      if(d && d.ok && d.said){
+        thread.push({ who:'aura', said:d.said });
+        if(d.drew && d.drew.for_the_artist){
+          /* The package is not a new design - the piece on the stage stays what it was. */
+          thread.push({ who:'aura', files:d.drew });
+          paintThread();
+        } else {
+          paintThread();
+          /* She said it and made it in the same breath, so the stage follows her words without
+             anything here having to interpret them. */
+          if(d.drew && d.drew.image){
+            piece.label = piece.label || (d.intent && d.intent.subject) || 'Your design';
+            piece.made = d.drew.image;
+            piece.parent = d.drew.design || null;
+            remember(d.drew.image, d.drew.changed || d.drew.asked || said, null, d.drew.design);
+            if(at!==1 || step!==3){ step = 3; go(1); }
+            collapseThread(); drawPiece();
+          }
+        }
+        if(d.show_me) findFor(d.show_me);
+      } else {
+        if(d && d.error==='NO_SESSION'){ SESSION=null; try{ localStorage.removeItem('mt:session') }catch(e){} }
+        thread.push({ who:'aura', said:(d&&(d.say||d.error)) || 'I could not answer that.' });
+        paintThread();
+      }
+    })
+    .catch(function(){
+      busy = false;
+      thread = thread.filter(function(t){ return !t.pending });
+      thread.push({ who:'aura', said:'I could not reach the server.' });
+      paintThread();
+    });
+}
+
+/* Take them to what she named. A leaf goes straight to the piece; a kind or a category opens at
+   that level. The thread collapses to its chip on the way, so the pictures are what they see. */
+function findFor(q){
+  cached('f:'+q, { find:q }).then(function(d){
+    if(!d || !d.ok || !d.items || !d.items.length) return;
+    var it = d.items[0];
+    if(it.level === 'leaf' && it.category && it.kind){
+      chosen = { category:{value:vslug(it.category),label:it.category},
+                 kind:{value:vslug(it.kind),label:it.kind},
+                 leaf:{value:it.value,label:it.label} };
+      piece = { url:it.image||null, label:it.label, style:null, made:null,
+                history: it.image ? [{ url:it.image, label:'original', made:false }] : [] };
+      step = 3; catAll = false; collapseThread(); go(1); loadSets(it.label);
+    } else if(it.level === 'kind' && it.category){
+      chosen = { category:{value:vslug(it.category),label:it.category} };
+      step = 1; catAll = false;
+      loadKinds(it.category).then(function(){ collapseThread(); go(1); drawLadder() });
+    } else {
+      chosen = { category:{value:it.value,label:it.label} };
+      step = 1; catAll = false;
+      loadKinds(it.label).then(function(){ collapseThread(); go(1); drawLadder() });
+    }
+  });
+}
+
+function flash(msg){
+  var n = panel('design').querySelector('.note');
+  if(n) n.innerHTML = '<b>'+esc(msg)+'</b>';
+}
+
+/* Crumbs and dots are the same job - go to a stage - so they share one handler. */
+function wireNav(host){
+  host.querySelectorAll('.dot,.crumb').forEach(function(el){
+    el.onclick = function(){ if(!el.disabled) goStep(+el.dataset.s) };
+  });
+}
+
+/* Swipe between steps. Horizontal only, and only past a real threshold - otherwise a slightly
+   diagonal vertical scroll through a long grid would change the question underneath somebody. */
+function swipeOn(el){
+  var x0=null, y0=null;
+  el.addEventListener('touchstart', function(e){
+    x0=e.touches[0].clientX; y0=e.touches[0].clientY;
+  }, {passive:true});
+  el.addEventListener('touchend', function(e){
+    if(x0===null) return;
+    var dx=e.changedTouches[0].clientX-x0, dy=e.changedTouches[0].clientY-y0;
+    x0=null;
+    if(Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)*1.5) return;
+    goStep(step + (dx<0 ? 1 : -1));
+  }, {passive:true});
+}
+
+/* The only way `step` ever changes. Forward is refused unless the step before it was answered -
+   a person cannot swipe past a question into a screen with nothing on it. */
+function goStep(i){
+  if(i<0 || i>3) return;
+  if(i>0 && !chosen[STEPS[i-1].field]) return;
+  if(i===3 && !chosen.leaf) return;
+  /* Going back to change an answer abandons the piece. Keeping it would leave somebody looking
+     at a golden retriever while the breadcrumb above it said dragons. */
+  if(i<3 && busy) return;
+  step=i; drawLadder();
+  panel('design').parentNode.scrollTo({top:0,behavior:'smooth'});
+}
+
+drawLadder();
+
+panel('mine').innerHTML='<div class=head><h2>My Tattoos</h2></div>'+
+  '<div class=empty><h3>Nothing here yet</h3><p>Anything you design or photograph lands here '+
+  'and stays on your account, not this browser.</p></div>';
+panel('shops').innerHTML='<div class=head><h2>Shops</h2></div>'+
+  '<div class=empty><h3>Find someone to do it</h3><p>Search a city in the bar below, or share '+
+  'your location to see who is near you.</p></div>';
+panel('me').innerHTML='<div class=head><h2>Me</h2></div>'+
+  '<div class=empty><h3>You are browsing as a guest</h3><p>Everything works. Your designs follow '+
+  'you once you say who you are.</p></div>';
+
+var sheet=document.getElementById('sheet'), scrim=document.getElementById('scrim');
+function sheetUp(v){ sheet.classList.toggle('up',v); scrim.classList.toggle('up',v) }
+document.getElementById('meBtn').onclick=function(){sheetUp(true)};
+scrim.onclick=function(){sheetUp(false)};
+addEventListener('keydown',function(e){ if(e.key==='Escape') sheetUp(false) });
+var y0=null;
+sheet.addEventListener('touchstart',function(e){y0=e.touches[0].clientY},{passive:true});
+sheet.addEventListener('touchmove',function(e){
+  if(y0===null)return; var dy=e.touches[0].clientY-y0;
+  if(dy>0) sheet.style.transform='translateY('+dy+'px)';
+},{passive:true});
+sheet.addEventListener('touchend',function(e){
+  var dy=e.changedTouches[0].clientY-(y0||0); sheet.style.transform='';
+  if(dy>70) sheetUp(false); y0=null;
+});
+
+/* The wordmark is home. Aaron: "we can make the mytattoo.world thing at the top go back to the
+   home page" - and while a design is in progress it is also the way out of it. */
+document.getElementById('homeBtn').onclick=function(){
+  chosen={}; piece={}; sets=null; chosenSet={}; skipped={}; gate=null; reopen=null; showAll=false; catAll=false; step=0;
+  drawLadder(); go(0);
+  document.getElementById('p-explore').scrollTo({top:0,behavior:'smooth'});
+};
+
+document.getElementById('sendBtn').onclick = sayIt;
+
+/* THEIR PHOTO. Shrunk on the phone the way mt-design shrinks it - 1280 on the long edge at 0.85
+   JPEG, a few hundred KB - because a raw phone photo in base64 would hit core's six-megabyte
+   ceiling most of the time. It rides on the next thing they say. */
+var pendingPhoto = null;
+var CAM_SVG = '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+function shrink(file){
+  return new Promise(function(resolve,reject){
+    var fr=new FileReader();
+    fr.onerror=function(){reject(new Error('could not read that file'))};
+    fr.onload=function(){
+      var im=new Image();
+      im.onerror=function(){reject(new Error('that does not look like a photo'))};
+      im.onload=function(){
+        var max=1280, w=im.width, h=im.height;
+        if(w>max||h>max){ var k=max/Math.max(w,h); w=Math.round(w*k); h=Math.round(h*k); }
+        var c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(im,0,0,w,h);
+        resolve(c.toDataURL('image/jpeg',0.85));
+      };
+      im.src=fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+function clearPhoto(){
+  pendingPhoto = null;
+  var b = document.getElementById('camBtn');
+  b.classList.remove('on'); b.innerHTML = CAM_SVG;
+  document.getElementById('say').placeholder = 'Ask Aura or pick a category';
+}
+clearPhoto();
+document.getElementById('camBtn').onclick = function(){ if(!busy) document.getElementById('file').click() };
+document.getElementById('file').onchange = function(){
+  var f = this.files && this.files[0]; this.value = '';
+  if(!f) return;
+  shrink(f).then(function(uri){
+    pendingPhoto = uri;
+    var b = document.getElementById('camBtn');
+    b.classList.add('on'); b.innerHTML = '<img src="'+uri+'" alt="">';
+    var s = document.getElementById('say');
+    s.placeholder = 'Tell Aura about this photo'; s.focus();
+  }).catch(function(e){
+    thread.push({ who:'aura', said:'I could not open that photo: '+String(e&&e.message||e) });
+    paintThread();
+  });
+};
+document.getElementById('chipBtn').onclick = function(){
+  document.getElementById('chip').classList.remove('up');
+  paintThread();
+};
+/* Touching the catalogue puts the conversation away. Nothing is lost - it is on the chain, and
+   her last line stays on the pill. */
+document.getElementById('pager').addEventListener('pointerdown', function(){
+  if(document.getElementById('thread').classList.contains('up')) collapseThread();
+}, {passive:true});
+document.getElementById('say').addEventListener('keydown',function(e){
+  if(e.key==='Enter') document.getElementById('sendBtn').click();
+});
+
+/* One screen wide is a pixel count, and it changes on rotate, resize, or a keyboard opening.
+   Re-anchor rather than leaving a panel half off the edge. */
+addEventListener('resize',function(){
+  pager.scrollTo({left:at*pager.clientWidth,behavior:'auto'});
+});
+</script></body></html>

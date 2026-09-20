@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.339.0-2026-09-19-a-visitor-reaches-her-agent";
+const BUILD = "aura-core-v9.340.0-2026-09-20-one-door-for-every-world";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5214,6 +5214,200 @@ async function mintDoorway(env, { context, name, handle, via, image, dest, creat
   const rec = { lead_id: leadId, handle: handleKey, name: name || null, via, context: context || null, image: image || null, dest: dest || "/", creator: creator || null, origin, identity: idKey || null, created_at: new Date().toISOString(), redeemed: false };
   await env.AURA_KV.put("door:" + token, JSON.stringify(rec), { expirationTtl: 2592000 }).catch(() => {});
   return { ok: true, token, doorway: "https://auras.guide/d/" + token, lead_id: leadId, handle: handleKey, origin, identity: idKey || null };
+}
+
+// ══ ONE WAY INTO EXISTENCE (2026-09-20) ══════════════════════════════════════════════════════════
+// Three births existed and they disagreed. PTA_CREATE made the full PTA (Durable Object, person row,
+// the can_remember grant) but stored the identity AS TYPED in its own index. PTA_ENTITY CREATE
+// normalised and hashed it, and was what Google sign-in, email codes, a shop adding an artist and a
+// business owner all used - with no grant, so none of those people were kept. Two ways of
+// recognising one human is how one human becomes two PTAs.
+// This is the standard account model (OpenID Connect underneath Google, OpenAI and the rest):
+//   - the ACCOUNT is an id that never changes: the pta_ id.
+//   - the WAYS IN are linked identities, many to one: google:<sub>, email:<lowercase>, phone:<e164>.
+//     Google's own guidance: key on `sub`, never on the email, which can change and is not unique.
+//   - sign-in and sign-up are ONE flow: prove -> find -> link or create -> session.
+//   - profile (name, who they are) comes after, in conversation, never inside the birth.
+// `pta_identity_index` was already the right shape (identity -> pta). It now holds every way in,
+// hashed the way `pta_entities.identity_key` already is. Rows written as typed before today are
+// still found by their exact normalised form.
+const VERIFY_RANK = { unverified: 0, phone_verified: 1, email_verified: 2, google_verified: 3,
+  identity_verified: 4, passkey_verified: 5, aura_verified: 6 };
+
+// A sign-in only ever RAISES how strongly somebody has proven themselves. Signing in with Google
+// used to overwrite passkey_verified with google_verified - proving yourself again made you weaker.
+async function raiseVerification(env, pta, level) {
+  const db = env.AURA_MEMORY;
+  const row = await db.prepare("SELECT verification_level FROM pta_entities WHERE id = ?").bind(pta).first().catch(() => null);
+  const cur = VERIFY_RANK[(row && row.verification_level) || "unverified"] ?? 0;
+  if ((VERIFY_RANK[level] ?? 0) <= cur) return false;
+  await db.prepare("UPDATE pta_entities SET verification_level = ?, updated_at = ? WHERE id = ?")
+    .bind(level, new Date().toISOString(), pta).run().catch(() => {});
+  return true;
+}
+
+// A person is only ever found as a PERSON. A business can carry an email too, and signing somebody in
+// as their shop would be the worst version of this bug.
+async function ptaIsPerson(env, id) {
+  if (!/^pta_/.test(String(id || ""))) return false;
+  const r = await env.AURA_MEMORY.prepare("SELECT type FROM pta_entities WHERE id = ?").bind(id).first().catch(() => null);
+  return !r || r.type === "person";     // no row = an early PTA_CREATE that never listed; still a person
+}
+
+async function ptaFindByIdentity(env, identities) {
+  const db = env.AURA_MEMORY;
+  for (const raw of (identities || [])) {
+    const norm = normIdentity(raw);
+    if (!norm || !norm.includes(":")) continue;
+    let keys = [];
+    try { keys = (await hashIdentityAllVersions(env, norm)).map((k) => k.key); } catch {}
+    for (const k of keys.concat([norm])) {
+      const a = await db.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(k).first().catch(() => null);
+      if (a && await ptaIsPerson(env, a.pta_id)) return a.pta_id;
+      const b = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ? AND substr(id, 1, 4) = 'pta_' AND type = 'person'")
+        .bind(k).first().catch(() => null);
+      if (b && b.id) return b.id;
+    }
+  }
+  return null;
+}
+
+async function ptaLink(env, pta, identities) {
+  const db = env.AURA_MEMORY, linked = [], conflicts = [];
+  try { await db.prepare("CREATE TABLE IF NOT EXISTS pta_identity_index (identity_key TEXT UNIQUE NOT NULL, pta_id TEXT NOT NULL, created_at TEXT)").run(); } catch {}
+  for (const raw of (identities || [])) {
+    const norm = normIdentity(raw);
+    if (!norm || !norm.includes(":")) continue;
+    const h = await hashIdentity(env, norm);
+    const key = h.key || norm;
+    await db.prepare("INSERT INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?) ON CONFLICT(identity_key) DO NOTHING")
+      .bind(key, pta, new Date().toISOString()).run().catch(() => {});
+    const own = await db.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(key).first().catch(() => null);
+    const scheme = norm.split(":")[0];
+    // A way in that already belongs to somebody else is NEVER moved. Reported, not stolen.
+    if (own && own.pta_id !== pta) conflicts.push({ scheme, belongs_to: own.pta_id });
+    else linked.push(scheme);
+  }
+  return { linked, conflicts };
+}
+
+// The can_remember grant to Aura, exactly as PTA_CREATE has issued it since 2026-09-08: offered with
+// CONFIRM, made live with ACCEPT, the sentence saying why. Checked first, so an existing grant is not
+// offered twice - and a thin PTA from before today gets the grant the full birth always gave.
+async function ptaEnsureRemembers(env, pta, app) {
+  const auraId = (await getSecret(env, "aura_pta_id")) || (await env.AURA_KV.get("config:aura:pta_id")) || "";
+  if (!auraId) return { ok: false, why: "config:aura:pta_id is unset, so there is no actor to grant to. " +
+    "This PTA exists but nothing said to it will be remembered." };
+  const have = await env.AURA_MEMORY.prepare(
+    "SELECT id FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'grant' AND state = 'active' AND permission LIKE '%can_remember%'")
+    .bind(pta, auraId).first().catch(() => null);
+  if (have) return { ok: true, already: true };
+  try {
+    const gr = await processCommand("PTA_GRANT " + pta + " " + auraId +
+      ' CONFIRM {"edge_type":"grant","permission":{"can_remember":true}}', env, true);
+    const gp = (gr && gr.payload) ? gr.payload : gr;
+    const gEdge = (gp && (gp.edge_id || gp.edge)) || null;
+    if (!(gp && gp.ok && gEdge)) return { ok: false, why: (gp && gp.error) || "grant did not land" };
+    const ar = await processCommand("ACCEPT " + gEdge +
+      " ::: they signed in themselves to use " + (app || "Aura"), env, true);
+    const ap = (ar && ar.payload) ? ar.payload : ar;
+    return (ap && ap.ok) ? { ok: true } : { ok: false, why: (ap && ap.error) || "grant offered but not accepted" };
+  } catch (e) { return { ok: false, why: String(e?.message ?? e).slice(0, 160) }; }
+}
+
+async function ptaBirth(env, { identities, name, app, via }) {
+  const ids = (identities || []).map((x) => normIdentity(x)).filter((x) => x && x.includes(":"));
+  // The ANCHOR is an email or a phone - the thing that makes one person one entity. A provider id
+  // is a way in, never the anchor on its own.
+  const primary = ids.find((x) => /^(email|phone):/.test(x));
+  if (!primary) return { ok: false, error: "NEED_EMAIL_OR_PHONE" };
+  const safeName = String(name || "").replace(/[\n\r]/g, " ").trim().slice(0, 120)
+    || primary.replace(/^(email|phone):/, "").split("@")[0];
+  const found = await ptaFindByIdentity(env, ids);
+  if (found) {
+    const lk = await ptaLink(env, found, ids);
+    const rem = await ptaEnsureRemembers(env, found, app);
+    return { ok: true, pta: found, mode: "existing", listed: true, linked: lk.linked,
+      link_conflicts: lk.conflicts.length ? lk.conflicts : undefined,
+      remembers: !!rem.ok, remembers_note: rem.ok ? undefined : rem.why };
+  }
+  const ptaId = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+  try {
+    const stub = env.PTA_DO.get(env.PTA_DO.idFromName(ptaId));
+    const ir = await stub.fetch(new Request("http://do", { method: "POST",
+      body: JSON.stringify({ method: "init", params: [ptaId, "person", safeName, primary, "", app || "pta"] }) }));
+    const dj = await ir.json();
+    if (!dj || !dj.ok) return { ok: false, error: "Could not initialize PTA DO" };
+  } catch (e) { return { ok: false, error: "DO initialization failed: " + String(e?.message ?? e).slice(0, 160) }; }
+  let listed = false, listingError = null;
+  try {
+    const h = await hashIdentity(env, primary);
+    const now = new Date().toISOString();
+    await env.AURA_MEMORY.prepare(
+      "INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, 'person', ?, ?, ?, ?, ?)")
+      .bind(ptaId, h.key || primary, safeName,
+        JSON.stringify({ app: app || "pta", born: "self_arrival", via: via || null, identity_hint: h.hint || null }), now, now).run();
+    listed = true;
+  } catch (e) { listingError = String(e?.message ?? e).slice(0, 160); }
+  const lk = await ptaLink(env, ptaId, ids);
+  const rem = await ptaEnsureRemembers(env, ptaId, app);
+  return { ok: true, pta: ptaId, mode: "created", listed, listing_error: listingError || undefined,
+    linked: lk.linked, link_conflicts: lk.conflicts.length ? lk.conflicts : undefined,
+    remembers: !!rem.ok, remembers_note: rem.ok ? undefined : rem.why };
+}
+
+// ══ WHERE A SIGN-IN MAY SEND SOMEBODY (2026-09-20) ═══════════════════════════════════════════════
+// `dest` was taken from the address bar and handed back with the session attached, so
+// auras.guide/auth/google/start?dest=https://anyone.com gave anyone.com a working sign-in for
+// whoever clicked. Now: a path on this host, or https on a domain Cloudflare says is yours. The
+// zone list is the one cfZones already keeps. If it cannot be read, the answer is "/" - fail closed.
+async function safeReturn(env, dest) {
+  const d = String(dest || "").trim();
+  if (!d) return "/";
+  if (d.startsWith("/") && !d.startsWith("//") && !d.startsWith("/\\")) return d;
+  let u; try { u = new URL(d); } catch { return "/"; }
+  if (u.protocol !== "https:" || u.username || u.password) return "/";
+  const host = u.hostname.toLowerCase().replace(/\.$/, "");
+  const z = await cfZones(env).catch(() => null);
+  const names = ((z && z.ok && z.zones) || []).map((x) => String(x.name || "").toLowerCase());
+  return names.some((n) => host === n || host.endsWith("." + n)) ? u.toString() : "/";
+}
+
+function withSession(dest, session, host) {
+  try { const du = new URL(dest, "https://" + host); du.searchParams.set("s", session); return du.toString(); }
+  catch { return "/?s=" + session; }
+}
+
+// The one sign-in page. Every world links here with its own page as `dest` and gets the person
+// back signed in. Google, or a code by email - nothing typed that could leak.
+function signinPage(dest) {
+  const d = JSON.stringify(String(dest || "/")).replace(/</g, "\\u003c");
+  return `<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Sign in</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#07070a;color:#f2f2f5;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100dvh;display:grid;place-items:center;padding:24px}
+.box{width:100%;max-width:23rem;text-align:center}h1{font-size:1.6rem;font-weight:700;margin-bottom:.4rem}p{color:#9a9aa6;margin-bottom:1.6rem}
+a.g,button{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;border-radius:12px;padding:.85rem;font:inherit;font-weight:600;cursor:pointer;text-decoration:none}
+a.g{background:#fff;color:#1f1f1f;border:0}.or{color:#5c5c68;font-size:.85rem;margin:1.2rem 0}
+input{width:100%;background:#131318;border:1px solid #2a2a33;border-radius:12px;padding:.8rem 1rem;color:#fff;font:inherit;margin-bottom:.7rem;outline:none}input:focus{border-color:#a855f7}
+button{background:#6d28d9;color:#fff;border:0}button:disabled{opacity:.5}.m{margin-top:1rem;font-size:.9rem;color:#c4b5fd;min-height:1.4em}</style></head><body><div class=box>
+<h1>Sign in</h1><p>One account for everything. If you are new, this makes it.</p>
+<a class=g id=g href="#"><svg width=18 height=18 viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9c4.4-4.1 7-10.1 7-17.6z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>Continue with Google</a>
+<div class=or>or with your email</div>
+<div id=s1><input id=e type=email autocomplete=email placeholder="you@example.com"><button id=b1>Email me a code</button></div>
+<div id=s2 style="display:none"><input id=c inputmode=numeric autocomplete=one-time-code placeholder="6-digit code" maxlength=6><button id=b2>Sign in</button></div>
+<div class=m id=m></div></div>
+<script>var D=${d};
+document.getElementById('g').href='/auth/google/start?dest='+encodeURIComponent(D);
+function say(t){document.getElementById('m').textContent=t}
+function post(u,b){return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(b)}).then(function(r){return r.json()})}
+document.getElementById('b1').onclick=function(){var e=document.getElementById('e').value.trim(),b=this;if(!e){say('Enter your email.');return}
+b.disabled=true;say('Sending...');post('/auth/email/start',{email:e}).then(function(d){b.disabled=false;say(d.say||'');
+if(d.ok){document.getElementById('s1').style.display='none';document.getElementById('s2').style.display='block';document.getElementById('c').focus()}}).catch(function(){b.disabled=false;say('Could not reach the server.')})};
+document.getElementById('b2').onclick=function(){var e=document.getElementById('e').value.trim(),c=document.getElementById('c').value.trim(),b=this;
+b.disabled=true;say('Checking...');post('/auth/email/confirm',{email:e,code:c,dest:D}).then(function(d){if(d.ok&&d.go){say('Signed in.');location.href=d.go;return}
+b.disabled=false;say(d.say||d.error||'That did not work.')}).catch(function(){b.disabled=false;say('Could not reach the server.')})};
+document.getElementById('c').addEventListener('keydown',function(ev){if(ev.key==='Enter')document.getElementById('b2').click()});
+document.getElementById('e').addEventListener('keydown',function(ev){if(ev.key==='Enter')document.getElementById('b1').click()});
+</script></body></html>`;
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -27746,6 +27940,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // Every misrouted zone in the survey had BOTH `domain/*` and `www.domain/*`. Removing both
           // and creating only the apex would have taken www offline on hundreds of domains - fixing
           // the world by half-breaking it. Both patterns are checked and both are created.
+          // ══ CORE'S OWN HOME IS NOT MISROUTED (2026-09-20) ══════════════════════════════════
+          // auras.guide answers from aura-core on purpose: the sign-in door Google trusts, the /d/
+          // doorways, the home screen. CONFIRM across every zone used to move it to aura-host and
+          // take all three down at once. A zone whose apex is served by aura-core is left alone.
+          if (routes.some(x => /^aura-core/.test(x.script || "") && x.pattern === z.name + "/*")) {
+            if (drOne) rows.push({ zone: z.name, routes: routes.map(x => x.pattern + " -> " + (x.script || "(none)")),
+              serves_correctly: true, core_home: "served by aura-core on purpose - left alone" });
+            continue;
+          }
           const wrong = routes.filter(x => x.script && x.script !== TARGET);
           const hasApex = routes.some(x => x.script === TARGET && x.pattern === z.name + "/*");
           const hasWww = routes.some(x => x.script === TARGET && x.pattern === "www." + z.name + "/*");
@@ -34819,259 +35022,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!pc.identity) return { cmd: "PTA_CREATE", payload: { ok: false, error: "identity required (email:... or phone:...)" } };
       if (!/^(email|phone):/i.test(pc.identity)) return { cmd: "PTA_CREATE", payload: { ok: false, error: "identity must be email:... or phone:..." } };
       const pcApp = pc.app || "pta";
-      
-      // Generate PTA ID (for human reference)
-      const ptaId = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8)))
-        .map(b => b.toString(16).padStart(2, "0")).join("");
-      
-      const safeName = (pc.name || "New PTA").replace(/[\n\r]/g, " ");
-      
-      // Initialize the Durable Object with the PTA
-      // Use idFromName() which generates a valid DO ID deterministically from the ptaId
-      let doResult = null;
-      try {
-        const doId = env.PTA_DO.idFromName(ptaId);
-        const stub = env.PTA_DO.get(doId);
-        const initResp = await stub.fetch(new Request("http://do", {
-          method: "POST",
-          body: JSON.stringify({ 
-            method: "init", 
-            params: [ptaId, "person", safeName, pc.identity, pc.about || "", pcApp] 
-          })
-        }));
-        doResult = await initResp.json();
-      } catch (e) { return { cmd: "PTA_CREATE", payload: { ok: false, error: "DO initialization failed: " + e.message } }; }
-      
-      if (!doResult || !doResult.ok) return { cmd: "PTA_CREATE", payload: { ok: false, error: "Could not initialize PTA DO" } };
-      
-      // Store identity_key → pta_id mapping in D1 for fast lookup
-      // CRITICAL: if this fails, the DO exists but isn't discoverable - must handle carefully
-      let d1Success = false;
-      let d1Error = null;
-      
-      try {
-        // Ensure table exists first
-        try {
-          await env.AURA_MEMORY.prepare("CREATE TABLE IF NOT EXISTS pta_identity_index (identity_key TEXT UNIQUE NOT NULL, pta_id TEXT NOT NULL, created_at TEXT)").run();
-        } catch {}
-        
-        // Attempt insert
-        await env.AURA_MEMORY.prepare("INSERT INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?)").bind(pc.identity, ptaId, new Date().toISOString()).run();
-        d1Success = true;
-      } catch (e) {
-        d1Error = e.message || String(e);
-        
-        // Check if failure is due to UNIQUE constraint (identity already exists)
-        if (d1Error.includes("UNIQUE") || d1Error.includes("constraint")) {
-          // Idempotency check: does the existing entry point to our new PTA?
-          try {
-            const existing = await env.AURA_MEMORY.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(pc.identity).first();
-            if (existing && existing.pta_id === ptaId) {
-              // Already indexed to this PTA - this is idempotent success
-              d1Success = true;
-            } else if (existing && existing.pta_id !== ptaId) {
-              // CONFLICT: different PTA already owns this identity
-              return { cmd: "PTA_CREATE", payload: { ok: false, error: "Identity already registered to a different PTA: " + existing.pta_id } };
-            }
-          } catch (checkErr) {
-            // If we can't verify, return the original error
-            return { cmd: "PTA_CREATE", payload: { ok: false, error: "D1 constraint check failed: " + checkErr.message } };
-          }
-        } else {
-          // Some other D1 error - not a constraint violation
-          return { cmd: "PTA_CREATE", payload: { ok: false, error: "D1 insert failed: " + d1Error } };
-        }
-      }
-      
-      if (!d1Success) {
-        return { cmd: "PTA_CREATE", payload: { ok: false, error: "Could not store identity index in D1" } };
-      }
-
-      // ══ MINTED, REAL, AND NOT IN THE DIRECTORY (fixed 2026-08-15) ═══════════════════════════════
-      //
-      // MEASURED: `PTA_CREATE {...Northgate Bindery...}` returned ok:true with pta_1d5cd045383b353b,
-      // a live Durable Object, a sealed chain and a full UNDERSTOOD block. The very next command,
-      // `PTA_GRANT pta_1d5cd045383b353b ...`, answered "From entity not found". Then PTA_TURNS and
-      // PTA_OUTCOME both refused NO_GRANT, because the grant could never be made.
-      //
-      // THE PTA WAS NEVER MISSING. Touch minted it and it holds everything. What was missing is the
-      // ROW: this handler wrote the Durable Object and `pta_identity_index`, and never wrote
-      // `pta_entities` - the table PTA_GRANT, PTA_LEARN, PTA_AUDIT and a dozen others scan. Findable
-      // by identity, invisible to every command that walks the directory. PTA_LEARN's
-      // `SELECT id, name FROM pta_entities LIMIT 400` can never reach a self-arrived person, so the
-      // fourth birth path could not feed the learning loop at all.
-      //
-      // THE COMMENT ON PTA_REMEMBER ALREADY NAMED THE SHAPE, one direction only: "BOTH HALVES OR IT
-      // DOES NOT EXIST. A D1 row with no Durable Object is the split-brain state - findable, and
-      // unable to hold a single fact." This is the mirror: holds every fact, and not findable. The
-      // check was built for one side.
-      //
-      // Written with the same columns and the same type ("person") the DO was initialised with, so a
-      // self-arrived person is listed exactly like one who arrived through a tap or an invite. The
-      // insert is guarded and non-fatal on its own - the PTA is already real by this point, and
-      // failing the whole creation because the directory write missed would be the worse outcome -
-      // but it REPORTS, because a silent half-write is what produced this.
-      let entityRow = false, entityRowError = null;
-      try {
-        const _now = new Date().toISOString();
-        // `understood` is computed further down, so the row is written first and the trade is patched
-        // onto it once the model has answered - see the metadata update after the UNDERSTOOD append.
-        const _meta = JSON.stringify({ app: pcApp, about: (pc.about || "").slice(0, 600), born: "self_arrival" });
-        await env.AURA_MEMORY.prepare(
-          "INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind(ptaId, "person", pc.identity, safeName, _meta, _now, _now).run();
-        entityRow = true;
-      } catch (e) {
-        entityRowError = String((e && e.message) || e).slice(0, 160);
-      }
-
-      // BRAIN UNDERSTANDS who they are from their own words (SEE -> UNDERSTAND applied to a person)
-      let understood = null;
-      if (pc.about && pc.about.trim()) {
-        const apiKey = await getSecret(env, "anthropic");
-        if (apiKey) {
-          const model = await anthropicModel(env);
-          const sys = await loadPrompt(env, "meet_new_person", "You are Aura, meeting a new person who just told you who they are in their own words. Understand them warmly and accurately. Return ONLY a JSON object, no prose or fences, with exactly these keys: identity_summary (one warm sentence capturing who they are), roles (array of what they are/do), business_type (ONE lowercase_underscore slug for their TRADE if they are a business - tattoo_shop, bookbinding, upholstery, barbershop, bakery - or null if they are a private individual or you cannot tell from their words; never guess a trade to fill the field), interests (array), traits (array of character qualities you can fairly infer), what_matters_to_them (array, only if they signal it - else empty), how_to_address_them (a short note on tone that would suit them), confidence (high|medium|low), unknowns (array of what you would want to learn next). Be human, never glib. Infer only what is fair from their words. Output JSON only.");
-          try {
-            const d = await callAnthropic(apiKey, { model, route: "policy", max_tokens: 1000, system: sys, messages: [{ role: "user", content: pc.about }] });
-            let t = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") t += b.text; } }
-            t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
-            try { understood = JSON.parse(t); } catch {}
-          } catch (e) {}
-        }
-      }
-      
-      // ══ THE TRADE WAS DERIVED AND THROWN AWAY (2026-08-15) ═══════════════════════════════════
-      //
-      // MEASURED: a live PTA_TALK conversation reached the chain and the learning loop (proven with
-      // Harborlight Barbers), and still counted only as CONTRAST - `uncohorted` went 7 to 8 - because
-      // PTA_LEARN needs a `business_type` and nothing on the live path produces one. Grok's
-      // cross-cohort rule can never see a real conversation, only fixtures.
-      //
-      // AND IT WAS ALREADY BEING WORKED OUT. This model call returns `roles` - ["barbershop owner",
-      // "barber", "manager"] for Harborlight, ["bookbinding and restoration shop owner"] for Northgate.
-      // The trade was inferred at the door on every single creation and then dropped on the floor.
-      // So: ONE MORE FIELD on a call that already runs. No new model call, no new write path, no
-      // second source of truth, and nothing for a later pass to backfill.
-      //
-      // The prompt says null rather than a guess, deliberately. A private individual has no trade, and
-      // a fabricated one is worse than an absent one - it would put a person in a cohort and let a
-      // lesson claim to hold across trades that were never there.
-      // NOT gated on can_remember: this rides the existing UNDERSTOOD append, which goes straight to
-      // appendChain at creation, before any grant can exist. That is what makes it work on the live
-      // path where a chain-gated write cannot.
-      // Append understood metadata to the PTA's chain
-      if (understood) {
-        try {
-          const _bt = understood.business_type;
-          if (_bt && typeof _bt === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(_bt)) {
-            const _m2 = JSON.stringify({ app: pcApp, about: (pc.about || "").slice(0, 600),
-              born: "self_arrival", business_type: _bt });
-            await env.AURA_MEMORY.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?")
-              .bind(_m2, new Date().toISOString(), ptaId).run();
-          }
-        } catch {}
-      }
-      if (understood) {
-        try {
-          const doId = env.PTA_DO.idFromName(ptaId);
-          const stub = env.PTA_DO.get(doId);
-          await stub.fetch(new Request("http://do", {
-            method: "POST",
-            body: JSON.stringify({ 
-              method: "appendChain", 
-              params: ["UNDERSTOOD", "system", understood] 
-            })
-          }));
-        } catch (e) {} 
-      }
-
-      // warm welcome in Aura's voice
+      // ══ PTA_CREATE IS THE ONE BIRTH NOW (2026-09-20) ═══════════════════════════════════════
+      // It used to mint a fresh id and a Durable Object BEFORE checking whether the identity already
+      // existed - an existing person got an error and an orphaned DO. It also ran a model call to
+      // "understand who they are". Creating a PTA has nothing to do with understanding anybody; that
+      // is conversation, after. Both are gone: this is find-or-create through ptaBirth, the same
+      // path every sign-in takes, so one human is one PTA whichever door they came through.
+      const born = await ptaBirth(env, { identities: [pc.identity], name: pc.name, app: pcApp, via: "PTA_CREATE" });
+      if (!born.ok) return { cmd: "PTA_CREATE", payload: born };
       const firstName = (pc.name || "").split(/\s+/)[0] || "there";
-      let welcome;
-      if (understood && understood.identity_summary) {
-        welcome = `Welcome to Permission to Approach, ${firstName}. I hear you — ${understood.identity_summary} This is yours now. You control who approaches you, and I'm here to help. Let's begin.`;
-      } else {
-        welcome = `Welcome to Permission to Approach, ${firstName}. This is yours now — you control who can approach you, and I'm here with you. Tell me more whenever you're ready.`;
-      }
-
-      // optional real welcome email (proves the channel)
+      const welcome = `Welcome to Permission to Approach, ${firstName}. This is yours now - you control who can approach you, and I'm here with you. Tell me more whenever you're ready.`;
       let emailResult = null;
-      if (pc.email_welcome && pc.identity.startsWith("email:")) {
-        const toEmail = pc.identity.slice("email:".length);
+      if (born.mode === "created" && pc.email_welcome && /^email:/i.test(pc.identity)) {
         try {
-          const er = await processCommand(`EMAIL_SEND ${toEmail} Welcome to Permission to Approach | ${welcome}`, env, true);
+          const er = await processCommand(`EMAIL_SEND ${String(pc.identity).slice(6)} Welcome to Permission to Approach | ${welcome}`, env, true);
           emailResult = er && er.payload ? er.payload : er;
         } catch (e) { emailResult = { ok: false, error: String(e.message) }; }
       }
-
-      // ══ A PTA THAT REMEMBERS NOTHING IS NOT AN IDENTITY (2026-09-08) ═══════════════════════
-      // MEASURED across a whole day of mytattoo tests: every fresh PTA came back
-      // `can_remember_now: false`, so `PTA_REMEMBER` refused silently and not one conversation or
-      // design reached a chain. Twenty rounds of `kept: true` in the replies were reporting
-      // `stage === "pta"`, not that anything had been kept. The chains held BORN and UNDERSTOOD
-      // and nothing else.
-      //
-      // THE PRECEDENT IS ALREADY IN THIS FILE, at the business signup: "THE SIGNUP IS THE CONSENT.
-      // They typed their own details and clicked a link in their own email; that is a stronger
-      // signal than the claim path has. It is recorded on the chain and revocable from the console
-      // at any time, which is what makes it a grant rather than an assumption."
-      // Creating a PTA is the same deliberate act. Somebody minted an identity to use the thing;
-      // remembering what they do with it is the service, not a favour.
-      //
-      // THE GRANTEE IS READ, NEVER GUESSED. `config:aura:pta_id` is the one place her id lives,
-      // and it returns null rather than a fallback because "an unattributed write is exactly what
-      // the permission layer exists to prevent". No id, no grant - and the reply says so instead
-      // of reporting a grant that went to nobody.
-      // NOT A SCALE PROBLEM: one edge on THEIR side, in THEIR store. Checks walk UP at read time -
-      // O(depth), three or four hops - so nothing reads a central row on a hot path. The
-      // hot-parent write the Council predicted here was measured and verified not to exist.
-      let remembers = false, remembersWhy = null;
-      try {
-        const auraId = (await getSecret(env, "aura_pta_id"))
-          || (await env.AURA_KV.get("config:aura:pta_id")) || "";
-        if (!auraId) {
-          remembersWhy = "config:aura:pta_id is unset, so there is no actor to grant to. " +
-            "This PTA exists but nothing said to it will be remembered.";
-        } else {
-          const gr = await processCommand("PTA_GRANT " + ptaId + " " + auraId +
-            ' CONFIRM {"edge_type":"grant","permission":{"can_remember":true}}', env, true);
-          const gp = (gr && gr.payload) ? gr.payload : gr;
-          // ══ AN OFFER IS NOT A GRANT (2026-09-09) ═══════════════════════════════════════════
-          // MEASURED: the first build of this reported `remembers: true` and the edge sat
-          // `state: "pending"` with `can_remember_now: false`. `PTA_GRANT ... CONFIRM` OPENS the
-          // offer; ACCEPT is what makes it live. Reporting the offer as the grant is the same
-          // failure `listed` exists to prevent - a half-write that says it worked.
-          //
-          // `ACCEPT` records HOW the yes happened and keeps it in the chain forever: "self" when
-          // the subject acted, "witness" when somebody else reported it. This is self and the
-          // sentence says why - they created this PTA themselves to use the app. The code reads
-          // that wording, and an auditor can always tell the two apart. Saying it plainly is what
-          // makes this a recorded consent rather than a manufactured one.
-          const gEdge = (gp && (gp.edge_id || gp.edge)) || null;
-          if (gp && gp.ok && gEdge) {
-            const ar = await processCommand("ACCEPT " + gEdge +
-              " ::: they signed up themselves and created this PTA to use " + pcApp, env, true);
-            const ap = (ar && ar.payload) ? ar.payload : ar;
-            remembers = !!(ap && ap.ok);
-            if (!remembers) remembersWhy = (ap && ap.error) || "grant offered but not accepted";
-          } else {
-            remembersWhy = (gp && gp.error) || "grant did not land";
-          }
-        }
-      } catch (e) { remembersWhy = String(e?.message ?? e).slice(0, 160); }
-
-      // `listed` says whether the directory row landed. It was absent before 2026-08-15 and the reply
-      // said ok:true regardless - so a PTA that no other command could reach looked identical to one
-      // that worked. A half-write that reports itself is recoverable; a silent one is not.
-      return { cmd: "PTA_CREATE", payload: { ok: true, pta: ptaId, mode: "created", state: "active",
-        listed: entityRow, listing_error: entityRowError || undefined,
-        // Same reasoning as `listed`: a grant that silently did not land looks exactly like one
-        // that did, and the failure only shows up weeks later as an empty memory.
-        remembers, remembers_note: remembers ? undefined : remembersWhy,
-        listing_note: entityRow ? undefined : "The PTA exists and holds its chain, but it is NOT in pta_entities - " +
-          "PTA_GRANT, PTA_LEARN and PTA_AUDIT walk that table and will not see it. Run PTA_RELIST to repair.",
-        welcome, understood, email_sent: emailResult ? emailResult.ok : null, email_detail: emailResult } };
+      return { cmd: "PTA_CREATE", payload: { ok: true, pta: born.pta, mode: born.mode, state: "active",
+        listed: born.listed, listing_error: born.listing_error,
+        linked: born.linked, link_conflicts: born.link_conflicts,
+        remembers: born.remembers, remembers_note: born.remembers_note,
+        welcome, understood: null, email_sent: emailResult ? emailResult.ok : null, email_detail: emailResult } };
     }
 
     case "PTA_LOCATE": {
@@ -43473,10 +43445,18 @@ Be concise. This update will be compared against the next update to show drift o
       // the code unless you control the inbox - that IS the authentication. No admin token decides
       // it; the code does. This is how every citizen authenticates (not just the operator).
       // VERIFY_REQUEST <identity>   e.g. VERIFY_REQUEST email:someone@example.com
-      const vIdentity = (args[0] || "").trim();
+      // Normalised so the code is filed under the same key the confirm step looks up.
+      const vIdentity = normIdentity((args[0] || "").trim());
       if (!/^email:/i.test(vIdentity)) return { cmd: "VERIFY_REQUEST", payload: { ok: false, error: "Usage: VERIFY_REQUEST email:you@example.com (phone verification coming separately)" } };
       const vEmail = vIdentity.replace(/^email:/i, "").trim();
-      const code = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit
+      // One code a minute per address, so the page cannot be used to flood somebody's inbox.
+      try {
+        const prev = await env.AURA_KV.get(`verify:${vIdentity}`);
+        if (prev && Date.now() - (JSON.parse(prev).created || 0) < 60000) return { cmd: "VERIFY_REQUEST", payload: { ok: false,
+          error: "WAIT", say: "A code was just sent. Give it a minute, then ask again." } };
+      } catch {}
+      // The secure generator, as everywhere else in this file - Math.random is not for secrets.
+      const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
       const rec = { identity: vIdentity, code, created: Date.now(), expires: Date.now() + 10 * 60 * 1000, attempts: 0 };
       await env.AURA_KV.put(`verify:${vIdentity}`, JSON.stringify(rec), { expirationTtl: 900 }).catch(() => {});
       const sent = await sendEmail(env, vEmail, "Your Aura verification code", `Your verification code is ${code}\n\nIt expires in 10 minutes. If you did not request this, you can ignore this email.`, { system: true });
@@ -43488,8 +43468,8 @@ Be concise. This update will be compared against the next update to show drift o
       // identity is PROVEN owned. We then create-or-find the person's PTA and mark it email_verified.
       // This is the moment someone becomes an authenticated citizen.
       // VERIFY_CONFIRM <identity> <code> [name]
-      const cIdentity = (args[0] || "").trim();
-      const cCode = (args[1] || "").trim();
+      const cIdentity = normIdentity((args[0] || "").trim());
+      const cCode = (args[1] || "").replace(/[^\d]/g, "");
       const cName = args.slice(2).join(" ").trim() || null;
       if (!/^email:/i.test(cIdentity) || !cCode) return { cmd: "VERIFY_CONFIRM", payload: { ok: false, error: "Usage: VERIFY_CONFIRM email:you@example.com <code> [name]" } };
       let rec = null; try { const r = await env.AURA_KV.get(`verify:${cIdentity}`); if (r) rec = JSON.parse(r); } catch {}
@@ -43499,15 +43479,13 @@ Be concise. This update will be compared against the next update to show drift o
       if (cCode !== rec.code) { rec.attempts++; await env.AURA_KV.put(`verify:${cIdentity}`, JSON.stringify(rec), { expirationTtl: 900 }).catch(() => {}); return { cmd: "VERIFY_CONFIRM", payload: { ok: false, error: "Incorrect code.", attempts_left: 5 - rec.attempts } }; }
       // proven. create or find the PTA, mark email_verified.
       const db = env.AURA_MEMORY;
-      const safeName = (cName || "New PTA").replace(/[\n\r]/g, " ");
-      let entId = null, mode = null;
-      try {
-        const r = await processCommand(`PTA_ENTITY CREATE person ${safeName} identity:${cIdentity}`, env, true);
-        const pp = r && r.payload ? r.payload : r;
-        if (pp && pp.ok && pp.entity) { entId = pp.entity.id; mode = pp.mode; }
-      } catch (e) { return { cmd: "VERIFY_CONFIRM", payload: { ok: false, error: "PTA creation failed: " + e.message } }; }
-      if (!entId) return { cmd: "VERIFY_CONFIRM", payload: { ok: false, error: "Could not establish PTA" } };
-      await db.prepare("UPDATE pta_entities SET verification_level = ?, updated_at = ? WHERE id = ?").bind("email_verified", new Date().toISOString(), entId).run();
+      // The one birth (2026-09-20) - find or create, full PTA with its grant. Was PTA_ENTITY CREATE,
+      // which left everybody who signed in by email with nothing remembered.
+      const born = await ptaBirth(env, { identities: [cIdentity], name: cName, app: "signin", via: "email code" });
+      if (!born.ok) return { cmd: "VERIFY_CONFIRM", payload: { ok: false, error: born.error || "Could not establish PTA" } };
+      const entId = born.pta, mode = born.mode;
+      void db;
+      await raiseVerification(env, entId, "email_verified");
       await env.AURA_KV.delete(`verify:${cIdentity}`).catch(() => {});
       try {
         let evs = []; const tl = await env.AURA_KV.get(`pta:timeline:${entId}`); if (tl) evs = JSON.parse(tl) || [];
@@ -43518,25 +43496,22 @@ Be concise. This update will be compared against the next update to show drift o
     }
 
     case "AUTH_PROVIDER": {
-      // A third-party provider (Google, etc.) has already verified an identity. This is the SINGLE
-      // engine that turns that into a birthed, verified PTA - so the HTTP/OAuth transport layer never
-      // does DB writes itself; it just hands the verified identity here. Mirrors VERIFY_CONFIRM but
-      // for provider-verified (vs code-verified) identities. Keeps all PTA logic in the engine.
-      // AUTH_PROVIDER <provider> <identity> <name...>   e.g. AUTH_PROVIDER google email:x@y.com Aaron Karacas
+      // AUTH_PROVIDER <provider> email:you@example.com [sub:<provider account id>] [name...]
+      // ONE BIRTH (2026-09-20): find or create through ptaBirth, linking BOTH ways in - the
+      // provider's own account id (Google's `sub`, which never changes) and the verified email.
       const apProvider = (args[0] || "").toLowerCase();
-      const apIdentity = (args[1] || "").trim();
-      const apName = args.slice(2).join(" ").trim() || (apIdentity.replace(/^email:/i, "").split("@")[0]);
-      if (!apProvider || !/^email:/i.test(apIdentity)) return { cmd: "AUTH_PROVIDER", payload: { ok: false, error: "Usage: AUTH_PROVIDER <provider> email:you@example.com <name>" } };
-      const db = env.AURA_MEMORY;
-      let entId = null, mode = null;
-      try {
-        const r = await processCommand(`PTA_ENTITY CREATE person ${apName.replace(/[\n\r]/g, " ")} identity:${apIdentity}`, env, true);
-        const pp = r && r.payload ? r.payload : r;
-        if (pp && pp.ok && pp.entity) { entId = pp.entity.id; mode = pp.mode; }
-      } catch (e) { return { cmd: "AUTH_PROVIDER", payload: { ok: false, error: "PTA creation failed: " + e.message } }; }
-      if (!entId) return { cmd: "AUTH_PROVIDER", payload: { ok: false, error: "Could not establish PTA" } };
+      const apIdentity = normIdentity((args[1] || "").trim());
+      const apRest = args.slice(2);
+      const apSubTok = apRest.find((t) => /^sub:/i.test(t));
+      const apSub = apSubTok ? apSubTok.slice(4).trim() : "";
+      const apName = apRest.filter((t) => !/^sub:/i.test(t)).join(" ").trim() || (apIdentity.replace(/^email:/i, "").split("@")[0]);
+      if (!apProvider || !/^email:/i.test(apIdentity)) return { cmd: "AUTH_PROVIDER", payload: { ok: false, error: "Usage: AUTH_PROVIDER <provider> email:you@example.com [sub:<id>] [name]" } };
+      const born = await ptaBirth(env, { identities: [...(apSub ? [apProvider + ":" + apSub] : []), apIdentity],
+        name: apName, app: "signin", via: apProvider });
+      if (!born.ok) return { cmd: "AUTH_PROVIDER", payload: { ok: false, error: born.error || "Could not establish PTA" } };
+      const entId = born.pta, mode = born.mode;
       const level = apProvider + "_verified";
-      await db.prepare("UPDATE pta_entities SET verification_level = ?, updated_at = ? WHERE id = ?").bind(level, new Date().toISOString(), entId).run();
+      await raiseVerification(env, entId, level);
       if (mode !== "existing") {
         try {
           let evs = []; const tl = await env.AURA_KV.get(`pta:timeline:${entId}`); if (tl) evs = JSON.parse(tl) || [];
@@ -43544,7 +43519,9 @@ Be concise. This update will be compared against the next update to show drift o
           await env.AURA_KV.put(`pta:timeline:${entId}`, JSON.stringify(evs)).catch(() => {});
         } catch {}
       }
-      return { cmd: "AUTH_PROVIDER", payload: { ok: true, pta: entId, mode, identity: apIdentity, name: apName, verification_level: level } };
+      return { cmd: "AUTH_PROVIDER", payload: { ok: true, pta: entId, mode, identity: apIdentity, name: apName,
+        verification_level: level, linked: born.linked, link_conflicts: born.link_conflicts,
+        remembers: born.remembers, remembers_note: born.remembers_note } };
     }
 
     case "PTA_QUERY": {
@@ -64035,7 +64012,9 @@ export class PublicEntry extends WorkerEntrypoint {
     if (!ent) return { ok: false, error: "NO_SUCH_ENTITY" };
     // Cloudflare's own floor for expirationTtl is 60s; the ceiling here is three days, which is
     // long enough for a review pass and short enough that a forgotten one dies on its own.
-    const ttl = Math.min(Math.max(Number(ttlSeconds) || 900, 60), 3 * 86400);
+    // Thirty days on your own device (2026-09-20). This capped at three, so mytattoo's "thirty
+    // days" was silently three and a person was signed out mid-design.
+    const ttl = Math.min(Math.max(Number(ttlSeconds) || 900, 60), 30 * 86400);
     const sid = Array.from(crypto.getRandomValues(new Uint8Array(32))).map((b) => b.toString(16).padStart(2, "0")).join("");
     await env.AURA_KV.put("session:" + sid, JSON.stringify({
       pta, name: ent.name, identity: ent.identity_key, how, created: Date.now(), ttl,
@@ -67490,46 +67469,47 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
 
-    // Doorway email identify (SELF-CONTROLLED path). The email the person types AT THE GATE is the
-    // identity - no external provider, nothing that can throw a redirect error. The crossing fires
-    // through the SAME AUTH_PROVIDER engine Google uses, sets the SAME session, and bounces back to
-    // /d/<token>?s=<session> where the proven fuse logic records the crossing. This proves the engine
-    // independent of the Google convenience leaf. (Phone OTP still routes to Google until built.)
-    if (url.pathname === "/auth/email/start") {
-      const dest = url.searchParams.get("dest") || "/";
-      // POST = submit the typed email; GET = show the small email form.
-      if (request.method === "POST") {
-        let email = "", nm = "";
-        try { const form = await request.formData(); email = String(form.get("email") || "").trim(); nm = String(form.get("name") || "").trim(); } catch {}
-        if (!email || !email.includes("@")) {
-          return new Response(`<!doctype html><meta charset="utf-8"><body style="font-family:-apple-system,sans-serif;background:#0a0613;color:#cbb6ff;text-align:center;padding:40px">Please enter a valid email. <a href="/auth/email/start?dest=${encodeURIComponent(dest)}" style="color:#fff">Back</a></body>`, { headers: { "content-type": "text/html; charset=utf-8" } });
-        }
-        const identity = "email:" + email.toLowerCase();
-        const name = nm || email.split("@")[0];
-        let entId = null;
-        try {
-          const r = await processCommand(`AUTH_PROVIDER email ${identity} ${name.replace(/[\n\r]/g, " ")}`, env, true);
-          const pp = r && r.payload ? r.payload : r;
-          if (pp && pp.ok && pp.pta) entId = pp.pta;
-        } catch (e) {}
-        if (!entId) return new Response("Could not establish your PTA. Please try again.", { status: 500 });
-        await env.AURA_KV.put(`profile:email:${entId}`, JSON.stringify({ name, email, verified: false, at: new Date().toISOString() })).catch(() => {});
-        const session = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, "0")).join("");
-        await env.AURA_KV.put(`session:${session}`, JSON.stringify({ pta: entId, identity, name, created: Date.now() }), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
-        const destWithToken = dest + (dest.includes("?") ? "&" : "?") + "s=" + session;
-        return new Response(null, { status: 302, headers: { "location": destWithToken, "set-cookie": `aura_session=${session}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${60 * 60 * 24 * 30}` } });
-      }
-      const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aura</title>` +
-        `<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px">` +
-        `<form method="POST" action="/auth/email/start?dest=${encodeURIComponent(dest)}" style="max-width:340px;width:100%">` +
-        `<img src="https://auras.guide/brand/butterfly" width="60" height="60" style="margin-bottom:14px">` +
-        `<h2 style="font-weight:300">Tell me who you are.</h2>` +
-        `<input name="name" placeholder="Your name" style="width:100%;box-sizing:border-box;margin:8px 0;padding:13px;border-radius:10px;border:1px solid rgba(150,70,255,.4);background:#140a22;color:#fff;font-size:15px">` +
-        `<input name="email" type="email" required placeholder="Your email" style="width:100%;box-sizing:border-box;margin:8px 0;padding:13px;border-radius:10px;border:1px solid rgba(150,70,255,.4);background:#140a22;color:#fff;font-size:15px">` +
-        `<button type="submit" style="width:100%;margin-top:10px;background:#fff;color:#222;border:0;padding:13px;border-radius:10px;font-weight:600;font-size:15px;cursor:pointer">Connect</button>` +
-        `<p style="opacity:.4;font-size:12px;margin-top:14px">Aura asks only for your name and email. Nothing more.</p>` +
-        `</form></body>`;
-      return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+    // (The unverified "type an email, get a session" door that stood here is gone - see below.)
+    // ══ SIGN IN - ONE DOOR FOR EVERY WORLD (2026-09-20) ═══════════════════════════════════════
+    // Every world sends people to auras.guide/signin?dest=<its own page>. They sign in with Google
+    // (the one return address Google already trusts) or with a code by email, and come back to that
+    // page with ?s=<session>, which host on that world keeps as the cookie.
+    //
+    // THIS REPLACES AN EMAIL DOOR THAT CHECKED NOTHING. `/auth/email/start` used to take whatever
+    // email was typed, find or create that PTA through AUTH_PROVIDER, and hand back a thirty-day
+    // session - no code, `verified: false`, and `dest` unchecked. Anybody who knew somebody's email
+    // could open their PTA. An email is now proven by a code sent to it, or it proves nothing.
+    // The doorway gate and the phone page still link to /auth/email/start; a GET there now lands on
+    // the one sign-in page with the same return address.
+    if (url.pathname === "/signin" && request.method === "GET") {
+      const dest = await safeReturn(env, url.searchParams.get("dest"));
+      return new Response(signinPage(dest), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+    }
+    if (url.pathname === "/auth/email/start" && request.method !== "POST") {
+      const dest = await safeReturn(env, url.searchParams.get("dest"));
+      return Response.redirect("https://" + url.hostname + "/signin?dest=" + encodeURIComponent(dest), 302);
+    }
+    if (url.pathname === "/auth/email/start" && request.method === "POST") {
+      let b = {}; try { b = await request.json(); } catch {}
+      const email = String(b.email || "").trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonReply({ ok: false, error: "NEED_EMAIL", say: "That does not look like an email address." });
+      const r = await processCommand("VERIFY_REQUEST email:" + email, env, true);
+      const p = (r && r.payload) ? r.payload : r;
+      return jsonReply({ ok: !!(p && p.ok), say: (p && p.ok) ? "Code sent. Check your email." : ((p && (p.say || p.error)) || "Could not send a code.") });
+    }
+    if (url.pathname === "/auth/email/confirm" && request.method === "POST") {
+      let b = {}; try { b = await request.json(); } catch {}
+      const email = String(b.email || "").trim().toLowerCase();
+      const code = String(b.code || "").replace(/[^\d]/g, "");
+      if (!email || code.length !== 6) return jsonReply({ ok: false, error: "NEED_CODE", say: "Enter the six-digit code from the email." });
+      const r = await processCommand("VERIFY_CONFIRM email:" + email + " " + code, env, true);
+      const p = (r && r.payload) ? r.payload : r;
+      if (!p || !p.ok || !p.pta) return jsonReply({ ok: false, error: (p && p.error) || "NOT_VERIFIED", say: (p && p.error) || "That code did not work." });
+      const ms = await new PublicEntry({}, env)._mintSession(p.pta, "email code", 30 * 86400);
+      if (!ms || !ms.ok || !ms.session) return jsonReply({ ok: false, error: (ms && ms.error) || "NO_SESSION", say: "Signed in, but the session could not be created." });
+      const go = withSession(await safeReturn(env, b.dest), ms.session, url.hostname);
+      return new Response(JSON.stringify({ ok: true, go, mode: p.mode }), { headers: { "content-type": "application/json",
+        "set-cookie": `aura_session=${ms.session}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${30 * 86400}` } });
     }
     // Phone OTP not built yet - route to Google (the live verified path) honestly.
     if (url.pathname === "/auth/phone/start") {
@@ -67673,7 +67653,8 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       const redirectUri = `https://${url.hostname}/auth/google/callback`;
       const state = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b => b.toString(16).padStart(2, "0")).join("");
       // remember where to return after login (default: the PTA view on this host)
-      const dest = url.searchParams.get("dest") || "/";
+      // Only ever back to one of your own domains - see safeReturn.
+      const dest = await safeReturn(env, url.searchParams.get("dest"));
       await env.AURA_KV.put(`oauth:state:${state}`, JSON.stringify({ dest, host: url.hostname }), { expirationTtl: 600 }).catch(() => {});
       const auth = new URL("https://accounts.google.com/o/oauth2/v2/auth");
       auth.searchParams.set("client_id", gcid);
@@ -67717,7 +67698,10 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       // Hand the provider-verified identity to the engine - the route does NO DB work itself.
       let entId = null;
       try {
-        const r = await processCommand(`AUTH_PROVIDER google ${identity} ${name.replace(/[\n\r]/g, " ")}`, env, true);
+        // `sub` (userinfo v2 calls it `id`) is Google's permanent account id - the key Google says
+        // to use. The email rides along as the anchor.
+        const gSub = String(profile.id || profile.sub || "").replace(/[^A-Za-z0-9_-]/g, "");
+        const r = await processCommand(`AUTH_PROVIDER google ${identity}${gSub ? " sub:" + gSub : ""} ${name.replace(/[\n\r]/g, " ")}`, env, true);
         const pp = r && r.payload ? r.payload : r;
         if (pp && pp.ok && pp.pta) entId = pp.pta;
       } catch (e) {}
@@ -67725,15 +67709,17 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       // provider profile (avatar/name) is data - store outside, keyed to the pta
       await env.AURA_KV.put(`profile:google:${entId}`, JSON.stringify({ name, email: profile.email, picture: profile.picture || null, verified: true, at: new Date().toISOString() })).catch(() => {});
       // set a session token mapping to the pta, stored server-side
-      const session = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, "0")).join("");
-      await env.AURA_KV.put(`session:${session}`, JSON.stringify({ pta: entId, identity, name, created: Date.now() }), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
-      const dest = stateRec.dest || "/";
+      // ONE SESSION MAKER (2026-09-20): the same _mintSession every other sign-in uses, thirty days.
+      const ms = await new PublicEntry({}, env)._mintSession(entId, "google", 30 * 86400);
+      if (!ms || !ms.ok || !ms.session) return new Response("Signed in, but the session could not be created.", { status: 500 });
+      const session = ms.session;
+      const dest = await safeReturn(env, stateRec.dest);
       // Carry the session token IN THE REDIRECT URL, not only in the cookie. iOS/Android run an
       // installed PWA in a SEPARATE cookie jar from the browser that handled the Google OAuth
       // bounce, so a Set-Cookie alone never reaches the app and it stays stuck on the signed-out
       // screen. The token in ?s= survives the jump back; /home consumes it once and sets the cookie
       // in the APP's own jar, closing the loop. Cookie is still set for the plain-browser case.
-      const destWithToken = dest + (dest.includes("?") ? "&" : "?") + "s=" + session;
+      const destWithToken = withSession(dest, session, url.hostname);
       return new Response(null, { status: 302, headers: {
         "location": destWithToken,
         "set-cookie": `aura_session=${session}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${60 * 60 * 24 * 30}`

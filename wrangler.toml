@@ -342,3 +342,10 @@ head_sampling_rate = 1
 [observability.traces]
 enabled = true
 head_sampling_rate = 1
+
+# ── COMPUTING TIME PER INVOCATION (2026-09-20) ────────────────────────────────────────────────────
+# Five minutes, the most Cloudflare allows on this plan. The default is 30 seconds, and a crawl
+# batch runs ten shops inside one invocation: on 2026-09-19 two heavy shop sites used it all up and
+# Cloudflare killed the ten shops beside them each time, until the whole California batch stopped.
+[limits]
+cpu_ms = 300000

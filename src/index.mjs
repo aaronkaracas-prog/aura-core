@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.343.0-2026-09-20-the-page-knows-when-she-is-drawing";
+const BUILD = "aura-core-v9.344.0-2026-09-20-one-shop-never-ends-the-batch";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25222,7 +25222,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         //   CG_ENRICH_BATCH READ DRAFT CITY ... 25     - same, but nothing is published
         let beRaw = String(rest || "").trim();
         const cgMode = /(^|\s)READ(\s|$)/i.test(beRaw) ? "read" : "enrich";
-        beRaw = beRaw.replace(/(^|\s)READ(\s|$)/i, " ").replace(/(^|\s)DRAFT(\s|$)/i, " ").trim();
+        // UNTIL_DONE: when this batch finishes, the watchdog starts the next one, until the state
+        // or city has nothing left. NOREG is the watchdog's own restart - it registers the new run
+        // itself, so the command must not register it a second time.
+        const beUntil = /(^|\s)UNTIL_DONE(\s|$)/i.test(beRaw);
+        const beNoReg = /(^|\s)NOREG(\s|$)/i.test(beRaw);
+        beRaw = beRaw.replace(/(^|\s)READ(\s|$)/i, " ").replace(/(^|\s)DRAFT(\s|$)/i, " ")
+          .replace(/(^|\s)UNTIL_DONE(\s|$)/ig, " ").replace(/(^|\s)NOREG(\s|$)/ig, " ").trim();
         const beArgs = beRaw.split(/\s+/).filter(Boolean);
         let ids = [];
         // STATE works the same way as CITY, for going state by state.
@@ -25290,8 +25296,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const inst = await env.GRID_CRAWL_WORKFLOW.create({ id: runId,
           params: { mode: cgMode, ids, tag: runId,
           ...(cgMode === "read" ? { write: !/(^|\s)DRAFT(\s|$)/i.test(String(rest || "")) } : {}) } });
+        // EVERY BATCH IS WATCHED (2026-09-20). A batch that died at 6:20pm sat dead until somebody
+        // asked eleven hours later. Every run is registered, and the 15-minute timer restarts one that
+        // has errored or stopped moving - and, with UNTIL_DONE, starts the next when one finishes.
+        if (!beNoReg) {
+          const cmdText = ("CG_ENRICH_BATCH " + String(rest || "").replace(/(^|\s)NOREG(\s|$)/ig, " ")).replace(/\s+/g, " ").trim();
+          await crawlRegister(env, { id: inst.id, cmd: cmdText, mode: cgMode, until: beUntil,
+            started: new Date().toISOString(), restarts: 0, chain: 1 });
+        }
         return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, started: inst.id, shops: ids.length,
-          mode: cgMode, progress_line: kvProof,
+          mode: cgMode, progress_line: kvProof, until_done: beUntil,
           watch: "PTA_CRAWL STATUS " + inst.id,
           note: "Running as a Workflow. It survives a redeploy and nobody has to wait." } };
       } catch (e) {
@@ -33713,6 +33727,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         what_to_do: "Add GRID_CRAWL_WORKFLOW to aura-core's wrangler config with class_name GridCrawlWorkflow, " +
           "then redeploy. Until then PTA_GRID CONFIRM still works - it just cannot outlive the request." } };
       let crRaw = (rest || "").trim();
+      // What the watchdog is looking after, and what it has done (2026-09-20).
+      if (/^WATCH\b/i.test(crRaw)) {
+        const active = (await env.AURA_KV.get("crawl:active", "json").catch(() => null)) || [];
+        const log = (await env.AURA_KV.get("crawl:watch:log", "json").catch(() => null)) || [];
+        return { cmd: "PTA_CRAWL", payload: { ok: true, watching: active, recent: log.slice(-20) } };
+      }
       if (/^STATUS\s+/i.test(crRaw)) {
         const id = crRaw.replace(/^STATUS\s+/i, "").trim();
         try {
@@ -60225,6 +60245,80 @@ async function advanceWorkflow(env, id) {
   return { ok: true, status: wf.status, note: "advanced (guard reached)" };
 }
 
+// THE CRAWL WATCHDOG (2026-09-20). Every CG_ENRICH_BATCH run is registered in `crawl:active`, and
+// every 15 minutes this looks at each one:
+//   errored or terminated         -> start the same command again. The resume query only picks shops
+//                                    with no verdict, so it carries on where the dead run stopped.
+//   running but silent 45 minutes -> end it and start it again the same way.
+//   complete                      -> with UNTIL_DONE, start the next batch; when a batch finds no
+//                                    shops left, that state is done and the chain ends.
+// Twenty restarts in a row without a batch finishing stops the chain and says so - a loop that
+// restarts forever is the same silent failure in a different shape.
+// No model is called here; it only spends what the batch it restarts spends.
+async function crawlRegister(env, entry) {
+  const list = (await env.AURA_KV.get("crawl:active", "json").catch(() => null)) || [];
+  list.push(entry);
+  await env.AURA_KV.put("crawl:active", JSON.stringify(list.slice(-20))).catch(() => {});
+}
+async function crawlWatchLog(env, line) {
+  const log = (await env.AURA_KV.get("crawl:watch:log", "json").catch(() => null)) || [];
+  log.push({ at: new Date().toISOString(), ...line });
+  await env.AURA_KV.put("crawl:watch:log", JSON.stringify(log.slice(-100))).catch(() => {});
+}
+async function watchCrawlBatches(env) {
+  try {
+    if (!env.GRID_CRAWL_WORKFLOW) return;
+    const list = (await env.AURA_KV.get("crawl:active", "json").catch(() => null)) || [];
+    if (!Array.isArray(list) || !list.length) return;
+    const next = [];
+    for (const b of list) {
+      let inst = null, st = null;
+      try { inst = await env.GRID_CRAWL_WORKFLOW.get(b.id); st = await inst.status(); } catch {}
+      const status = String(st?.status || "unknown").toLowerCase();
+      const prog = await env.AURA_KV.get("crawl:progress:" + b.id, "json").catch(() => null);
+      const moved = Date.parse(prog?.updated || prog?.started || b.started) || Date.now();
+      const quietMin = Math.round((Date.now() - moved) / 60000);
+      let why = null, fresh = false;
+      if (status === "complete") {
+        if (!b.until) { await crawlWatchLog(env, { id: b.id, did: "finished", cmd: b.cmd }); continue; }
+        fresh = true; why = "finished - starting the next batch";
+      } else if (status === "errored" || status === "terminated") {
+        why = "errored: " + String(st?.error?.message || st?.error || status).slice(0, 140);
+      } else if (quietMin >= 45 && (status === "running" || status === "queued" || status === "waiting")) {
+        try { await inst.terminate(); } catch {}
+        why = "no movement for " + quietMin + " min";
+      } else { next.push(b); continue; }
+      // A chain of batches has an end even if the pool never empties: a READ chain re-picks shops
+      // whose read failed, so without a cap it would read the same failures forever.
+      if (fresh && (b.chain || 1) >= 12) {
+        await crawlWatchLog(env, { id: b.id, did: "stopped", why: "12 batches in this chain - start it again by hand if more is wanted", cmd: b.cmd });
+        continue;
+      }
+      const restarts = fresh ? 0 : (b.restarts || 0) + 1;
+      if (restarts > 20) {
+        await crawlWatchLog(env, { id: b.id, did: "gave up", why: "20 restarts in a row without a batch finishing", cmd: b.cmd });
+        continue;
+      }
+      let r = null;
+      try { r = await processCommand(b.cmd + " NOREG", env, true); }
+      catch (e) { r = { payload: { ok: false, error: String(e?.message ?? e) } }; }
+      const p = (r && r.payload) ? r.payload : r;
+      if (p && p.ok && p.started) {
+        next.push({ ...b, id: p.started, started: new Date().toISOString(), restarts, chain: (b.chain || 1) + 1 });
+        await crawlWatchLog(env, { id: b.id, did: "restarted", why, new_id: p.started, shops: p.shops, cmd: b.cmd });
+      } else if (p && p.ok && !p.shops) {
+        await crawlWatchLog(env, { id: b.id, did: "done", why: "nothing left to do", cmd: b.cmd });
+      } else {
+        next.push(b);   // could not start - try again on the next tick
+        await crawlWatchLog(env, { id: b.id, did: "restart failed", why, error: p && p.error, cmd: b.cmd });
+      }
+    }
+    await env.AURA_KV.put("crawl:active", JSON.stringify(next)).catch(() => {});
+  } catch (e) {
+    try { await crawlWatchLog(env, { did: "watchdog error", error: String(e?.message ?? e).slice(0, 200) }); } catch {}
+  }
+}
+
 async function drainWorkflows(env) {
   try {
     let q = []; const qr = await env.AURA_KV.get("workflow:due_queue"); if (qr) { try { q = JSON.parse(qr) || []; } catch {} }
@@ -60777,7 +60871,15 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         const group = ids.slice(g, g + LANES);
         const results = await Promise.all(group.map((id2, gi) => {
           const i = g + gi;
-          return step.do("shop-" + i, async () => {
+          // ONE SHOP NEVER ENDS THE BATCH (2026-09-20). On the California run of 2026-09-19 shops 14
+          // and 16 each needed more than the 30-second computing allowance, and because ten shops
+          // share one invocation every attempt also killed the shops beside them. The try/catch
+          // inside the step cannot catch that - the invocation is ended - so after five attempts the
+          // step threw and took the workflow down with 490 shops unread and nothing restarting it.
+          // Now: two retries thirty seconds apart, and a step that still fails is caught OUTSIDE the
+          // step, which Cloudflare allows. The shop is written down as `error` so no later batch picks
+          // it up again, and the batch carries on.
+          return step.do("shop-" + i, { retries: { limit: 2, delay: "30 seconds", backoff: "constant" } }, async () => {
             try {
               // The stagger. Lane 0 goes immediately, lane 19 begins 22.8 seconds later.
               if (gi) await new Promise((r) => setTimeout(r, gi * 1200));
@@ -60824,6 +60926,13 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
               // instance with it, so everything after it would never run.
               return { ok: false, error: String(e?.message ?? e).slice(0, 160) };
             }
+          }).catch(async (e) => {
+            try {
+              await this.env.AURA_MEMORY.prepare(
+                "UPDATE cg_business SET crawl_verdict = 'error', crawled_at = ? WHERE id = ?")
+                .bind(new Date().toISOString(), id2).run();
+            } catch {}
+            return { ok: false, error: "STEP_FAILED: " + String(e?.message ?? e).slice(0, 140) };
           });
         }));
         for (let gi = 0; gi < group.length; gi++) {
@@ -60914,7 +61023,9 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       const group = ids.slice(g, g + READ_LANES);
       const results = await Promise.all(group.map((id2, gi) => {
         const i = g + gi;
-        return step.do("read-" + i, async () => {
+        // Same protection as the crawl (2026-09-20): bounded retries, and a read that still fails
+        // is that shop's failure, never the batch's.
+        return step.do("read-" + i, { retries: { limit: 2, delay: "30 seconds", backoff: "constant" } }, async () => {
           try {
             // Reading is usually under a minute; four is the same ceiling as the crawl, and a shop
             // whose pictures cannot be judged in that time is one to come back to.
@@ -60925,7 +61036,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
             ]);
             return (x && x.payload) ? x.payload : x;
           } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
-        });
+        }).catch((e) => ({ ok: false, error: "STEP_FAILED: " + String(e?.message ?? e).slice(0, 140) }));
       }));
       for (let gi = 0; gi < group.length; gi++) {
         const i = g + gi, r = results[gi];
@@ -66975,6 +67086,7 @@ export default {
     ctx.waitUntil(watchWorld(env));   // LAYER C - turns the polls above into events, no new spend
     ctx.waitUntil(drainSchedule(env));
     ctx.waitUntil(drainWorkflows(env));
+    ctx.waitUntil(watchCrawlBatches(env));   // restarts a crawl batch that errored or stalled
     ctx.waitUntil(precomputeHotBriefs(env));
     ctx.waitUntil(captureAisHistory(env));
     ctx.waitUntil(pollVideoJobs(env));   // finish async video jobs nobody is waiting on

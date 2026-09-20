@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.346.0-2026-09-20-one-shop-one-invocation";
+const BUILD = "aura-core-v9.347.0-2026-09-20-she-looks-before-she-speaks";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62373,6 +62373,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const _verdict = (reply, parsed) => String((parsed && parsed.say) || reply)
         .replace(/^\s*[{\[]/, "").trim();
       let acted = null, agentVia = null, agentNote = null;
+      // What she says after LOOKING at what she made (2026-09-20). See _lookAtResult.
+      let _reaction = null;
       // Which rung answered, carried out of the block below so the extractor can see it. Null on the
       // local floor, which is correct - the floor is a model call and may well have read something.
       let proxied_rung = null;
@@ -63147,24 +63149,35 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // placement to get wrong, so this costs nothing on the catalogue path.
       // IT REPORTS, IT DOES NOT BLOCK. An answer they can see beats a turn that silently refuses,
       // and she is the one who tells them - which is the same rule as the artist sheet.
-      const _lookAtMock = async (mockUrl) => {
-        if (!mockUrl || !me || !seeing) return null;
-        if (!(await _checkOn("mockup"))) return null;
+      // SHE LOOKS BEFORE SHE SPEAKS (2026-09-20). Her reply is written in the same breath as the
+      // instruction to draw, before any picture exists - so "here it is" was about a picture she
+      // had never seen. Aaron: after creating or editing, react to what was actually made, one
+      // specific thing that is visible, then hand the judgement back. That needs her to look.
+      // One look after every drawing. On their own body it also answers the placement check it
+      // always answered (is their existing tattoo still there, is what they asked for there),
+      // on its own first line; what follows is what she says to them.
+      // `config:check:react` = off turns the talking look off; `config:check:mockup` = off turns
+      // the placement verdict off. A look that fails never costs them the picture.
+      const _lookAtResult = async (url, onBody) => {
+        if (!url || !me) return null;
+        const body = !!(onBody && seeing && (await _checkOn("mockup")));
+        const talk = await _checkOn("react");
+        if (!body && !talk) return null;
         try {
-          const look = await proxyToAgent(env,
-            // 95%, not pixel-perfect (Aaron, 2026-09-17): the artist cuts and moves things on paper
-            // anyway. "Unchanged, including the edges and borders" rejected good pictures and sent
-            // a retry that came back worse.
-            "[This is the mock-up on their own body. Compare it to the photograph they sent. " +
-            "Is the tattoo they already had still there - not removed or covered over - and is " +
-            "what they asked for there? Begin your answer with the single word RIGHT or WRONG, " +
-            "then one short sentence saying why. Nothing else.]",
-            false, me, mockUrl, world);
-          if (look && look.reply && !look.failed) {
-            return _verdict(look.reply, readAct(look.reply)).slice(0, 240);
-          }
-        } catch { /* a check that fails must never cost them the picture */ }
-        return null;
+          const look = await proxyToAgent(env, body
+            ? "[This is the mock-up on their own body. Compare it to the photograph they sent. " +
+              "On the first line, write only RIGHT or WRONG: is the tattoo they already had still " +
+              "there - not removed or covered over - and is what they asked for there? " +
+              "Then speak to them about the picture.]"
+            : "[This is the picture you just made for them. Look at it, then speak to them about it.]",
+            false, me, url, world);
+          if (!(look && look.reply && !look.failed)) return null;
+          const text = _verdict(look.reply, readAct(look.reply)).trim();
+          const m = body ? text.match(/^\s*(RIGHT|WRONG)\b[\s:,.\-]*/i) : null;
+          const rest = (m ? text.slice(m[0].length) : text).trim();
+          return { verdict: m ? (m[1].toUpperCase() + ": " + rest).slice(0, 240) : null,
+                   say: talk && rest ? rest.slice(0, 600) : null };
+        } catch { return null; }
       };
 
       if (act === "change" && me) {
@@ -63417,7 +63430,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // and what the files were made from - measured on pta_4c414b2a09ddab6a.
             {
               const t = await _evolve(cur, ask, null);
-              if (t && t.ok && t.image_url) { got = t; verdict = await _lookAtMock(t.image_url); }
+              if (t && t.ok && t.image_url) {
+                got = t;
+                const _lk = await _lookAtResult(t.image_url, true);
+                verdict = _lk && _lk.verdict; _reaction = (_lk && _lk.say) || null;
+              }
               else got = t;
             }
             // v9.282: no retry. It sent extra words - "The last attempt was wrong: <her reason>. Fix
@@ -63521,7 +63538,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // Nothing in the reply said so; `cached` was already captured here and read by nobody.
             // The field is the fix. `same_picture` is the plain statement of what happened, so a
             // caller cannot narrate a new version and neither can she on the turn after.
-            const _mockNote2 = seeing ? await _lookAtMock(dp.image_url) : null;
+            const _lk2 = await _lookAtResult(dp.image_url, true);
+            const _mockNote2 = _lk2 && _lk2.verdict;
+            _reaction = (_lk2 && _lk2.say) || null;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached,
                      ...(_mockNote2 ? { she_looked: _mockNote2,
@@ -63730,11 +63749,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         _said = acted.act === "artist"
           ? "I went to make your artist files, but they didn't come out this time - nothing was made yet."
           : "I went to make that picture, but it didn't come out this time - nothing new was made yet.";
+      } else if (drew && !drew.for_the_artist && _reaction) {
+        // What she said after looking at it replaces what she said before it existed.
+        _said = _reaction;
       } else if (drew && drew.she_looked && /^\s*WRONG\b/i.test(drew.she_looked)) {
         _said += " One thing I can see: " + drew.she_looked.replace(/^\s*WRONG\b[\s:,.-]*/i, "").replace(/\.?$/, ".");
-      } else if (drew && drew.for_the_artist && drew.she_checked && /REDONE|WRONG/i.test(drew.she_checked)) {
-        _said += " A note on the files: one sheet needed redoing, and the note for your artist is with it.";
       }
+      // (The note about artist sheets being redone is no longer said to them - the files are made
+      // quietly at the end and are not part of the conversation. It stays in `drew.she_checked`.)
       return { ok: true, said: _said, act: acted.act, phase_ms, world,
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),

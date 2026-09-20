@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.349.0-2026-09-20-the-neuron-gauge";
+const BUILD = "aura-core-v9.350.0-2026-09-20-what-this-turn-cost";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -557,6 +557,7 @@ async function callBrain({ system, user, messages = null, max_tokens = 2000, mod
           if (msgs[i].role === "user") { msgs[i] = { ...msgs[i], content: msgs[i].content + _note }; break; }
         }
       }
+      costTapNeuron();
       const rr = await env.AI.run(route.model, { max_tokens: cap, messages: msgs,
             ...(temperature != null ? { temperature } : {}) });
       const text = aiText(rr);
@@ -944,6 +945,36 @@ async function _egressDO(env, rec) {
 
 async function kvgSafe(env, k) { try { return await env.AURA_KV.get(k); } catch { return null; } }
 
+// WHAT THIS TURN COST (2026-09-20). The ledger is a DAILY total, so the only way to price one
+// turn was to read the day before and after it - which is what Aaron and I have been doing by hand,
+// and why every figure I gave him was an estimate. A tap is opened for the length of a turn and
+// every priced call made while it is open is added to it, so the reply can say what it cost.
+// HONEST LIMIT, STATED IN THE FIGURE ITSELF: a tap counts what happened WHILE IT WAS OPEN. If two
+// turns overlap in the same isolate, both see both. It is exact for one turn at a time - which is
+// how every test here runs - and it says so rather than pretending otherwise.
+// Workers AI runs on a binding and never reaches this writer, so its calls are COUNTED here and
+// priced only in the daily NEURONS gauge. A turn's real total is this plus its neurons.
+const _COST_TAPS = new Set();
+function costTapOpen() {
+  // A turn that returns early never closes its tap, so old ones are dropped rather than left to
+  // collect other turns' calls forever.
+  for (const t of _COST_TAPS) if (Date.now() - t.started > 300000) _COST_TAPS.delete(t);
+  const tap = { usd: 0, calls: 0, by_model: {}, neurons_calls: 0, started: Date.now() };
+  _COST_TAPS.add(tap);
+  return tap;
+}
+function costTapClose(tap) {
+  if (!tap) return null;
+  _COST_TAPS.delete(tap);
+  return { usd: +tap.usd.toFixed(6), provider_calls: tap.calls,
+           by_model: tap.by_model,
+           ...(tap.neurons_calls ? { workers_ai_calls: tap.neurons_calls } : {}),
+           ms: Date.now() - tap.started,
+           note: "paid provider calls made during this turn. Workers AI runs on a binding and is "
+               + "priced daily - see NEURONS. Exact for one turn at a time." };
+}
+function costTapNeuron() { for (const t of _COST_TAPS) t.neurons_calls += 1; }
+
 async function _egressCore(env, rec) {
   try {
     const kv = env && env.AURA_KV;
@@ -1030,6 +1061,13 @@ async function _egressCore(env, rec) {
     const _stated = rec.cost_usd != null ? Number(rec.cost_usd) : null;
     const cost = (_stated != null && isFinite(_stated) && _stated >= 0) ? _stated : Math.max(0, _raw);
     led.cost_usd = +((led.cost_usd || 0) + cost).toFixed(6);
+    // Every open turn tap sees this call - see the note above _egressCore.
+    for (const _t of _COST_TAPS) {
+      if (!_costOnly) _t.calls += 1;
+      _t.usd += cost;
+      const _mk = rec.model || rec.provider || "unknown";
+      _t.by_model[_mk] = +(((_t.by_model[_mk] || 0) + cost)).toFixed(6);
+    }
     // cost_fixed is the part of this row's cost that did NOT come from tokens - per image, per
     // second, per neuron. The reprice-at-read pass recomputes cost from tokens, so without this a
     // per-image row is repriced to $0 the moment anyone reads it: correct at write, zero at read.
@@ -56658,6 +56696,7 @@ async function seeMedia(opts, env) {
       // back - never the base64 - and the next decision is made on data instead of a fifth guess.
       let vr = null, ran = null;
       try {
+        costTapNeuron();
         vr = await env.AI.run(model, body);
       } catch (e) {
         ran = String((e && e.message) || e).slice(0, 300);
@@ -62433,6 +62472,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       let acted = null, agentVia = null, agentNote = null;
       // What she says after LOOKING at what she made (2026-09-20). See _lookAtResult.
       let _reaction = null;
+      // What this turn costs, measured rather than estimated (2026-09-20). See costTapOpen.
+      const _tap = costTapOpen();
       // Which rung answered, carried out of the block below so the extractor can see it. Null on the
       // local floor, which is correct - the floor is a model call and may well have read something.
       let proxied_rung = null;
@@ -63817,7 +63858,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       // (The note about artist sheets being redone is no longer said to them - the files are made
       // quietly at the end and are not part of the conversation. It stays in `drew.she_checked`.)
-      return { ok: true, said: _said, act: acted.act, phase_ms, world,
+      const spent = costTapClose(_tap);
+      return { ok: true, said: _said, act: acted.act, phase_ms, world, spent,
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),
                brief, intent,

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.351.0-2026-09-20-name-the-engine-in-the-call";
+const BUILD = "aura-core-v9.352.0-2026-09-20-fetch-it-like-a-browser";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18745,18 +18745,61 @@ async function successionGate(env) {
 
         // Fetch ONCE, here, into our own store. Never leave a caller pointing at somebody else's
         // CDN: it can disappear, it can refuse a fetcher, and it is not theirs.
-        let iBytes = null, iType = "image/jpeg";
-        try {
-          const ir = await fetch(ref, { cf: { cacheTtl: 3600 } });
-          if (!ir.ok) return { cmd: "IMAGE", payload: { ok: false, error: "FETCH_" + ir.status, url: ref } };
-          iType = (ir.headers.get("content-type") || "image/jpeg").split(";")[0];
-          const ibuf = await ir.arrayBuffer();
-          if (ibuf.byteLength > 12 * 1024 * 1024) return { cmd: "IMAGE", payload: { ok: false,
-            error: "TOO_BIG", bytes: ibuf.byteLength } };
-          iBytes = new Uint8Array(ibuf);
-        } catch (e) {
-          return { cmd: "IMAGE", payload: { ok: false, error: "COULD_NOT_FETCH",
-            detail: String((e && e.message) || e).slice(0, 160), url: ref } };
+        // FETCH IT LIKE A BROWSER (2026-09-20). MEASURED on three sites in a row - a forum, a
+        // Shopify shop, a blog - all 403 to a bare fetch and all fine in a browser. She was handed
+        // nothing and said so, which looked like her failing to see. People paste links from
+        // wherever they found the picture, so the plain fetch is only the first try:
+        //   1. plain (unchanged - the cheap path most hosts allow)
+        //   2. the same request with a browser's headers and the site's own page as referer
+        //   3. Cloudflare's browser takes a picture of the page, which is a real browser visiting
+        // Whatever arrives must actually be an image; an HTML "access denied" page is not one.
+        let iBytes = null, iType = "image/jpeg", iHow = "plain";
+        const _looksImage = (t, b) => /^image\//i.test(String(t || "")) && b && b.byteLength > 1024;
+        const _tryFetch = async (opts, how) => {
+          try {
+            const r = await fetch(ref, opts);
+            if (!r.ok) return null;
+            const t = (r.headers.get("content-type") || "").split(";")[0];
+            const b = await r.arrayBuffer();
+            if (!_looksImage(t, b)) return null;
+            if (b.byteLength > 12 * 1024 * 1024) return { tooBig: b.byteLength };
+            iHow = how; iType = t || "image/jpeg";
+            return new Uint8Array(b);
+          } catch { return null; }
+        };
+        iBytes = await _tryFetch({ cf: { cacheTtl: 3600 } }, "plain");
+        if (iBytes && iBytes.tooBig) return { cmd: "IMAGE", payload: { ok: false, error: "TOO_BIG", bytes: iBytes.tooBig } };
+        if (!iBytes) {
+          let origin = ""; try { origin = new URL(ref).origin + "/"; } catch {}
+          iBytes = await _tryFetch({ cf: { cacheTtl: 3600 }, headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            ...(origin ? { "Referer": origin } : {}),
+          } }, "browser headers");
+          if (iBytes && iBytes.tooBig) return { cmd: "IMAGE", payload: { ok: false, error: "TOO_BIG", bytes: iBytes.tooBig } };
+        }
+        if (!iBytes) {
+          // A real browser, through Cloudflare's own rendering. It costs browser time, so it only
+          // runs when both cheap tries have already been refused.
+          try {
+            const bAcct = env.CF_ACCOUNT_ID || (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+            const bTok = await getSecret(env, "cf_api_token") || await getSecret(env, "cloudflare");
+            if (bTok) {
+              const br = await fetch("https://api.cloudflare.com/client/v4/accounts/" + bAcct + "/browser-rendering/screenshot",
+                { method: "POST", headers: { Authorization: "Bearer " + bTok, "content-type": "application/json" },
+                  body: JSON.stringify({ url: ref, screenshotOptions: { fullPage: false, type: "png" },
+                                         viewport: { width: 1280, height: 1600 }, gotoOptions: { waitUntil: "networkidle0", timeout: 30000 } }) });
+              if (br.ok) {
+                const b = await br.arrayBuffer();
+                if (b && b.byteLength > 1024) { iBytes = new Uint8Array(b); iType = "image/png"; iHow = "cloudflare browser"; }
+              }
+            }
+          } catch {}
+        }
+        if (!iBytes) {
+          return { cmd: "IMAGE", payload: { ok: false, error: "COULD_NOT_FETCH", url: ref,
+            detail: "the site refused a plain fetch, browser headers and Cloudflare's browser - ask them to upload the photo instead" } };
         }
 
         const iId = "img_i" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
@@ -18764,6 +18807,7 @@ async function successionGate(env) {
         let iBin = "";
         for (let i = 0; i < iBytes.length; i += 8192) iBin += String.fromCharCode.apply(null, iBytes.subarray(i, i + 8192));
         if (env.AURA_IMAGES) { try { await env.AURA_IMAGES.put(iId + ".png", iBytes, { httpMetadata: { contentType: iType } }); } catch {} }
+        const _fetchedBy = iHow;   // plain | browser headers | cloudflare browser
         await env.AURA_KV.put("image:" + iId, btoa(iBin));
         const iUrl = "https://" + (await imageHost(env)) + "/image/" + iId;
 
@@ -18808,6 +18852,7 @@ async function successionGate(env) {
 
         return { cmd: "IMAGE", payload: { ok: true, id: iId, entity: (iReg && iReg.entity_id) || null,
           image_url: iUrl, imported_from: ref, bytes: iBytes.length, content_type: iType,
+          fetched_by: _fetchedBy,
           saw: iSaw, owner: iBy, access: "controlled",
           note: "It is theirs now, on our own domain, and it does not expire. Evolve it, look at " +
             "it, or trace its life - it behaves like any other image from here." } };

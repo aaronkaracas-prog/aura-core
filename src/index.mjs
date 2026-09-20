@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.352.0-2026-09-20-fetch-it-like-a-browser";
+const BUILD = "aura-core-v9.353.0-2026-09-20-her-words-reach-the-model";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63566,7 +63566,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             try { _frame = String((await env.AURA_KV.get("config:frame:" + _frameKey)) || "").trim() || null; } catch {}
             if (!_frame || !_frame.includes("____")) _frame = _FRAMES[_frameKey];
           }
-          const _asks = [_frame ? _frame.replace("____", _blank || String(said).trim()) : String(acted.prompt || said).trim()];
+          // HER WORDS REACH THE MODEL (2026-09-20). When she writes `ask`, that IS the instruction:
+          // no blanking, no regex surgery, no fixed sentence. The four frames stay as the fallback
+          // for a turn where she wrote none - a safety net now, not the road.
+          // WHY: the regexes above strip any clause naming the existing piece and any "on the ..."
+          // placement phrase, so "a roaring lion head on the opposite side of the chest" reached the
+          // model as "a roaring lion head", inside a frame demanding ONE MERGED composition. Two
+          // different image models failed the same way, which is what a bad sentence looks like.
+          const _herAsk = (typeof acted.ask === "string" && acted.ask.trim().length >= 20)
+            ? acted.ask.trim().slice(0, 900) : null;
+          const _asks = [_herAsk
+            || (_frame ? _frame.replace("____", _blank || String(said).trim())
+                       : String(acted.prompt || said).trim())];
           const _evolve = async (parent, ask, seed) => {
             try {
               const r = await processCommand("IMAGE EVOLVE " + parent + " " +
@@ -63608,7 +63619,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           drew = (cp?.ok && cp.image_url)
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
-                ...(_frameKey ? { frame: _frameKey, her_words: _blank } : {}),
+                wrote_the_ask: _herAsk ? "her" : "frame",
+                ...(_herAsk ? {} : (_frameKey ? { frame: _frameKey, her_words: _blank } : {})),
                 from: parentId,
                 ...(_asks.length > 1 ? { steps: _stepLog } : {}),
                 ...(_retried ? { retried: _retried } : {}),

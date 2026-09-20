@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.348.0-2026-09-20-she-looks-at-new-drawings";
+const BUILD = "aura-core-v9.349.0-2026-09-20-the-neuron-gauge";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48514,6 +48514,13 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               "which is the point: the meter needs to know nothing about the application it measures." } };
     }
 
+    case "NEURONS": {
+      // NEURONS [YYYY-MM-DD] - what Workers AI actually used, from Cloudflare's own meter.
+      if (!isOp) return { cmd: "NEURONS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const nDay = (String(rest || "").trim().match(/\d{4}-\d{2}-\d{2}/) || [])[0] || null;
+      return { cmd: "NEURONS", payload: await cfNeuronsDay(env, nDay) };
+    }
+
     case "AIMARGIN": {
       // ══ ONE COMMAND, THE WHOLE ENGINE ═══════════════════════════════════════════════════════════
       // Aaron's ask, and it is the right one: stop re-deriving the state of AIMARGIN by hand every
@@ -48741,6 +48748,9 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           }
           return out;
         })() }),
+        // Workers AI runs on a binding, so it never touches the egress meter. Cloudflare's own
+        // count goes here, beside the provider spend, rather than looking like zero (2026-09-20).
+        neurons_today: await cfNeuronsDay(env, day),
         spend_today: { total_usd: +spendToday.toFixed(4),
                        cap_usd: cap,
                        cap_note: cap ? null : "no cap set - AIMARGIN reports spend, it does not ration it",
@@ -52457,6 +52467,54 @@ async function getSystemStatus(env) {
   };
 }
 
+
+// ══ THE NEURON GAUGE (2026-09-20) ════════════════════════════════════════════════════════════════
+// Workers AI is billed in neurons and runs on a BINDING, so the egress meter - which prices provider
+// HTTP requests - cannot see a single call of it. Every Workers AI lane therefore reads as $0.00,
+// which means UNMEASURED, not free. Cloudflare counts it themselves: the GraphQL analytics dataset
+// `aiInferenceAdaptiveGroups` carries neurons per model per day.
+// The token is its own secret with one permission (Account Analytics: Read), because the general
+// CF token is not allowed to read analytics - measured 2026-09-20: "not authorized for that account".
+// $0.011 per 1,000 neurons, first 10,000 neurons a day free (Cloudflare's published pricing). The
+// free allowance is reported separately rather than netted off: gross is the cost of the work, the
+// allowance is an account-level fact, and hiding one inside the other is how a lane stops being watched.
+// A failure returns Cloudflare's own words - a wrong field name or a refused token must be readable,
+// not swallowed.
+async function cfNeuronsDay(env, day) {
+  const token = (env && env.CF_ANALYTICS_TOKEN) || (await getSecret(env, "cf_analytics_token"));
+  if (!token) return { ok: false, why: "no CF_ANALYTICS_TOKEN - set it with: npx wrangler secret put CF_ANALYTICS_TOKEN (Account Analytics: Read)" };
+  const acct = (await getSecret(env, "cf_account_id")) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+  const d = String(day || new Date().toISOString().slice(0, 10));
+  const query = `{ viewer { accounts(filter: {accountTag: "${acct}"}) { aiInferenceAdaptiveGroups(limit: 100, filter: {datetime_geq: "${d}T00:00:00Z", datetime_leq: "${d}T23:59:59Z"}) { count sum { totalNeurons } dimensions { modelId } } } } }`;
+  try {
+    const r = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token, "content-type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+    const j = await r.json().catch(() => null);
+    if (!j) return { ok: false, why: "Cloudflare returned something that is not JSON (http " + r.status + ")" };
+    if (j.errors && j.errors.length) return { ok: false, why: String(j.errors[0]?.message || "GraphQL error"),
+      cloudflare_said: j.errors.slice(0, 3) };
+    const rows = j?.data?.viewer?.accounts?.[0]?.aiInferenceAdaptiveGroups || [];
+    const by_model = {}; let neurons = 0, calls = 0;
+    for (const row of rows) {
+      const m = row?.dimensions?.modelId || "(unnamed)";
+      const n = Number(row?.sum?.totalNeurons) || 0;
+      const c = Number(row?.count) || 0;
+      neurons += n; calls += c;
+      by_model[m] = { neurons: +n.toFixed(2), calls: c, usd: +((n / 1000) * 0.011).toFixed(6) };
+    }
+    const FREE_PER_DAY = 10000;
+    return { ok: true, day: d, neurons: +neurons.toFixed(2), calls,
+      usd_gross: +((neurons / 1000) * 0.011).toFixed(6),
+      usd_billable: +((Math.max(0, neurons - FREE_PER_DAY) / 1000) * 0.011).toFixed(6),
+      free_allowance: FREE_PER_DAY, free_left: +Math.max(0, FREE_PER_DAY - neurons).toFixed(2),
+      by_model,
+      source: "Cloudflare GraphQL aiInferenceAdaptiveGroups - their meter, not ours",
+      note: "$0.011 per 1,000 neurons; the first 10,000 a day are free. Gross is the cost of the work; billable is what the allowance leaves." };
+  } catch (e) { return { ok: false, why: String(e?.message ?? e).slice(0, 200) }; }
+}
 
 // â”€â”€â”€ Self-Tail: Aura reads her own CF logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function getSelfLogs(env, options = {}) {

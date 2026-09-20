@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.342.0-2026-09-20-the-placeholder-is-nobody";
+const BUILD = "aura-core-v9.343.0-2026-09-20-the-page-knows-when-she-is-drawing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61363,6 +61363,9 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
   // anything built later get her words without reimplementing a parser that breaks the day she
   // adds a field.
   const onDelta = (opts && typeof opts.onDelta === "function") ? opts.onDelta : null;
+  // The moment she starts making a picture or the artist's files (2026-09-20). A page can only
+  // say "Bringing it to life" truthfully if it is told when that begins - not guess from a pause.
+  const onStage = (opts && typeof opts.onStage === "function") ? opts.onStage : null;
   // The growing value of `say`, read out of a JSON object that has not finished arriving. Returns
   // null until the key exists; stops at the closing quote; refuses to emit a half-arrived escape
   // rather than guessing at it, because the rest of the character is in the next frame.
@@ -62706,6 +62709,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       //   4. THE PDF - PRINT at the placement size, so the shop prints at 100%.
       // AND SHE KNOWS WHAT IT IS. A fixed sequence is a fact she can state when somebody asks
       // what happens next. A sentence she improvises each time is not.
+      if (onStage && me && (act === "draw" || act === "change" || act === "artist")) {
+        try { await onStage(act === "artist" ? "files" : "drawing"); } catch {}
+      }
       if (act === "artist" && me) {
         try {
           const shopParent = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
@@ -64302,6 +64308,7 @@ export class PublicEntry extends WorkerEntrypoint {
             out = await auraTalk(env, me, stage, _said, _hist, {
               from: b.from || null, world, ref: _ref,
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
+              onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },
             });
           } catch (e) {
             out = { ok: false, error: "TALK_THREW", detail: String(e && e.message || e).slice(0, 300) };

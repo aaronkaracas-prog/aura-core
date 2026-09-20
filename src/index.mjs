@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.340.0-2026-09-20-one-door-for-every-world";
+const BUILD = "aura-core-v9.341.0-2026-09-20-signed-in-to-do-anything";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64187,17 +64187,22 @@ export class PublicEntry extends WorkerEntrypoint {
       // the photo they attach, the design that comes out of it, the whole lineage after. An owner
       // resolved at the end - "we will attach identity when they sign in" - means an orphaned file
       // and a tree with no root, which is exactly the shape this system exists to prevent.
+      // ══ SIGNED IN TO DO ANYTHING (2026-09-20) ═══════════════════════════════════════════
+      // Aaron: every page is visible, nothing on it works until you sign in - the way ChatGPT and
+      // Google do it. There is no anonymous person any more. The session comes from the one sign-in
+      // door (auras.guide/signin) and host carries it here from the world's own cookie.
+      // Only a PTA counts. An old guest session from `hello` (an ent_ lead) is not signed in.
+      // PUBLIC is what the page SHOWS - the catalogue, its tiles, the list of styles. Everything that
+      // DOES something - talk, a photo, a drawing, a style, saving - needs the person.
       let me = null;
       if (b.session) {
         const who = await this._whoIs(String(b.session));
-        if (who?.pta) me = who.pta;
+        if (who?.pta && /^pta_/.test(who.pta)) me = who.pta;
       }
-      // The stage travels with the person, so a caller always knows whether they are talking to a
-      // contacted lead or a consented PTA.
-      const stage = me ? (/^pta_/.test(me) ? "pta" : "contacted") : null;
-      if (action !== "hello" && !me) return { ok: false, error: "NO_SESSION",
-        say: "Let me get us started.", start_over: true,
-        what_to_do: "Call hello first - nothing here happens without a person." };
+      const stage = me ? "pta" : null;
+      const PUBLIC = new Set(["catalog", "finishes", "tiles", "row"]);
+      if (!me && !PUBLIC.has(action)) return { ok: false, error: "SIGN_IN", signin: true,
+        say: "Sign in to keep going - it takes one tap." };
       // ══ HELLO — A HUMAN EXISTS BEFORE ANYTHING ELSE DOES (2026-08-24) ═══════════════════════
       //
       // Aaron's rule, and it is the spine of the whole system: nobody touches this world without a
@@ -64218,45 +64223,15 @@ export class PublicEntry extends WorkerEntrypoint {
       //
       // Contacted is enough to talk and to design. Verification is an UPGRADE, taken when they want
       // to keep it, share it, or book - never a gate on the first sentence.
+      // HELLO is who is signed in, nothing more. It used to mint a guest (`mintDoorway`, an ent_
+      // lead at stage "contacted") for anybody who opened the page; with sign-in first there is no
+      // guest to mint. Reaching here means `me` is a PTA - the gate above answered everybody else.
       if (action === "hello") {
-        const door = await mintDoorway(env, {
-          context: "designing a tattoo on mytattoo.world",
-          via: "mytattoo",
-          identity: b.identity || null,     // if they arrived from an email or a shop's QR
-          name: b.name || null,
-          dest: "/design"
-        });
-        if (!door?.ok) return { ok: false, error: "COULD_NOT_START",
-          say: "Something went wrong opening this. Try again in a moment." };
-        const pe = new PublicEntry({}, env);
-        // Thirty days. A tattoo is thought about for weeks, and losing the thread because a session
-        // expired overnight would throw away the one thing this product is for.
-        const sess = await pe._mintSession(door.lead_id, "mytattoo", 30 * 24 * 3600);
-        return { ok: true, who: door.lead_id, session: sess?.session || null,
-          doorway: door.doorway,
-          // ══ A LEAD IS NOT YET A PTA, AND THE WORD MATTERS ══════════════════════════════
-          // `who` is an `ent_` - a person node that exists, owns what they make, and roots a
-          // lineage. It is NOT a `pta_`: no Durable Object, no chain, no consent record. PTA_CREATE
-          // refuses without a verified email or phone on purpose, because arriving by choice IS the
-          // consent and minting one for an anonymous visitor would be inventing agreement nobody
-          // gave.
-          // Saying so out loud so nothing downstream reads a lead as a consented identity - that
-          // difference is the entire point of this layer, and a field that blurs it is exactly the
-          // shape of bug this system keeps paying for.
-          stage: "contacted",
-          becomes_pta_when: "they say who they are - the doorway fuses this node into a full PTA, " +
-            "so nothing they made first is orphaned",
-          say: "What are we designing?",
-          // The jobs people actually arrive with, not a menu of features. A blank box is the
-          // documented way to freeze somebody; these are doors, and their own words override any
-          // of them the moment they type.
+        return { ok: true, who: me, stage, signed_in: true, say: "What are we designing?",
           chips: ["Something new", "Cover up what I have", "Add to a piece I have",
                   "A memorial", "I am not sure yet"] };
       }
 
-      // ── TALK. Free, and it stays free even when the rest is metered: a conversation costs
-      // fractions of a cent and it is the whole reason somebody trusts the thing that follows.
-      // She is drawing the idea OUT of them, not writing prompts at them.
       if (action === "talk") {
         // The conversation itself lives in `auraTalk` so the TALK command and this door run the
         // same code. See the note above that function.

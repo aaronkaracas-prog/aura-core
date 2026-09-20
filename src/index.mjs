@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.353.0-2026-09-20-her-words-reach-the-model";
+const BUILD = "aura-core-v9.354.0-2026-09-20-keep-the-field-she-writes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62496,6 +62496,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         return { say,
                  act: ["draw", "change", "artist", "none"].includes(act) ? act : "none",
                  prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
+                 // KEEP THE FIELD SHE WRITES (2026-09-20). This reader keeps a fixed set of keys
+                 // and drops the rest, so v9.353 asked her for `ask` and then threw it away - the
+                 // frame fallback ran every time and the measured failure never changed. A new
+                 // field in her contract is useless until it survives this line.
+                 ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 900) : "",
                  use: strList(o.use, 4, 400),
                  // The body sections the NEW work spans, hers to name. Capped at six because a
                  // human body does not have more separate stencil areas than that on one job, and

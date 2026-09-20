@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.344.0-2026-09-20-one-shop-never-ends-the-batch";
+const BUILD = "aura-core-v9.345.0-2026-09-20-where-it-landed-not-where-it-started";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22242,6 +22242,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const m = b.match(/^<!--PAGE\s+(\S*)\s*-->/);
           return { url: m ? m[1] : "", body: b.replace(/^<!--PAGE[^>]*-->\n?/, "") };
         }).filter(x => x.url);
+        // NOT THEIR SITE, CAUGHT BEFORE ANYTHING IS LOOKED AT (2026-09-20). Shops crawled before the
+        // crawl learned to check where it landed are still marked `ok` with a directory or a booking
+        // app in the archive. No eyes and no reader for those: with WRITE the verdict is corrected, so
+        // the next reading batch sorts the old ones out on its own.
+        {
+          const landedHost = landedOnListing(parts.map((x) => x.url));
+          if (landedHost) {
+            if (srdWrite) {
+              await env.AURA_MEMORY.prepare("UPDATE cg_business SET crawl_verdict = ?, understanding = NULL WHERE id = ?")
+                .bind("not_their_site", srdId).run().catch(() => {});
+            }
+            return { cmd: "SITE_READING", payload: { ok: true, mode: "not_their_site", business: row.name, id: srdId,
+              crawl_verdict: "not_their_site", host: landedHost,
+              written: srdWrite ? "verdict corrected to not_their_site" : "read-only - add WRITE to correct the verdict",
+              note: "The archive is a booking or listing service's pages, not this shop's own site." } };
+          }
+        }
 
         // ══ WHAT SHE IS HANDED ══════════════════════════════════════════════════════════════
         // NOT 400,000 characters of markdown. The SHAPE of the site: every page's path, its
@@ -25491,7 +25508,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // A shop with a booking link instead of a site is not a failure - it is a shop with no
         // site of its own, which is a better claim pitch, not a worse one. Naming it keeps their
         // page honest and keeps another company's pages out of our archive.
-        const NOT_THEIR_SITE = /(^|\.)((app\.)?acuityscheduling|squareup|square\.site|booksy|vagaro|fresha|styleseat|schedulicity|calendly|linktr\.ee|linktree|etsy|facebook|instagram|yelp|tripadvisor|publicreputation|wixsite\.com\/?$|google\.com)\./i;
+        // The shared list (see NOT_THEIR_SITE_HOSTS) - one list for the crawl and the reading.
+        const NOT_THEIR_SITE = NOT_THEIR_SITE_HOSTS;
         try {
           const host = new URL(site).hostname.replace(/^www\./i, "");
           if (NOT_THEIR_SITE.test(host + ".")) {
@@ -26068,6 +26086,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // that costs nothing: a tattoo shop's website says the word somewhere. If the whole archive
         // never mentions the trade, we are not looking at their site, and publishing anything from
         // it is worse than publishing nothing - it puts a stranger's gambling promo under their name.
+        // WHERE IT LANDED, NOT WHERE IT STARTED (2026-09-20). The address on the listing is checked
+        // above, but a shop's own domain can FORWARD to Booksy or Acuity, and the crawl follows it.
+        // The archive's page markers say where the pages really came from.
+        {
+          const landedHost = landedOnListing(Array.from(String(md || "").matchAll(/<!--PAGE\s+(\S+)\s*-->/g), (x) => x[1]));
+          if (landedHost) {
+            await db.prepare("UPDATE cg_business SET crawl_verdict = ?, crawled_at = ?, understanding = NULL WHERE id = ?")
+              .bind("not_their_site", new Date().toISOString(), row.id).run();
+            return { cmd: "CG_ENRICH", payload: { ok: true, mode: "skipped", business: row.name,
+              site, crawl_verdict: "not_their_site", host: landedHost, landed: true,
+              note: "The shop's address forwarded to a booking or listing service. Nothing from it was kept." } };
+          }
+        }
         let wrongSite = null;
         try {
           const TRADE_WORDS = /\b(tattoo|tattoos|tattooed|tattooing|tattoist|tattooist|ink|piercing|piercings|body art|flash|artist|artists|studio)\b/i;
@@ -60255,6 +60286,21 @@ async function advanceWorkflow(env, id) {
 // Twenty restarts in a row without a batch finishing stops the chain and says so - a loop that
 // restarts forever is the same silent failure in a different shape.
 // No model is called here; it only spends what the batch it restarts spends.
+// NOT THE SHOP'S OWN SITE (2026-09-20). One list for the crawl and the reading. Booking apps and
+// directories are places a shop is LISTED, not the shop: crawling them archived Acuity's pricing in
+// five languages, Booksy's Modesto hair salons and hub.biz's accountants and dentists as tattoo
+// shops, and the reading then found "no pictures" in every one. hub.biz, local.yahoo.com,
+// usdirectory, wheresink and Acuity's as.me addresses were all seen in the 2026-09-19 California runs.
+const NOT_THEIR_SITE_HOSTS = /(^|\.)((app\.)?acuityscheduling|as\.me|squareup|square\.site|booksy|vagaro|fresha|styleseat|schedulicity|calendly|setmore|glossgenius|linktr\.ee|linktree|etsy|facebook|instagram|yelp|tripadvisor|publicreputation|wixsite\.com\/?$|google\.com|hub\.biz|hubbiz|local\.yahoo\.com|usdirectory\.com|wheresink\.com|yellowpages|mapquest|manta\.com|bizapedia|chamberofcommerce|nextdoor|foursquare)\./i;
+function isListingHost(h) { return NOT_THEIR_SITE_HOSTS.test(String(h || "").toLowerCase().replace(/^www\./, "") + "."); }
+// Where the crawl actually LANDED, read off the archive's own page markers. Half or more of the
+// pages on a listing host means the shop's address forwarded somewhere that is not theirs.
+function landedOnListing(urls) {
+  const hosts = (urls || []).map((u) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ""; } }).filter(Boolean);
+  const listing = hosts.filter(isListingHost);
+  return (hosts.length && listing.length / hosts.length >= 0.5) ? listing[0] : null;
+}
+
 async function crawlRegister(env, entry) {
   const list = (await env.AURA_KV.get("crawl:active", "json").catch(() => null)) || [];
   list.push(entry);
@@ -61011,7 +61057,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       const write = event.payload?.write !== false;   // read-and-publish unless told otherwise
       const pkey = "crawl:progress:" + (event.payload?.tag || event.instanceId || "read");
       const startedAt = new Date().toISOString();
-      let done = 0, empty = 0, failed = 0; const trouble = [];
+      let done = 0, empty = 0, failed = 0, notTheirs = 0; const trouble = [];
       let images = 0, artists = 0;
       // Reading is the same shape of work: independent shops, model calls that wait on nothing
       // else. Four lanes rather than eight, because each read is already running its own eyes six
@@ -61041,22 +61087,23 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       for (let gi = 0; gi < group.length; gi++) {
         const i = g + gi, r = results[gi];
         const who = { id: ids[i], name: r?.business || null };
-        if (!r?.ok) { failed++; if (trouble.length < 60) trouble.push({ ...who, why: String(r?.error || "unknown").slice(0, 120) }); }
+        if (r?.ok && r?.crawl_verdict === "not_their_site") { notTheirs++; }
+        else if (!r?.ok) { failed++; if (trouble.length < 60) trouble.push({ ...who, why: String(r?.error || "unknown").slice(0, 120) }); }
         else if (r?.brain?.could_not_read) { failed++; if (trouble.length < 60) trouble.push({ ...who, why: "brain unreadable after " + (r.brain.tries || 1) + " tries" }); }
         else if (!r?.wrote?.images) { empty++; if (trouble.length < 60) trouble.push({ ...who, why: "no pictures survived" }); }
         else { done++; images += r.wrote.images || 0; artists += (r.wrote.artists || []).length; }
         await mark(pkey, { mode: "read", at: i + 1, of: ids.length, started: startedAt,
           last: { name: r?.business || ids[i], images: r?.wrote?.images ?? 0,
                   artists: (r?.wrote?.artists || []).length },
-          counts: { built: done, no_pictures: empty, failed, images, artists },
+          counts: { built: done, no_pictures: empty, not_their_site: notTheirs, failed, images, artists },
           updated: new Date().toISOString() });
       }
       await step.sleep("read-gap-" + g, "1 seconds");
       }
       await mark(pkey, { mode: "read", at: ids.length, of: ids.length, started: startedAt,
-        counts: { built: done, no_pictures: empty, failed, images, artists },
+        counts: { built: done, no_pictures: empty, not_their_site: notTheirs, failed, images, artists },
         finished: new Date().toISOString() });
-      return { ok: true, mode: "read", shops: ids.length, pages_built: done, no_pictures: empty,
+      return { ok: true, mode: "read", shops: ids.length, pages_built: done, no_pictures: empty, not_their_site: notTheirs,
                failed, images, artists, trouble,
                progress: { key: pkey, writes: kvWrites, trouble: kvTrouble } };
     }

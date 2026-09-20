@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.347.0-2026-09-20-she-looks-before-she-speaks";
+const BUILD = "aura-core-v9.348.0-2026-09-20-she-looks-at-new-drawings";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63168,8 +63168,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ? "[This is the mock-up on their own body. Compare it to the photograph they sent. " +
               "On the first line, write only RIGHT or WRONG: is the tattoo they already had still " +
               "there - not removed or covered over - and is what they asked for there? " +
-              "Then speak to them about the picture.]"
-            : "[This is the picture you just made for them. Look at it, then speak to them about it.]",
+              "Then speak to them about the picture. (" + url + ")]"
+            // The picture's own address is in the question, so no two looks ask the same thing -
+            // her side keeps a short cache keyed on the exact words, and an identical question
+            // came back with the previous picture's answer (measured 2026-09-20, turn 5 = turn 3).
+            : "[This is the picture you just made for them. Look at it, then speak to them about it. (" + url + ")]",
             false, me, url, world);
           if (!(look && look.reply && !look.failed)) return null;
           const text = _verdict(look.reply, readAct(look.reply)).trim();
@@ -63430,11 +63433,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // and what the files were made from - measured on pta_4c414b2a09ddab6a.
             {
               const t = await _evolve(cur, ask, null);
-              if (t && t.ok && t.image_url) {
-                got = t;
-                const _lk = await _lookAtResult(t.image_url, true);
-                verdict = _lk && _lk.verdict; _reaction = (_lk && _lk.say) || null;
-              }
+              // A CHANGE IS NOT LOOKED AT (2026-09-20). Aaron: colour, size, a small edit comes back
+              // right, and a look there costs money and adds nothing - she writes her one short line
+              // with the instruction. New drawings are looked at; see the draw path below.
+              if (t && t.ok && t.image_url) got = t;
               else got = t;
             }
             // v9.282: no retry. It sent extra words - "The last attempt was wrong: <her reason>. Fix

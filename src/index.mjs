@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.356.0-2026-09-21-the-state-queue";
+const BUILD = "aura-core-v9.357.0-2026-09-21-her-words-decide";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62953,6 +62953,23 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
       if (act === "artist" && !hasParent) act = "none";
+
+      // HER WORDS DECIDE (2026-09-21). MEASURED twice today: she said "Shall I show you?" and her
+      // action field said `draw`, so the picture was made before they said go. Then their "show me"
+      // found a picture already on screen, the go-ahead guard below correctly drew nothing, and
+      // the turn where she should have closed the piece out had nothing left to close. Her own
+      // contract says NOTHING IS DRAWN UNTIL THEY SAY GO - the conversation is hers, so when what
+      // she SAYS and what her action field says disagree, what she says wins. Only a question
+      // about showing or drawing counts; "want to lock it in, or change something?" is her
+      // close-out and never stops anything.
+      if (act === "draw" || act === "change") {
+        const _sayNow = String(acted.say || said || "").trim();
+        const _lastQ = (_sayNow.match(/[^.!?]*\?\s*$/) || [""])[0];
+        if (_lastQ && /\b(show|draw|sketch|see|mock it up|picture it)\b/i.test(_lastQ)) {
+          act = "none";
+          console.log("[ASKFIRST] she asked to show it - nothing drawn until they say go");
+        }
+      }
 
       // ══ A GO-AHEAD IS NOT A SECOND REQUEST (2026-09-16) ══════════════════════════════════
       // MEASURED on one conversation: "I want it to come all the way down to my wrist and all the

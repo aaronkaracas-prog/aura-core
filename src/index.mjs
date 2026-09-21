@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.372.0-2026-09-21-the-check-and-the-reaction-are-two-looks";
+const BUILD = "aura-core-v9.373.0-2026-09-21-openai-moderation-is-a-dial";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59853,11 +59853,21 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       // body has to be a FormData with the image fetched and attached. The same shape this file
       // already learned for xAI, where guessing the field name cost a canyon.
       const oRefs = Array.isArray(opts.refs) ? opts.refs.filter(Boolean).slice(0, 4) : [];
+      // OPENAI'S MODERATION IS A DIAL (2026-09-21). MEASURED: extending a woman's back piece "down the
+      // back to the buttocks and hips" was refused twice as `safety_violations=[sexual]` - a bare back
+      // in the photo plus one anatomical word. The same request worded "toward the hips" was drawn.
+      // The API takes `moderation: "low"` for less restrictive filtering on the GPT image models, and
+      // this request never sent it, so every picture ran at the stricter default. KV
+      // `config:image:moderation` = low | auto; unset sends nothing, which is OpenAI's own default.
+      const _mod = String((await env.AURA_KV.get("config:image:moderation").catch(() => null)) || "")
+        .trim().toLowerCase();
+      const _modOk = (_mod === "low" || _mod === "auto") ? _mod : null;
       let r;
       if (oRefs.length) {
         const fd = new FormData();
         fd.append("model", model);
         fd.append("prompt", p);
+        if (_modOk) fd.append("moderation", _modOk);
         fd.append("n", "1");
         fd.append("size", "1024x1024");
         // ══ OUR OWN IMAGES COME OFF THE SHELF, NOT OVER THE WIRE ═══════════════════════════
@@ -59918,6 +59928,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           // and 1536x1024 landscape as well as the square. A tattoo is taller than it is wide, so
           // a caller that named a tall shape gets one.
           body: JSON.stringify({ model, prompt: p, n: 1, quality,
+            ...(_modOk ? { moderation: _modOk } : {}),
             size: (function () {
               const a = String(opts.aspect || "");
               if (/^(9:16|3:4|2:3)$/.test(a)) return "1024x1536";

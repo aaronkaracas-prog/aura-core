@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.377.0-2026-09-21-thread-next-is-an-edit";
+const BUILD = "aura-core-v9.378.0-2026-09-21-a-thread-step-always-draws";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -12874,10 +12874,15 @@ async function successionGate(env) {
       if (!thKey) return { cmd: "THREAD", payload: { ok: false, error: "no provider key" } };
       const thImg = /^https?:\/\//i.test(thArg) ? thArg : ("https://" + (await imageHost(env)) + "/image/" + thArg);
       const thBody = thMode === "START"
-        ? { model: thModel, tools: [{ type: "image_generation", action: "edit" }],
+        // A STEP ALWAYS DRAWS (2026-09-21, design engine rule 5). MEASURED: "I'm thinking of coloring the
+        // entire tattoo in" and then "I love your ideas show me what that would look like" both came
+        // back as talk with no picture (`calls: 0`) - the conversation model judged for itself whether
+        // to call its image tool. In this design Aura decides WHEN; once a function runs, a picture
+        // comes back. `tool_choice: "required"` makes the one tool offered - the image tool - mandatory.
+        ? { model: thModel, tools: [{ type: "image_generation", action: "edit" }], tool_choice: "required",
             input: [{ role: "user", content: [{ type: "input_text", text: thAsk },
                                               { type: "input_image", image_url: thImg }] }] }
-        : { model: thModel, tools: [{ type: "image_generation", action: thAction }],
+        : { model: thModel, tools: [{ type: "image_generation", action: thAction }], tool_choice: "required",
             previous_response_id: thArg, input: thAsk };
       try {
         const thR = await pfetch(env, thOA ? "openai" : "xai", "core:thread",

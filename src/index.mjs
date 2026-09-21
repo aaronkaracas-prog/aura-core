@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.371.0-2026-09-21-ink-goes-on-skin";
+const BUILD = "aura-core-v9.372.0-2026-09-21-the-check-and-the-reaction-are-two-looks";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63645,37 +63645,48 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         const body = !!(onBody && seeing && (await _checkOn("mockup")));
         const talk = await _checkOn("react");
         if (!body && !talk) return null;
+        // THE CHECK AND THE REACTION ARE TWO LOOKS (2026-09-21). They were one question asking for a
+        // RIGHT/WRONG verdict for us AND a warm line for them - so the checklist spilled into what she
+        // said: "the original is untouched... all on skin", "your tiger's untouched". That is an
+        // inspector's report; the person never asked whether their old tattoo survived. Now the check
+        // is asked on its own, marked as not for them, and her reaction is asked on its own with no
+        // checklist in front of her. The check runs first so her reaction is the last thing she said.
+        // Each question carries the picture's own address, so no two looks share her answer cache
+        // (measured 2026-09-20: an identical question came back with the previous picture's answer).
+        let verdict = null, say = null;
         try {
-          const look = await proxyToAgent(env, body
-            // INK GOES ON SKIN (2026-09-21). MEASURED: asked to fill her lower back, where her top
-            // covered it in the photo, the model painted peonies across the black fabric down to the
-            // waistband - and this check said RIGHT, because it only asked whether the old tattoo
-            // survived and the new work was there. Both were true. It never asked about skin.
-            ? "[This is the mock-up on their own body. Compare it to the photograph they sent. " +
-              "On the first line, write only RIGHT or WRONG: is the tattoo they already had still " +
-              "there - not removed or covered over - is what they asked for there, and is every bit " +
-              "of the new ink on their skin? Ink on clothing, hair or the background is WRONG. " +
-              "Then tell them what you think of it in one warm line, and ask whether they are happy to go " +
-              "with it or want to change something - in your own words, different each time. (" + url + ")]"
-            // The picture's own address is in the question, so no two looks ask the same thing -
-            // her side keeps a short cache keyed on the exact words, and an identical question
-            // came back with the previous picture's answer (measured 2026-09-20, turn 5 = turn 3).
-            // EVERY PICTURE COMES BACK WITH A NEXT STEP (2026-09-21). Aaron: "if we leave it blank
-            // it's confusing - the person won't know what's next." This was only "look at it, then
-            // speak to them about it", so after a drawing she described it and stopped. The moment
-            // she has just SEEN it is the one place a real reaction and a clear next step can come
-            // from - in her own words, never one stock phrase ("it looks like software").
-            : "[This is the picture you just made for them. Look at it. Tell them what you think of it in " +
-              "one warm line, then ask whether they are happy to go with it or want to change something - " +
-              "in your own words, different each time. (" + url + ")]",
-            false, me, url, world);
-          if (!(look && look.reply && !look.failed)) return null;
-          const text = _verdict(look.reply, readAct(look.reply)).trim();
-          const m = body ? text.match(/^\s*(RIGHT|WRONG)\b[\s:,.\-]*/i) : null;
-          const rest = (m ? text.slice(m[0].length) : text).trim();
-          return { verdict: m ? (m[1].toUpperCase() + ": " + rest).slice(0, 240) : null,
-                   say: talk && rest ? rest.slice(0, 600) : null };
-        } catch { return null; }
+          if (body) {
+            // INK GOES ON SKIN (2026-09-21): asked to fill a lower back her top covered, the model
+            // painted across the fabric and the old check said RIGHT - it never asked about skin.
+            const chk = await proxyToAgent(env,
+              "[A CHECK FOR US - THIS IS NOT SHOWN TO THEM. This is the mock-up on their own body. " +
+              "Compare it to the photograph they sent. Answer RIGHT or WRONG, then one short sentence " +
+              "saying why: is the tattoo they already had still there - not removed or covered over - " +
+              "is what they asked for there, and is every bit of the new ink on their skin? Ink on " +
+              "clothing, hair or the background is WRONG. Nothing else. (" + url + ")]",
+              false, me, url, world);
+            if (chk && chk.reply && !chk.failed) {
+              const t = _verdict(chk.reply, readAct(chk.reply)).trim();
+              const m = t.match(/^\s*(RIGHT|WRONG)\b[\s:,.\-]*/i);
+              if (m) verdict = (m[1].toUpperCase() + ": " + t.slice(m[0].length).trim()).slice(0, 240);
+            }
+          }
+          if (talk) {
+            // EVERY PICTURE COMES BACK WITH A NEXT STEP (2026-09-21): a real reaction and a clear next
+            // step, in her own words, never one stock phrase ("it looks like software").
+            const rx = await proxyToAgent(env,
+              "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
+              "in one warm line, then ask whether they are happy to go with it or want to change " +
+              "something - in your own words, different each time. (" + url + ")]",
+              false, me, url, world);
+            if (rx && rx.reply && !rx.failed) {
+              const t2 = _verdict(rx.reply, readAct(rx.reply)).trim();
+              if (t2) say = t2.slice(0, 600);
+            }
+          }
+        } catch { /* a look that fails leaves her own line in place */ }
+        if (!verdict && !say) return null;
+        return { verdict, say };
       };
 
       if (act === "change" && me) {

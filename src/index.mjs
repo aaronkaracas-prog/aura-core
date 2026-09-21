@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.376.0-2026-09-21-a-refusal-comes-back-to-her";
+const BUILD = "aura-core-v9.377.0-2026-09-21-thread-next-is-an-edit";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -12851,6 +12851,14 @@ async function successionGate(env) {
       const thJson = thRest.indexOf(String.fromCharCode(123));
       let thP = null; try { thP = JSON.parse(thRest.slice(thJson)); } catch {}
       const thAsk = String((thP && thP.prompt) || "").trim();
+      // NEXT IS AN EDIT (2026-09-21, design doc "MyTattoo pictures - architecture design", engine
+      // rule 1). MEASURED: NEXT sent the image tool with no action, so the model chose for itself -
+      // asked to colour the extended back piece it drew a different woman in a different room
+      // ("edited": false). Every step after the first now forces an edit of the picture in the
+      // thread. A caller may still name "generate" or "auto" for a step that is meant to be a new
+      // picture - the artwork-only step, if an edit cannot produce it.
+      const thAction = ["edit", "generate", "auto"].includes(String((thP && thP.action) || "").toLowerCase())
+        ? String(thP.action).toLowerCase() : "edit";
       if (!["START", "NEXT"].includes(thMode) || !thArg || !thAsk) {
         return { cmd: "THREAD", payload: { ok: false,
           error: 'Usage: THREAD START <image url or id> {"prompt":"..."}  |  THREAD NEXT <thread id> {"prompt":"..."}' } };
@@ -12869,7 +12877,7 @@ async function successionGate(env) {
         ? { model: thModel, tools: [{ type: "image_generation", action: "edit" }],
             input: [{ role: "user", content: [{ type: "input_text", text: thAsk },
                                               { type: "input_image", image_url: thImg }] }] }
-        : { model: thModel, tools: [{ type: "image_generation" }],
+        : { model: thModel, tools: [{ type: "image_generation", action: thAction }],
             previous_response_id: thArg, input: thAsk };
       try {
         const thR = await pfetch(env, thOA ? "openai" : "xai", "core:thread",
@@ -12892,7 +12900,7 @@ async function successionGate(env) {
           await env.AURA_KV.put("image:" + thId, b64);
           await env.AURA_KV.put("imagemeta:" + thId, JSON.stringify({ id: thId, prompt: thAsk,
             created: new Date().toISOString(), source: "image_thread", model: thModel,
-            cost_usd: null, url: "https://" + (await imageHost(env)) + "/image/" + thId })).catch(() => {});
+            cost_usd: (thD.usage && thD.usage.cost_in_usd_ticks != null) ? thD.usage.cost_in_usd_ticks / 1e10 : null, url: "https://" + (await imageHost(env)) + "/image/" + thId })).catch(() => {});
           thUrl = "https://" + (await imageHost(env)) + "/image/" + thId;
         }
         return { cmd: "THREAD", payload: { ok: true, thread: thD.id || null, image: thUrl,
@@ -12900,6 +12908,9 @@ async function successionGate(env) {
           tool_prompt: (thLast && (thLast.prompt || thLast.revised_prompt)) || null,
           edited: !!(thLast && /^ie_/.test(String(thLast.id || ""))), calls: thCalls.length,
           model: thModel, usage: thD.usage || null,
+          // xAI reports its own charge in ticks of 1e-10 USD; read as dollars so a step's cost is exact.
+          cost_usd: (thD.usage && thD.usage.cost_in_usd_ticks != null) ? thD.usage.cost_in_usd_ticks / 1e10 : null,
+          ...(thMode === "NEXT" ? { action_asked: thAction } : {}),
           note: "The provider holds the pictures. THREAD NEXT <thread id> continues from here." } };
       } catch (e) {
         return { cmd: "THREAD", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.374.0-2026-09-21-edits-say-their-quality";
+const BUILD = "aura-core-v9.375.0-2026-09-21-openai-knows-it-is-a-tattoo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59862,11 +59862,21 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       const _mod = String((await env.AURA_KV.get("config:image:moderation").catch(() => null)) || "")
         .trim().toLowerCase();
       const _modOk = (_mod === "low" || _mod === "auto") ? _mod : null;
+      // OPENAI KNOWS IT IS A TATTOO (2026-09-21). MEASURED: a woman's back piece extended "toward
+      // their butt" was refused as `sexual` - at the default AND at moderation low - while "toward
+      // the hips" was drawn. The request carried nothing but her sentence: a bare back plus one word,
+      // with no sign this is a tattoo studio showing a client a design. Aaron: "if it knew it was a
+      // tattoo it would never have stopped it." One fixed line of context, on every OpenAI picture.
+      const _ctx = oRefs.length
+        ? "Context: a tattoo studio is showing a client a proposed tattoo design on the client's own " +
+          "photograph, so they can decide before booking. "
+        : "Context: a tattoo studio is drawing a tattoo design for a client. ";
+      const pOA = _ctx + p;
       let r;
       if (oRefs.length) {
         const fd = new FormData();
         fd.append("model", model);
-        fd.append("prompt", p);
+        fd.append("prompt", pOA);
         if (_modOk) fd.append("moderation", _modOk);
         // EDITS SAY THEIR QUALITY (2026-09-21). MEASURED: the same kind of edit on someone's photo cost
         // $0.0197, $0.061 and then $0.2226 on one day - this branch never sent `quality`, so OpenAI
@@ -59932,7 +59942,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           // OpenAI's own vocabulary is a size string, and gpt-image-2 serves 1024x1536 portrait
           // and 1536x1024 landscape as well as the square. A tattoo is taller than it is wide, so
           // a caller that named a tall shape gets one.
-          body: JSON.stringify({ model, prompt: p, n: 1, quality,
+          body: JSON.stringify({ model, prompt: pOA, n: 1, quality,
             ...(_modOk ? { moderation: _modOk } : {}),
             size: (function () {
               const a = String(opts.aspect || "");

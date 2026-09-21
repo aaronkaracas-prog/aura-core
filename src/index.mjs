@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.361.0-2026-09-21-every-picture-comes-back-with-a-next-step";
+const BUILD = "aura-core-v9.362.0-2026-09-21-fall-back-to-the-crawls-pictures";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22828,6 +22828,39 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               }
             }
           }
+          // FALL BACK TO THE CRAWL'S OWN PICTURES (2026-09-21). MEASURED on California: 731 shops
+          // crawled but never read average 8.9 pictures the crawl already kept, and only 73 have none -
+          // yet a reading batch of those shops came back almost entirely "nothing survived the filename
+          // filter". Ritual Tattoo's crawl kept 12 photos from an artist's own page (1.jpg, 2.jpg...),
+          // Tattoo Boogaloo's 13 from its collaborations page. The reader re-maps the site from scratch
+          // and, when its map names no work pages, offers the eyes NOTHING - with the crawl's pictures
+          // sitting in the row. When the map offers none, the crawl's pictures are offered instead,
+          // through the same chrome filter, and the eyes and the judge decide exactly as usual.
+          let _fellBack = 0;
+          if (!shortlist.length) {
+            try {
+              const _ur = await env.AURA_MEMORY.prepare("SELECT understanding FROM cg_business WHERE id = ?")
+                .bind(srdId).first();
+              let _uj = null; try { _uj = JSON.parse((_ur && _ur.understanding) || "null"); } catch {}
+              const _imgs = (_uj && Array.isArray(_uj.images)) ? _uj.images : [];
+              const _pages = new Set();
+              for (const im of _imgs) {
+                if (shortlist.length >= 24) break;
+                const u = unwrapImageProxy(String((im && im.u) || ""));
+                if (!/^https?:\/\//i.test(u)) continue;
+                const why = chromeRule(u, "");
+                if (why) { cutBy[why] = (cutBy[why] || 0) + 1; continue; }
+                const id = fileId(u);
+                if (takenFiles.has(id)) continue;
+                takenFiles.add(id);
+                let pth = "/"; try { pth = new URL(String((im && im.p) || u)).pathname || "/"; } catch {}
+                _pages.add(pth);
+                shortlist.push({ u: askBigger(u), page: pth, section: "Work" });
+                _fellBack++;
+              }
+              if (_fellBack) cardSections.push({ name: "Work", pages: [..._pages], people: 1 });
+            } catch (e) { console.log("[SITE_READING] crawl-picture fallback failed: " + String(e?.message ?? e)); }
+          }
           const t1 = Date.now();
           let bytes = 0, failed = 0, eyesRetried = 0;
           const eyesFailures = [];
@@ -23018,6 +23051,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                           saw: verdicts.map((v, i) => ((keep.has(i) ? "KEEP " : "drop ") + v.saw.slice(0, 90))) };
             } else cardWhy = { error: lastKr?.error || "judge failed", looked: verdicts.length };
           } else cardWhy = { looked: 0, failed, note: "nothing survived the filename filter" };
+          if (_fellBack && cardWhy) cardWhy.fell_back_to_crawl = _fellBack;
           // Always report the cuts - on a shop with plenty of work this is the only place the
           // shortlist's decisions are visible at all.
           if (cardWhy && Object.keys(cutBy).length) {

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.359.0-2026-09-21-unwrap-the-resizer";
+const BUILD = "aura-core-v9.360.0-2026-09-21-read-them-again";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22419,6 +22419,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // character. Across 24,000 shops that is not an anomaly, it is a daily event, and a shop
         // whose page came out empty because of it looks exactly like a shop with nothing to show.
         // So: ask again once, and if it still cannot be read, SAY SO in a field a batch can count.
+        const _imgHeavy = /\|\s*(?:[89]|\d{2,})\s+images\s*$/m.test(String(sitemap || ""));
         const _usable = (t) => {
           const txt = String(t || "").trim();
           if (txt.length < 12) return false;
@@ -22427,6 +22428,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           let o2 = txt; try { o2 = JSON.parse(txt); } catch { o2 = repairJson(txt); }
           o2 = unwrapSchema(o2);
           if (!o2 || typeof o2 !== "object") return false;
+          // ASK AGAIN WHEN A SITE FULL OF PICTURES HAS "NO WORK" (2026-09-21). MEASURED: Tinta
+          // Rebelde's home page (51 images, the whole portfolio) was "Portfolio" on one run and
+          // "not work" on the next - same archive - and the second run became "no pictures". A
+          // page with 8+ images and zero sections gets one more ask; the second answer stands.
+          if (brainTries === 1 && _imgHeavy && Array.isArray(o2.sections) && !o2.sections.length) return false;
           return !!(o2.business || (Array.isArray(o2.sections) && o2.sections.length)
                     || (Array.isArray(o2.people) && o2.people.length));
         };
@@ -25335,8 +25341,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // itself, so the command must not register it a second time.
         const beUntil = /(^|\s)UNTIL_DONE(\s|$)/i.test(beRaw);
         const beNoReg = /(^|\s)NOREG(\s|$)/i.test(beRaw);
+        // AGAIN (2026-09-21): re-read the shops a reading already marked "no pictures". A normal
+        // reading skips anything with a `sections` list, and "no pictures" writes an EMPTY one, so
+        // those shops were never looked at twice - including the Next.js sites whose pictures were
+        // all refused by a resizer bug (fixed v9.359). Opt-in only; a plain READ still re-reads nothing.
+        const beAgain = /(^|\s)AGAIN(\s|$)/i.test(beRaw);
         beRaw = beRaw.replace(/(^|\s)READ(\s|$)/i, " ").replace(/(^|\s)DRAFT(\s|$)/i, " ")
-          .replace(/(^|\s)UNTIL_DONE(\s|$)/ig, " ").replace(/(^|\s)NOREG(\s|$)/ig, " ").trim();
+          .replace(/(^|\s)UNTIL_DONE(\s|$)/ig, " ").replace(/(^|\s)NOREG(\s|$)/ig, " ")
+          .replace(/(^|\s)AGAIN(\s|$)/ig, " ").trim();
         const beArgs = beRaw.split(/\s+/).filter(Boolean);
         let ids = [];
         // STATE works the same way as CITY, for going state by state.
@@ -25353,9 +25365,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // per artist or gallery - so that is what "this shop has been read" actually looks like.
             // The lesson both times: ask the database what is stored, do not reason about it.
             cgMode === "read"
-              ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
-                "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
-                "AND (understanding IS NULL OR understanding NOT LIKE '%\"sections\"%') LIMIT ?"
+              ? (beAgain
+                  ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
+                    "AND crawl_verdict = 'ok' AND understanding LIKE '%no_pictures%' LIMIT ?"
+                  : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
+                    "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
+                    "AND (understanding IS NULL OR understanding NOT LIKE '%\"sections\"%') LIMIT ?")
               : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
                 "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL LIMIT ?")
             .bind(String(st2).toLowerCase(), lim2).all())?.results || [];
@@ -25370,9 +25385,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // so nothing is done twice and nobody has to remember where it stopped.
           const rows = (await env.AURA_MEMORY.prepare(
             cgMode === "read"
-              ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
-                "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
-                "AND (understanding IS NULL OR understanding NOT LIKE '%\"sections\"%') LIMIT ?"
+              ? (beAgain
+                  ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
+                    "AND crawl_verdict = 'ok' AND understanding LIKE '%no_pictures%' LIMIT ?"
+                  : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
+                    "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
+                    "AND (understanding IS NULL OR understanding NOT LIKE '%\"sections\"%') LIMIT ?")
               : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
                 "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL LIMIT ?")
             .bind(String(city).toLowerCase(), lim).all())?.results || [];

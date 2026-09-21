@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.355.0-2026-09-21-no-verdict-is-a-failure-too";
+const BUILD = "aura-core-v9.356.0-2026-09-21-the-state-queue";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -33853,7 +33853,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (/^WATCH\b/i.test(crRaw)) {
         const active = (await env.AURA_KV.get("crawl:active", "json").catch(() => null)) || [];
         const log = (await env.AURA_KV.get("crawl:watch:log", "json").catch(() => null)) || [];
-        return { cmd: "PTA_CRAWL", payload: { ok: true, watching: active, recent: log.slice(-20) } };
+        const queue = (await env.AURA_KV.get("crawl:queue", "json").catch(() => null)) || [];
+        return { cmd: "PTA_CRAWL", payload: { ok: true, watching: active, queue, recent: log.slice(-20) } };
+      }
+      // PTA_CRAWL QUEUE [SET TX,FL,NY | CLEAR] - the states the watchdog will run, in order.
+      if (/^QUEUE\b/i.test(crRaw)) {
+        const qArg = crRaw.replace(/^QUEUE\b/i, "").trim();
+        if (/^CLEAR\b/i.test(qArg)) {
+          await env.AURA_KV.put("crawl:queue", "[]");
+          return { cmd: "PTA_CRAWL", payload: { ok: true, queue: [], note: "queue cleared - a chain already running carries on" } };
+        }
+        if (/^SET\b/i.test(qArg)) {
+          const states = qArg.replace(/^SET\b/i, "").split(/[\s,]+/)
+            .map((x) => x.toUpperCase().replace(/[^A-Z]/g, "")).filter((x) => x.length === 2);
+          await env.AURA_KV.put("crawl:queue", JSON.stringify(states));
+          return { cmd: "PTA_CRAWL", payload: { ok: true, queue: states,
+            note: "the watchdog starts the first one within 15 minutes of nothing else running" } };
+        }
+        const queue = (await env.AURA_KV.get("crawl:queue", "json").catch(() => null)) || [];
+        return { cmd: "PTA_CRAWL", payload: { ok: true, queue } };
       }
       if (/^STATUS\s+/i.test(crRaw)) {
         const id = crRaw.replace(/^STATUS\s+/i, "").trim();
@@ -60464,8 +60482,8 @@ async function crawlWatchLog(env, line) {
 async function watchCrawlBatches(env) {
   try {
     if (!env.GRID_CRAWL_WORKFLOW) return;
-    const list = (await env.AURA_KV.get("crawl:active", "json").catch(() => null)) || [];
-    if (!Array.isArray(list) || !list.length) return;
+    const list0 = (await env.AURA_KV.get("crawl:active", "json").catch(() => null)) || [];
+    const list = Array.isArray(list0) ? list0 : [];
     const next = [];
     for (const b of list) {
       let inst = null, st = null;
@@ -60507,6 +60525,32 @@ async function watchCrawlBatches(env) {
       } else {
         next.push(b);   // could not start - try again on the next tick
         await crawlWatchLog(env, { id: b.id, did: "restart failed", why, error: p && p.error, cmd: b.cmd });
+      }
+    }
+    // THE STATE QUEUE (2026-09-21). Aaron: "I want to run everything." One state at a time, in the
+    // order written to `crawl:queue`: when nothing is being watched - the last state's chain ended
+    // with `done` - the next state starts here, as its own UNTIL_DONE chain. A chain that stopped
+    // on the 12-batch cap is NOT a reason to move on silently; the cap logs it and a person looks.
+    if (!next.length) {
+      const q = (await env.AURA_KV.get("crawl:queue", "json").catch(() => null)) || [];
+      if (Array.isArray(q) && q.length) {
+        const st = String(q[0] || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+        const cmdQ = "CG_ENRICH_BATCH STATE " + st + " 500 UNTIL_DONE";
+        let rq = null;
+        try { rq = await processCommand(cmdQ + " NOREG", env, true); }
+        catch (e) { rq = { payload: { ok: false, error: String(e?.message ?? e) } }; }
+        const pq = (rq && rq.payload) ? rq.payload : rq;
+        if (pq && pq.ok && pq.started) {
+          next.push({ id: pq.started, cmd: cmdQ, mode: "enrich", until: true,
+                      started: new Date().toISOString(), restarts: 0, chain: 1 });
+          await env.AURA_KV.put("crawl:queue", JSON.stringify(q.slice(1))).catch(() => {});
+          await crawlWatchLog(env, { did: "state started", state: st, new_id: pq.started, shops: pq.shops, left_in_queue: q.length - 1 });
+        } else if (pq && pq.ok && !pq.shops) {
+          await env.AURA_KV.put("crawl:queue", JSON.stringify(q.slice(1))).catch(() => {});
+          await crawlWatchLog(env, { did: "state skipped", state: st, why: "nothing left to crawl" });
+        } else {
+          await crawlWatchLog(env, { did: "state could not start", state: st, error: pq && pq.error });
+        }
       }
     }
     await env.AURA_KV.put("crawl:active", JSON.stringify(next)).catch(() => {});

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.354.0-2026-09-20-keep-the-field-she-writes";
+const BUILD = "aura-core-v9.355.0-2026-09-21-no-verdict-is-a-failure-too";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61154,6 +61154,22 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
           // refusals, every one a verdict correctly written. Four real outcomes lumped under the
           // word for something going wrong. Name them, so a status check tells the truth.
           const verdict = r?.crawl_verdict || null;
+          // NO VERDICT IS A FAILURE TOO (2026-09-21). MEASURED: one shop was picked by batches 5
+          // through 12 of the California chain, alone, every 15 minutes, until the 12-batch cap
+          // stopped it. Its crawl died on the CPU limit INSIDE its own lane, which comes back as an
+          // answer rather than a thrown step - so it never reached the counter in the step's .catch,
+          // got no verdict, and the next batch picked it again. A crawl still running at Cloudflare
+          // comes back the same way. Any shop that returns without a verdict now goes through the
+          // same counter: back in the queue once, written off as `error` the second time.
+          if (!verdict && ids[i]) {
+            try {
+              const _n = (Number(await this.env.AURA_KV.get("crawl:fail:" + ids[i])) || 0) + 1;
+              await this.env.AURA_KV.put("crawl:fail:" + ids[i], String(_n), { expirationTtl: 30 * 86400 });
+              if (_n >= 2) await this.env.AURA_MEMORY.prepare(
+                "UPDATE cg_business SET crawl_verdict = 'error', crawled_at = ? WHERE id = ?")
+                .bind(new Date().toISOString(), ids[i]).run();
+            } catch {}
+          }
           if (verdict) byVerdict[verdict] = (byVerdict[verdict] || 0) + 1;
           if (r?.ok && (verdict === "unreachable" || verdict === "refused")) {
             unreached++;

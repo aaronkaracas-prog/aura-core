@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.360.0-2026-09-21-read-them-again";
+const BUILD = "aura-core-v9.361.0-2026-09-21-every-picture-comes-back-with-a-next-step";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63479,11 +63479,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ? "[This is the mock-up on their own body. Compare it to the photograph they sent. " +
               "On the first line, write only RIGHT or WRONG: is the tattoo they already had still " +
               "there - not removed or covered over - and is what they asked for there? " +
-              "Then speak to them about the picture. (" + url + ")]"
+              "Then tell them what you think of it in one warm line, and ask whether they are happy to go " +
+              "with it or want to change something - in your own words, different each time. (" + url + ")]"
             // The picture's own address is in the question, so no two looks ask the same thing -
             // her side keeps a short cache keyed on the exact words, and an identical question
             // came back with the previous picture's answer (measured 2026-09-20, turn 5 = turn 3).
-            : "[This is the picture you just made for them. Look at it, then speak to them about it. (" + url + ")]",
+            // EVERY PICTURE COMES BACK WITH A NEXT STEP (2026-09-21). Aaron: "if we leave it blank
+            // it's confusing - the person won't know what's next." This was only "look at it, then
+            // speak to them about it", so after a drawing she described it and stopped. The moment
+            // she has just SEEN it is the one place a real reaction and a clear next step can come
+            // from - in her own words, never one stock phrase ("it looks like software").
+            : "[This is the picture you just made for them. Look at it. Tell them what you think of it in " +
+              "one warm line, then ask whether they are happy to go with it or want to change something - " +
+              "in your own words, different each time. (" + url + ")]",
             false, me, url, world);
           if (!(look && look.reply && !look.failed)) return null;
           const text = _verdict(look.reply, readAct(look.reply)).trim();
@@ -63770,6 +63778,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             cp = got; _mockNote = verdict; cur = got.child;
           }
           // The streak: a wrong final result counts, a right one clears it.
+          // SHE LOOKS AFTER A CHANGE TOO (2026-09-21). Her line on a change was written BEFORE the
+          // picture existed, in the same breath as the instruction to draw - so it guessed, and the
+          // next step was dropped. One look, on Neurons, and her words come from what she sees.
+          if (me && cp && cp.ok && cp.image_url) {
+            const _lkC = await _lookAtResult(cp.image_url, true);
+            if (_lkC && _lkC.verdict) _mockNote = _lkC.verdict;
+            if (_lkC && _lkC.say) _reaction = _lkC.say;
+          }
           if (me && cp && cp.ok) {
             const _bad = !!(_mockNote && /^\s*WRONG\b/i.test(_mockNote));
             const _next = _resetToPhoto ? (_bad ? 1 : 0) : (_bad ? badStreak + 1 : 0);

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.368.0-2026-09-21-an-artists-page-is-theirs";
+const BUILD = "aura-core-v9.369.0-2026-09-21-twelve-good-ones";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22942,12 +22942,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // fifteen. A shop that publishes no artist pages is one subject and gets twelve.
           // The division is a CAP, not a target - an artist with six good pictures shows six
           // rather than having twenty-four mediocre ones dredged up to fill a quota.
-          const PAGE_MAX = 30;
+          //  TWELVE GOOD ONES, EVERY SHOP (2026-09-21) 
+          // Aaron: "Max it out at 12. 12 good images I'm happy. The reason I ran the artists in the
+          // first place was to get a variety of images." Artists are no longer their own section or
+          // linked, and this page is a tease for the shop to take over and edit. So twelve for every
+          // shop; with artist pages the twelve are shared round by round, so the variety comes from
+          // across the roster rather than twelve from whoever's page was first. Supersedes "thirty a
+          // page" above. Measured before the change: Ritual Tattoo, 46 looks and 6.5 minutes for 31.
+          const PAGE_MAX = 12;
           const namedArtists = cardSections.filter(sec => (sec.people || 0) === 1).length;
           const PER_ARTIST = namedArtists
-            ? Math.max(3, Math.floor(PAGE_MAX / namedArtists))
+            ? Math.max(1, Math.floor(PAGE_MAX / namedArtists))
             : 12;
-          const ENOUGH = namedArtists ? PAGE_MAX : 12;
+          const ENOUGH = 12;
           const CHUNK = 12;
           // TWO at a time, not four. MEASURED: fifteen pictures came back 429 from one small
           // WordPress host even after backing off - it blocks a client for a window rather than

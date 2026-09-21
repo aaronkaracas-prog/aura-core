@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.362.0-2026-09-21-fall-back-to-the-crawls-pictures";
+const BUILD = "aura-core-v9.363.0-2026-09-21-the-eyes-fetch-like-a-visitor";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23050,7 +23050,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                               raw_head: String(lastKr.text || "").slice(0, 200) || "(nothing came back)" }),
                           saw: verdicts.map((v, i) => ((keep.has(i) ? "KEEP " : "drop ") + v.saw.slice(0, 90))) };
             } else cardWhy = { error: lastKr?.error || "judge failed", looked: verdicts.length };
-          } else cardWhy = { looked: 0, failed, note: "nothing survived the filename filter" };
+          // Offered but none would load is not the same as nothing offered - Ritual Tattoo had 84
+          // portfolio pictures refused by hotlink protection and was reported as the filter's doing.
+          } else cardWhy = { looked: 0, failed,
+                             note: (shortlist.length && failed >= shortlist.length)
+                               ? ("none of " + shortlist.length + " pictures would load")
+                               : "nothing survived the filename filter" };
           if (_fellBack && cardWhy) cardWhy.fell_back_to_crawl = _fellBack;
           // Always report the cuts - on a shop with plenty of work this is the only place the
           // shortlist's decisions are visible at all.
@@ -56758,7 +56763,26 @@ async function seeMedia(opts, env) {
       }
     }
     if (!bytes && o.url && !wantsUrl) {
-      const ir = await fetch(unwrapImageProxy(String(o.url)), { cf: { cacheTtl: 3600 } });
+      const _imgUrl = unwrapImageProxy(String(o.url));
+      let ir = await fetch(_imgUrl, { cf: { cacheTtl: 3600 } });
+      // THE EYES FETCH LIKE A VISITOR (2026-09-21). MEASURED: Ritual Tattoo - the reader mapped all
+      // seven artists and offered 84 portfolio pictures, and every one came back FETCH_403: WordPress
+      // hotlink protection refuses an image request that does not come from a visitor on the site's
+      // own pages. The same wall was fixed for photo links in IMAGE IMPORT (v9.352); the eyes never
+      // got it. A refused picture is asked for once more with a browser's headers and the site's own
+      // address as the referrer. Still a plain fetch - no browser time, no cost.
+      if (!ir.ok && (ir.status === 401 || ir.status === 403)) {
+        let _origin = ""; try { _origin = new URL(_imgUrl).origin + "/"; } catch {}
+        try {
+          const ir2 = await fetch(_imgUrl, { cf: { cacheTtl: 3600 }, headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            ...(_origin ? { "Referer": _origin } : {}),
+          } });
+          if (ir2.ok) ir = ir2;
+        } catch {}
+      }
       if (!ir.ok) return { ok: false, error: "FETCH_" + ir.status, model, ms: Date.now() - t0 };
       const buf = await ir.arrayBuffer();
       if (buf.byteLength > EYES_MAX_BYTES) return { ok: false, error: "TOO_BIG",

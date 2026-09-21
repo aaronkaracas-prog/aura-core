@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.357.0-2026-09-21-her-words-decide";
+const BUILD = "aura-core-v9.358.0-2026-09-21-she-stays-the-voice";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62625,6 +62625,38 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               const line = String(proxied.reply).trim();
               if (line) acted = { say: line.slice(0, 900), act: "none", prompt: "", use: [], brief: null };
             }
+            // SHE STAYS THE VOICE (2026-09-21). MEASURED on one six-turn conversation: turns 3, 4 and
+            // 5 came back `via: local` - her reply was thrown away and a DIFFERENT model answered in
+            // her place, without her guidance, her close-out or her `ask`. Turn 3 was a good answer in
+            // plain sentences, discarded for not being JSON. Turn 4 sent that stand-in's raw output -
+            // reasoning, token counts - to the person as her reply. Turn 5 drew through the old frame
+            // because the stand-in never writes `ask`. Before giving up on her, read what she said:
+            if (!acted) {
+              const _raw = String(proxied.reply || "").trim();
+              // Kept whole for a week, so a reply that still will not read can be looked at instead
+              // of guessed at from 300 characters.
+              try { await env.AURA_KV.put("talk:unparsed:last", JSON.stringify({ at: new Date().toISOString(),
+                pta: me, reply: _raw.slice(0, 12000) }), { expirationTtl: 7 * 86400 }); } catch {}
+              // 1. her JSON with fences or words around it
+              const _obj = _raw.match(/\{[\s\S]*\}/);
+              if (_obj) acted = readAct(_obj[0]);
+              // 2. her JSON without a `say` - keep her action and her words for the picture model
+              if (!acted && _obj) {
+                let _o = null;
+                try { _o = JSON.parse(_obj[0]); } catch { try { _o = repairJson(_obj[0]); } catch {} }
+                if (_o && typeof _o === "object") {
+                  _o = unwrapSchema(_o);
+                  if (_o && typeof _o === "object" && (_o.do || _o.ask || _o.prompt)) {
+                    if (!(typeof _o.say === "string" && _o.say.trim())) _o.say = "Here it is.";
+                    acted = readAct(JSON.stringify(_o));
+                  }
+                }
+              }
+              // 3. plain sentences ARE her answer
+              if (!acted && _raw && !/^\s*[\x7b\x5b]/.test(_raw) && _raw.length < 4000) {
+                acted = { say: _raw.slice(0, 900), act: "none", prompt: "", ask: "", use: [], brief: null };
+              }
+            }
             if (acted) { agentVia = proxied.instance || "agent"; proxied_rung = proxied.rung || null; }
             else agentNote = "her reply did not parse :: " +
                              String(proxied.reply).trim().slice(0, 300);
@@ -63991,6 +64023,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // already yours" about files nobody delivered. What actually happened is added in plain
       // words, so the person is never told something that is not true.
       let _said = String(acted.say || "");
+      // RAW MACHINE OUTPUT NEVER REACHES THE PERSON (2026-09-21). MEASURED: a fallback model ran out
+      // of room mid-thought and its whole response envelope - reasoning, finish_reason, token counts
+      // - was sent as her reply. Whatever produced it, a reply that is an API envelope or bare JSON
+      // is replaced with one plain line.
+      if (/"(choices|finish_reason|reasoning_content|prompt_tokens)"/.test(_said) || /^\s*[\x7b\x5b]/.test(_said)) {
+        console.log("[RAWGUARD] machine output kept from the person");
+        _said = "Sorry - I lost my train of thought there. Say that one more time?";
+      }
       if (drew && drew.failed) {
         // REPLACED, not added to (v9.280): measured, "I've made the artist files... Honestly,
         // that didn't come out" - one reply saying both.

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.378.0-2026-09-21-a-thread-step-always-draws";
+const BUILD = "aura-core-v9.379.0-2026-09-21-nothing-added-to-their-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59883,11 +59883,10 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       // the hips" was drawn. The request carried nothing but her sentence: a bare back plus one word,
       // with no sign this is a tattoo studio showing a client a design. Aaron: "if it knew it was a
       // tattoo it would never have stopped it." One fixed line of context, on every OpenAI picture.
-      const _ctx = oRefs.length
-        ? "Context: a tattoo studio is showing a client a proposed tattoo design on the client's own " +
-          "photograph, so they can decide before booking. "
-        : "Context: a tattoo studio is drawing a tattoo design for a client. ";
-      const pOA = _ctx + p;
+      // REMOVED 2026-09-21 (v9.379): the context line added in v9.375 put words in front of every
+      // picture request that nobody said. It did not stop the refusal it was added for, and Aaron's
+      // rule is that only what the person said reaches the model. What is sent is `p`, unchanged.
+      const pOA = p;
       let r;
       if (oRefs.length) {
         const fd = new FormData();

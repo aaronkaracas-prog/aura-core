@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.379.0-2026-09-21-nothing-added-to-their-words";
+const BUILD = "aura-core-v9.380.0-2026-09-21-the-pta-holds-the-story";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62605,10 +62605,42 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "as is useful. That is the conversation. It never goes in `prompt`.\n" +
         "IF YOUR `say` CLAIMS YOU ARE SHOWING THEM SOMETHING, `do` MUST NOT BE `none`.";
 
-      const stateNote = _drewNow()
+      // THE PTA HOLDS THE STORY (2026-09-21). MEASURED: every turn she was handed several hundred
+      // lines of rules and ONE line of state - "there is a piece on screen - <subject>" - while the
+      // tattoo's actual journey sat scattered across her chat history, talk:last, talk:brief and the
+      // lineage. Aaron: "the PTA is supposed to know everything about the context of the session."
+      // The person's timeline on their PTA now records each picture and the exact words it was made
+      // from, and what she actually said; here it is read back to her as the story so far, facts
+      // only, so "I would love to see that" or "send it to my artist" lands on a page where where
+      // this tattoo stands is plain.
+      const _story = (() => {
+        const pics = [];
+        for (let i = 0; i < tline.length; i++) {
+          const e = tline[i];
+          if (!e || e.role !== "picture") continue;
+          let after = null;
+          for (let j = i + 1; j < tline.length; j++) {
+            if (tline[j] && tline[j].role === "them") { after = tline[j].said; break; }
+            if (tline[j] && tline[j].role === "picture") break;
+          }
+          pics.push({ e, after });
+        }
+        if (!pics.length) return "";
+        const shown = pics.slice(-5);
+        const lines = shown.map((p, k) => {
+          const n = pics.length - shown.length + k + 1;
+          return "  Picture " + n + (p.e.failed ? " - FAILED, nothing was made" : "") +
+            (p.e.words ? (p.e.failed ? " - tried with: \"" : " - made from: \"") + String(p.e.words).slice(0, 300) + "\"" : "") +
+            (p.after ? "\n    then they said: \"" + String(p.after).slice(0, 200) + "\"" : "\n    (they have not answered it yet)");
+        });
+        const lastOk = [...pics].reverse().find((p) => !p.e.failed);
+        return "\n\nWHERE THIS TATTOO STANDS (from their record):\n" + lines.join("\n") +
+          (lastOk ? "\n  On screen now: picture " + (pics.indexOf(lastOk) + 1) + "." : "");
+      })();
+      const stateNote = (_drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
-        : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.";
+        : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story;
       const resetNote = (badStreak >= 2 && refDesign)
         ? "\n\nTHE LAST TWO PICTURES WERE WRONG. The next change starts again from their original " +
           "photograph: put EVERYTHING they still want into the one sentence in `prompt`."
@@ -63200,7 +63232,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // method, so a lead costs no wasted D1 read and no wasted Durable Object fetch, and the
         // refusal is never something anybody has to see.
         if (stage === "pta") {
-          for (const [who, text] of [["them", said], ["aura", String(acted.say || "")]]) {
+          // Only THEIR line here. Hers is written at the end of the turn, once it is settled - what
+          // she drafted before drawing was being kept even when the picture failed, so her own
+          // record said "Alex is in there now" about a picture that was never made.
+          for (const [who, text] of [["them", said]]) {
             const line = String(text || "").trim();
             if (!line) continue;
             try {
@@ -64367,6 +64402,36 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       // (The note about artist sheets being redone is no longer said to them - the files are made
       // quietly at the end and are not part of the conversation. It stays in `drew.she_checked`.)
+      // WHAT ACTUALLY HAPPENED GOES ON THEIR RECORD (2026-09-21). Her timeline line becomes what the
+      // person was actually shown, and a picture - or a failed one - is recorded with the exact words
+      // it was made from. This is what WHERE THIS TATTOO STANDS is read from next turn.
+      if (me) {
+        try {
+          for (let i = tline.length - 1; i >= 0; i--) {
+            if (tline[i] && tline[i].role === "aura") { tline[i].said = _said.slice(0, 600); break; }
+          }
+          if (drew && (drew.image || drew.failed)) {
+            tline.push({ ts: new Date().toISOString(), role: "picture",
+                         ...(drew.image ? { image: drew.image, design: drew.design || null } : { failed: true }),
+                         words: String(drew.changed || acted.prompt || "").slice(0, 600),
+                         ...(drew.for_the_artist ? { artist_files: true } : {}) });
+          }
+          if (tline.length > 60) tline = tline.slice(-60);
+          await env.AURA_KV.put("pta:timeline:" + me, JSON.stringify(tline)).catch(() => {});
+          if (stage === "pta") {
+            await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
+              said: _said.slice(0, 600), who: "aura", channel: "chat", mode: "tattoo",
+              at: new Date().toISOString() }), env, true).catch(() => {});
+            if (drew && (drew.image || drew.failed)) {
+              await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
+                said: (drew.image ? "Picture made from: " : "Picture failed, from: ") +
+                      String(drew.changed || "").slice(0, 500),
+                who: "picture", channel: "chat", mode: "tattoo", at: new Date().toISOString(),
+                ...(drew.image ? { image: drew.image } : {}) }), env, true).catch(() => {});
+            }
+          }
+        } catch {}
+      }
       const spent = costTapClose(_tap);
       return { ok: true, said: _said, act: acted.act, phase_ms, world, spent,
                ...(over_budget ? { over_budget: true } : {}),

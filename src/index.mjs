@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.370.0-2026-09-21-describe-it-once";
+const BUILD = "aura-core-v9.371.0-2026-09-21-ink-goes-on-skin";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63647,9 +63647,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         if (!body && !talk) return null;
         try {
           const look = await proxyToAgent(env, body
+            // INK GOES ON SKIN (2026-09-21). MEASURED: asked to fill her lower back, where her top
+            // covered it in the photo, the model painted peonies across the black fabric down to the
+            // waistband - and this check said RIGHT, because it only asked whether the old tattoo
+            // survived and the new work was there. Both were true. It never asked about skin.
             ? "[This is the mock-up on their own body. Compare it to the photograph they sent. " +
               "On the first line, write only RIGHT or WRONG: is the tattoo they already had still " +
-              "there - not removed or covered over - and is what they asked for there? " +
+              "there - not removed or covered over - is what they asked for there, and is every bit " +
+              "of the new ink on their skin? Ink on clothing, hair or the background is WRONG. " +
               "Then tell them what you think of it in one warm line, and ask whether they are happy to go " +
               "with it or want to change something - in your own words, different each time. (" + url + ")]"
             // The picture's own address is in the question, so no two looks ask the same thing -

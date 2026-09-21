@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.364.0-2026-09-21-a-real-browser-when-refused";
+const BUILD = "aura-core-v9.365.0-2026-09-21-each-artist-by-their-own-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22610,6 +22610,39 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         });
         const peopleReport = (Array.isArray(out?.people) ? out.people : []).map(n => ({
           name: String(n), on_site: lowerDoc.includes(String(n).toLowerCase()) }));
+
+        // EACH ARTIST BY THEIR OWN PAGE (2026-09-21). MEASURED on Ritual Tattoo: a section called
+        // "Wryly Fable" held four artists' pages - titled "Matt Matik", "Wryly Fable", "Dazhi Yin",
+        // "Elle Webb" - and "Malvi Stachurska" held three others'. The reader's own check flagged every
+        // one (title_names_someone_else) and the card was built with the wrong names anyway: on a
+        // public page that credits one artist's work to another. When a section's pages are each
+        // titled with exactly one DIFFERENT person from her own people list, the section becomes one
+        // per person, named by that page. Pages naming nobody or several stay where she put them.
+        {
+          const _names = peopleReport.map(p5 => p5.name).filter(Boolean);
+          const _imgsIn = (pp) => pp.reduce((n5, x5) => n5 + ((pages.find(p6 => p6.path === x5) || {}).images || 0), 0);
+          const _ownerOf = (pth) => {
+            const t5 = String(((pages.find(p6 => p6.path === pth) || {}).title) || "").toLowerCase();
+            if (!t5) return null;
+            const hits = _names.filter(n5 => t5.includes(String(n5).toLowerCase()));
+            return hits.length === 1 ? hits[0] : null;
+          };
+          const _rebuilt = [];
+          for (const sec of secReport) {
+            if (!Array.isArray(sec.pages) || sec.pages.length < 2) { _rebuilt.push(sec); continue; }
+            const owners = sec.pages.map(_ownerOf);
+            if (new Set(owners.filter(Boolean)).size < 2) { _rebuilt.push(sec); continue; }
+            const byWho = {}; const rest = [];
+            sec.pages.forEach((pth, k5) => {
+              const who = owners[k5];
+              if (who) (byWho[who] = byWho[who] || []).push(pth); else rest.push(pth);
+            });
+            for (const who of Object.keys(byWho))
+              _rebuilt.push({ ...sec, name: who, pages: byWho[who], images: _imgsIn(byWho[who]) });
+            if (rest.length) _rebuilt.push({ ...sec, pages: rest, images: _imgsIn(rest) });
+          }
+          secReport.splice(0, secReport.length, ..._rebuilt);
+        }
 
         // ══ THE CARD (2026-08-20) ═══════════════════════════════════════════════════════
         // Four mechanical steps on top of her map. No vocabulary, no path list, nothing that
@@ -61415,8 +61448,11 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
             const x = await Promise.race([
               this.env.CRAWL_LANE ? this.env.CRAWL_LANE.read(id2, write).then((p) => ({ payload: p }))
                                   : processCommand("SITE_READING " + id2 + " LOOK" + (write ? " WRITE" : ""), this.env, true),
+              // Eight minutes, not four (2026-09-21): a shop whose pictures are refused is read
+              // through Cloudflare's browser one picture at a time - Ritual Tattoo took 5m42s and
+              // would have been cut off at four with nothing kept. Crawling keeps its own limit.
               new Promise((res) => setTimeout(() => res({ payload: { ok: false,
-                error: "TOOK_TOO_LONG" } }), 240000)),
+                error: "TOOK_TOO_LONG" } }), 480000)),
             ]);
             return (x && x.payload) ? x.payload : x;
           } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }

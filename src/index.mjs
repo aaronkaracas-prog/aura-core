@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.373.0-2026-09-21-openai-moderation-is-a-dial";
+const BUILD = "aura-core-v9.374.0-2026-09-21-edits-say-their-quality";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59868,6 +59868,11 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         fd.append("model", model);
         fd.append("prompt", p);
         if (_modOk) fd.append("moderation", _modOk);
+        // EDITS SAY THEIR QUALITY (2026-09-21). MEASURED: the same kind of edit on someone's photo cost
+        // $0.0197, $0.061 and then $0.2226 on one day - this branch never sent `quality`, so OpenAI
+        // chose, and sometimes chose high. `config:edit:quality` already existed and was read above;
+        // it just never reached the request. New drawings always sent theirs.
+        if (quality) fd.append("quality", quality);
         fd.append("n", "1");
         fd.append("size", "1024x1024");
         // ══ OUR OWN IMAGES COME OFF THE SHELF, NOT OVER THE WIRE ═══════════════════════════

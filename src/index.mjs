@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.369.0-2026-09-21-twelve-good-ones";
+const BUILD = "aura-core-v9.370.0-2026-09-21-describe-it-once";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62635,7 +62635,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                          "done, and where on the body it sits.")
             : (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER, still what you are working on:"
                        : "THEY JUST SENT YOU A PHOTOGRAPH. This is what is in it:") + "\n  " + refSaw) +
-          "\n\nSAY WHAT YOU SEE FIRST, in your own words, before anything else - \"that's a " +
+          // DESCRIBE IT ONCE (2026-09-21). MEASURED: on the turn after "this is my tattoo, I got it in
+          // Italy with my son Alex", she opened by describing the back piece again and saying it had
+          // "aged beautifully". Everything from here to the three jobs below was added on EVERY turn
+          // the photo was still in play, so every later turn was told to describe it again. It belongs
+          // to the turn the photo arrives; after that the photo stays in front of her to work from.
+          (refHeld ? "\n\nYou have already told them what is in it - do not describe or assess it " +
+                     "again. Work from it.\n\n" : "") +
+          (refHeld ? "" : "\n\nSAY WHAT YOU SEE FIRST, in your own words, before anything else - \"that's a " +
           "cartoon fish with a face on it\", \"that's a full Japanese back piece, koi and " +
           "lotus\". Plainly, like somebody looking at their arm. Never ask a question about a " +
           "picture without first showing them you looked at it.\n" +
@@ -62649,7 +62656,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // did it when they were in fourth grade."
           "AND SAY HOW WELL IT IS DONE. If it is amateur, wobbly, faded, badly healed or just " +
           "bad, say so like a person would - kindly, but do not pretend a bad tattoo is a good " +
-          "one. They already know. Pretending otherwise is how you lose them.\n" +
+          "one. They already know. Pretending otherwise is how you lose them.\n") +
           "It is a REFERENCE or their own tattoo - never something you made, and never something " +
           "to copy.\n\n" +
           // The three jobs are one flow with one difference: what happens to the ink already

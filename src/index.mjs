@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.358.0-2026-09-21-she-stays-the-voice";
+const BUILD = "aura-core-v9.359.0-2026-09-21-unwrap-the-resizer";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22362,7 +22362,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                      || (pg.body.match(/"og:title"\s*:\s*"([^"]{2,120})"/) || [])[1] || "";
           const heads = [...pg.body.matchAll(/^#{1,4}\s+(.{2,80})$/gm)]
             .map(m => m[1].trim()).filter(h => h && h !== title).slice(0, 6);
-          const imgs = new Set([...pg.body.matchAll(IMG_RE)].map(m => m[0]));
+          const imgs = new Set([...pg.body.matchAll(IMG_RE)].map(m => unwrapImageProxy(m[0])));
           return { path, title: title.replace(/\s*&mdash;.*$/, "").trim(), heads, images: imgs.size };
         });
         const sitemap = pages.map(p2 =>
@@ -22751,7 +22751,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               for (const pth of sec.pages) {
                 const mine = [];
                 for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
-                  const u = mm[0];
+                  const u = unwrapImageProxy(mm[0]);
                   const why = chromeRule(u, "");
                   if (why) {
                     cutBy[why] = (cutBy[why] || 0) + 1;
@@ -23061,7 +23061,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             for (const pth of sec.pages) {
               for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
                 if (n >= 6 || cands.length >= 20) break;
-                const u = mm[0];
+                const u = unwrapImageProxy(mm[0]);
                 if (isChromeUrl(u, "") || cands.some(c => c.u === u)) continue;
                 cands.push({ u, page: pth, section: sec.name }); n++;
               }
@@ -56706,7 +56706,7 @@ async function seeMedia(opts, env) {
       }
     }
     if (!bytes && o.url && !wantsUrl) {
-      const ir = await fetch(String(o.url), { cf: { cacheTtl: 3600 } });
+      const ir = await fetch(unwrapImageProxy(String(o.url)), { cf: { cacheTtl: 3600 } });
       if (!ir.ok) return { ok: false, error: "FETCH_" + ir.status, model, ms: Date.now() - t0 };
       const buf = await ir.arrayBuffer();
       if (buf.byteLength > EYES_MAX_BYTES) return { ok: false, error: "TOO_BIG",
@@ -60459,7 +60459,27 @@ async function advanceWorkflow(env, id) {
 // five languages, Booksy's Modesto hair salons and hub.biz's accountants and dentists as tattoo
 // shops, and the reading then found "no pictures" in every one. hub.biz, local.yahoo.com,
 // usdirectory, wheresink and Acuity's as.me addresses were all seen in the 2026-09-19 California runs.
-const NOT_THEIR_SITE_HOSTS = /(^|\.)((app\.)?acuityscheduling|as\.me|squareup|square\.site|booksy|vagaro|fresha|styleseat|schedulicity|calendly|setmore|glossgenius|linktr\.ee|linktree|etsy|facebook|instagram|yelp|tripadvisor|publicreputation|wixsite\.com\/?$|google\.com|hub\.biz|hubbiz|local\.yahoo\.com|usdirectory\.com|wheresink\.com|yellowpages|mapquest|manta\.com|bizapedia|chamberofcommerce|nextdoor|foursquare)\./i;
+const NOT_THEIR_SITE_HOSTS = /(^|\.)((app\.)?acuityscheduling|as\.me|squareup|square\.site|booksy|vagaro|fresha|styleseat|schedulicity|calendly|setmore|glossgenius|linktr\.ee|linktree|etsy|facebook|instagram|yelp|tripadvisor|publicreputation|wixsite\.com\/?$|google\.com|hub\.biz|hubbiz|local\.yahoo\.com|usdirectory\.com|wheresink\.com|yellowpages|mapquest|manta\.com|bizapedia|chamberofcommerce|nextdoor|foursquare|myspace|tiktok|twitter|x\.com|youtube|pinterest|threads\.net|linkedin|tumblr|snapchat)\./i;
+// UNWRAP THE RESIZER (2026-09-21). MEASURED: Tinta Rebelde (Next.js) - every picture came back
+// FETCH_400 and the shop was labelled "no pictures". Modern sites serve images through a resizer:
+//   /_next/image?url=%2Fimages%2Fshop%2Fstorefront.jpg&w=3840&q=75
+// The archive's image pattern ends at ".jpg", so the "&w=...&q=..." the resizer insists on was cut
+// off and every fetch was refused. The picture itself sits at the address INSIDE that one. This hands
+// back the original for Next.js / Vercel, Cloudflare Images and Nuxt; anything else passes through.
+function unwrapImageProxy(u) {
+  try {
+    const x = new URL(String(u));
+    if (/\/_(next|vercel)\/image\/?$/.test(x.pathname)) {
+      const inner = x.searchParams.get("url");
+      if (inner) return new URL(inner, x.origin).toString();
+    }
+    const cf = x.pathname.match(/^\/cdn-cgi\/image\/[^/]+\/(.+)$/);
+    if (cf) return /^https?:/i.test(cf[1]) ? cf[1] : x.origin + "/" + cf[1];
+    const ipx = x.pathname.match(/^\/_ipx\/[^/]+\/(.+)$/);
+    if (ipx) { const r = decodeURIComponent(ipx[1]); return /^https?:/i.test(r) ? r : x.origin + "/" + ipx[1]; }
+  } catch {}
+  return u;
+}
 function isListingHost(h) { return NOT_THEIR_SITE_HOSTS.test(String(h || "").toLowerCase().replace(/^www\./, "") + "."); }
 // Where the crawl actually LANDED, read off the archive's own page markers. Half or more of the
 // pages on a listing host means the shop's address forwarded somewhere that is not theirs.
@@ -61310,7 +61330,14 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         if (r?.ok && r?.crawl_verdict === "not_their_site") { notTheirs++; }
         else if (!r?.ok) { failed++; if (trouble.length < 60) trouble.push({ ...who, why: String(r?.error || "unknown").slice(0, 120) }); }
         else if (r?.brain?.could_not_read) { failed++; if (trouble.length < 60) trouble.push({ ...who, why: "brain unreadable after " + (r.brain.tries || 1) + " tries" }); }
-        else if (!r?.wrote?.images) { empty++; if (trouble.length < 60) trouble.push({ ...who, why: "no pictures survived" }); }
+        else if (!r?.wrote?.images) { empty++;
+          // One label hid three different causes in one batch of 50: pictures that would not load,
+          // a site with no work on it, and a crawl that landed somewhere else. Say which.
+          const cw = r?.card_why || {}, lk = r?.looked || {};
+          const detail = (lk.failed && lk.failed === lk.images) ? ("none of " + lk.images + " pictures would load")
+                       : cw.note ? cw.note
+                       : (cw.looked != null ? ("looked at " + cw.looked + ", kept none") : null);
+          if (trouble.length < 60) trouble.push({ ...who, why: "no pictures survived" + (detail ? " - " + detail : "") }); }
         else { done++; images += r.wrote.images || 0; artists += (r.wrote.artists || []).length; }
         await mark(pkey, { mode: "read", at: i + 1, of: ids.length, started: startedAt,
           last: { name: r?.business || ids[i], images: r?.wrote?.images ?? 0,

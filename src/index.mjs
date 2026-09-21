@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.363.0-2026-09-21-the-eyes-fetch-like-a-visitor";
+const BUILD = "aura-core-v9.364.0-2026-09-21-a-real-browser-when-refused";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -56783,8 +56783,30 @@ async function seeMedia(opts, env) {
           if (ir2.ok) ir = ir2;
         } catch {}
       }
-      if (!ir.ok) return { ok: false, error: "FETCH_" + ir.status, model, ms: Date.now() - t0 };
-      const buf = await ir.arrayBuffer();
+      // A REAL BROWSER WHEN REFUSED (2026-09-21). MEASURED: Ritual Tattoo refuses a plain fetch AND
+      // browser headers with a referrer; IMAGE IMPORT's third route - Cloudflare's browser visiting
+      // the address - got the same picture (393 KB). The eyes now take that same route, and only
+      // when both cheaper tries were refused: a few seconds of browser time per refused picture.
+      let _browserBytes = null;
+      if (!ir.ok && (ir.status === 401 || ir.status === 403)) {
+        try {
+          const bAcct = env.CF_ACCOUNT_ID || (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+          const bTok = await getSecret(env, "cf_api_token") || await getSecret(env, "cloudflare");
+          if (bTok) {
+            const br = await fetch("https://api.cloudflare.com/client/v4/accounts/" + bAcct + "/browser-rendering/screenshot",
+              { method: "POST", headers: { Authorization: "Bearer " + bTok, "content-type": "application/json" },
+                body: JSON.stringify({ url: _imgUrl, screenshotOptions: { fullPage: false, type: "png" },
+                                       viewport: { width: 1024, height: 1024 },
+                                       gotoOptions: { waitUntil: "load", timeout: 20000 } }) });
+            if (br.ok) {
+              const bb = await br.arrayBuffer();
+              if (bb && bb.byteLength > 1024) _browserBytes = new Uint8Array(bb);
+            }
+          }
+        } catch {}
+      }
+      if (!ir.ok && !_browserBytes) return { ok: false, error: "FETCH_" + ir.status, model, ms: Date.now() - t0 };
+      const buf = _browserBytes ? _browserBytes.buffer : await ir.arrayBuffer();
       if (buf.byteLength > EYES_MAX_BYTES) return { ok: false, error: "TOO_BIG",
         bytes: buf.byteLength, model, ms: Date.now() - t0 };
       bytes = new Uint8Array(buf);

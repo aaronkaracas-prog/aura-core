@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.367.0-2026-09-21-artists-thirty-shop-twelve";
+const BUILD = "aura-core-v9.368.0-2026-09-21-an-artists-page-is-theirs";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22676,10 +22676,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const body = (parts.find(pt => String(pt.url).replace(/^https?:\/\/[^/]+/, "") === pth) || {}).body || "";
           return new RegExp("\\b" + String(n).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i").test(body);
         }).length > 1;
+        // Outside the map below on purpose: inside it `pages` is a local list of paths, not pages.
+        const _titleOf = (pth) => String(((pages.find(p7 => p7.path === pth) || {}).title) || "").toLowerCase();
         const cardSections = Object.values(byName)
           .map(sec => {
             const pages = [...sec.pages].sort((a, b) => imgsOn(b) - imgsOn(a));
-            const own = pages.filter(pth => !pageIsShared(pth));
+            // AN ARTIST'S PAGE IS THEIRS WHEN ITS TITLE NAMES THEM (2026-09-21). MEASURED on Ritual
+            // Tattoo: every artist page carries a "Related Artists" strip naming two colleagues, so
+            // each read as SHARED, no section counted as a named artist, and Aaron's artists-first rule
+            // (thirty shared among the artists) fell through to the no-artist cap of twelve - four
+            // artists got chips and no pictures. A page titled "Matt Matik - Ritual Tattoo" is his,
+            // whoever else it mentions. The shared test still decides pages whose title names nobody.
+            const _secNm = String(sec.name || "").trim().toLowerCase();
+            const _titled = (pth) => _secNm.length > 2 && _titleOf(pth).includes(_secNm);
+            const own = pages.filter(pth => _titled(pth) || !pageIsShared(pth));
             return { name: sec.name, pages: own.length ? own : pages,
                      people: own.length ? 1 : 2 };
           })
@@ -23157,7 +23167,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // decide anything yet - the map narrowed 452 images to ~20, which is what makes looking
         // affordable at all.
         let looked = null;
-        if (srdLook) {
+        // THE REPORT-ONLY LOOK DOES NOT RUN ON A WRITE (2026-09-21). This second pass looks at up to
+        // twenty more pictures only to print what the eyes saw - it changes nothing on the page. On
+        // Ritual Tattoo it was 80 of 250 seconds. A batch writes, and the card's own eyes already
+        // report what they saw in card_why.saw; a read-only LOOK still gets the report.
+        if (srdLook && !srdWrite) {
           const cands = [];
           for (const sec of cardSections) {
             let n = 0;
@@ -25464,10 +25478,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             cgMode === "read"
               ? (beAgain
                   ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
-                    "AND crawl_verdict = 'ok' AND understanding LIKE '%no_pictures%' LIMIT ?"
+                    "AND crawl_verdict = 'ok' AND (understanding LIKE '%no_pictures%' OR understanding LIKE '%last_empty_read%') LIMIT ?"
                   : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
                     "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
-                    "AND (understanding IS NULL OR understanding NOT LIKE '%\"sections\"%') LIMIT ?")
+                    "AND (understanding IS NULL OR (understanding NOT LIKE '%\"sections\"%' " +
+                    "AND understanding NOT LIKE '%last_empty_read%')) LIMIT ?")
               : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
                 "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL LIMIT ?")
             .bind(String(st2).toLowerCase(), lim2).all())?.results || [];
@@ -25484,10 +25499,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             cgMode === "read"
               ? (beAgain
                   ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
-                    "AND crawl_verdict = 'ok' AND understanding LIKE '%no_pictures%' LIMIT ?"
+                    "AND crawl_verdict = 'ok' AND (understanding LIKE '%no_pictures%' OR understanding LIKE '%last_empty_read%') LIMIT ?"
                   : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
                     "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
-                    "AND (understanding IS NULL OR understanding NOT LIKE '%\"sections\"%') LIMIT ?")
+                    "AND (understanding IS NULL OR (understanding NOT LIKE '%\"sections\"%' " +
+                    "AND understanding NOT LIKE '%last_empty_read%')) LIMIT ?")
               : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
                 "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL LIMIT ?")
             .bind(String(city).toLowerCase(), lim).all())?.results || [];

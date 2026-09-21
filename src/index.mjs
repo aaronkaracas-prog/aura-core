@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.365.0-2026-09-21-each-artist-by-their-own-page";
+const BUILD = "aura-core-v9.367.0-2026-09-21-artists-thirty-shop-twelve";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23040,7 +23040,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const perSection = {};
           const sectionsWanting = () => cardSections.some(sec => (perSection[sec.name] || 0) < PER_ARTIST);
           let lastKr = null, lastKeepList = null, judgeUnreadOnce = false;
-          for (let at = 0; at < shortlist.length && (keep.size < ENOUGH || sectionsWanting()); at += CHUNK) {
+          // THIRTY AND STOP (2026-09-21). Aaron: "30 images top - we stop reading a site." MEASURED on
+          // Ritual Tattoo: twelve artists each still "wanting" kept the loop going past thirty until all
+          // 84 shortlisted pictures had been looked at - 57 kept, six minutes, most of it browser visits.
+          // Thirty kept ends the looking, whoever is still short.
+          for (let at = 0; at < shortlist.length && keep.size < (namedArtists ? PAGE_MAX : ENOUGH) && (keep.size < ENOUGH || sectionsWanting()); at += CHUNK) {
             const slice = shortlist.slice(at, at + CHUNK);
             // Six at a time: each look is a fetch plus a model round trip, and they are independent.
             const seenHere = [];
@@ -23116,6 +23120,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Each section keeps its own set - an artist's page wants their work, not the shop's
             // twelve. The shop grid is built from these by the renderer, so nothing is lost here.
             .map(sec => ({ name: sec.name, images: bySec[sec.name].slice(0, 8) }));
+          // THIRTY A PAGE, ENFORCED (2026-09-21). The rule from 2026-09-18 - thirty pictures at most,
+          // divided among whoever is on the page - was computed and never applied here: Ritual came
+          // back with 57, three to six per artist. Each artist gets their share (PER_ARTIST), taken
+          // one round at a time so every artist is represented before anyone gets a second, and the
+          // page stops at thirty.
+          {
+            // Artists first: with artist pages the artists ARE the gallery, thirty shared among them.
+            // A shop with no artist pages is one subject and gets twelve (ENOUGH), per the same rule.
+            const _pageCap = namedArtists ? PAGE_MAX : ENOUGH;
+            const _src = card.map(c => c.images.slice(0, PER_ARTIST));
+            const _out = card.map(c => ({ name: c.name, images: [] }));
+            let _total = 0;
+            for (let r = 0; _total < _pageCap; r++) {
+              let any = false;
+              for (let k = 0; k < _src.length && _total < _pageCap; k++) {
+                if (_src[k][r]) { _out[k].images.push(_src[k][r]); _total++; any = true; }
+              }
+              if (!any) break;
+            }
+            card = _out.filter(c => c.images.length);
+          }
           if (cardWhy && vertical) cardWhy.vertical = vertical;
         } catch (e) { cardWhy = { error: String(e?.message ?? e).slice(0, 200) }; }
 

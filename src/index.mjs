@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.380.0-2026-09-21-the-pta-holds-the-story";
+const BUILD = "aura-core-v9.381.0-2026-09-21-only-words-they-saw";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62850,6 +62850,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                  // frame fallback ran every time and the measured failure never changed. A new
                  // field in her contract is useless until it survives this line.
                  ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 900) : "",
+                 words: typeof o.words === "string" ? o.words.trim().slice(0, 900) : "",
                  use: strList(o.use, 4, 400),
                  // The body sections the NEW work spans, hers to name. Capped at six because a
                  // human body does not have more separate stencil areas than that on one job, and
@@ -64003,15 +64004,37 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // placement phrase, so "a roaring lion head on the opposite side of the chest" reached the
           // model as "a roaring lion head", inside a frame demanding ONE MERGED composition. Two
           // different image models failed the same way, which is what a bad sentence looks like.
-          const _herAsk = (typeof acted.ask === "string" && acted.ask.trim().length >= 20)
-            ? acted.ask.trim().slice(0, 900) : null;
-          const _asks = [_herAsk
-            || (_frame ? _frame.replace("____", _blank || String(said).trim())
-                       : String(acted.prompt || said).trim())];
+          // ONLY WORDS THEY SAW (2026-09-21). MEASURED all day: every wrong picture traced to words the
+          // person never saw - her written instruction (`ask`) and the frames around it: "buttocks",
+          // "lioness", "down to the sacrum area", "Nothing already tattooed is touched". Proven the
+          // same day by command: their photo plus "My son's name is Alex I want to extend this tattoo
+          // down my back", nothing else, drew it right first time; so did "I'm thinking of coloring
+          // the entire tattoo in". Aaron: pass the bare words; she stays smart in the conversation.
+          // She COPIES the words - the person's request, or her own idea exactly as she offered it to
+          // them if they said yes to it. Core checks every copied word is really in the conversation
+          // (their messages, or her earlier replies - not the one she is writing now). If it is not,
+          // the person's own messages since the last picture are sent instead. No frame, nothing added.
+          const _norm = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          let _lastAura = -1;
+          for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { _lastAura = i; break; } }
+          const _pool = tline.filter((e, i) => e && e.said && (e.role === "them" || (e.role === "aura" && i !== _lastAura)))
+            .map((e) => _norm(e.said));
+          const _copied = String(acted.words || "").trim();
+          const _isCopied = _norm(_copied).length >= 3 && _pool.some((p) => p.includes(_norm(_copied)));
+          const _since = [];
+          for (let i = tline.length - 1; i >= 0; i--) {
+            const e = tline[i];
+            if (!e) continue;
+            if (e.role === "picture") break;
+            if (e.role === "them" && e.said) _since.unshift(String(e.said).trim());
+          }
+          const _sent = (_isCopied ? _copied : (_since.join(" ") || String(said).trim())).slice(0, 900);
+          const _wordsFrom = _isCopied ? "copied" : "their_messages";
+          const _asks = [_sent];
           const _evolve = async (parent, ask, seed) => {
             try {
               const r = await processCommand("IMAGE EVOLVE " + parent + " " +
-                JSON.stringify({ prompt: ask + (_frame ? "" : cleanUp), by: me, res: "2k", ...(seed ? { seed } : {}) }), env, true);
+                JSON.stringify({ prompt: ask, by: me, res: "2k", ...(seed ? { seed } : {}) }), env, true);
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
           };
@@ -64089,8 +64112,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           drew = (cp?.ok && cp.image_url)
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
-                wrote_the_ask: _herAsk ? "her" : "frame",
-                ...(_herAsk ? {} : (_frameKey ? { frame: _frameKey, her_words: _blank } : {})),
+                words_from: _wordsFrom,
+                ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),
                 from: parentId,
                 ...(_asks.length > 1 ? { steps: _stepLog } : {}),
                 ...(_retried ? { retried: _retried } : {}),

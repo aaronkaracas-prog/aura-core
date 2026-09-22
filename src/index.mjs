@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.391.0-2026-09-22-the-files-are-their-own-job";
+const BUILD = "aura-core-v9.392.0-2026-09-22-my-tattoos-reads-their-record";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65221,6 +65221,33 @@ export class PublicEntry extends WorkerEntrypoint {
         return { ok: true, who: me, stage, signed_in: true, say: "What are we designing?",
           chips: ["Something new", "Cover up what I have", "Add to a piece I have",
                   "A memorial", "I am not sure yet"] };
+      }
+
+      // MY TATTOOS READS THEIR RECORD (2026-09-22). Every picture already lands on the person's own
+      // timeline with the exact words it was made from and what they said next - that is what makes
+      // picking one up again work, not the picture alone. Newest first, the artist's files marked.
+      // Nothing is drawn here, and nothing is read that is not theirs.
+      if (action === "mine") {
+        let tl = [];
+        try { tl = (await env.AURA_KV.get("pta:timeline:" + me, "json")) || []; } catch {}
+        const items = [];
+        for (let i = 0; i < tl.length; i++) {
+          const e = tl[i];
+          if (!e || e.role !== "picture" || !e.image) continue;
+          let after = null, asked = null;
+          for (let j = i + 1; j < tl.length; j++) {
+            if (tl[j] && tl[j].role === "them") { after = tl[j].said; break; }
+            if (tl[j] && tl[j].role === "picture") break;
+          }
+          for (let j = i - 1; j >= 0; j--) {
+            if (tl[j] && tl[j].role === "them" && tl[j].said) { asked = tl[j].said; break; }
+          }
+          items.push({ image: e.image, design: e.design || null, words: e.words || null,
+                       asked: asked, said_after: after, at: e.ts || null,
+                       ...(e.artist_files ? { artist_files: true } : {}) });
+        }
+        items.reverse();
+        return { ok: true, items: items.slice(0, 60), count: items.length };
       }
 
       if (action === "talk") {

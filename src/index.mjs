@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.387.0-2026-09-22-cover-rules-for-cover-ups";
+const BUILD = "aura-core-v9.388.0-2026-09-22-flat-artwork-is-its-own-task";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -9406,7 +9406,15 @@ async function processCommand(line, env, isOp) {
                 "before this work. Show me only the new work - the artwork alone, off the body, " +
                 "without the piece that was already there.") +
             (fnStencil ? " " + fnCard[1] : "")
-          : TAT_SOURCE_LOCK + fnCard[1] +
+          // FLAT ARTWORK IS ITS OWN TASK (2026-09-22). The flat sheet was TAT_SOURCE_LOCK ("...Transform
+          // only the artistic rendering into the style described...") plus a list of don'ts that ended
+          // "no text" - and every sheet came back without the name "Alex", with or without the old
+          // photo to compare against. Aaron took the approved picture to ChatGPT, which extracted it
+          // with "Alex" intact from a full task description (preserve lettering and spelling, remove
+          // only the body, flatten the curve, do not redesign). That text is now `style:flat-artwork`
+          // and is sent on its own: the lock sentence contradicts "do not change the artistic style".
+          // Line art and stencil still get the lock - they ARE a change of rendering.
+          : (fnCardName === "flat artwork" ? "" : TAT_SOURCE_LOCK) + fnCard[1] +
             (fnOnly ? " Show me ONLY the " + fnOnly + " - that section alone, nothing from the " +
                       "rest of the piece, flat on plain white." : "");
         // Her correction goes last, on whichever shape was built above.

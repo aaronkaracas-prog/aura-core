@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.388.0-2026-09-22-flat-artwork-is-its-own-task";
+const BUILD = "aura-core-v9.389.0-2026-09-22-lock-in-flattens-the-approved-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63474,7 +63474,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ("https://" + (await imageHost(env)) + "/image/" + shopParent);
           // Subtract only when there IS prior ink: an add-on with their own photograph on file.
           // A new piece has none, and FINAL alone is the whole design.
-          const priorInk = (jobNow === "add" && refUrl) ? refUrl : null;
+          // THE LOCK-IN FLATTENS THE APPROVED PICTURE (2026-09-22). For an "add" job this passed their
+          // original photo, so the print was made by COMPARING the approved picture with it ("show me only
+          // the new work... without the piece that was already there") - the step that dropped "Alex".
+          // Aaron: at this phase the print is the approved picture, flattened, every time. Whole piece
+          // versus new work only for add-ons is a later decision, designed on its own - not this branch.
+          const priorInk = null;
 
           // ══ ONE SHEET PER PANEL (2026-09-15) ═══════════════════════════════════════════
           // She named these herself, twice, before anything could act on them: "the forearm panel,

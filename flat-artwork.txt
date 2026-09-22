@@ -1,0 +1,89 @@
+TATTOO EXTRACTION — SKIN TO FLAT ARTWORK
+
+TASK:
+Extract the tattoo artwork visible on the person's skin and reconstruct it as clean, flat, tattoo-artist-ready artwork.
+
+The tattoo in the supplied image is the source of truth.
+
+GOAL:
+Return the tattoo design itself, removed from the human body and presented flat on a clean plain white background.
+
+PRESERVE:
+- The complete tattoo design
+- Original composition
+- Original proportions
+- Original orientation
+- Original linework
+- Original shapes
+- Original imagery
+- Original lettering and spelling
+- Original symbols
+- Original ornamentation
+- Original colors
+- Original shading
+- Original relative spacing between elements
+- Intentional asymmetry
+- Fine details that are visibly part of the tattoo
+
+REMOVE:
+- Skin
+- Body
+- Body contours
+- Anatomical curvature
+- Perspective caused by the body
+- Clothing
+- Hair
+- Background
+- Lighting and shadows caused by the body/environment
+- Skin texture
+- Pores
+- Redness
+- Glare
+- Photographic artifacts
+
+FLATTEN:
+Interpret the tattoo as artwork wrapped around a three-dimensional human surface.
+
+Correct the perspective and anatomical curvature so the resulting design appears as it would on a flat drawing surface.
+
+Where parts of the tattoo curve around the body, reconstruct their flat geometry conservatively using the visible tattoo as evidence.
+
+Do not retain the body's distortion in the flattened artwork.
+
+CRITICAL:
+This is an extraction and reconstruction task, NOT a tattoo redesign.
+
+Do not:
+- improve the design
+- beautify the design
+- add decorative elements
+- remove tattoo elements
+- make it more symmetrical
+- change lettering
+- change colors
+- change the artistic style
+- invent details unnecessarily
+- substitute similar imagery
+- reinterpret the tattoo
+
+If an area is partially obscured or distorted by anatomy, reconstruct only what is reasonably implied by the visible artwork and surrounding design.
+
+Maintain the identity of the original tattoo as closely as possible.
+
+OUTPUT:
+- Tattoo artwork only
+- No person
+- No skin
+- No body
+- No mockup
+- No environmental background
+- Plain white background
+- Centered
+- Entire design visible
+- Flat, front-facing presentation
+- High detail
+- Clean edges
+- Maximum useful resolution
+- Suitable as a tattoo artist reference
+
+The final image should look like the original tattoo artwork before it was applied to the person's body.

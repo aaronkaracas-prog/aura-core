@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.383.0-2026-09-21-one-request-never-the-transcript";
+const BUILD = "aura-core-v9.384.0-2026-09-21-her-decision-stands";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63306,17 +63306,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // This is not a judgement: if the only thing they said is a go-ahead and a picture already
       // exists, there is nothing new to draw, by definition.
       // IT NEVER BLOCKS A REAL REQUEST - any sentence carrying content fails the test and draws.
-      if ((act === "draw" || act === "change") && _drewNow()) {
-        const _said = String(said || "").replace(/^\s*(yeah|yep|ok(ay)?|yes|sure|alright),?\s*/i, "").trim();
-        const _bareGo = /^(go|go ahead|do it|show me|show it|lets see|let'?s see|let me see|see it|that'?s it|that'?s the one|that'?s perfect|that'?s right|perfect|nice|love it|great|cool|please|please do|draw it|make it|send it|)[\s.,!]*$/i.test(_said);
-        if (_bareGo) {
-          act = "none";
-          drew = { design: lastDrawn.design, image: lastDrawn.image, same_picture: true,
-                   note: "they said go, not something new - this is the picture already on screen " +
-                         "and nothing was drawn. Say what is there and let them look." };
-          console.log("[GOAHEAD] bare confirmation, picture already drawn - no second draw");
-        }
-      }
+      // THE BARE-GO OVERRIDE IS GONE (2026-09-21, v9.384). It matched the person's words against a list
+      // ("show me", "do it", "love it"...) and, if a picture was already on screen, cancelled her
+      // decision and handed back the old picture. MEASURED: she offered "the whole back in muted
+      // colour", they said "yes show me", she decided `change` with the colour instruction - and this
+      // cancelled it, so nothing was drawn while her words said "here it is". It judged their words
+      // without knowing what she had just offered. Her decision stands.
 
       // ══ WHAT SHE NAMED, RESOLVED TO REAL ADDRESSES ═══════════════════════════════════════
       // `use` holds her words - "photo", "piece", or an https address. Anything that does not

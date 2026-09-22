@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.386.0-2026-09-22-lines-not-use";
+const BUILD = "aura-core-v9.387.0-2026-09-22-cover-rules-for-cover-ups";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62706,6 +62706,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // told what a 9B model thought is worse than nothing, because a confident wrong caption
       // ("full-back tiger", "neo-traditional") overrides her own eyes.
       const seeing = refUrl && /^https?:\/\//i.test(String(refUrl));
+      // COVER RULES FOR COVER-UPS (2026-09-22). MEASURED: asked to colour in her healed black-and-grey
+      // back piece, she said "colour can't be laid over that black shading" - the cover-up doctrine
+      // ("new ink mixes with the old... warm and pale tones bleed back through dark ink") was sent on
+      // every photo turn, whatever the job, and she applied rules for HIDING a tattoo to COLOURING one.
+      // It goes to her only when the job on record is a cover-up.
+      const _isCover = !!(carriedObj && String(carriedObj.job || "").toLowerCase() === "cover");
       const refNote = (refSaw || seeing)
         // ══ AN INSTRUCTION SHE CANNOT ACT ON (2026-09-09) ═══════════════════════════════════
         // This said "THEY JUST SENT YOU THIS PHOTOGRAPH. LOOK AT IT." and never gave the address.
@@ -62748,7 +62754,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // The three jobs are one flow with one difference: what happens to the ink already
           // there. `job` in the brief already carries new | cover | add | rework.
           "IF IT IS THEIR OWN TATTOO and they want it changed:\n" +
-          COVER_DOCTRINE +
+          (_isCover ? COVER_DOCTRINE : "") +
           "  ADDING TO IT - the existing work is a neighbour, not a problem. Match its style and " +
           "let the new piece flow with it.\n" +
           "  REWORKING IT - same idea, done properly. Keep what they liked, fix what they did not.\n\n" +
@@ -62756,6 +62762,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // a word. That design cannot be tattooed over dark linework, and the person finds out in
           // the chair. She had the constraint in front of her, said it once, and dropped it the
           // moment somebody asked for the opposite.
+          (_isCover ? (
           "HOLD THE CONSTRAINT WHEN THEY PUSH ON IT. If they ask for something that will not cover " +
           "what is underneath - pale colour, fine linework, delicate, smaller than the old piece - " +
           "SAY SO before you draw it, and offer the version that works. Not a lecture, one " +
@@ -62765,7 +62772,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // no arm, nothing covered - because the picture had gone out of context.
           "AND WHATEVER YOU DRAW, IT GOES OVER WHAT IS ALREADY THERE. Same body part, larger than " +
           "the old piece, and described that way in `prompt`. Never a design floating on its own " +
-          "while they are asking you to cover something."
+          "while they are asking you to cover something.") : "")
         : "";
 
       // Everything except the contract, or nothing except the contract.

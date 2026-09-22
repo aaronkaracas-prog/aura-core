@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.385.0-2026-09-22-she-points-to-the-lines";
+const BUILD = "aura-core-v9.386.0-2026-09-22-lines-not-use";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62864,7 +62864,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                  // field in her contract is useless until it survives this line.
                  ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 900) : "",
                  words: typeof o.words === "string" ? o.words.trim().slice(0, 900) : "",
-                 use: Array.isArray(o.use) ? o.use.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
+                 // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
+                 // first version of this field took that name, and the duplicate key silently lost.
+                 lines: Array.isArray(o.lines) ? o.lines.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
                  use: strList(o.use, 4, 400),
                  // The body sections the NEW work spans, hers to name. Capped at six because a
                  // human body does not have more separate stencil areas than that on one job, and
@@ -64045,7 +64047,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // cool let's do it" - and sent the lot. Aaron: that is not the request. It is now ONE message,
           // exactly as they typed it: the longest one since the last picture, which is the one that asked.
           const _oneAsk = _since.slice().sort((a, b) => b.length - a.length)[0] || String(said).trim();
-          const _pointed = (acted.use || []).map((n) => _convLines.find((l) => l.n === n)).filter(Boolean);
+          const _pointed = (acted.lines || []).map((n) => _convLines.find((l) => l.n === n)).filter(Boolean);
           const _sent = (_pointed.length ? _pointed.map((l) => l.said.trim()).join(" ")
                                          : (_isCopied ? _copied : _oneAsk)).slice(0, 900);
           const _wordsFrom = _pointed.length ? "pointed" : (_isCopied ? "copied" : "their_messages");

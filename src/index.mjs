@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.390.0-2026-09-22-an-add-on-prints-the-new-work";
+const BUILD = "aura-core-v9.391.0-2026-09-22-the-files-are-their-own-job";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61930,6 +61930,278 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
 //
 // `me` is the person (a PTA id), `stage` is "pta" or "contacted" and decides whether the round is
 // kept on their chain, `said` is what they typed, `history` is the fallback when nothing is banked.
+
+// ═══ THE ARTIST'S FILES, ON THEIR OWN (2026-09-22) ═══
+// Lifted out of auraTalk WORD FOR WORD - same steps, same order, same wording to every model. It sat
+// inside the turn, so the print, the line art and the PDF only existed while the person's phone held
+// the connection open: MEASURED twice on 2026-09-21, the request came back `Canceled` and no files
+// were ever written. A job that takes two to three minutes cannot belong to a request. This is step
+// one of two: the code moves, nothing changes. Step two starts it in the background and answers the
+// person straight away.
+async function makeArtistFiles(env, ctx) {
+  const { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw, acted, intent,
+          useOne, _checkOn, _verdict, readAct } = ctx;
+  let drew = null;
+
+        try {
+          const shopParent = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
+          const mockUrl = (lastDrawn && lastDrawn.image) ||
+            ("https://" + (await imageHost(env)) + "/image/" + shopParent);
+          // Subtract only when there IS prior ink: an add-on with their own photograph on file.
+          // A new piece has none, and FINAL alone is the whole design.
+          // AN ADD-ON PRINTS THE NEW WORK (restored 2026-09-22). v9.389 stopped passing their original
+          // photo so every lock-in flattened the whole approved picture. That was for the hard case - a
+          // piece recoloured over old ink, where "the new work" has no clean boundary - and it is wrong
+          // for an ordinary add-on: the lion beside the tiger locked in correctly BECAUSE the old photo
+          // came with it, and the artist got the lion alone. The hard case is set aside; this is back
+          // as it was. What did change and stays: the flat sheet's own instruction (style:flat-artwork,
+          // the extraction text), which is why lettering survives now.
+          const priorInk = (jobNow === "add" && refUrl) ? refUrl : null;
+
+          // ══ ONE SHEET PER PANEL (2026-09-15) ═══════════════════════════════════════════
+          // She named these herself, twice, before anything could act on them: "the forearm panel,
+          // the band above the elbow, the ribs panel and the shoulder cap, one image each" - and
+          // then, looking at what this branch had actually produced: "this is the whole composition
+          // on one sheet... it needs to be split into the separate parts."
+          // A shop cannot lay one transfer across a shoulder. An arm and a set of ribs are separate
+          // stencils and always were.
+          // AND IT IS WHY THE SUBTRACTION KEPT FAILING. Taking healed ink out of a whole
+          // composition asks a model to find a seam. MEASURED impossible on a dragon whose existing
+          // head and new body are ONE ANIMAL - it came back whole every time, and her own check
+          // said so. A forearm panel holds only new ink BY DEFINITION: cut to the panel and there
+          // is nothing left to subtract. The split is the fix, not a feature beside it.
+          // ONE PANEL OR NONE RUNS THE IDENTICAL PATH IT ALWAYS DID - `panelList` falls back to a
+          // single unnamed pass, `ADDED` still rides on it, and the reply keeps its old shape.
+          let panelList = (acted && Array.isArray(acted.panels) && acted.panels.length)
+            ? acted.panels.slice(0, 6) : [null];
+
+          // ══ ASK HER ONE THING AND SHE ANSWERS IT WELL (2026-09-16) ══════════════════════
+          // The contract asks for `section: what part of the design goes there`, and she keeps
+          // sending the section alone. MEASURED: "left arm sleeve" and "left chest panel" - no
+          // description after the colon - and the two sheets came back as THE SAME DRAWING, because
+          // the only thing that differed between the two asks was a placement word.
+          // WHEN SHE GOT IT RIGHT she had written it out: "the dragon's head, horns and foreclaw",
+          // "the coiling body", "the tail and rear claws" - three different sheets, and she passed
+          // two of them.
+          // TIGHTENING THE CONTRACT FAILED TWICE. What has never failed is a SINGLE-PURPOSE
+          // question: `_lookAtMock` and the sheet checks are one ask with nothing else in the
+          // prompt, and her answers there have been specific and correct all session. So this asks
+          // her that one question on its own rather than hoping a fourteen-field object carries it.
+          // ONLY WHEN IT IS NEEDED - more than one section, and at least one of them arrived with
+          // no description. A complete list is hers already and is left alone.
+          const _thin = panelList.filter(Boolean).filter((x) => !String(x).includes(":"));
+          if (panelList.length > 1 && _thin.length && me && seeing) {
+            try {
+              const ask = await proxyToAgent(env,
+                "[Your artist sheets are being cut now, one per section: " +
+                panelList.map((x) => String(x).split(":")[0].trim()).join(", ") + ". " +
+                "For EACH one, what part of the new design actually goes on it? Answer as one line " +
+                "per section, `section: what is drawn on it`, and nothing else.]",
+                false, me, mockUrl, world);
+              if (ask && ask.reply && !ask.failed) {
+                const lines = _verdict(ask.reply, readAct(ask.reply))
+                  .split(/\r?\n/).map((l) => l.replace(/^[-*\d.\s]+/, "").trim())
+                  .filter((l) => l.includes(":") && l.length > 12).slice(0, 6);
+                if (lines.length === panelList.length) {
+                  console.log("[PANELS] she described each one: " + lines.join(" || "));
+                  panelList = lines;
+                }
+              }
+            } catch { /* her answer is an improvement, never a requirement */ }
+          }
+          const sheets = [];
+          const _checkSheets = await _checkOn("sheets");
+          for (const panel of panelList) {
+            // `section: what goes there`. The label before the colon is what the sheet is CALLED
+            // and what she is asked to verify it against; the whole phrase is what gets drawn,
+            // because the description is the only thing that makes one panel different from another.
+            const label = panel ? String(panel).split(":")[0].trim().slice(0, 40) : null;
+            const only = panel ? " ONLY " + panel : "";
+            const _ask = "FINAL " + mockUrl + (priorInk ? " ADDED " + priorInk : "") + only;
+            const fr = await processCommand(_ask, env, true);
+            let fpp = (fr && fr.payload) ? fr.payload : fr;
+
+            // ══ ASK AGAIN THE WAY A PERSON WOULD (2026-09-16) ══════════════════════════
+            // MEASURED by Aaron by hand, in a plain ChatGPT window, three turns:
+            //   "something around this current tattoo, on myself"   -> mock-up, correct
+            //   "give me the new one so I can print it"             -> the sheet, HAMMER IN IT
+            //   "you're printing out the existing tattoo, my artist only needs the new design
+            //    that goes around the current tattoo"               -> the wreath with a HOLE
+            // Grok needed four. So a first sheet carrying their healed ink is the DEFAULT of every
+            // one of these models, and the thing that fixes it is being told once.
+            // SHE HAS BEEN DOING THE HARD HALF ALL ALONG. Her check catches this every time and
+            // then reports it and stops - "the banner and vines run straight across the hammer",
+            // "the dragon head duplicates the existing shoulder cap". This hands her own sentence
+            // back as the correction, which is precisely what Aaron typed on his third turn.
+            // ONE RETRY, and only when there IS healed ink to protect. If the second is wrong too,
+            // her verdict rides in the reply and the gate holds it: two failures mean the piece
+            // has no seam to draw around, and asking a third time will not find one.
+            // ══ ONE CHECK PER SHEET, AND A WRONG ONE IS REDONE - NEVER HELD (2026-09-17) ════════
+            // Aaron: there is no "send them anyway" and no "try again" in this product. The person
+            // edits the picture until it is right, and the files are the next link in the chain.
+            // So a sheet that comes back wrong is fixed by the chain itself: her reason goes back
+            // as the correction, once, and the redone sheet is delivered. It is NOT checked again -
+            // every look puts a full picture into her session, and that is what ran her out of
+            // memory on pta_7f3018e9e74f6517. The note says it was redone and why.
+            // Every sheet is asked, not only add-ons: the flat is a REDRAW of the approved design
+            // and can add or lose things (three sunflowers where the mock-up had two).
+            let _v1 = null, _redone = false;
+            if (fpp && fpp.ok && fpp.image && me && seeing && _checkSheets) {
+              try {
+                const look1 = await proxyToAgent(env,
+                  "[This is the flat artwork going to their tattooist" +
+                  (label ? " for the " + label.toUpperCase() : "") +
+                  ". It must show exactly the new design they approved in the mock-up - nothing " +
+                  "missing and nothing added" +
+                  (priorInk ? ", and nothing that is already tattooed on them" : "") +
+                  ". Look at it. Begin your answer with the single word RIGHT or WRONG, then one " +
+                  "short sentence saying why. Nothing else.]",
+                  false, me, fpp.image, world);
+                _v1 = (look1 && look1.reply && !look1.failed)
+                  ? _verdict(look1.reply, readAct(look1.reply)).slice(0, 240) : null;
+                if (_v1 && /^\s*WRONG\b/i.test(_v1)) {
+                  console.log("[AGAIN] " + (label || "sheet") + " - " + _v1);
+                  const ar = await processCommand(_ask + " AGAIN " +
+                    _v1.replace(/^\s*WRONG\b[\s:,.-]*/i, "") +
+                    (priorInk
+                      ? " Draw ONLY the new work and leave an empty space where their existing tattoo " +
+                        "sits - their old piece must not be on this sheet at all."
+                      : " Draw exactly the design they approved, nothing added and nothing left out."),
+                    env, true);
+                  const ap = (ar && ar.payload) ? ar.payload : ar;
+                  if (ap && ap.ok && ap.image) { fpp = ap; _redone = true; }
+                }
+              } catch { /* the sheet still stands */ }
+            }
+
+            if (fpp && fpp.ok && fpp.image) {
+              sheets.push({ panel: label, asked: panel, flat: fpp.image, id: fpp.design || null,
+                            checked: _v1 ? (_redone ? "REDONE ONCE - the first came back: " + _v1 : _v1) : null,
+                            ok: _v1 ? (!_redone && /^\s*RIGHT\b/i.test(_v1)) : null });
+            }
+          }
+          const fp = sheets.length ? { ok: true, image: sheets[0].flat, design: sheets[0].id } : null;
+          if (!fp) {
+            drew = { failed: "COULD_NOT_FLATTEN", from: shopParent };
+          } else {
+            // ── 3. LINE ART ────────────────────────────────────────────────────────────
+            // Once per sheet. The line art is what the needle follows, so a panel without one is
+            // a panel the shop cannot use - but a failure on one must not lose the others, which
+            // is why each is caught on its own.
+            let lineUrl = null, lineId = null;
+            for (const sh of sheets) {
+              try {
+                const lr = await processCommand("FINAL " + sh.flat + " LINEART", env, true);
+                const lp = (lr && lr.payload) ? lr.payload : lr;
+                if (lp && lp.ok && lp.image) { sh.line = lp.image; sh.lineId = lp.design || null; }
+              } catch {}
+            }
+            lineUrl = sheets[0].line || null; lineId = sheets[0].lineId || null;
+
+            // ── 4. THE PDF ─────────────────────────────────────────────────────────────
+            // Sized from the placement they gave. PRINT caps it to what the pixels and the paper
+            // allow and SAYS so, so a number here can never overstate what comes off the printer.
+            let pdfUrl = null, pdfSheets = null, pdfInches = null;
+            const PLACEMENT_IN = { "full back": 20, "back": 20, "whole back": 20, "chest": 12,
+                                   "full sleeve": 18, "sleeve": 18, "forearm": 7, "upper arm": 8,
+                                   "thigh": 14, "calf": 10, "shoulder": 7, "hand": 4, "neck": 4,
+                                   "ribs": 12, "full leg": 24 };
+            const placeKey = String((intent && intent.placement) || "").toLowerCase();
+            let inches = 0;
+            for (const k of Object.keys(PLACEMENT_IN)) {
+              if (placeKey.includes(k) && PLACEMENT_IN[k] > inches) inches = PLACEMENT_IN[k];
+            }
+            if (!inches) inches = 8;   // a hand-sized default, and PRINT reports the real figure
+            // ══ A PDF PER PANEL, AND THE COUNT HAS TO ADD UP (2026-09-15) ═════════════
+            // MEASURED: `panel_count: 3` and `print_sheets: 1` in the same object, because PRINT
+            // ran once on `lineId` - panel one. Two of the three line arts were never in any PDF,
+            // and she told the person "one sheet each" reading the field that said otherwise.
+            // Each panel is a separate transfer, so each gets its own PDF at its own size.
+            // `print_pdf` stays the first so a single-panel job is unchanged; `print_sheets` is now
+            // the real total across all of them and can no longer disagree with `panel_count`.
+            let pdfTotal = 0;
+            for (const sh of sheets) {
+              const sid = sh.lineId || sh.id;
+              if (!sid) continue;
+              // Sized per section, not once for the whole job - a forearm and a set of ribs do not
+              // print at the same width, and PRINT caps to what the pixels and the paper allow.
+              let shIn = 0;
+              const shKey = String(sh.panel || placeKey).toLowerCase();
+              for (const k of Object.keys(PLACEMENT_IN)) {
+                if (shKey.includes(k) && PLACEMENT_IN[k] > shIn) shIn = PLACEMENT_IN[k];
+              }
+              if (!shIn) shIn = inches;
+              try {
+                const pr2 = await processCommand("PRINT " + sid + " " + shIn + " " + me, env, true);
+                const pp = (pr2 && pr2.payload) ? pr2.payload : pr2;
+                if (pp && pp.ok && pp.pdf) {
+                  sh.pdf = pp.pdf; sh.sheets = pp.sheets || 1; sh.inches = pp.inches;
+                  pdfTotal += (pp.sheets || 1);
+                  if (!pdfUrl) { pdfUrl = pp.pdf; pdfInches = pp.inches; }
+                }
+              } catch {}
+            }
+            pdfSheets = pdfTotal || null;
+
+            // ══ THE SHEET VERDICTS (2026-09-17) ══════════════════════════════════════════════
+            // Each sheet was looked at once, when its flat came back, and redone once if wrong -
+            // see ONE CHECK PER SHEET above. The second look at the line art and the hold that
+            // followed it are gone: nothing is ever withheld from the person, and every verdict
+            // rides with the files for their artist.
+            let sheetNote = null;
+            // Default to a sheet she PASSED. If she passed none, the first is kept and every
+            // verdict still rides in the reply saying so - reporting a bad pack beats hiding it.
+            const _okSheet = sheets.find((sh) => sh.ok && sh.pdf);
+            if (_okSheet) { pdfUrl = _okSheet.pdf; pdfInches = _okSheet.inches; }
+            // The top-level note is every verdict, labelled - never one sheet speaking for the rest.
+            sheetNote = sheets.map((sh) => (sh.panel ? sh.panel + ": " : "") +
+                                           (sh.checked || "not checked")).join("  |  ").slice(0, 900);
+
+            {
+            drew = {
+              design: lineId || fp.design || null,
+              // `image` is what the needle does: the line art, new ink only on an add-on.
+              image: lineUrl || fp.image,
+              changed: "the artist's files", from: shopParent, for_the_artist: true,
+              // The whole package, in the order a shop uses it.
+              flat_artwork: fp.image,
+              shows_finished: mockUrl,
+              // ONE ENTRY PER PANEL, each with the section it covers, its flat artwork and the
+              // line art the needle follows. `flat_artwork` above stays the first sheet so a
+              // single-panel job reads exactly as it did before this existed.
+              ...(sheets.length > 1
+                ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
+                                                  line: sh.line || null,
+                                                  pdf: sh.pdf || null,
+                                                  ok: sh.ok === true,
+                                                  // Her verdict on THIS sheet. A panel whose
+                                                  // picture disagrees with its label says so here.
+                                                  checked: sh.checked || null })),
+                    panel_count: sheets.length,
+                    panels_ok: sheets.filter((sh) => sh.ok).length }
+                : {}),
+              ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,
+                             print_sheets: pdfSheets } : {}),
+              // ══ THE FLAG SAYS WHAT WAS ASKED, NOT WHAT CAME BACK (2026-09-14) ═════════
+              // `existing_ink_left_out: true` was set from `priorInk` being non-null - it reported
+              // that the subtraction was REQUESTED. MEASURED twice: sheets that still contained
+              // every healed cat carried this flag reading true, and once her own check said in the
+              // same reply "it shows all eight cats including the five already on their back".
+              // Two fields in one object disagreeing, and only one of them had looked.
+              // Renamed to what it actually is. `she_checked` below is the only field here that
+              // saw the file, and it is the one to believe.
+              ...(priorInk ? { subtraction_requested: true,
+                               subtraction_confirmed_by: "she_checked - nothing else here looked at " +
+                                 "the file" } : {}),
+              ...(sheetNote ? { she_checked: sheetNote } : {})
+            };
+            }
+          }
+        } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
+      
+  return drew;
+}
+
 async function auraTalk(env, me, stage, saidIn, history, opts) {
       // ══ MEASURE IT, DO NOT REASON ABOUT IT (2026-09-09) ═══════════════════════════════════
       // One turn took 131 SECONDS. Typical is 26-45. Nobody waits half a minute on a phone, and
@@ -63468,261 +63740,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try { await onStage(act === "artist" ? "files" : "drawing"); } catch {}
       }
       if (act === "artist" && me) {
-        try {
-          const shopParent = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
-          const mockUrl = (lastDrawn && lastDrawn.image) ||
-            ("https://" + (await imageHost(env)) + "/image/" + shopParent);
-          // Subtract only when there IS prior ink: an add-on with their own photograph on file.
-          // A new piece has none, and FINAL alone is the whole design.
-          // AN ADD-ON PRINTS THE NEW WORK (restored 2026-09-22). v9.389 stopped passing their original
-          // photo so every lock-in flattened the whole approved picture. That was for the hard case - a
-          // piece recoloured over old ink, where "the new work" has no clean boundary - and it is wrong
-          // for an ordinary add-on: the lion beside the tiger locked in correctly BECAUSE the old photo
-          // came with it, and the artist got the lion alone. The hard case is set aside; this is back
-          // as it was. What did change and stays: the flat sheet's own instruction (style:flat-artwork,
-          // the extraction text), which is why lettering survives now.
-          const priorInk = (jobNow === "add" && refUrl) ? refUrl : null;
-
-          // ══ ONE SHEET PER PANEL (2026-09-15) ═══════════════════════════════════════════
-          // She named these herself, twice, before anything could act on them: "the forearm panel,
-          // the band above the elbow, the ribs panel and the shoulder cap, one image each" - and
-          // then, looking at what this branch had actually produced: "this is the whole composition
-          // on one sheet... it needs to be split into the separate parts."
-          // A shop cannot lay one transfer across a shoulder. An arm and a set of ribs are separate
-          // stencils and always were.
-          // AND IT IS WHY THE SUBTRACTION KEPT FAILING. Taking healed ink out of a whole
-          // composition asks a model to find a seam. MEASURED impossible on a dragon whose existing
-          // head and new body are ONE ANIMAL - it came back whole every time, and her own check
-          // said so. A forearm panel holds only new ink BY DEFINITION: cut to the panel and there
-          // is nothing left to subtract. The split is the fix, not a feature beside it.
-          // ONE PANEL OR NONE RUNS THE IDENTICAL PATH IT ALWAYS DID - `panelList` falls back to a
-          // single unnamed pass, `ADDED` still rides on it, and the reply keeps its old shape.
-          let panelList = (acted && Array.isArray(acted.panels) && acted.panels.length)
-            ? acted.panels.slice(0, 6) : [null];
-
-          // ══ ASK HER ONE THING AND SHE ANSWERS IT WELL (2026-09-16) ══════════════════════
-          // The contract asks for `section: what part of the design goes there`, and she keeps
-          // sending the section alone. MEASURED: "left arm sleeve" and "left chest panel" - no
-          // description after the colon - and the two sheets came back as THE SAME DRAWING, because
-          // the only thing that differed between the two asks was a placement word.
-          // WHEN SHE GOT IT RIGHT she had written it out: "the dragon's head, horns and foreclaw",
-          // "the coiling body", "the tail and rear claws" - three different sheets, and she passed
-          // two of them.
-          // TIGHTENING THE CONTRACT FAILED TWICE. What has never failed is a SINGLE-PURPOSE
-          // question: `_lookAtMock` and the sheet checks are one ask with nothing else in the
-          // prompt, and her answers there have been specific and correct all session. So this asks
-          // her that one question on its own rather than hoping a fourteen-field object carries it.
-          // ONLY WHEN IT IS NEEDED - more than one section, and at least one of them arrived with
-          // no description. A complete list is hers already and is left alone.
-          const _thin = panelList.filter(Boolean).filter((x) => !String(x).includes(":"));
-          if (panelList.length > 1 && _thin.length && me && seeing) {
-            try {
-              const ask = await proxyToAgent(env,
-                "[Your artist sheets are being cut now, one per section: " +
-                panelList.map((x) => String(x).split(":")[0].trim()).join(", ") + ". " +
-                "For EACH one, what part of the new design actually goes on it? Answer as one line " +
-                "per section, `section: what is drawn on it`, and nothing else.]",
-                false, me, mockUrl, world);
-              if (ask && ask.reply && !ask.failed) {
-                const lines = _verdict(ask.reply, readAct(ask.reply))
-                  .split(/\r?\n/).map((l) => l.replace(/^[-*\d.\s]+/, "").trim())
-                  .filter((l) => l.includes(":") && l.length > 12).slice(0, 6);
-                if (lines.length === panelList.length) {
-                  console.log("[PANELS] she described each one: " + lines.join(" || "));
-                  panelList = lines;
-                }
-              }
-            } catch { /* her answer is an improvement, never a requirement */ }
-          }
-          const sheets = [];
-          const _checkSheets = await _checkOn("sheets");
-          for (const panel of panelList) {
-            // `section: what goes there`. The label before the colon is what the sheet is CALLED
-            // and what she is asked to verify it against; the whole phrase is what gets drawn,
-            // because the description is the only thing that makes one panel different from another.
-            const label = panel ? String(panel).split(":")[0].trim().slice(0, 40) : null;
-            const only = panel ? " ONLY " + panel : "";
-            const _ask = "FINAL " + mockUrl + (priorInk ? " ADDED " + priorInk : "") + only;
-            const fr = await processCommand(_ask, env, true);
-            let fpp = (fr && fr.payload) ? fr.payload : fr;
-
-            // ══ ASK AGAIN THE WAY A PERSON WOULD (2026-09-16) ══════════════════════════
-            // MEASURED by Aaron by hand, in a plain ChatGPT window, three turns:
-            //   "something around this current tattoo, on myself"   -> mock-up, correct
-            //   "give me the new one so I can print it"             -> the sheet, HAMMER IN IT
-            //   "you're printing out the existing tattoo, my artist only needs the new design
-            //    that goes around the current tattoo"               -> the wreath with a HOLE
-            // Grok needed four. So a first sheet carrying their healed ink is the DEFAULT of every
-            // one of these models, and the thing that fixes it is being told once.
-            // SHE HAS BEEN DOING THE HARD HALF ALL ALONG. Her check catches this every time and
-            // then reports it and stops - "the banner and vines run straight across the hammer",
-            // "the dragon head duplicates the existing shoulder cap". This hands her own sentence
-            // back as the correction, which is precisely what Aaron typed on his third turn.
-            // ONE RETRY, and only when there IS healed ink to protect. If the second is wrong too,
-            // her verdict rides in the reply and the gate holds it: two failures mean the piece
-            // has no seam to draw around, and asking a third time will not find one.
-            // ══ ONE CHECK PER SHEET, AND A WRONG ONE IS REDONE - NEVER HELD (2026-09-17) ════════
-            // Aaron: there is no "send them anyway" and no "try again" in this product. The person
-            // edits the picture until it is right, and the files are the next link in the chain.
-            // So a sheet that comes back wrong is fixed by the chain itself: her reason goes back
-            // as the correction, once, and the redone sheet is delivered. It is NOT checked again -
-            // every look puts a full picture into her session, and that is what ran her out of
-            // memory on pta_7f3018e9e74f6517. The note says it was redone and why.
-            // Every sheet is asked, not only add-ons: the flat is a REDRAW of the approved design
-            // and can add or lose things (three sunflowers where the mock-up had two).
-            let _v1 = null, _redone = false;
-            if (fpp && fpp.ok && fpp.image && me && seeing && _checkSheets) {
-              try {
-                const look1 = await proxyToAgent(env,
-                  "[This is the flat artwork going to their tattooist" +
-                  (label ? " for the " + label.toUpperCase() : "") +
-                  ". It must show exactly the new design they approved in the mock-up - nothing " +
-                  "missing and nothing added" +
-                  (priorInk ? ", and nothing that is already tattooed on them" : "") +
-                  ". Look at it. Begin your answer with the single word RIGHT or WRONG, then one " +
-                  "short sentence saying why. Nothing else.]",
-                  false, me, fpp.image, world);
-                _v1 = (look1 && look1.reply && !look1.failed)
-                  ? _verdict(look1.reply, readAct(look1.reply)).slice(0, 240) : null;
-                if (_v1 && /^\s*WRONG\b/i.test(_v1)) {
-                  console.log("[AGAIN] " + (label || "sheet") + " - " + _v1);
-                  const ar = await processCommand(_ask + " AGAIN " +
-                    _v1.replace(/^\s*WRONG\b[\s:,.-]*/i, "") +
-                    (priorInk
-                      ? " Draw ONLY the new work and leave an empty space where their existing tattoo " +
-                        "sits - their old piece must not be on this sheet at all."
-                      : " Draw exactly the design they approved, nothing added and nothing left out."),
-                    env, true);
-                  const ap = (ar && ar.payload) ? ar.payload : ar;
-                  if (ap && ap.ok && ap.image) { fpp = ap; _redone = true; }
-                }
-              } catch { /* the sheet still stands */ }
-            }
-
-            if (fpp && fpp.ok && fpp.image) {
-              sheets.push({ panel: label, asked: panel, flat: fpp.image, id: fpp.design || null,
-                            checked: _v1 ? (_redone ? "REDONE ONCE - the first came back: " + _v1 : _v1) : null,
-                            ok: _v1 ? (!_redone && /^\s*RIGHT\b/i.test(_v1)) : null });
-            }
-          }
-          const fp = sheets.length ? { ok: true, image: sheets[0].flat, design: sheets[0].id } : null;
-          if (!fp) {
-            drew = { failed: "COULD_NOT_FLATTEN", from: shopParent };
-          } else {
-            // ── 3. LINE ART ────────────────────────────────────────────────────────────
-            // Once per sheet. The line art is what the needle follows, so a panel without one is
-            // a panel the shop cannot use - but a failure on one must not lose the others, which
-            // is why each is caught on its own.
-            let lineUrl = null, lineId = null;
-            for (const sh of sheets) {
-              try {
-                const lr = await processCommand("FINAL " + sh.flat + " LINEART", env, true);
-                const lp = (lr && lr.payload) ? lr.payload : lr;
-                if (lp && lp.ok && lp.image) { sh.line = lp.image; sh.lineId = lp.design || null; }
-              } catch {}
-            }
-            lineUrl = sheets[0].line || null; lineId = sheets[0].lineId || null;
-
-            // ── 4. THE PDF ─────────────────────────────────────────────────────────────
-            // Sized from the placement they gave. PRINT caps it to what the pixels and the paper
-            // allow and SAYS so, so a number here can never overstate what comes off the printer.
-            let pdfUrl = null, pdfSheets = null, pdfInches = null;
-            const PLACEMENT_IN = { "full back": 20, "back": 20, "whole back": 20, "chest": 12,
-                                   "full sleeve": 18, "sleeve": 18, "forearm": 7, "upper arm": 8,
-                                   "thigh": 14, "calf": 10, "shoulder": 7, "hand": 4, "neck": 4,
-                                   "ribs": 12, "full leg": 24 };
-            const placeKey = String((intent && intent.placement) || "").toLowerCase();
-            let inches = 0;
-            for (const k of Object.keys(PLACEMENT_IN)) {
-              if (placeKey.includes(k) && PLACEMENT_IN[k] > inches) inches = PLACEMENT_IN[k];
-            }
-            if (!inches) inches = 8;   // a hand-sized default, and PRINT reports the real figure
-            // ══ A PDF PER PANEL, AND THE COUNT HAS TO ADD UP (2026-09-15) ═════════════
-            // MEASURED: `panel_count: 3` and `print_sheets: 1` in the same object, because PRINT
-            // ran once on `lineId` - panel one. Two of the three line arts were never in any PDF,
-            // and she told the person "one sheet each" reading the field that said otherwise.
-            // Each panel is a separate transfer, so each gets its own PDF at its own size.
-            // `print_pdf` stays the first so a single-panel job is unchanged; `print_sheets` is now
-            // the real total across all of them and can no longer disagree with `panel_count`.
-            let pdfTotal = 0;
-            for (const sh of sheets) {
-              const sid = sh.lineId || sh.id;
-              if (!sid) continue;
-              // Sized per section, not once for the whole job - a forearm and a set of ribs do not
-              // print at the same width, and PRINT caps to what the pixels and the paper allow.
-              let shIn = 0;
-              const shKey = String(sh.panel || placeKey).toLowerCase();
-              for (const k of Object.keys(PLACEMENT_IN)) {
-                if (shKey.includes(k) && PLACEMENT_IN[k] > shIn) shIn = PLACEMENT_IN[k];
-              }
-              if (!shIn) shIn = inches;
-              try {
-                const pr2 = await processCommand("PRINT " + sid + " " + shIn + " " + me, env, true);
-                const pp = (pr2 && pr2.payload) ? pr2.payload : pr2;
-                if (pp && pp.ok && pp.pdf) {
-                  sh.pdf = pp.pdf; sh.sheets = pp.sheets || 1; sh.inches = pp.inches;
-                  pdfTotal += (pp.sheets || 1);
-                  if (!pdfUrl) { pdfUrl = pp.pdf; pdfInches = pp.inches; }
-                }
-              } catch {}
-            }
-            pdfSheets = pdfTotal || null;
-
-            // ══ THE SHEET VERDICTS (2026-09-17) ══════════════════════════════════════════════
-            // Each sheet was looked at once, when its flat came back, and redone once if wrong -
-            // see ONE CHECK PER SHEET above. The second look at the line art and the hold that
-            // followed it are gone: nothing is ever withheld from the person, and every verdict
-            // rides with the files for their artist.
-            let sheetNote = null;
-            // Default to a sheet she PASSED. If she passed none, the first is kept and every
-            // verdict still rides in the reply saying so - reporting a bad pack beats hiding it.
-            const _okSheet = sheets.find((sh) => sh.ok && sh.pdf);
-            if (_okSheet) { pdfUrl = _okSheet.pdf; pdfInches = _okSheet.inches; }
-            // The top-level note is every verdict, labelled - never one sheet speaking for the rest.
-            sheetNote = sheets.map((sh) => (sh.panel ? sh.panel + ": " : "") +
-                                           (sh.checked || "not checked")).join("  |  ").slice(0, 900);
-
-            {
-            drew = {
-              design: lineId || fp.design || null,
-              // `image` is what the needle does: the line art, new ink only on an add-on.
-              image: lineUrl || fp.image,
-              changed: "the artist's files", from: shopParent, for_the_artist: true,
-              // The whole package, in the order a shop uses it.
-              flat_artwork: fp.image,
-              shows_finished: mockUrl,
-              // ONE ENTRY PER PANEL, each with the section it covers, its flat artwork and the
-              // line art the needle follows. `flat_artwork` above stays the first sheet so a
-              // single-panel job reads exactly as it did before this existed.
-              ...(sheets.length > 1
-                ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
-                                                  line: sh.line || null,
-                                                  pdf: sh.pdf || null,
-                                                  ok: sh.ok === true,
-                                                  // Her verdict on THIS sheet. A panel whose
-                                                  // picture disagrees with its label says so here.
-                                                  checked: sh.checked || null })),
-                    panel_count: sheets.length,
-                    panels_ok: sheets.filter((sh) => sh.ok).length }
-                : {}),
-              ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,
-                             print_sheets: pdfSheets } : {}),
-              // ══ THE FLAG SAYS WHAT WAS ASKED, NOT WHAT CAME BACK (2026-09-14) ═════════
-              // `existing_ink_left_out: true` was set from `priorInk` being non-null - it reported
-              // that the subtraction was REQUESTED. MEASURED twice: sheets that still contained
-              // every healed cat carried this flag reading true, and once her own check said in the
-              // same reply "it shows all eight cats including the five already on their back".
-              // Two fields in one object disagreeing, and only one of them had looked.
-              // Renamed to what it actually is. `she_checked` below is the only field here that
-              // saw the file, and it is the one to believe.
-              ...(priorInk ? { subtraction_requested: true,
-                               subtraction_confirmed_by: "she_checked - nothing else here looked at " +
-                                 "the file" } : {}),
-              ...(sheetNote ? { she_checked: sheetNote } : {})
-            };
-            }
-          }
-        } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
+        drew = await makeArtistFiles(env, { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw,
+                                            acted, intent, useOne, _checkOn, _verdict, readAct });
       }
 
       // ══ SOMEBODY HAS TO LOOK AT THE MOCKUP (2026-09-15) ═══════════════════════════════════

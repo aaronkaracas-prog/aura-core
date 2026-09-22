@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.389.0-2026-09-22-lock-in-flattens-the-approved-picture";
+const BUILD = "aura-core-v9.390.0-2026-09-22-an-add-on-prints-the-new-work";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63474,12 +63474,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ("https://" + (await imageHost(env)) + "/image/" + shopParent);
           // Subtract only when there IS prior ink: an add-on with their own photograph on file.
           // A new piece has none, and FINAL alone is the whole design.
-          // THE LOCK-IN FLATTENS THE APPROVED PICTURE (2026-09-22). For an "add" job this passed their
-          // original photo, so the print was made by COMPARING the approved picture with it ("show me only
-          // the new work... without the piece that was already there") - the step that dropped "Alex".
-          // Aaron: at this phase the print is the approved picture, flattened, every time. Whole piece
-          // versus new work only for add-ons is a later decision, designed on its own - not this branch.
-          const priorInk = null;
+          // AN ADD-ON PRINTS THE NEW WORK (restored 2026-09-22). v9.389 stopped passing their original
+          // photo so every lock-in flattened the whole approved picture. That was for the hard case - a
+          // piece recoloured over old ink, where "the new work" has no clean boundary - and it is wrong
+          // for an ordinary add-on: the lion beside the tiger locked in correctly BECAUSE the old photo
+          // came with it, and the artist got the lion alone. The hard case is set aside; this is back
+          // as it was. What did change and stays: the flat sheet's own instruction (style:flat-artwork,
+          // the extraction text), which is why lettering survives now.
+          const priorInk = (jobNow === "add" && refUrl) ? refUrl : null;
 
           // ══ ONE SHEET PER PANEL (2026-09-15) ═══════════════════════════════════════════
           // She named these herself, twice, before anything could act on them: "the forearm panel,

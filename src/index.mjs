@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.381.0-2026-09-21-only-words-they-saw";
+const BUILD = "aura-core-v9.382.0-2026-09-21-a-refusal-changes-one-word";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64068,18 +64068,31 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               try {
                 const _why = String(got.error).match(/safety_violations=\[([^\]]*)\]/i);
                 const rw = await proxyToAgent(env,
-                  "[FOR YOU, NOT THEM. The picture service refused your instruction" +
-                  (_why ? " as " + _why[1] + " content" : "") + ". Your instruction was:\n" + ask + "\n\n" +
-                  "Rewrite it once for exactly the same tattoo - same design, same place on the body, " +
-                  "same name or lettering - in the words a tattoo artist would use for where it goes, " +
-                  "so it will be accepted. Reply with only the new instruction.]",
+                  // A REFUSAL CHANGES ONE WORD (2026-09-21). MEASURED: refused on the person's own
+                  // "down to my butt", the old wording here ("rewrite it once... in the words a tattoo
+                  // artist would use") brought back a whole written specification - "to the sacrum
+                  // area, matching the existing line weight... leaving everything already tattooed
+                  // untouched". She now changes only the refused word, and the check below holds her
+                  // to it.
+                  "[FOR YOU, NOT THEM. The picture service refused these words" +
+                  (_why ? " as " + _why[1] + " content" : "") + ":\n" + ask + "\n\n" +
+                  "Change ONLY the word or words it would have refused - for a part of the body, the " +
+                  "plain word a tattoo artist uses for that spot - and keep every other word exactly " +
+                  "as it is. Reply with only the words.]",
                   false, me, null, world);
                 let ask2 = "";
                 if (rw && rw.reply && !rw.failed) {
                   const a2 = readAct(rw.reply);
                   ask2 = String((a2 && (a2.ask || a2.prompt)) || _verdict(rw.reply, a2) || "").trim();
                 }
-                if (ask2.length >= 20 && ask2 !== ask) {
+                // Held to it: most of the original words must still be there, and it may not grow.
+                const _wd = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+                const _orig = _wd(ask), _new = new Set(_wd(ask2));
+                const _kept = _orig.length ? _orig.filter((w) => _new.has(w)).length / _orig.length : 0;
+                const _closeEnough = _kept >= 0.7 && ask2.length <= Math.max(ask.length * 1.3, ask.length + 40);
+                if (!_closeEnough && ask2) _retried = { refused: _why ? _why[1] : "refused", rewrote: ask2.slice(0, 900),
+                                                       ok: false, rejected: "rewrote more than the refused words" };
+                if (_closeEnough && ask2.length >= 20 && ask2 !== ask) {
                   const t2 = await _evolve(cur, ask2.slice(0, 900), null);
                   _retried = { refused: _why ? _why[1] : "refused", rewrote: ask2.slice(0, 900),
                                ok: !!(t2 && t2.ok && t2.image_url) };

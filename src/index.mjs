@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.384.0-2026-09-21-her-decision-stands";
+const BUILD = "aura-core-v9.385.0-2026-09-22-she-points-to-the-lines";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62637,7 +62637,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         return "\n\nWHERE THIS TATTOO STANDS (from their record):\n" + lines.join("\n") +
           (lastOk ? "\n  On screen now: picture " + (pics.indexOf(lastOk) + 1) + "." : "");
       })();
-      const stateNote = (_drewNow()
+      // SHE POINTS TO THE LINES (2026-09-22). Asked to COPY the words, she paraphrased every time - four
+      // runs, not one exact copy; language models reword by nature. So the conversation is numbered,
+      // she says WHICH lines hold what is to be drawn, and core sends those lines exactly as written.
+      // Her judgement picks the request (a correction, a yes to her own idea); core does the exact copy.
+      const _convLines = (() => {
+        const spoken = tline.filter((e) => e && e.said && (e.role === "them" || e.role === "aura"))
+          .map((e) => ({ who: e.role === "them" ? "them" : "you", said: String(e.said) }));
+        spoken.push({ who: "them", said: String(said || ""), now: true });
+        return spoken.map((e, i) => ({ n: i + 1, ...e }));
+      })();
+      const _convNote = "\n\nTHE CONVERSATION, NUMBERED (\"you\" is you):\n" +
+        _convLines.slice(-20).map((l) => "  " + l.n + ". " + l.who + ": " + l.said.slice(0, 500) +
+          (l.now ? "   <- what they just said" : "")).join("\n");
+      const stateNote = _convNote + (_drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
         : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story;
@@ -62851,6 +62864,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                  // field in her contract is useless until it survives this line.
                  ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 900) : "",
                  words: typeof o.words === "string" ? o.words.trim().slice(0, 900) : "",
+                 use: Array.isArray(o.use) ? o.use.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
                  use: strList(o.use, 4, 400),
                  // The body sections the NEW work spans, hers to name. Capped at six because a
                  // human body does not have more separate stencil areas than that on one job, and
@@ -64031,8 +64045,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // cool let's do it" - and sent the lot. Aaron: that is not the request. It is now ONE message,
           // exactly as they typed it: the longest one since the last picture, which is the one that asked.
           const _oneAsk = _since.slice().sort((a, b) => b.length - a.length)[0] || String(said).trim();
-          const _sent = (_isCopied ? _copied : _oneAsk).slice(0, 900);
-          const _wordsFrom = _isCopied ? "copied" : "their_messages";
+          const _pointed = (acted.use || []).map((n) => _convLines.find((l) => l.n === n)).filter(Boolean);
+          const _sent = (_pointed.length ? _pointed.map((l) => l.said.trim()).join(" ")
+                                         : (_isCopied ? _copied : _oneAsk)).slice(0, 900);
+          const _wordsFrom = _pointed.length ? "pointed" : (_isCopied ? "copied" : "their_messages");
           const _asks = [_sent];
           const _evolve = async (parent, ask, seed) => {
             try {
@@ -64129,6 +64145,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
+                ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),
                 from: parentId,
                 ...(_asks.length > 1 ? { steps: _stepLog } : {}),

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.382.0-2026-09-21-a-refusal-changes-one-word";
+const BUILD = "aura-core-v9.383.0-2026-09-21-one-request-never-the-transcript";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64019,8 +64019,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { _lastAura = i; break; } }
           const _pool = tline.filter((e, i) => e && e.said && (e.role === "them" || (e.role === "aura" && i !== _lastAura)))
             .map((e) => _norm(e.said));
-          const _copied = String(acted.words || "").trim();
-          const _isCopied = _norm(_copied).length >= 3 && _pool.some((p) => p.includes(_norm(_copied)));
+          // Whichever field she filled - `words`, or the older `prompt` - is held to the same test.
+          const _cands = [acted.words, acted.prompt].map((x) => String(x || "").trim()).filter(Boolean);
+          const _okCand = _cands.find((c) => _norm(c).length >= 3 && _pool.some((p) => p.includes(_norm(c))));
+          const _copied = _okCand || _cands[0] || "";
+          const _isCopied = !!_okCand;
           const _since = [];
           for (let i = tline.length - 1; i >= 0; i--) {
             const e = tline[i];
@@ -64028,7 +64031,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             if (e.role === "picture") break;
             if (e.role === "them" && e.said) _since.unshift(String(e.said).trim());
           }
-          const _sent = (_isCopied ? _copied : (_since.join(" ") || String(said).trim())).slice(0, 900);
+          // ONE REQUEST, NEVER THE TRANSCRIPT (2026-09-21). MEASURED: the fallback joined every message
+          // since the last picture - "take a look at this" + the Italy story + the request + "yeah that's
+          // cool let's do it" - and sent the lot. Aaron: that is not the request. It is now ONE message,
+          // exactly as they typed it: the longest one since the last picture, which is the one that asked.
+          const _oneAsk = _since.slice().sort((a, b) => b.length - a.length)[0] || String(said).trim();
+          const _sent = (_isCopied ? _copied : _oneAsk).slice(0, 900);
           const _wordsFrom = _isCopied ? "copied" : "their_messages";
           const _asks = [_sent];
           const _evolve = async (parent, ask, seed) => {

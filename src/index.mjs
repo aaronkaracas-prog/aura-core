@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.399.0-2026-09-23-a-tattoo-is-a-project";
+const BUILD = "aura-core-v9.400.0-2026-09-23-a-clean-slate-for-one-person";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7490,6 +7490,43 @@ async function processCommand(line, env, isOp) {
     // COSTS A MODEL CALL. Three, in parallel: her reply, the next-step read, and the facts.
     // TALK_STATE <pta> - reads a person's tattoo conversation state from their Durable Object, where
     // it lives since 2026-09-23: the numbered timeline, the brief, the piece on screen. Read-only.
+    // TALK_RESET <email:address | pta_id> [CONFIRM] - a clean slate for one person's tattoo side:
+    // their conversation, held photo, piece on screen, tile, open project and project list. Their
+    // identity, sign-in, chain and stored pictures are NOT touched - the codebase records Aaron's own
+    // PTA being destroyed twice by wipes, so this clears the tattoo state and nothing else. Without
+    // CONFIRM it only reports what the person holds. An email is resolved the way sign-in resolves
+    // it (the hashed identity index), so nobody has to find an id.
+    case "TALK_RESET": {
+      if (!isOp) return { cmd: "TALK_RESET", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const trRaw = String(rest || "").trim();
+      const trConfirm = /(^|\s)CONFIRM(\s|$)/i.test(trRaw);
+      const trWho = trRaw.replace(/(^|\s)CONFIRM(\s|$)/ig, " ").trim().split(/\s+/)[0] || "";
+      let trPta = /^pta_[a-z0-9]+$/i.test(trWho) ? trWho : null;
+      if (!trPta && trWho.includes(":")) { try { trPta = await ptaFindByIdentity(env, [trWho]); } catch {} }
+      if (!trPta) return { cmd: "TALK_RESET", payload: { ok: false, error: "NOT_FOUND",
+        note: "No person holds that identity. Usage: TALK_RESET email:you@example.com [CONFIRM]" } };
+      try {
+        const st = await talkStateGet(env, trPta, ["timeline", "brief", "last", "ref", "tile", "project"]);
+        const tl = talkParse(st.timeline) || [];
+        let pjs = [];
+        try { pjs = ((await talkDo(env, trPta, "talkProjects", [])) || {}).projects || []; } catch {}
+        const holds = { pta: trPta, conversation_lines: Array.isArray(tl) ? tl.length : 0,
+          held_photo: !!talkParse(st.ref), piece_on_screen: !!talkParse(st.last),
+          tile: !!talkParse(st.tile), open_project: st.project || null, projects: pjs.length };
+        if (!trConfirm) return { cmd: "TALK_RESET", payload: { ok: true, dry_run: true, holds,
+          note: "Nothing changed. Add CONFIRM to clear this person's tattoo conversation, photo, " +
+                "piece, tile and projects. Identity, sign-in, chain and stored pictures are untouched." } };
+        await talkDo(env, trPta, "talkPut", [{
+          "talk-state:timeline": "[]", "talk-state:brief": "", "talk-state:last": "",
+          "talk-state:bad": "", "talk-state:ref": "", "talk-state:tile": "", "talk-state:project": "",
+          "talk-proj:index": "[]", "talk-proj:by-design": "{}" }]);
+        return { cmd: "TALK_RESET", payload: { ok: true, cleared: true, before: holds,
+          note: "Cleared. Their next tattoo conversation starts from nothing." } };
+      } catch (e) {
+        return { cmd: "TALK_RESET", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
+      }
+    }
+
     case "TALK_STATE": {
       if (!isOp) return { cmd: "TALK_STATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const tsPta = String(rest || "").trim().split(/\s+/)[0] || "";

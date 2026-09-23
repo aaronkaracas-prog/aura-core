@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.397.0-2026-09-23-the-conversation-lives-in-their-durable-object";
+const BUILD = "aura-core-v9.398.0-2026-09-23-tattoo-removal-not-removal-and-the-tile-stays";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25539,8 +25539,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // how many the batch would pick, how many the filter skips, and names a few of each.
         const beAll = _beAllFlag;
         const beCount = _beCountFlag;
+        // "tattoo removal" as a phrase, not "removal": MEASURED in Austin, "Pigment Tattoo and Laser
+        // Removal" and "Amillion Tattoo, Piercings, and Laser Removal" are parlours that also remove,
+        // and "removal" alone skipped them. A removal clinic says "tattoo removal" or is Removery.
+        // "suppl" catches a supply store ("Fort Worth Tattoo Supplies" was kept in the Texas count).
         const _NOT_A_PARLOUR = ["cosmetic", "brow", "lash", "aesthetic", "beauty", "microblad",
-                                "threading", "makeup", "removal", " spa", "salon"];
+                                "threading", "makeup", "tattoo removal", "removery", "suppl",
+                                " spa", "salon"];
         const _LIKELY =
           " AND (instr(lower(name),'tatt')>0 OR instr(lower(name),'ink')>0 OR instr(lower(name),'studio')>0" +
           " OR instr(lower(COALESCE(website,'')),'tatt')>0 OR instr(lower(COALESCE(website,'')),'ink')>0)" +
@@ -62618,9 +62623,9 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         last:     _state.then((x) => talkParse(x.last)),
         bad:      _state.then((x) => x.bad ?? null),
         ref:      _state.then((x) => talkParse(x.ref)),
-        // A tile is where they came in - it counts for a day, as the KV key's expiry did.
-        tile:     _state.then((x) => { const t = talkParse(x.tile);
-                    return (t && t.at && (Date.now() - Date.parse(t.at)) < 24 * 3600 * 1000) ? t : null; }),
+        // A tile is where they came in. It is kept (Aaron, 2026-09-23: "I don't see a reason for
+        // expiring") - a newer tap replaces it, and the note below says when it happened.
+        tile:     _state.then((x) => talkParse(x.tile)),
       } : null;
       // ══ THE RECORD IS WRITTEN AFTER THE REPLY, IN ORDER (2026-09-22) ═══════════════════════
       // MEASURED: 5.7s of a 16.5s turn spent writing her chain and memory AFTER her answer existed,
@@ -63394,7 +63399,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try { _cameFrom = await _pre.tile; } catch {}
       }
       const tileNote = (_cameFrom && _cameFrom.words)
-        ? "\n\nWHERE THEY CAME IN: before talking to you they tapped a picture on the home screen. " +
+        ? "\n\nWHERE THEY CAME IN: they came in through a picture on the home screen" +
+          (_cameFrom.at ? " on " + String(_cameFrom.at).slice(0, 10) : "") + ". " +
           "It was drawn from these words: \"" + _cameFrom.words + "\". That is what they were " +
           "looking at - it is not a picture of theirs."
         : "";

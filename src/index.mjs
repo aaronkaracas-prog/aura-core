@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.398.0-2026-09-23-tattoo-removal-not-removal-and-the-tile-stays";
+const BUILD = "aura-core-v9.399.0-2026-09-23-a-tattoo-is-a-project";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61078,6 +61078,66 @@ export class PtaDurableObject {
     return { ok: true };
   }
 
+  // ══ A TATTOO IS A PROJECT (2026-09-23) ═══════════════════════════════════════════════════════
+  // One project is one tattoo: the conversation that made it, every picture in order, the tile it
+  // started from, and - once locked in - the artist's files. Appended as it happens, in here, where
+  // every write lands in order: a turn and the background files job can both add to the same
+  // project without either losing the other's work. An index lists them for My Tattoos, and a
+  // map says which project each picture belongs to, so carrying on from any picture continues
+  // the project it came from.
+  async talkProjectAppend(pid, patch) {
+    const id = String(pid || "").trim();
+    if (!/^prj_[a-z0-9]{6,40}$/i.test(id)) return { ok: false, error: "BAD_PROJECT_ID" };
+    const key = "talk-proj:" + id;
+    const now = new Date().toISOString();
+    let pj = null; try { pj = JSON.parse((await this.storage.get(key)) || "null"); } catch {}
+    if (!pj || typeof pj !== "object") pj = { id, started: now, updated: now, locked: false,
+      title: null, came_from: null, lines: [], pictures: [], files: null };
+    const pt = (patch && typeof patch === "object") ? patch : {};
+    if (Array.isArray(pt.lines)) pj.lines = pj.lines.concat(pt.lines.filter(Boolean)).slice(-120);
+    if (Array.isArray(pt.pictures)) {
+      for (const x of pt.pictures) {
+        if (x && x.image && !pj.pictures.some((y) => y.image === x.image)) pj.pictures.push(x);
+      }
+      if (pj.pictures.length > 60) pj.pictures = pj.pictures.slice(-60);
+    }
+    if (pt.title && !pj.title) pj.title = String(pt.title).slice(0, 80);
+    if (pt.came_from && !pj.came_from) pj.came_from = String(pt.came_from).slice(0, 60);
+    if (pt.files) { pj.files = pt.files; pj.files_failed = false; }
+    if (pt.files_failed) pj.files_failed = true;
+    if (pt.locked === true) { pj.locked = true; pj.locked_at = now; }
+    pj.updated = now;
+    await this.storage.put(key, JSON.stringify(pj));
+    let idx = []; try { idx = JSON.parse((await this.storage.get("talk-proj:index")) || "[]") || []; } catch {}
+    if (!Array.isArray(idx)) idx = [];
+    idx = idx.filter((e) => e && e.id !== id);
+    idx.unshift({ id, started: pj.started, updated: now, locked: !!pj.locked, title: pj.title,
+      cover: pj.pictures.length ? pj.pictures[pj.pictures.length - 1].image : null,
+      count: pj.pictures.length, has_files: !!pj.files });
+    await this.storage.put("talk-proj:index", JSON.stringify(idx.slice(0, 200)));
+    if (Array.isArray(pt.pictures) && pt.pictures.length) {
+      let bd = {}; try { bd = JSON.parse((await this.storage.get("talk-proj:by-design")) || "{}") || {}; } catch {}
+      for (const x of pt.pictures) if (x && x.design) bd[x.design] = id;
+      await this.storage.put("talk-proj:by-design", JSON.stringify(bd));
+    }
+    return { ok: true, id, pictures: pj.pictures.length, locked: !!pj.locked };
+  }
+
+  async talkProjects() {
+    let idx = []; try { idx = JSON.parse((await this.storage.get("talk-proj:index")) || "[]") || []; } catch {}
+    return { ok: true, projects: Array.isArray(idx) ? idx : [] };
+  }
+
+  async talkProject(pid) {
+    let pj = null; try { pj = JSON.parse((await this.storage.get("talk-proj:" + String(pid || ""))) || "null"); } catch {}
+    return { ok: !!pj, project: pj };
+  }
+
+  async talkProjectOf(design) {
+    let bd = {}; try { bd = JSON.parse((await this.storage.get("talk-proj:by-design")) || "{}") || {}; } catch {}
+    return { ok: true, project: bd[String(design || "")] || null };
+  }
+
   // The timeline is merged, never overwritten: a turn saves the lines it read plus its own, and a
   // line written meanwhile by someone else - the background artist-files job - stays. Lines are
   // matched by time and role; the saving turn wins for its own lines. Newest sixty kept.
@@ -62328,12 +62388,20 @@ async function talkStateGet(env, me, names) {
     const v = vals ? vals["talk-state:" + n] : null;
     if (v != null) { out[n] = v; continue; }
     let raw = null;
+    if (!TALK_STATE_KV[n]) { out[n] = null; continue; }   // born in the Durable Object, no KV past
     try { raw = await env.AURA_KV.get(TALK_STATE_KV[n] + me); } catch {}
     out[n] = raw;
     if (raw != null && vals) copy["talk-state:" + n] = raw;
   }
   if (Object.keys(copy).length) { try { await talkDo(env, me, "talkPut", [copy]); } catch {} }
   return out;
+}
+// A project id for a new tattoo.
+function newProjectId() { return "prj_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16); }
+async function projectAppend(env, me, pid, patch) {
+  if (!me || !pid) return;
+  try { await talkDo(env, me, "talkProjectAppend", [pid, patch]); }
+  catch (e) { try { console.log("[PROJECT] append failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
 }
 async function talkStatePut(env, me, name, raw) {
   try {
@@ -62470,6 +62538,8 @@ async function recordArtistFiles(env, d, drew) {
   } catch (e) {
     try { console.log("[FILES] timeline write failed: " + String(e?.message ?? e).slice(0, 160)); } catch {}
   }
+  if (d.project) await projectAppend(env, me, d.project, ok ? { files: artistFilesOf(drew), locked: true }
+                                                              : { files_failed: true });
   if (d.stage === "pta") {
     try {
       await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
@@ -62614,7 +62684,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // after another. They are started together here and each is awaited where it was read
       // before, so nothing downstream changes except that it no longer waits in line.
       // The conversation's own state comes from the person's Durable Object in one call.
-      const _state = me ? talkStateGet(env, me, ["timeline", "brief", "last", "bad", "ref", "tile"])
+      const _state = me ? talkStateGet(env, me, ["timeline", "brief", "last", "bad", "ref", "tile", "project"])
         .catch(() => ({})) : null;
       const _pre = me ? {
         timeline: _state.then((x) => x.timeline ?? null),
@@ -62626,6 +62696,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         // A tile is where they came in. It is kept (Aaron, 2026-09-23: "I don't see a reason for
         // expiring") - a newer tap replaces it, and the note below says when it happened.
         tile:     _state.then((x) => talkParse(x.tile)),
+        project:  _state.then((x) => x.project ?? null),
       } : null;
       // ══ THE RECORD IS WRITTEN AFTER THE REPLY, IN ORDER (2026-09-22) ═══════════════════════
       // MEASURED: 5.7s of a 16.5s turn spent writing her chain and memory AFTER her answer existed,
@@ -64018,8 +64089,31 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (onStage && me && (act === "draw" || act === "change" || act === "artist")) {
         try { await onStage(act === "artist" ? "files" : "drawing"); } catch {}
       }
+      // ══ WHICH PROJECT THIS TURN BELONGS TO (2026-09-23) ══════════════════════════════════════
+      // Carrying on from a picture (the page sends it as `from`) continues that picture's project.
+      // Otherwise it is the project already open - unless that one is locked in and this turn draws
+      // something new, which starts the next project. Lock-in does not stop changes yet (Aaron: keep
+      // it open while testing); it only marks the project.
+      let _pid = null;
+      if (me) {
+        try {
+          const _fromD = String((opts && opts.from) || "").trim();
+          let _fromPid = null;
+          if (_fromD) _fromPid = ((await talkDo(env, me, "talkProjectOf", [_fromD])) || {}).project || null;
+          const _cur = _pre ? await _pre.project : null;
+          let _curLocked = false;
+          if (!_fromPid && _cur && act === "draw") {
+            const _pj = await talkDo(env, me, "talkProject", [_cur]);
+            _curLocked = !!(_pj && _pj.project && _pj.project.locked);
+          }
+          // `fresh`: the page says they chose a new start (a job card, or "Explore this" on a tile).
+          _pid = _fromPid || ((opts && opts.fresh) ? newProjectId()
+               : ((_cur && !_curLocked) ? _cur : newProjectId()));
+        } catch { _pid = newProjectId(); }
+      }
       if (act === "artist" && me) {
         const _job = await startArtistFilesJob(env, {
+          project: _pid,
           me, world, stage, seeing: !!seeing, jobNow: jobNow || null, refUrl: refUrl || null,
           refDesign: refDesign || null, lastDrawn: lastDrawn || null,
           useRaw: Array.isArray(useRaw) ? useRaw : [], acted, intent: intent || null });
@@ -64799,6 +64893,23 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           }
           if (tline.length > 60) tline = tline.slice(-60);
           await talkStatePut(env, me, "timeline", JSON.stringify(tline));
+          if (_pid) {
+            const _atP = new Date().toISOString();
+            await projectAppend(env, me, _pid, {
+              lines: [
+                { ts: _atP, role: "them", said: String(said || "").slice(0, 600),
+                  ...((wantRef && refUrl) ? { photo: refUrl } : {}) },
+                { ts: _atP, role: "aura", said: _said.slice(0, 600) } ],
+              pictures: (drew && drew.image && !drew.failed && !drew.for_the_artist)
+                ? [{ ts: _atP, image: drew.image, design: drew.design || null,
+                     words: String(drew.changed || drew.asked || "").slice(0, 300) }] : [],
+              title: (intent && intent.subject) || null,
+              came_from: _cameFrom ? _cameFrom.id : null,
+              ...(act === "artist" ? { locked: true } : {}),
+              ...((drew && drew.for_the_artist && !drew.pending && drew.image) ? { files: artistFilesOf(drew) } : {}),
+            });
+            await talkStatePut(env, me, "project", _pid);
+          }
           if (stage === "pta") {
             const _cmdAura = "PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
               said: _said.slice(0, 600), who: "aura", channel: "chat", mode: "tattoo",
@@ -64832,6 +64943,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                ...(agentNote && !agentVia ? { agent_note: agentNote } : {}),
                remembering: me ? tline.length : 0,
                ...(_cameFrom ? { came_from: _cameFrom.id } : {}),
+               ...(_pid ? { project: _pid } : {}),
                kept: stage === "pta",
                // Which Aura answered: her own instance, or the local floor beneath it.
                via: agentVia || "local" };
@@ -65508,32 +65620,41 @@ export class PublicEntry extends WorkerEntrypoint {
                   "A memorial", "I am not sure yet"] };
       }
 
-      // MY TATTOOS READS THEIR RECORD (2026-09-22). Every picture already lands on the person's own
-      // timeline with the exact words it was made from and what they said next - that is what makes
-      // picking one up again work, not the picture alone. Newest first, the artist's files marked.
-      // Nothing is drawn here, and nothing is read that is not theirs.
-      if (action === "mine") {
+      // ══ MY TATTOOS IS THEIR PROJECTS (2026-09-23) ══════════════════════════════════════════════
+      // One card per tattoo - its latest picture, its title, how many pictures, whether it is locked
+      // in and has its artist's files. `project` returns one in full: every line of the conversation
+      // and every picture, so the page can reopen it exactly where it was. Somebody whose pictures
+      // predate projects gets them as one "Earlier designs" project, built from their record.
+      const _earlier = async () => {
         let tl = [];
         try { tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || []; } catch {}
-        const items = [];
-        for (let i = 0; i < tl.length; i++) {
-          const e = tl[i];
-          if (!e || e.role !== "picture" || !e.image) continue;
-          let after = null, asked = null;
-          for (let j = i + 1; j < tl.length; j++) {
-            if (tl[j] && tl[j].role === "them") { after = tl[j].said; break; }
-            if (tl[j] && tl[j].role === "picture") break;
-          }
-          for (let j = i - 1; j >= 0; j--) {
-            if (tl[j] && tl[j].role === "them" && tl[j].said) { asked = tl[j].said; break; }
-          }
-          items.push({ image: e.image, design: e.design || null, words: e.words || null,
-                       asked: asked, said_after: after, at: e.ts || null,
-                       ...(e.artist_files ? { artist_files: true } : {}),
-                       ...(e.files ? { files: e.files } : {}) });
+        if (!Array.isArray(tl)) tl = [];
+        const pics = tl.filter((e) => e && e.role === "picture" && e.image && !e.artist_files)
+          .map((e) => ({ ts: e.ts || null, image: e.image, design: e.design || null, words: e.words || null }));
+        const filesAt = tl.filter((e) => e && e.artist_files && e.files).pop();
+        if (!pics.length) return null;
+        return { id: "earlier", title: "Earlier designs", started: pics[0].ts, updated: pics[pics.length - 1].ts,
+          locked: !!filesAt, came_from: null, pictures: pics, files: filesAt ? filesAt.files : null,
+          lines: tl.filter((e) => e && (e.role === "them" || e.role === "aura") && e.said)
+                   .map((e) => ({ ts: e.ts || null, role: e.role, said: e.said })) };
+      };
+      if (action === "mine") {
+        let projects = [];
+        try { projects = ((await talkDo(env, me, "talkProjects", [])) || {}).projects || []; } catch {}
+        if (!projects.length) {
+          const ea = await _earlier();
+          if (ea) projects = [{ id: ea.id, title: ea.title, started: ea.started, updated: ea.updated,
+            locked: ea.locked, cover: ea.pictures[ea.pictures.length - 1].image,
+            count: ea.pictures.length, has_files: !!ea.files }];
         }
-        items.reverse();
-        return { ok: true, items: items.slice(0, 60), count: items.length };
+        return { ok: true, projects, count: projects.length };
+      }
+      if (action === "project") {
+        const pid = String(b.id || "").trim();
+        if (pid === "earlier") { const ea = await _earlier(); return ea ? { ok: true, project: ea } : { ok: false, error: "NOT_FOUND" }; }
+        if (!/^prj_[a-z0-9]{6,40}$/i.test(pid)) return { ok: false, error: "BAD_PROJECT_ID" };
+        let r = null; try { r = await talkDo(env, me, "talkProject", [pid]); } catch {}
+        return (r && r.ok && r.project) ? { ok: true, project: r.project } : { ok: false, error: "NOT_FOUND" };
       }
 
       if (action === "talk") {
@@ -65583,7 +65704,7 @@ export class PublicEntry extends WorkerEntrypoint {
         }
         if (!b.stream) {
           const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref,
-            tile: b.tile || null,
+            tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
           // lost the picture is visible in the output rather than looking like her judgement.
@@ -65601,7 +65722,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, ref: _ref, tile: b.tile || null,
+              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },
@@ -66277,96 +66398,6 @@ export class PublicEntry extends WorkerEntrypoint {
       // page already knows the name of, which is what a tree screen has: it knows it is showing
       // dogs. One KV read, no model, no generation, and a miss is a normal answer rather than an
       // error - the page falls back to words and nothing breaks.
-      // ══ MINE — THE LIBRARY, FOR THE PERSON WHOSE IT IS ═════════════════════════════════════
-      // `FILE MINE` is operator-gated, as everything in that engine is. A person looking at their
-      // own tattoos is not an operator, so this is their door - and it can only ever return THEIR
-      // files, because the session decides whose id is asked for. There is no parameter to pass a
-      // stranger's id, which is what makes it safe to expose.
-      //
-      // GROUPED BY PIECE. A child file is a VERSION, not a separate tattoo. Somebody who evolved a
-      // design five times has ONE piece with five versions, and a library that showed five tiles
-      // would be lying about what they own.
-      if (action === "mine") {
-        const r = await processCommand("FILE MINE " + me, env, true);
-        const p3 = (r && r.payload) ? r.payload : r;
-        if (!p3?.ok) return { ok: false, error: p3?.error || "COULD_NOT_READ" };
-        const byId = {}; for (const f of p3.files) byId[f.id] = f;
-
-        // ══ LINEAGE IS A CHAIN, NOT ONE LEVEL ═══════════════════════════════════════════════
-        // MEASURED on a real library: a photograph of an arm, then +colour, then +a race car,
-        // then EIGHT siblings off that. Collecting only DIRECT children would hang those eight off
-        // the third link - and since that link is not a root, they would disappear from the screen
-        // entirely. One card and one version, where the person has one piece and ten.
-        // So a version belongs to whatever ROOT it descends from, however many steps away.
-        const rootOf = (f) => {
-          let cur = f, hops = 0;
-          while (cur.parent && byId[cur.parent] && hops++ < 50) cur = byId[cur.parent];
-          return cur;             // a parent that is missing or not theirs makes this the root
-        };
-        // The name is the piece's own words, not the whole prompt history. Every version here was
-        // titled "the piece on my upper arm. add rich colour throughout, and a rose blooming off t"
-        // - the accumulated prompt, truncated mid-word. A library is the screen somebody comes back
-        // to; it should say what the thing IS.
-        // ══ A PIECE IS CALLED WHAT IT IS ═════════════════════════════════════════════════════
-        // Two shapes of subject arrive here and they break differently.
-        //   IMPORTED - a sentence somebody typed: "the piece on my upper arm". Split on the full
-        //              stop and it reads correctly.
-        //   DESIGNED - the whole brief, comma-joined: "golden retriever, hyperrealism style, head
-        //              and chest, happy, full colour, intricate linework". No full stop at all, so
-        //              splitting on one returned the lot and the card read "golden retriever, hyp…"
-        // The thing they chose is the FIRST CLAUSE either way. Everything after it is how it was
-        // rendered, which the piece screen can show and a tile should not.
-        const titleOf = (t) => {
-          const raw = String(t || "").trim();
-          const first = (raw.split(/\.\s+/)[0] || raw).split(",")[0].trim();
-          const out = first || raw;
-          // Capitalised because it is a name on a card, not a prompt fragment.
-          return (out ? out[0].toUpperCase() + out.slice(1) : out).slice(0, 70);
-        };
-        // What it was rendered AS - the clauses the title dropped. A tile says "Golden Retriever";
-        // this is what lets it also say "hyperrealism, head and chest" instead of just "Designed".
-        const madeOf = (t) => {
-          const parts = String(t || "").split(",").slice(1)
-            .map((x) => x.replace(/\b(style|linework)\b/gi, "").trim()).filter(Boolean);
-          return parts.length ? parts.slice(0, 3).join(", ").slice(0, 60) : null;
-        };
-        // What a version CHANGED, rather than everything it inherited. Each evolve appends its
-        // instruction to the parent's subject, so the difference is the tail.
-        const changeOf = (child, parent) => {
-          const c = String(child.subject || ""), p2 = String(parent.subject || "");
-          let t = (c.startsWith(p2) ? c.slice(p2.length) : c).replace(/^[.,\s]+/, "");
-          // The words somebody actually typed carry housekeeping the model needed and a person
-          // does not: "remove the purple race car completely, and instead add a koi fish - keep
-          // everything else exactly as it is" is one idea, and the idea is the koi.
-          t = t.replace(/\s*[-,]\s*keep everything else.*$/i, "")
-               .replace(/^.*?\b(?:and )?instead add\s+/i, "")
-               .replace(/^(?:please\s+)?(?:can you\s+)?(?:add|make it|make|change (?:it )?to|put)\s+/i, "")
-               .replace(/\s{2,}/g, " ").trim();
-          if (!t) return null;
-          return (t[0].toUpperCase() + t.slice(1)).slice(0, 80);
-        };
-
-        const pieces = [];
-        for (const f of p3.files) {
-          if (rootOf(f) !== f) continue;                    // a version, shown under its piece
-          const versions = p3.files.filter((v) => v !== f && rootOf(v) === f)
-            .sort((a2, b2) => String(a2.made).localeCompare(String(b2.made)));
-          pieces.push({ design: f.id, subject: titleOf(f.subject || f.name),
-            // The rendering, kept separate from the name, so a card can say both.
-            made_as: f.source === "import" ? null : madeOf(f.subject || f.name),
-            image: f.url || null, made: f.made,
-            // Where it came from: something they designed here, or a photograph of one they
-            // already wear. The library holds both and should say which.
-            how: f.source === "import" ? "worn" : "made",
-            posted: !!f.posted, doorway: f.doorway || null,
-            versions: versions.length,
-            history: versions.map((v) => ({ design: v.id, image: v.url || null, made: v.made,
-              change: changeOf(v, byId[v.parent] || f) })) });
-        }
-        return { ok: true, count: pieces.length, pieces,
-          say: pieces.length ? null : "Nothing here yet. Design one, or show me one you already have." };
-      }
-
       // Share a piece from this doorway, or take it back. The person can only ever act on their
       // own file: the id is checked against what `FILE MINE` returns for THEIR session.
       if (action === "share" || action === "unshare") {

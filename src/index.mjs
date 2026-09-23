@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.400.0-2026-09-23-a-clean-slate-for-one-person";
+const BUILD = "aura-core-v9.401.0-2026-09-23-the-picture-they-chose-keeps-its-image";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61141,7 +61141,7 @@ export class PtaDurableObject {
     if (pt.title && !pj.title) pj.title = String(pt.title).slice(0, 80);
     if (pt.came_from && !pj.came_from) pj.came_from = String(pt.came_from).slice(0, 60);
     if (pt.files) { pj.files = pt.files; pj.files_failed = false; }
-    if (pt.files_failed) pj.files_failed = true;
+    if (pt.files_failed) pj.files_failed = String(pt.files_failed).slice(0, 200);
     if (pt.locked === true) { pj.locked = true; pj.locked_at = now; }
     pj.updated = now;
     await this.storage.put(key, JSON.stringify(pj));
@@ -61150,7 +61150,7 @@ export class PtaDurableObject {
     idx = idx.filter((e) => e && e.id !== id);
     idx.unshift({ id, started: pj.started, updated: now, locked: !!pj.locked, title: pj.title,
       cover: pj.pictures.length ? pj.pictures[pj.pictures.length - 1].image : null,
-      count: pj.pictures.length, has_files: !!pj.files });
+      count: pj.pictures.length, has_files: !!pj.files, files_failed: pj.files ? null : (pj.files_failed || null) });
     await this.storage.put("talk-proj:index", JSON.stringify(idx.slice(0, 200)));
     if (Array.isArray(pt.pictures) && pt.pictures.length) {
       let bd = {}; try { bd = JSON.parse((await this.storage.get("talk-proj:by-design")) || "{}") || {}; } catch {}
@@ -62567,7 +62567,8 @@ async function recordArtistFiles(env, d, drew) {
     let tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || [];
     if (!Array.isArray(tl)) tl = [];
     tl.push({ ts: new Date().toISOString(), role: "picture",
-              ...(ok ? { image: drew.image, design: drew.design || null } : { failed: true }),
+              ...(ok ? { image: drew.image, design: drew.design || null }
+                     : { failed: true, why: String((drew && (drew.failed || drew.error)) || "no files came back").slice(0, 200) }),
               words: String((drew && drew.changed) || "the artist's files").slice(0, 600),
               artist_files: true, ...(ok ? { files: artistFilesOf(drew) } : {}) });
     if (tl.length > 60) tl = tl.slice(-60);
@@ -62576,7 +62577,7 @@ async function recordArtistFiles(env, d, drew) {
     try { console.log("[FILES] timeline write failed: " + String(e?.message ?? e).slice(0, 160)); } catch {}
   }
   if (d.project) await projectAppend(env, me, d.project, ok ? { files: artistFilesOf(drew), locked: true }
-                                                              : { files_failed: true });
+    : { files_failed: String((drew && (drew.failed || drew.error)) || "no files came back").slice(0, 200) });
   if (d.stage === "pta") {
     try {
       await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
@@ -63067,10 +63068,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // guards against.
         try {
           const own = await env.AURA_MEMORY.prepare(
-            "SELECT e.id, e.name FROM pta_entities e JOIN pta_edges g ON g.to_id = e.id " +
+            "SELECT e.id, e.name, e.metadata FROM pta_entities e JOIN pta_edges g ON g.to_id = e.id " +
             "WHERE e.id = ? AND g.from_id = ? AND g.edge_type IN ('created','contributed_to') LIMIT 1"
           ).bind(pickFrom, me).first().catch(() => null);
-          if (own) lastDrawn = { design: pickFrom,
+          // ══ THE PICTURE THEY CHOSE KEEPS ITS IMAGE (2026-09-23) ══════════════════════════════
+          // MEASURED from the website: this set the piece to the chosen design WITHOUT its image, so
+          // the lock-in built the artist files from "https://.../image/ent_..." - a design id where
+          // a picture id belongs - and FINAL failed in 9 seconds: COULD_NOT_FLATTEN. The same FINAL
+          // on the real image succeeded. The terminal never sent `from`, which is why only the page
+          // failed. The image comes from the design's own record, or from the piece on screen when
+          // that is the same design.
+          let _fromImg = null;
+          if (own) {
+            try { const _md = JSON.parse(own.metadata || "{}"); _fromImg = _md.url || _md.image_url || null; } catch {}
+            if (!_fromImg && lastDrawn && lastDrawn.design === pickFrom) _fromImg = lastDrawn.image || null;
+          }
+          if (own) lastDrawn = { design: pickFrom, ...(_fromImg ? { image: _fromImg } : {}),
           // A tapped reference carries its OWN subject. Inheriting the previous one is how a
           // mandala became a dragon.
           subject: refDesign ? null : ((lastDrawn && lastDrawn.subject) || null) };

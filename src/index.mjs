@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.392.0-2026-09-22-my-tattoos-reads-their-record";
+const BUILD = "aura-core-v9.393.0-2026-09-22-talk-reads-once-and-writes-after";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7525,7 +7525,7 @@ async function processCommand(line, env, isOp) {
                                      tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef, world: tkWorld });
         return { cmd: "TALK", payload: { ...tkOut, pta: tkPta,
                  stage: /^pta_/.test(tkPta) ? "pta" : "contacted",
-                 book: tkNoBook ? "closed" : "open",
+                 book: "closed",
                  brief_mode: tkNoBrief ? "bare" : "full",
                  ...(tkRef ? { ref: tkRef } : {}) } };
       } catch (e) {
@@ -62231,13 +62231,11 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
   // and the read that builds the shelf was written so she knows the book EXISTS rather than to sell
   // it. So the default flips and the dial stays: `config:talk:book` = open restores today exactly.
   // The TALK command's own `noBook` opt still forces it closed regardless, unchanged.
-  let noBook = !!(opts && opts.noBook);
-  if (!noBook) {
-    try {
-      const _bk = await env.AURA_KV.get("config:talk:book");
-      noBook = !(_bk && /^(open|on|1|true|yes)$/i.test(String(_bk).trim()));
-    } catch { noBook = true; }
-  }
+  // ══ BASIC TALK DOES NOT READ THE CATALOGUE (2026-09-22, Aaron) ══════════════════════════
+  // "Core should not read catalog at all ... there'll be a piece where we read it, but not in basic
+  // talk." The shelf and `catalogFind` below are left in place, closed, for that piece to open; the
+  // `config:talk:book` dial is no longer read on every turn.
+  const noBook = true;
   // ══ FIND OUT WHETHER THE DOCTRINE IS HELPING (2026-09-09) ═══════════════════════════════════
   // Aaron: "I'm paying Grok to be my agent. If I step out and Grok gets it right every time, why
   // can't I do it inside my system? She has rules, she has a contract - what is shaping this?"
@@ -62332,11 +62330,37 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // never got connected.
       // THE STORED TIMELINE WINS over what the page sends. A browser can be reloaded, opened on
       // a second device, or lie; the timeline is what was actually said and it is hers to read.
+      // ══ ONE ROUND OF READS, NOT SIX (2026-09-22) ═══════════════════════════════════════════
+      // MEASURED: `catalog` + `import` = 1.2s on a turn with no photo - six storage reads made one
+      // after another. They are started together here and each is awaited where it was read
+      // before, so nothing downstream changes except that it no longer waits in line.
+      const _pre = me ? {
+        timeline: env.AURA_KV.get("pta:timeline:" + me).catch(() => null),
+        model:    env.AURA_KV.get("config:talk:model").catch(() => null),
+        brief:    env.AURA_KV.get("talk:brief:" + me, "json").catch(() => null),
+        last:     env.AURA_KV.get("talk:last:" + me, "json").catch(() => null),
+        bad:      env.AURA_KV.get("talk:bad:" + me).catch(() => null),
+        ref:      env.AURA_KV.get("talk:ref:" + me, "json").catch(() => null),
+      } : null;
+      // ══ THE RECORD IS WRITTEN AFTER THE REPLY, IN ORDER (2026-09-22) ═══════════════════════
+      // MEASURED: 5.7s of a 16.5s turn spent writing her chain and memory AFTER her answer existed,
+      // while the person waited. The writes still happen, in the same order - they just stop
+      // standing in front of the reply. `waitUntil` comes from the caller (the page door passes its
+      // own); the TALK command uses the request's. With neither, they run inline exactly as before.
+      const _waitUntil = (opts && typeof opts.waitUntil === "function") ? opts.waitUntil
+        : (_AURA_CTX && typeof _AURA_CTX.waitUntil === "function") ? ((pr) => _AURA_CTX.waitUntil(pr)) : null;
+      let _recordChain = Promise.resolve();
+      const _record = (fn) => {
+        if (!_waitUntil) return Promise.resolve().then(fn).catch(() => {});
+        _recordChain = _recordChain.then(fn).catch(() => {});
+        try { _waitUntil(_recordChain); } catch { /* the write still runs on the chain */ }
+        return Promise.resolve();
+      };
       let hist = Array.isArray(b.history) ? b.history.slice(-12) : [];
       let tline = [];
       if (me) {
         try {
-          const raw = await env.AURA_KV.get("pta:timeline:" + me);
+          const raw = await _pre.timeline;
           if (raw) tline = JSON.parse(raw) || [];
         } catch {}
         const spoken = tline.filter((e) => e && e.said && e.role);
@@ -62354,7 +62378,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // and `config:talk:model` gives the lane a faster model without a deploy. Unset, nothing
       // changes.
       _tick("catalog");
-      const talkPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
+      const talkPin = (await (_pre ? _pre.model : env.AURA_KV.get("config:talk:model").catch(() => null))) || null;
       const talkModel = talkPin && talkPin.trim() ? talkPin.trim() : undefined;
 
       // ══ SHE KNOWS WHERE SHE IS STANDING (2026-09-06) ═══════════════════════════════════════
@@ -62498,7 +62522,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // The brief so far, so the extractor amends rather than re-reads from cold.
       let carriedObj = null;
       if (me) {
-        try { carriedObj = await env.AURA_KV.get("talk:brief:" + me, "json"); } catch {}
+        try { carriedObj = _pre ? await _pre.brief : null; } catch {}
       }
       const carried = carriedObj && typeof carriedObj === "object"
         ? Object.keys(carriedObj).filter((k) => carriedObj[k] != null && carriedObj[k] !== "")
@@ -62514,13 +62538,13 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // branch from is often three back. `from` makes the strip in the UI a real control rather
       // than a history display.
       let lastDrawn = null;
-      if (me) { try { lastDrawn = await env.AURA_KV.get("talk:last:" + me, "json"); } catch {} }
+      if (me) { try { lastDrawn = await _pre.last; } catch {} }
       // ══ TWO BAD RESULTS AND WE START AGAIN FROM THE PHOTO (2026-09-16, v9.277) ══════════════
       // Practitioners on stacked edits: every pass re-renders the whole picture and a bad child
       // only gets worse when patched. After two wrong results in a row, the next change goes back
       // to their ORIGINAL photograph with everything still wanted in one instruction.
       let badStreak = 0;
-      if (me) { try { badStreak = Number(await env.AURA_KV.get("talk:bad:" + me)) || 0; } catch {} }
+      if (me) { try { badStreak = Number(await _pre.bad) || 0; } catch {} }
       // ══ EACH CHECK IS A SETTING (2026-09-17) ═══════════════════════════════════════════════
       // The checks exist because two steps are still model redraws. Once a step is proven, its
       // check is switched off: `config:check:mockup` and `config:check:sheets`, "off" to skip.
@@ -62622,7 +62646,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       } else if (me) {
         // No new picture this turn - carry the one they already sent.
         try {
-          const held = await env.AURA_KV.get("talk:ref:" + me, "json");
+          const held = await _pre.ref;
           if (held) { refSaw = held.saw || null; refUrl = held.url || null;
                       refDesign = held.design || null; refHeld = true; }
         } catch {}
@@ -63543,9 +63567,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             const line = String(text || "").trim();
             if (!line) continue;
             try {
-              await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
+              const _cmdThem = "PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
                 said: line.slice(0, 600), who, channel: "chat", mode: "tattoo", at: tsNow,
-              }), env, true);
+              });
+              await _record(() => processCommand(_cmdThem, env, true));
             } catch {}
           }
         }
@@ -64453,10 +64478,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const changed = JSON.stringify(merged) !== JSON.stringify(carriedObj || {});
           if (changed && stage === "pta" && env.PTA_DO) {
             try {
-              const bStub = env.PTA_DO.get(env.PTA_DO.idFromName(me));
-              await bStub.fetch(new Request("http://do", { method: "POST",
-                body: JSON.stringify({ method: "appendChain",
-                                       params: ["WANTS", "self", merged] }) }));
+              const _wantsBody = JSON.stringify({ method: "appendChain",
+                                                  params: ["WANTS", "self", merged] });
+              await _record(() => env.PTA_DO.get(env.PTA_DO.idFromName(me))
+                .fetch(new Request("http://do", { method: "POST", body: _wantsBody })));
             } catch {}
           }
           // What she answers from is the running brief, not this turn's slice of it.
@@ -64518,15 +64543,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           if (tline.length > 60) tline = tline.slice(-60);
           await env.AURA_KV.put("pta:timeline:" + me, JSON.stringify(tline)).catch(() => {});
           if (stage === "pta") {
-            await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
+            const _cmdAura = "PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
               said: _said.slice(0, 600), who: "aura", channel: "chat", mode: "tattoo",
-              at: new Date().toISOString() }), env, true).catch(() => {});
+              at: new Date().toISOString() });
+            await _record(() => processCommand(_cmdAura, env, true));
             if (drew && (drew.image || drew.failed)) {
-              await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
+              const _cmdPic = "PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
                 said: (drew.image ? "Picture made from: " : "Picture failed, from: ") +
                       String(drew.changed || "").slice(0, 500),
                 who: "picture", channel: "chat", mode: "tattoo", at: new Date().toISOString(),
-                ...(drew.image ? { image: drew.image } : {}) }), env, true).catch(() => {});
+                ...(drew.image ? { image: drew.image } : {}) });
+              await _record(() => processCommand(_cmdPic, env, true));
             }
           }
         } catch {}
@@ -65296,7 +65323,8 @@ export class PublicEntry extends WorkerEntrypoint {
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref });
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref,
+            waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
           // lost the picture is visible in the output rather than looking like her judgement.
           return (_ref && _o && typeof _o === "object") ? { ..._o, ref: _ref } : _o;
@@ -65314,6 +65342,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               from: b.from || null, world, ref: _ref,
+              waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },
             });

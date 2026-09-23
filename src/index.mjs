@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.402.0-2026-09-23-a-fresh-start-carries-nothing-over";
+const BUILD = "aura-core-v9.403.0-2026-09-23-whole-words-and-one-read-per-website";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25580,9 +25580,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Removal" and "Amillion Tattoo, Piercings, and Laser Removal" are parlours that also remove,
         // and "removal" alone skipped them. A removal clinic says "tattoo removal" or is Removery.
         // "suppl" catches a supply store ("Fort Worth Tattoo Supplies" was kept in the Texas count).
-        const _NOT_A_PARLOUR = ["cosmetic", "brow", "lash", "aesthetic", "beauty", "microblad",
-                                "threading", "makeup", "tattoo removal", "removery", "suppl",
-                                " spa", "salon"];
+        // WHOLE WORDS, NOT PIECES OF WORDS (2026-09-23). MEASURED on the Texas count: "Flashover Ink
+        // Tattoo" was skipped for containing "lash", and every "Brown..." / "Brownsville" shop would
+        // have gone for "brow". The beauty words are matched as the words they are.
+        const _NOT_A_PARLOUR = ["cosmetic", "brows", "eyebrow", "brow bar", "lashes", "eyelash",
+                                "lash bar", "lash studio", "lash lounge", "aesthetic", "beauty",
+                                "microblad", "threading", "makeup", "tattoo removal", "removery",
+                                "suppl", " spa", "salon"];
         const _LIKELY =
           " AND (instr(lower(name),'tatt')>0 OR instr(lower(name),'ink')>0 OR instr(lower(name),'studio')>0" +
           " OR instr(lower(COALESCE(website,'')),'tatt')>0 OR instr(lower(COALESCE(website,'')),'ink')>0)" +
@@ -25591,6 +25595,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           " AND NOT (instr(lower(name),'pierc')>0 AND instr(lower(name),'tatt')=0 AND instr(lower(name),'ink')=0)" +
           " AND instr(lower(COALESCE(website,'')),'instagram.com')=0" +
           " AND instr(lower(COALESCE(website,'')),'facebook.com')=0";
+        // ONE READ PER WEBSITE (2026-09-23). MEASURED in Austin: the source lists one shop two or
+        // three times under slightly different names - Atomic Tattoo x3, Electric 13 x2, BlindSide x2
+        // - and each listing was read, and paid for, separately. A listing is skipped when another
+        // listing in the same state has the same website (protocol, www and trailing slash ignored)
+        // and an earlier id. One of each goes through. `ALL` turns this off with the filter.
+        const _SITE = (t) => "rtrim(replace(replace(replace(lower(trim(COALESCE(" + t + ".website,''))),'https://',''),'http://',''),'www.',''),'/')";
+        const _ONE_PER_SITE =
+          " AND NOT EXISTS (SELECT 1 FROM cg_business o WHERE o.industry = 'tattoo'" +
+          " AND o.region = cg_business.region AND o.id < cg_business.id" +
+          " AND " + _SITE("o") + " = " + _SITE("cg_business") + " AND " + _SITE("o") + " <> '')";
         const _scope = (beArgs[0] || "").toUpperCase();
         if (_scope === "STATE" || _scope === "CITY") {
           const col = _scope === "STATE" ? "region" : "locality";
@@ -25606,7 +25620,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   "AND understanding NOT LIKE '%last_empty_read%'))")
             : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(" + col + ") = ? " +
               "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL";
-          const _picked = _selSql + (beAll ? "" : _LIKELY);
+          const _picked = _selSql + (beAll ? "" : _LIKELY + _ONE_PER_SITE);
           if (beCount) {
             const _n = async (sql) => Number((await env.AURA_MEMORY.prepare(
               sql.replace(/^SELECT id FROM/, "SELECT COUNT(*) AS n FROM")).bind(_selKey).first())?.n || 0);
@@ -25614,12 +25628,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               sql.replace(/^SELECT id FROM/, "SELECT name, website FROM") + " ORDER BY RANDOM() LIMIT 8")
               .bind(_selKey).all())?.results || []);
             const nAll = await _n(_selSql);
-            const nKeep = await _n(_selSql + _LIKELY);
+            const nKeep = await _n(_selSql + _LIKELY + _ONE_PER_SITE);
+            const nDup = (await _n(_selSql + _LIKELY)) - nKeep;
             return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, counted_only: true, mode: cgMode,
               scope: _scope.toLowerCase() + " " + _selKey,
               would_pick: beAll ? nAll : nKeep, eligible_before_filter: nAll,
-              filter_skips: nAll - nKeep, filter_on: !beAll, one_batch_takes: _selLim,
-              sample_kept: await _names(_selSql + _LIKELY),
+              filter_skips: nAll - nKeep - nDup, duplicate_sites_skipped: nDup,
+              filter_on: !beAll, one_batch_takes: _selLim,
+              sample_kept: await _names(_selSql + _LIKELY + _ONE_PER_SITE),
               sample_skipped: beAll ? [] : await _names(_selSql + " AND NOT (1=1" + _LIKELY + ")"),
               note: "Nothing was started. Drop COUNT to run it; add ALL to run without the filter." } };
           }

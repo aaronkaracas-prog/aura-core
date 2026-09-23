@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.393.0-2026-09-22-talk-reads-once-and-writes-after";
+const BUILD = "aura-core-v9.394.0-2026-09-22-she-knows-what-they-were-looking-at";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7506,6 +7506,7 @@ async function processCommand(line, env, isOp) {
       const tkPta = tkId.split(/\s+/)[0];
       // `TALK <pta> REF <url> ::: <msg>` is a tap on the wall, from a terminal.
       const tkRef = (tkId.match(/\bREF\s+(https?:\/\/\S+)/i) || [])[1] || null;
+      const tkTile = (tkId.match(/\bTILE\s+(img_[a-z0-9]+)/i) || [])[1] || null;
       // ══ `TALK <pta> WORLD <name> ::: <msg>` ─ THE BACK-END TEST FOR THE DOORWAY (2026-09-13) ══
       // The web path gets its world from the hostname aura-host sends. A terminal has no hostname,
       // so the test harness has to be able to NAME one - otherwise the only way to exercise a world
@@ -7522,12 +7523,12 @@ async function processCommand(line, env, isOp) {
         what_to_do: "WORLD must be one of the declared worlds - see AURA_WORLDS in aura-core." } };
       try {
         const tkOut = await auraTalk(env, tkPta, /^pta_/.test(tkPta) ? "pta" : "contacted",
-                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef, world: tkWorld });
+                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef, world: tkWorld, tile: tkTile });
         return { cmd: "TALK", payload: { ...tkOut, pta: tkPta,
                  stage: /^pta_/.test(tkPta) ? "pta" : "contacted",
                  book: "closed",
                  brief_mode: tkNoBrief ? "bare" : "full",
-                 ...(tkRef ? { ref: tkRef } : {}) } };
+                 ...(tkRef ? { ref: tkRef } : {}), ...(tkTile ? { tile: tkTile } : {}) } };
       } catch (e) {
         return { cmd: "TALK", payload: { ok: false, error: "THREW",
           detail: String(e && e.message || e).slice(0, 300) } };
@@ -62341,6 +62342,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         last:     env.AURA_KV.get("talk:last:" + me, "json").catch(() => null),
         bad:      env.AURA_KV.get("talk:bad:" + me).catch(() => null),
         ref:      env.AURA_KV.get("talk:ref:" + me, "json").catch(() => null),
+        tile:     env.AURA_KV.get("talk:tile:" + me, "json").catch(() => null),
       } : null;
       // ══ THE RECORD IS WRITTEN AFTER THE REPLY, IN ORDER (2026-09-22) ═══════════════════════
       // MEASURED: 5.7s of a 16.5s turn spent writing her chain and memory AFTER her answer existed,
@@ -63096,7 +63098,33 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // channel definition because none of it is the same twice.
       // THE FLOOR KEEPS `fullSys` UNCHANGED - it is a direct model call with its own `system`
       // and never touches a channel, so it must still carry the contract itself.
-      const agentSys = shelf + found + stateNote + resetNote + picNote + refNote + refBlind;
+      // ══ WHERE THEY CAME IN (2026-09-22, handoff item 4) ═══════════════════════════════════════
+      // Every picture on the home screen - 68 tiles, 30 trending, 4 job cards - was drawn from one
+      // sentence, and that sentence is stored with it (`imagemeta:<id>`). When somebody taps one and
+      // then talks to her, the page sends its id; she is told the words it was drawn from. CONTEXT
+      // ONLY (Aaron): it is never their picture, never a parent, never sent to the picture model.
+      // Kept for a day so the next few turns still know it; a new tap replaces it. No tile, no note.
+      let _cameFrom = null;
+      const _tileIn = String((opts && opts.tile) || "").trim();
+      if (me && /^img_[a-z0-9]{6,40}$/i.test(_tileIn)) {
+        try {
+          const _tm = await env.AURA_KV.get("imagemeta:" + _tileIn, "json");
+          const _tw = (_tm && typeof _tm.prompt === "string") ? _tm.prompt.trim() : "";
+          if (_tw) {
+            _cameFrom = { id: _tileIn, words: _tw.slice(0, 600), at: new Date().toISOString() };
+            await env.AURA_KV.put("talk:tile:" + me, JSON.stringify(_cameFrom),
+              { expirationTtl: 24 * 3600 }).catch(() => {});
+          }
+        } catch {}
+      } else if (me && _pre) {
+        try { _cameFrom = await _pre.tile; } catch {}
+      }
+      const tileNote = (_cameFrom && _cameFrom.words)
+        ? "\n\nWHERE THEY CAME IN: before talking to you they tapped a picture on the home screen. " +
+          "It was drawn from these words: \"" + _cameFrom.words + "\". That is what they were " +
+          "looking at - it is not a picture of theirs."
+        : "";
+      const agentSys = shelf + found + stateNote + resetNote + picNote + refNote + refBlind + tileNote;
 
       // ══ A GREETING HAS TO LOOK LIKE A GREETING (2026-09-14) ════════════════════
       // Aaron, and it is the only thing this session was ever about: "I can't say hello to an agent."
@@ -63110,7 +63138,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // THE MOMENT ANYTHING IS LIVE, IT ALL RIDES AGAIN. A piece on screen, a photograph, a brief
       // already settled - then "hey" means "I am still here" and she needs the room to answer it,
       // which is exactly what she did on the back piece today.
-      const hasLive = !!(lastDrawn && lastDrawn.design) || !!refUrl || !!refSaw || !!carried;
+      const hasLive = !!(lastDrawn && lastDrawn.design) || !!refUrl || !!refSaw || !!carried || !!tileNote;
       // ══ A FRESH INSTANCE HAS NO EXAMPLES TO COPY (2026-09-14) ═══════════════════════════════
       // MEASURED, two identities, same channel, same contract, same model: the one with dozens of
       // her own JSON replies in its session returns JSON every time. A brand new one returned
@@ -64574,6 +64602,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                // rather than pretending every visit is the first one.
                ...(agentNote && !agentVia ? { agent_note: agentNote } : {}),
                remembering: me ? tline.length : 0,
+               ...(_cameFrom ? { came_from: _cameFrom.id } : {}),
                kept: stage === "pta",
                // Which Aura answered: her own instance, or the local floor beneath it.
                via: agentVia || "local" };
@@ -65324,6 +65353,7 @@ export class PublicEntry extends WorkerEntrypoint {
         }
         if (!b.stream) {
           const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref,
+            tile: b.tile || null,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
           // lost the picture is visible in the output rather than looking like her judgement.
@@ -65341,7 +65371,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, ref: _ref,
+              from: b.from || null, world, ref: _ref, tile: b.tile || null,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },

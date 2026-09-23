@@ -16,6 +16,52 @@
   --violet:#a855f7;--violet-dim:#6d28d9;--tap:44px;--gut:18px;--tile:140px;
 }
 html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+/* ══ HOME ═══════════════════════════════════════════════════════════════════════════════════
+   Intent first, then what is moving now, then everything we know. Both discovery rows scroll
+   sideways; nothing tries to show the whole catalogue at once. A tile with no banked picture
+   still opens - it carries its words and starts the conversation. ═════════════════════════ */
+.tag{color:var(--dim);font-size:.82rem;margin:-6px 0 2px}
+.sect{margin:22px 0 4px}
+.sect h2{font-size:1.5rem;font-weight:800;letter-spacing:-.02em}
+.sect p{color:var(--violet);font-size:.9rem;margin-top:2px}
+.jobs{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:12px 0 4px;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none}
+.jobs::-webkit-scrollbar,.row::-webkit-scrollbar{display:none}
+.job{flex:0 0 63%;max-width:230px;scroll-snap-align:start;position:relative;aspect-ratio:3/4;
+  border-radius:16px;overflow:hidden;border:1px solid var(--line);background:var(--card);
+  text-align:left;color:inherit;font:inherit;cursor:pointer;padding:0}
+.job img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55}
+.job .lab{position:absolute;left:14px;right:14px;bottom:14px}
+.job b{display:block;font-size:1.12rem;font-weight:800;line-height:1.15}
+.job small{display:block;color:#c9c9d2;margin-top:4px;font-size:.8rem}
+.job:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+.row{display:flex;gap:12px;overflow-x:auto;padding:12px 0 6px;scroll-snap-type:x proximity;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none}
+.row .tile{flex:0 0 132px;scroll-snap-align:start}
+.row.drag,.jobs.drag{cursor:grabbing}
+/* A mouse has no swipe, so every row carries its own arrows. They appear on a pointer device
+   only - a phone already knows how to do this and does it better. */
+.rowwrap{position:relative}
+.arw{position:absolute;top:calc(50% - 34px);width:38px;height:38px;border-radius:50%;
+  border:1px solid var(--line);background:rgba(20,20,24,.92);color:var(--ink);cursor:pointer;
+  display:none;place-items:center;font-size:1.1rem;line-height:1;z-index:5}
+.arw.l{left:-6px} .arw.r{right:-6px}
+.arw:disabled{opacity:.25;cursor:default}
+@media (hover:hover) and (pointer:fine){ .rowwrap:hover .arw{display:grid} }
+/* A tapped tile opens here first - big picture, its name, and two ways out: the button, or
+   anywhere off the picture. The category only opens if they ask for it. */
+#peek{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.86);display:none;
+  align-items:center;justify-content:center;padding:24px}
+#peek.on{display:flex}
+#peek .box{max-width:460px;width:100%;background:var(--card);border:1px solid var(--line);
+  border-radius:18px;overflow:hidden}
+#peek img{width:100%;display:block;aspect-ratio:1;object-fit:cover;background:#000}
+#peek .foot{padding:14px 16px 16px}
+#peek h3{font-size:1.15rem;font-weight:800}
+#peek .acts{display:flex;gap:10px;margin-top:12px}
+#peek button{flex:1;min-height:var(--tap);border-radius:12px;border:1px solid var(--line);
+  background:#1c1c22;color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
+#peek button.go{background:var(--violet);border-color:var(--violet)}
 body{background:var(--bg);color:var(--ink);height:100dvh;display:flex;flex-direction:column;
   font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
   -webkit-font-smoothing:antialiased}
@@ -30,6 +76,19 @@ header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-betwe
 .me{width:38px;height:38px;border-radius:50%;border:1.5px solid var(--line);background:#1c1c22;
   cursor:pointer;flex:0 0 auto;display:grid;place-items:center;font-size:.8rem;font-weight:700;color:var(--dim)}
 .me:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+.me.out{width:auto;border-radius:999px;padding:0 16px;background:var(--violet-dim);border-color:var(--violet);color:#fff;font-size:.85rem}
+/* SIGN IN TO DO ANYTHING (2026-09-20). The page is visible to everybody; anything that DOES
+   something asks for sign-in first, over the page, so they can see exactly where they are. */
+#gate{position:fixed;inset:0;z-index:60;display:none;align-items:flex-end;justify-content:center;
+  background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+#gate.up{display:flex}
+#gate .card{width:100%;max-width:26rem;margin:0 12px calc(14px + env(safe-area-inset-bottom));
+  background:rgba(22,22,28,.92);border:1px solid var(--line);border-radius:22px;padding:22px;text-align:center}
+#gate h3{font-size:1.15rem;margin-bottom:6px}
+#gate p{color:var(--dim);font-size:.9rem;margin-bottom:16px}
+#gate a{display:block;background:var(--violet-dim);border:1px solid var(--violet);color:#fff;border-radius:999px;
+  padding:12px;text-decoration:none;font-weight:600;min-height:var(--tap)}
+#gate button{margin-top:10px;background:none;border:0;color:var(--dim);font:inherit;cursor:pointer;min-height:var(--tap)}
 
 /* ── the pager. Native scroll-snap: real momentum, and no JS runs while the thumb moves. ──── */
 /* ══ THE THREAD CANNOT REACH THE COMPOSER (2026-09-07) ═════════════════════════════════════
@@ -232,6 +291,31 @@ nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;bor
 /* THEIR PHOTO, AND THE FILES FOR THEIR ARTIST (2026-09-19)
    The camera sits in the composer because a photo is something you SAY to her, not a separate
    screen. Once one is picked, the button shows it, so there is no doubt what is about to go. */
+/* AURA IS IMAGINING (2026-09-20). Her mark is the blue monarch with the purple aura. When she is
+   working, the butterfly stays still and the aura breathes outward in soft rings, with a slow
+   shimmer through the wings. When the picture itself is being made, she brightens. No progress bar:
+   nothing here knows how far along she is, so nothing pretends to. */
+#composer .glyph{background:none;overflow:hidden;position:relative}
+#composer .glyph img{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block}
+.aura-mark{position:relative;width:56px;height:56px;flex:0 0 auto;border-radius:50%}
+.aura-mark img{position:relative;z-index:2;width:100%;height:100%;object-fit:cover;border-radius:50%;
+  display:block;transition:filter .8s ease}
+.aura-mark::before,.aura-mark::after{content:"";position:absolute;inset:0;border-radius:50%;z-index:1;
+  box-shadow:0 0 0 0 rgba(168,85,247,.55);animation:auraRing 2.6s ease-out infinite}
+.aura-mark::after{animation-delay:1.3s}
+.aura-mark .shimmer{position:absolute;inset:0;z-index:3;border-radius:50%;pointer-events:none;
+  background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.35) 50%,transparent 65%);
+  background-size:250% 100%;mix-blend-mode:overlay;animation:auraShimmer 3.2s ease-in-out infinite}
+.aura-mark.near img{filter:brightness(1.25) saturate(1.25)}
+.aura-mark.near::before,.aura-mark.near::after{animation-duration:1.8s}
+@keyframes auraRing{0%{box-shadow:0 0 0 0 rgba(168,85,247,.55)}100%{box-shadow:0 0 0 22px rgba(168,85,247,0)}}
+@keyframes auraShimmer{0%{background-position:150% 0}100%{background-position:-50% 0}}
+#composer .glyph.busy{animation:auraBreath 2.2s ease-in-out infinite}
+@keyframes auraBreath{0%,100%{box-shadow:0 0 0 0 rgba(168,85,247,.6)}50%{box-shadow:0 0 0 7px rgba(168,85,247,0)}}
+.thinking-row{display:flex;align-items:center;gap:14px;margin:0 0 14px}
+.thinking-row .lbl{color:#c4b5fd;font-size:.92rem;letter-spacing:.01em}
+.turn.aura .note-sm{display:block;color:var(--dim);font-size:.8rem;margin-top:4px}
+@media (prefers-reduced-motion:reduce){.aura-mark::before,.aura-mark::after,.aura-mark .shimmer,#composer .glyph.busy{animation:none}}
 #composer .cam{width:36px;height:36px;border-radius:50%;flex:0 0 auto;border:1px solid var(--line);
   background:#1c1c22;color:var(--dim);display:grid;place-items:center;cursor:pointer;padding:0;overflow:hidden}
 #composer .cam svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;
@@ -329,10 +413,14 @@ nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;bor
   <div id=thread><div class=wrap id=threadIn></div></div>
 </div>
 
+<div id=peek aria-hidden=true><div class=box>
+  <img id=peekImg alt=""><div class=foot><h3 id=peekName></h3>
+  <div class=acts><button id=peekClose>Close</button><button class=go id=peekGo>Explore this</button></div>
+</div></div></div>
 <div id=chip><button id=chipBtn></button></div>
 
 <div id=composer>
-  <div class=glyph aria-hidden=true>&#10022;</div>
+  <div class=glyph id=auraGlyph aria-hidden=true><img src="data:image/webp;base64,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" alt=""></div>
   <button class=cam id=camBtn aria-label="Add a photo of your tattoo"></button>
   <input type=file id=file accept="image/*" style="display:none">
   <input id=say placeholder="Ask Aura or pick a category" autocomplete=off>
@@ -342,11 +430,14 @@ nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;bor
 <nav><div class=bar id=tabs></div></nav>
 
 <div id=scrim></div>
+<div id=gate><div class=card><h3>Sign in to keep going</h3>
+  <p>One account for everything. Google or your email - it takes a moment.</p>
+  <a id=gateGo href="#">Sign in</a><button id=gateNo>Not now</button></div></div>
 <div id=sheet><div class=in>
   <div class=grab></div>
   <a>Account</a><a>Saved designs</a><a>Notifications</a>
   <div class=rule></div>
-  <a>Help</a><a>Privacy</a><a>Sign out</a>
+  <a>Help</a><a>Privacy</a><a href="/_signout?to=/shell" id=signOut>Sign out</a>
   <small>Settings and account only. Anything you do often is a tab.</small>
 </div></div>
 
@@ -373,6 +464,11 @@ var STEPS = [
 ];
 
 var at=0, step=0, chosen={}, index=null, cache={}, SESSION=null;
+/* WHERE THEY CAME IN (2026-09-22). The picture they tapped - a tile or a job card - rides with their
+   next message to Aura as the picture's id. Core reads the words that picture was drawn from and
+   hands them to her as context: what they were looking at, never their tattoo. Sent once. */
+var CAME_FROM=null;
+function imgIdOf(u){ var m=String(u||'').match(/\/image\/(img_[a-z0-9]+)/i); return m?m[1]:null }
 var piece={}, finishes=null, busy=false, busyStyle='', catAll=false, thread=[];
 var sets=null, chosenSet={}, skipped={}, gate=null, reopen=null, showAll=false;
 function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML}
@@ -391,34 +487,41 @@ function count(it){
    the session rides on every call after it.
    The session is kept, so a reload continues as the same person instead of minting a fresh lead
    on every page load - which would fill the graph with strangers who each looked at one screen. */
+var ME = { signed_in:false, name:null };
+/* Aura's mark, the same image the composer carries, used wherever she is working. */
+var AURA_MARK = document.getElementById('auraGlyph').querySelector('img').src;
+function auraBusy(on){ document.getElementById('auraGlyph').classList.toggle('busy', !!on) }
+function signinUrl(){ return 'https://auras.guide/signin?dest=' + encodeURIComponent(location.href) }
+/* WHO IS HERE (2026-09-20). This used to mint a guest (`hello`) and keep it in localStorage. There
+   are no guests now: sign-in happens at auras.guide and comes back to this page, and host keeps the
+   session as this world's cookie. The page only needs to know signed in or not, and a name. */
 function hello(){
-  var kept=null; try{ kept=localStorage.getItem('mt:session') }catch(e){}
-  if(kept){ SESSION=kept; return Promise.resolve(true) }
-  return fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({action:'hello'})})
-    .then(function(r){return r.json()}).then(function(d){
-      if(d&&d.ok&&d.session){ SESSION=d.session;
-        try{ localStorage.setItem('mt:session',SESSION) }catch(e){}
-        return true }
-      return false;
-    }).catch(function(){ return false });
+  try{ localStorage.removeItem('mt:session') }catch(e){}
+  return fetch('/_me',{credentials:'include'}).then(function(r){return r.json()}).then(function(d){
+    ME = { signed_in: !!(d&&d.signed_in), name: (d&&d.name)||null };
+    paintMe(); return true;
+  }).catch(function(){ paintMe(); return true });
 }
+function paintMe(){
+  var b = document.getElementById('meBtn');
+  if(ME.signed_in){ b.classList.remove('out'); b.textContent = (ME.name||'A').trim().charAt(0).toUpperCase() || 'A';
+    b.setAttribute('aria-label','Account and settings') }
+  else { b.classList.add('out'); b.textContent = 'Sign in'; b.setAttribute('aria-label','Sign in') }
+}
+/* The one gate. Anything that does something calls this first; the server says SIGN_IN too, so a
+   stale page still ends up here rather than failing quietly. */
+function needSignin(){
+  document.getElementById('gateGo').href = signinUrl();
+  document.getElementById('gate').classList.add('up');
+}
+function signedIn(){ if(ME.signed_in) return true; needSignin(); return false }
 
 function ask(body){
   return fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(Object.assign({action:'catalog',session:SESSION},body||{}))})
     .then(function(r){return r.json()})
     .then(function(d){
-      /* A session can expire under somebody mid-browse. Mint a new one and retry once rather
-         than showing them a dead screen they have no way to act on. */
-      if(d&&d.error==='NO_SESSION'){
-        try{ localStorage.removeItem('mt:session') }catch(e){}
-        SESSION=null;
-        return hello().then(function(){ return fetch('/_design',{method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify(Object.assign({action:'catalog',session:SESSION},body||{}))})
-          .then(function(r){return r.json()}) });
-      }
+      if(d&&d.error==='SIGN_IN') needSignin();
       return d;
     })
     .catch(function(){return {ok:false,error:'UNREACHABLE'}});
@@ -498,15 +601,153 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
       '<p>'+esc(d.categories||0)+' categories are in the tree. Run <code>BROWSE</code> to bank a '+
       'cover for each. It reads only - nothing is drawn.</p></div>'; return;
   }
-  el.innerHTML='<div class=head><h2>Browse</h2></div>'+
-    '<div class=tally><b>'+(d.categories||d.items.length)+'</b> categories<i>\u00b7</i>'+
-      '<b>'+(d.things||0)+'</b> things<i>\u00b7</i><b>'+(d.pictures||0)+'</b> pictures</div>'+
-    '<div class=rail>'+ d.items.map(function(it){
-      return tile(it,false,count(it)) }).join('') +'</div>';
+  /* THE FOUR DOORS ARE THE FOUR JOBS THE ENGINE KNOWS: new, add, cover - and browsing, which is
+     this page. Tapping one says it in the person's own words and hands it to Aura, who asks for
+     the photograph herself on the two that need one. No second copy of the flow lives here. */
+  /* Each card's picture was drawn for this screen and lives on our own domain - never borrowed
+     from a catalogue tile, which is what the first version did while these were being made. */
+  var JOBS=[
+    {say:'I want to create a new tattoo',            t:'Create<br>New Tattoo', s:'Turn your idea into something amazing.',
+     img:'https://auras.guide/image/img_mud7yi749k9p'},
+    {say:'I want to add to a tattoo I already have', t:'Add to<br>Existing',   s:'Keep the story going.',
+     img:'https://auras.guide/image/img_mud7yw9v0hqd'},
+    {say:'I want to cover up a tattoo',              t:'Cover Up<br>a Tattoo', s:'A fresh start.',
+     img:'https://auras.guide/image/img_mud7zbb341v0'},
+    {browse:true,                                    t:'Browse<br>Our Catalog',s:'Explore thousands of designs.',
+     img:'https://auras.guide/image/img_mud8136jec30'}
+  ];
+  /* Trending is what is moving right now - a doorway, not a taxonomy. A name here can also be a
+     permanent category below; that is the point of it. Pictures arrive as they are banked. */
+  /* Each trend carries its own picture, drawn for this screen: artwork on black, never a body.
+     A trend with no picture yet shows its words and still opens - nothing here waits on art. */
+  var TRENDING=[
+    ['Neo-Tribal','img_mud3ajroka0h'],['Cybersigilism','img_mud3ci2zhq1u'],
+    ['Ignorant / Doodle','img_mud3d03cnlnf'],['Sticker Tattoos','img_mud3dexerrl1'],
+    ['Patchwork','img_mud3dw56dhes'],['Micro Realism','img_mud3egncnszi'],
+    ['Micro Tattoos','img_mud3eusfa65j'],['Fine-Line Florals','img_mud3b5j6pp0x'],
+    ['Ornamental','img_mud3f6u04whu'],['Body Jewelry Tattoos','img_mud3fxklar64'],
+    ['Blackwork','img_mud4c60rqxdr'],['Negative Space','img_mud4effyhgi9'],
+    ['Blackout','img_mud4etgalaxi'],['Y2K / Nostalgia','img_mud4f8rlm88o'],
+    ['Chrome / Metallic','img_mud4fou7cf4m'],['Red Ink','img_mud4g46fx7ov'],
+    ['Handwritten / Scribble','img_mud4ginmcx7z'],['Tiny Lettering','img_mud4h07r3w2g'],
+    ['Botanical Fine Line','img_mud4hdzzuuan'],['Abstract Linework','img_mud4hyv50i0e'],
+    ['Organic / Body-Flow','img_mud4ja926yjj'],['Delicate Tattoos','img_mud4jodivkhj'],
+    ['Tiny Symbols','img_mud4k1jj8nrl'],['Bows & Ribbons','img_mud4kew0vpyw'],
+    ['Cherries','img_mud4kt20u3v5'],['Butterflies','img_mud4l7tkpbjd'],
+    ['Celestial / Stars','img_mud4llonyzpf'],['Personal Symbols','img_mud4lzgz07gd'],
+    ['Memory / Story Tattoos','img_mud4mdhdjplh'],['Nostalgic Objects','img_mud4msm8ljf0']];
+  var byLabel={}; d.items.forEach(function(it){ byLabel[String(it.label).toLowerCase()]=it });
+  /* THE PERMANENT CATALOGUE: 44 subjects then 24 styles, each with a picture drawn for this
+     screen under one house style - artwork on black, never a body. The catalogue behind them is
+     unchanged; these are the doorway, and a name the catalogue knows still opens its ladder. */
+  var CATALOG=[
+    ['Portraits','img_mud4whrcovzv'],['Animals & Pets','img_mud4xe6hcj08'],
+    ['Flowers & Plants','img_mud4xt4g08e2'],['Dragons','img_mud4y6liazea'],
+    ['Skulls & Skeletons','img_mud4ymqfhxsw'],['Nature & Landscapes','img_mud4yzt80gdm'],
+    ['Ocean & Marine','img_mud4zf6rzbr8'],['Birds','img_mud4zvucne0m'],
+    ['Insects & Butterflies','img_mud508lj1utk'],['Mythology','img_mud528eme9tv'],
+    ['Fantasy','img_mud53obwz86l'],['Religious & Spiritual','img_mud5449s3xgy'],
+    ['Angels & Demons','img_mud54npbkd2n'],['Symbols','img_mud555x7yljv'],
+    ['Zodiac & Astrology','img_mud55kjwtth1'],['Space & Universe','img_mud55yz77nho'],
+    ['Lettering & Quotes','img_mud56d66vizn'],['Memorials','img_mud56t071mei'],
+    ['Family','img_mud57ceuia5i'],['Love & Relationships','img_mud5cxatvg4w'],
+    ['Music','img_mud5ed85u0qw'],['Movies & TV','img_mud5eu491ywf'],
+    ['Anime & Manga','img_mud5f8af2w0o'],['Comics & Superheroes','img_mud5l2t3ej7x'],
+    ['Gaming','img_mud5g4ijkuh4'],['Sports','img_mud5girrjwmq'],
+    ['Cars & Motorcycles','img_mud5gxw55tce'],['Travel & Places','img_mud5hc9glpsn'],
+    ['Culture & Heritage','img_mud5hqpr1tx3'],['History','img_mud5jvwfst5n'],
+    ['Warriors','img_mud5lsdt5mu5'],['Horror','img_mud5m7tdtk31'],
+    ['Gothic & Dark Art','img_mud5mmrav8mw'],['Food & Drink','img_mud5n0azuy9f'],
+    ['Objects & Things','img_mud5ndtfa6p3'],['Architecture & Cityscapes','img_mud5nvc1hjq3'],
+    ['Science','img_mud5o91i9ss1'],['Technology & Future','img_mud5onff3rp3'],
+    ['Abstract & Conceptual','img_mud5p0eg16sm'],['Geometric & Patterns','img_mud5pf2i2vhf'],
+    ['Humor & Fun','img_mud5rgz2kcsw'],['Matching Tattoos','img_mud5rwflorub'],
+    ['Personal Story','img_mud5sbcozeao'],['Something Completely Original','img_mud5sp3hhpw1'],
+    ['Japanese','img_mud5t2j04aq4'],['Realism','img_mud5tgklzenm'],
+    ['Hyperrealism','img_mud5tstwyc04'],['Photorealism','img_mud5u6wgtt2e'],
+    ['Black & Grey Realism','img_mud5ujdf7s8p'],['Colour Realism','img_mud5uv569cyb'],
+    ['Fine Line','img_mud5wpyxm2p4'],['Micro Fine Line','img_mud5x2wcht0i'],
+    ['American Traditional','img_mud5xdnmajes'],['Neo-Traditional','img_mud5xroxrxmy'],
+    ['Blackwork','img_mud5y692td2t'],['Illustrative','img_mud5ylc7qyk9'],
+    ['Watercolour','img_mud5yyqew4sf'],['Geometric','img_mud5zg1m3m1o'],
+    ['Minimalist','img_mud5zvid2d0b'],['Dotwork','img_mud605mkfkk5'],
+    ['Ornamental','img_mud6uw12qrny'],['Chicano','img_mud6vbu6ykp2'],
+    ['Surrealism','img_mud6vpnmcufk'],['Sketch','img_mud6w52nklm9'],
+    ['Etching','img_mud6wjg7utii'],['New School','img_mud6wy8uqnak'],
+    ['3D / Optical','img_mud6xdh3djfd'],['Tribal','img_mud6y7ralugh']];
+  var catTiles=CATALOG.map(function(c){
+    var hit=byLabel[c[0].toLowerCase()];
+    return tile({value:(hit&&hit.value)||c[0],label:c[0],
+                 image:'https://auras.guide/image/'+c[1]},false,'');
+  }).join('');
+
+  var trendTiles=TRENDING.map(function(t){
+    var name=t[0], own=t[1]?'https://auras.guide/image/'+t[1]:null;
+    var hit=byLabel[name.toLowerCase()]||byLabel[name.split(' / ')[0].toLowerCase()];
+    return tile({value:(hit&&hit.value)||name,label:name,image:own||(hit&&hit.image)},false,'');
+  }).join('');
+
+  el.innerHTML=
+    '<div class=tag>Good tattoos happen here</div>'+
+    '<div class=sect><h2>What do you want to do?</h2>'+
+      '<p>Start here. Any idea, any style.</p></div>'+
+    '<div class=jobs>'+ JOBS.map(function(j,i){
+      var pic=j.img||'';
+      return '<button class=job data-job="'+i+'">'+
+        (pic?'<img loading=lazy src="'+esc(pic)+'" alt="">':'')+
+        '<span class=lab><b>'+j.t+'</b><small>'+esc(j.s)+'</small></span></button>';
+    }).join('') +'</div>'+
+    '<div class=sect><h2>What\u2019s Trending Right Now</h2>'+
+      '<p>Popular styles. Fresh ideas.</p></div>'+
+    '<div class=rowwrap><button class="arw l" data-row=trendRow>\u2039</button>'+
+      '<div class="row" id=trendRow>'+trendTiles+'</div>'+
+      '<button class="arw r" data-row=trendRow>\u203a</button></div>'+
+    '<div class=sect><h2>More to Explore</h2>'+
+      '<p>Dive deeper. '+CATALOG.length+' categories, '+(d.pictures||0)+' pictures behind them.</p></div>'+
+    '<div class=rowwrap><button class="arw l" data-row=catRow>\u2039</button>'+
+      '<div class="row" id=catRow>'+catTiles+'</div>'+
+      '<button class="arw r" data-row=catRow>\u203a</button></div>';
+
+  /* A MOUSE CANNOT SWIPE. The rows scroll by dragging, and a drag is not a tap - anything over a
+     few pixels opens nothing. Touch is untouched; the browser already does it better. */
+  [].forEach.call(el.querySelectorAll('.row,.jobs'),function(r){
+    var down=false,x0=0,l0=0,moved=0;
+    r.addEventListener('pointerdown',function(e){ if(e.pointerType==='touch') return;
+      down=true;moved=0;x0=e.clientX;l0=r.scrollLeft;r.classList.add('drag') });
+    r.addEventListener('pointermove',function(e){ if(!down) return;
+      var d=e.clientX-x0; moved=Math.max(moved,Math.abs(d)); r.scrollLeft=l0-d; });
+    ['pointerup','pointerleave','pointercancel'].forEach(function(ev){
+      r.addEventListener(ev,function(){ down=false; r.classList.remove('drag') }) });
+    r.addEventListener('click',function(e){ if(moved>6){ e.stopPropagation(); e.preventDefault(); } },true);
+    /* The wheel moves it sideways with no modifier held - the row is the only thing under the
+       pointer that scrolls, and asking for shift meant nobody found it. */
+    r.addEventListener('wheel',function(e){
+      if(Math.abs(e.deltaX)>Math.abs(e.deltaY)) return;
+      if(r.scrollWidth<=r.clientWidth) return;
+      e.preventDefault(); r.scrollLeft+=e.deltaY; },{passive:false});
+  });
+  /* The arrows: one screenful of tiles a press, and they grey out at each end. */
+  [].forEach.call(el.querySelectorAll('.arw'),function(a){
+    var row=document.getElementById(a.dataset.row); if(!row) return;
+    function mark(){ var max=row.scrollWidth-row.clientWidth-2;
+      if(a.classList.contains('l')) a.disabled = row.scrollLeft<=2;
+      else a.disabled = row.scrollLeft>=max; }
+    a.onclick=function(){ row.scrollBy({left:(a.classList.contains('l')?-1:1)*Math.round(row.clientWidth*.8),
+                                        behavior:'smooth'}) };
+    row.addEventListener('scroll',mark,{passive:true}); setTimeout(mark,60);
+  });
+
   el.addEventListener('click',function(e){
+    var j=e.target.closest('.job');
+    if(j){ var job=JOBS[+j.dataset.job];
+      if(job.browse){ document.getElementById('catRow').scrollIntoView({behavior:'smooth',block:'start'}); return }
+      if(imgIdOf(job.img)) CAME_FROM=imgIdOf(job.img);
+      askAura(job.say); return;
+    }
     var t=e.target.closest('.tile'); if(!t) return;
-    chosen={category:{value:t.dataset.v,label:t.dataset.l}}; catAll=false;
-    step=1; loadKinds(t.dataset.l).then(function(){ go(1) });
+    /* The picture opens first. Nothing is loaded and nothing is drawn until they choose. */
+    var img=t.querySelector('img');
+    openPeek(t.dataset.l, t.dataset.v, img?img.getAttribute('src'):null);
   });
 });
 
@@ -889,14 +1130,16 @@ function drawPiece(){
    id is a PTA entity and /image/<entity> points at nothing. */
 function applyStyle(name){
   if(busy || !(piece.made || piece.url)) return;
-  busy = true; busyStyle = name; drawPiece();
+  if(!signedIn()) return;
+  busy = true; busyStyle = name; drawPiece(); auraBusy(true);
   var src = String(piece.made || piece.url);
   var m = src.match(/\/image\/(img_[A-Za-z0-9_-]+)/);
   fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({action:'finish',session:SESSION,
       from:(m&&m[1])||'', from_url:src, style:name })})
     .then(function(r){return r.json()}).then(function(d){
-      busy = false;
+      busy = false; auraBusy(false);
+      if(d && d.error==='SIGN_IN'){ drawPiece(); needSignin(); return }
       if(d && d.ok && d.image){
         piece.made = d.image; piece.style = d.style || name; piece.design = d.design || null;
         remember(d.image, d.style || name, name);
@@ -904,7 +1147,7 @@ function applyStyle(name){
       drawPiece();
       if(piece.error){ flash(piece.error + ' Try another style.'); piece.error=null }
     })
-    .catch(function(){ busy=false; drawPiece(); flash('Could not reach the server. Try again.') });
+    .catch(function(){ busy=false; auraBusy(false); drawPiece(); flash('Could not reach the server. Try again.') });
 }
 
 function labelOf(st,val){
@@ -944,6 +1187,7 @@ function sayIt(){
   var el = document.getElementById('say');
   var said = (el.value||'').trim();
   if(busy) return;
+  if(!signedIn()) return;
   /* A photo goes WITH what they say about it - the photo turn in every passing test is a
      sentence and a picture together. Nothing is written for them. */
   if(!said){ if(pendingPhoto){ el.placeholder='Tell Aura about this photo'; el.focus(); } return; }
@@ -959,12 +1203,20 @@ function paintThread(){
   document.getElementById('chip').classList.remove('up');
   /* Reversed: the container is column-reverse so the newest turn sits against the composer and
      the older ones climb away from the thumb. */
-  inn.innerHTML = thread.slice().reverse().map(function(t){
+  /* NEWEST AT THE BOTTOM (2026-09-20). Oldest first, newest against the composer, older turns
+     climbing away above it - the way every conversation reads. This rendered the list reversed
+     inside a container that only anchors to the bottom, so the newest turn landed at the top. */
+  inn.innerHTML = thread.map(function(t){
     if(t.files) return filesHtml(t.files);
+    if(t.pending) return (t.said ? '<div class="turn aura"><b>'+esc(t.said)+'</b></div>' : '')+
+      '<div class=thinking-row><div class="aura-mark'+(t.near?' near':'')+'">'+
+      '<img src="'+AURA_MARK+'" alt=""><span class=shimmer></span></div>'+
+      '<span class=lbl>'+esc(t.label||'Aura is imagining\u2026')+'</span></div>';
     return '<div class="turn '+esc(t.who)+'">'+
       (t.photo ? '<img class=shot src="'+esc(t.photo)+'" alt="">' : '')+
       '<b>'+esc(t.said)+'</b></div>';
   }).join('');
+  box.scrollTop = 0;
 }
 /* Collapse. Her last line stays on the pill; the rest is on the chain, not on the glass. */
 function collapseThread(){
@@ -982,7 +1234,7 @@ function collapseThread(){
    a non-streamed `/_design` call 40 seconds, so on this page the turn that draws was the turn that
    failed. A streamed reply resolves at once and finishes on the wire, which is what host passes
    straight through. The reader is mt-design's `apiStream`, not a new one. */
-function talkStream(body, onText){
+function talkStream(body, onText, onStage){
   return fetch('/_design',{method:'POST',
     headers:{'Content-Type':'application/json','Accept':'text/event-stream'},
     body:JSON.stringify(Object.assign({stream:true},body))})
@@ -1004,6 +1256,7 @@ function talkStream(body, onText){
           });
           if(!data) continue;
           if(ev==='final'){ try{ fin=JSON.parse(data) }catch(e){} }
+          else if(ev==='stage'){ try{ var st=JSON.parse(data); if(st&&st.stage&&onStage) onStage(st.stage) }catch(e){} }
           else { try{ var d=JSON.parse(data); if(d&&typeof d.delta==='string'&&onText) onText(d.delta) }catch(e){} }
         }
         return pump();
@@ -1039,12 +1292,14 @@ function filesHtml(f){
 function askAura(said){
   var photo = pendingPhoto; clearPhoto();
   thread.push({ who:'them', said:said, photo:photo||null });
-  var pend = { who:'aura', said:'\u2026', pending:true };
+  var pend = { who:'aura', said:'', pending:true, label:'Aura is imagining\u2026', near:false };
   thread.push(pend);
   paintThread();
-  busy = true;
+  busy = true; auraBusy(true);
   var sofar = '';
+  var tile = CAME_FROM; CAME_FROM = null;
   talkStream({action:'talk',session:SESSION,said:said,
+              tile: tile || undefined,
               /* WHICH VERSION THEY ARE BRANCHING FROM. Absent, she stacks on the last
                  thing she drew; set by tapping a thumbnail, she stacks on that one. */
               from: piece.parent || null,
@@ -1053,9 +1308,12 @@ function askAura(said){
               history:thread.filter(function(t){return !t.pending && t.said})
                             .slice(-12).map(function(t){
                               return { role:t.who==='aura'?'aura':'them', said:t.said } })},
-    function(delta){ sofar += delta; pend.said = sofar; paintThread(); })
+    function(delta){ sofar += delta; pend.said = sofar; paintThread(); },
+    /* Told, not guessed: core says the moment she starts making the picture or the files. */
+    function(stage){ pend.label = stage==='files' ? 'Getting your artist\u2019s files ready\u2026' : 'Bringing it to life\u2026';
+      pend.near = true; paintThread(); })
     .then(function(d){
-      busy = false;
+      busy = false; auraBusy(false);
       thread = thread.filter(function(t){ return !t.pending });
       if(d && d.ok && d.said){
         thread.push({ who:'aura', said:d.said });
@@ -1078,13 +1336,13 @@ function askAura(said){
         }
         if(d.show_me) findFor(d.show_me);
       } else {
-        if(d && d.error==='NO_SESSION'){ SESSION=null; try{ localStorage.removeItem('mt:session') }catch(e){} }
+        if(d && d.error==='SIGN_IN'){ needSignin() }
         thread.push({ who:'aura', said:(d&&(d.say||d.error)) || 'I could not answer that.' });
         paintThread();
       }
     })
     .catch(function(){
-      busy = false;
+      busy = false; auraBusy(false);
       thread = thread.filter(function(t){ return !t.pending });
       thread.push({ who:'aura', said:'I could not reach the server.' });
       paintThread();
@@ -1122,6 +1380,32 @@ function flash(msg){
 }
 
 /* Crumbs and dots are the same job - go to a stage - so they share one handler. */
+/* ── THE PEEK ────────────────────────────────────────────────────────────────────────────── */
+/* Tap a tile and its picture fills the screen with its name. Close it, tap the backdrop, or
+   press Escape - all three do the same thing, because on a phone people tap away and on a
+   desktop they reach for Escape. "Explore this" is the only thing that moves them on. */
+var peek=document.getElementById('peek'), peekImg=document.getElementById('peekImg'),
+    peekName=document.getElementById('peekName'), peeked=null;
+function openPeek(label,value,src){
+  peeked={label:label,value:value};
+  if(imgIdOf(src)) CAME_FROM=imgIdOf(src);
+  peekName.textContent=label;
+  if(src){ peekImg.src=src; peekImg.style.display='block' } else { peekImg.removeAttribute('src'); peekImg.style.display='none' }
+  peek.classList.add('on'); peek.setAttribute('aria-hidden','false');
+}
+function closePeek(){ peek.classList.remove('on'); peek.setAttribute('aria-hidden','true'); peeked=null }
+document.getElementById('peekClose').onclick=closePeek;
+peek.addEventListener('click',function(e){ if(e.target===peek) closePeek() });
+addEventListener('keydown',function(e){ if(e.key==='Escape'&&peek.classList.contains('on')) closePeek() });
+document.getElementById('peekGo').onclick=function(){
+  if(!peeked) return; var lab=peeked.label, val=peeked.value; closePeek();
+  var known=index&&index.items&&index.items.some(function(it){
+    return String(it.label).toLowerCase()===String(lab).toLowerCase() });
+  if(!known){ askAura('show me some '+lab+' tattoos'); return }
+  chosen={category:{value:val,label:lab}}; catAll=false;
+  step=1; loadKinds(lab).then(function(){ go(1) });
+};
+
 function wireNav(host){
   host.querySelectorAll('.dot,.crumb').forEach(function(el){
     el.onclick = function(){ if(!el.disabled) goStep(+el.dataset.s) };
@@ -1159,9 +1443,56 @@ function goStep(i){
 
 drawLadder();
 
-panel('mine').innerHTML='<div class=head><h2>My Tattoos</h2></div>'+
-  '<div class=empty><h3>Nothing here yet</h3><p>Anything you design or photograph lands here '+
-  'and stays on your account, not this browser.</p></div>';
+/* ── MY TATTOOS ──────────────────────────────────────────────────────────────────────────── */
+/* Their own pictures, newest first, read from their record - which carries the words each one was
+   made from. Tapping one shows that story and can carry on from it: the next thing they ask is
+   drawn from THAT picture, not the last one they happened to make. */
+function paintMine(){
+  var el=panel('mine');
+  el.innerHTML='<div class=head><h2>My Tattoos</h2></div><div class=empty><p>Looking\u2026</p></div>';
+  fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'mine',session:SESSION})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(!d||!d.ok||!d.items||!d.items.length){
+        el.innerHTML='<div class=head><h2>My Tattoos</h2></div>'+
+          '<div class=empty><h3>Nothing here yet</h3><p>Anything you design or photograph lands '+
+          'here and stays on your account, not this browser.</p></div>'; return;
+      }
+      el.innerHTML='<div class=head><h2>My Tattoos</h2></div>'+
+        '<div class=rail>'+ d.items.map(function(it,i){
+          return '<button class=tile data-i="'+i+'">'+
+            '<div class=pic><img loading=lazy src="'+esc(it.image)+'" alt=""></div>'+
+            '<b>'+esc((it.asked||it.words||'Your tattoo').slice(0,40))+'</b>'+
+            (it.artist_files?'<small>artist files ready</small>':'')+'</button>';
+        }).join('') +'</div>';
+      el.onclick=function(e){
+        var t=e.target.closest('.tile'); if(!t) return;
+        var it=d.items[+t.dataset.i]; if(!it) return;
+        openMine(it);
+      };
+    }).catch(function(){
+      el.innerHTML='<div class=head><h2>My Tattoos</h2></div>'+
+        '<div class=empty><h3>Could not reach your tattoos</h3></div>';
+    });
+}
+/* One tattoo, its story, and the one button that matters. */
+function openMine(it){
+  peeked=null;
+  peekName.textContent=(it.asked||'Your tattoo').slice(0,80);
+  peekImg.src=it.image; peekImg.style.display='block';
+  peek.classList.add('on'); peek.setAttribute('aria-hidden','false');
+  var go=document.getElementById('peekGo');
+  go.textContent='Carry on with this';
+  go.onclick=function(){
+    closePeek();
+    piece={ url:it.image, label:'your tattoo', style:null, made:null, parent:it.design||null,
+            history:[{url:it.image,label:'saved',made:true,design:it.design||null}] };
+    step=3; drawLadder(); go2(1);
+    flash('Carrying on from this one - tell Aura what to change.');
+  };
+}
+function go2(i){ go(i) }
+paintMine();
 panel('shops').innerHTML='<div class=head><h2>Shops</h2></div>'+
   '<div class=empty><h3>Find someone to do it</h3><p>Search a city in the bar below, or share '+
   'your location to see who is near you.</p></div>';
@@ -1171,7 +1502,9 @@ panel('me').innerHTML='<div class=head><h2>Me</h2></div>'+
 
 var sheet=document.getElementById('sheet'), scrim=document.getElementById('scrim');
 function sheetUp(v){ sheet.classList.toggle('up',v); scrim.classList.toggle('up',v) }
-document.getElementById('meBtn').onclick=function(){sheetUp(true)};
+document.getElementById('meBtn').onclick=function(){ if(ME.signed_in) sheetUp(true); else location.href = signinUrl() };
+document.getElementById('gateNo').onclick=function(){ document.getElementById('gate').classList.remove('up') };
+document.getElementById('gate').addEventListener('click',function(e){ if(e.target.id==='gate') this.classList.remove('up') });
 scrim.onclick=function(){sheetUp(false)};
 addEventListener('keydown',function(e){ if(e.key==='Escape') sheetUp(false) });
 var y0=null;
@@ -1226,7 +1559,7 @@ function clearPhoto(){
   document.getElementById('say').placeholder = 'Ask Aura or pick a category';
 }
 clearPhoto();
-document.getElementById('camBtn').onclick = function(){ if(!busy) document.getElementById('file').click() };
+document.getElementById('camBtn').onclick = function(){ if(!busy && signedIn()) document.getElementById('file').click() };
 document.getElementById('file').onchange = function(){
   var f = this.files && this.files[0]; this.value = '';
   if(!f) return;

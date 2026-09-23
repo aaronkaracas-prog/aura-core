@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.403.0-2026-09-23-whole-words-and-one-read-per-website";
+const BUILD = "aura-core-v9.404.0-2026-09-23-she-can-put-it-on-them";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62490,7 +62490,7 @@ function talkReadAct(txt) {
       .map((x) => String(x == null ? "" : x).trim()).filter(Boolean).slice(0, n)
       .map((x) => x.slice(0, cap));
     return { say,
-             act: ["draw", "change", "artist", "none"].includes(act) ? act : "none",
+             act: ["draw", "change", "onme", "artist", "none"].includes(act) ? act : "none",
              prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
              // KEEP THE FIELD SHE WRITES (2026-09-20). This reader keeps a fixed set of keys
              // and drops the rest, so v9.353 asked her for `ask` and then threw it away - the
@@ -62552,6 +62552,14 @@ function artistFilesOf(drew) {
 // person walking away. The conversation answers at once; the job writes the finished files onto
 // their timeline, where My Tattoos reads them. If it cannot start, the files are made inline as
 // before - nothing is ever skipped.
+// ══ PUT IT ON THEM - ONE SENTENCE (2026-09-23) ════════════════════════════════════════════════
+// The words the `onme` action has always sent, now shared with the conversation so there is one
+// version of them. First image: their body. Second: the design.
+const ONME_SENTENCE = "Place the tattoo design from the second image onto the skin in the first image. " +
+  "Follow the contour of the body, match the lighting and perspective of the photograph, " +
+  "and make the ink sit UNDER the skin like a real healed tattoo - not a sticker, not a " +
+  "flat overlay. Keep the person, the pose and the background exactly as they are.";
+
 async function startArtistFilesJob(env, data) {
   try {
     if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
@@ -64012,6 +64020,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
       if (act === "artist" && !hasParent) act = "none";
+      // PUT IT ON THEM needs both halves: a design she made, and their photo. Without either it
+      // is talk - she asks for what is missing - never a guess at a body or a design.
+      if (act === "onme" && !(hasParent && lastDrawn.image && refUrl)) act = "none";
 
       // HER WORDS DECIDE (2026-09-21). MEASURED twice today: she said "Shall I show you?" and her
       // action field said `draw`, so the picture was made before they said go. Then their "show me"
@@ -64156,7 +64167,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       //   4. THE PDF - PRINT at the placement size, so the shop prints at 100%.
       // AND SHE KNOWS WHAT IT IS. A fixed sequence is a fact she can state when somebody asks
       // what happens next. A sentence she improvises each time is not.
-      if (onStage && me && (act === "draw" || act === "change" || act === "artist")) {
+      if (onStage && me && (act === "draw" || act === "change" || act === "onme" || act === "artist")) {
         try { await onStage(act === "artist" ? "files" : "drawing"); } catch {}
       }
       // ══ WHICH PROJECT THIS TURN BELONGS TO (2026-09-23) ══════════════════════════════════════
@@ -64180,6 +64191,26 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           _pid = _fromPid || ((opts && opts.fresh) ? newProjectId()
                : ((_cur && !_curLocked) ? _cur : newProjectId()));
         } catch { _pid = newProjectId(); }
+      }
+      // ══ SHE CAN PUT IT ON THEM (2026-09-23, Aaron) ═════════════════════════════════════════
+      // The "see it on you" step was built and proven (`design` action `onme`) but was never one of
+      // her actions - so asked to show a design on somebody, she said honestly that she could not.
+      // Same step, same sentence: their photo first, the design on screen second. The result is a
+      // look at the design on them, not a new design - the piece on screen stays the design.
+      if (act === "onme" && me) {
+        try {
+          const _om = await processCommand("SHOW_IT " + JSON.stringify({
+            subject: ONME_SENTENCE, context: "seeing a tattoo on their own body", name: "on me",
+            raw: true, refs: [refUrl, lastDrawn.image], source: "onme", parent: lastDrawn.design
+          }), env, true);
+          const _op = (_om && _om.payload) ? _om.payload : _om;
+          drew = (_op && _op.ok && _op.image_url)
+            ? { design: _op.entity_id || null, image: _op.image_url, on_me: true, from: lastDrawn.design,
+                asked: "the design on screen, on their photo" }
+            : { failed: true, on_me: true, error: String((_op && _op.error) || "COULD_NOT_PLACE").slice(0, 200) };
+        } catch (e) {
+          drew = { failed: true, on_me: true, error: String(e?.message ?? e).slice(0, 200) };
+        }
       }
       if (act === "artist" && me) {
         const _job = await startArtistFilesJob(env, {
@@ -64819,7 +64850,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // Everything downstream reads this key: the parent of the next evolve, the thing she is
       // told is on screen, and now the mock the artist gets for how it wraps. A file MADE FROM
       // the piece must never replace the piece, or the chain walks off the design.
-      if (me && drew && drew.image && !drew.failed && !drew.for_the_artist) {
+      // A picture of the design ON THEM is a look, not a new piece: the design stays on screen, so
+      // "change the colour" after seeing it on their arm changes the design, not the photo.
+      if (me && drew && drew.image && !drew.failed && !drew.for_the_artist && !drew.on_me) {
         try {
           await talkStatePut(env, me, "last",
             JSON.stringify({ design: drew.design, image: drew.image,
@@ -67144,10 +67177,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // Two references: the body first, the design second. xAI takes up to three, so a style
         // reference could join them later without changing this shape.
         const r = await processCommand("SHOW_IT " + JSON.stringify({
-          subject: "Place the tattoo design from the second image onto the skin in the first image. " +
-            "Follow the contour of the body, match the lighting and perspective of the photograph, " +
-            "and make the ink sit UNDER the skin like a real healed tattoo - not a sticker, not a " +
-            "flat overlay. Keep the person, the pose and the background exactly as they are.",
+          subject: ONME_SENTENCE,
           context: "seeing a tattoo on their own body",
           name: "on me",
           raw: true,

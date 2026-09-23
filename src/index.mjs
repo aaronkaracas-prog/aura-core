@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.401.0-2026-09-23-the-picture-they-chose-keeps-its-image";
+const BUILD = "aura-core-v9.402.0-2026-09-23-a-fresh-start-carries-nothing-over";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62727,10 +62727,14 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       const _pre = me ? {
         timeline: _state.then((x) => x.timeline ?? null),
         model:    env.AURA_KV.get("config:talk:model").catch(() => null),
-        brief:    _state.then((x) => talkParse(x.brief)),
-        last:     _state.then((x) => talkParse(x.last)),
+        // A FRESH START CARRIES NOTHING OVER (2026-09-23). MEASURED on the website: a new tattoo for
+        // Kathy (roses and sunflowers) was titled "neo-tribal tattoo with the name MAX" - the brief,
+        // the piece on screen and any held photo all belonged to the tattoo before it. When the page
+        // says this is a fresh start, the new project begins from nothing.
+        brief:    (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => talkParse(x.brief)),
+        last:     (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => talkParse(x.last)),
         bad:      _state.then((x) => x.bad ?? null),
-        ref:      _state.then((x) => talkParse(x.ref)),
+        ref:      (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => talkParse(x.ref)),
         // A tile is where they came in. It is kept (Aaron, 2026-09-23: "I don't see a reason for
         // expiring") - a newer tap replaces it, and the note below says when it happened.
         tile:     _state.then((x) => talkParse(x.tile)),
@@ -64953,7 +64957,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               pictures: (drew && drew.image && !drew.failed && !drew.for_the_artist)
                 ? [{ ts: _atP, image: drew.image, design: drew.design || null,
                      words: String(drew.changed || drew.asked || "").slice(0, 300) }] : [],
-              title: (intent && intent.subject) || null,
+              // Named from its first picture - the words it was drawn from, up to the first comma.
+              title: (drew && drew.image && !drew.failed && !drew.for_the_artist)
+                ? (String(drew.asked || drew.changed || "").split(",")[0].trim().slice(0, 70) || null) : null,
               came_from: _cameFrom ? _cameFrom.id : null,
               ...(act === "artist" ? { locked: true } : {}),
               ...((drew && drew.for_the_artist && !drew.pending && drew.image) ? { files: artistFilesOf(drew) } : {}),

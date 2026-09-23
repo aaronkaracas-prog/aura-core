@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.396.0-2026-09-23-a-state-batch-skips-what-is-not-a-parlour";
+const BUILD = "aura-core-v9.397.0-2026-09-23-the-conversation-lives-in-their-durable-object";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7488,6 +7488,22 @@ async function processCommand(line, env, isOp) {
     // `stage` is derived the same way `design()` derives it, so consent behaves identically -
     // a `pta_` id keeps the round on their chain, anything else stays in the buffer.
     // COSTS A MODEL CALL. Three, in parallel: her reply, the next-step read, and the facts.
+    // TALK_STATE <pta> - reads a person's tattoo conversation state from their Durable Object, where
+    // it lives since 2026-09-23: the numbered timeline, the brief, the piece on screen. Read-only.
+    case "TALK_STATE": {
+      if (!isOp) return { cmd: "TALK_STATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tsPta = String(rest || "").trim().split(/\s+/)[0] || "";
+      if (!/^pta_[a-z0-9]+$/i.test(tsPta)) return { cmd: "TALK_STATE", payload: { ok: false, error: "Usage: TALK_STATE <pta>" } };
+      try {
+        const st = await talkStateGet(env, tsPta, ["timeline", "brief", "last", "tile"]);
+        const tl = talkParse(st.timeline) || [];
+        return { cmd: "TALK_STATE", payload: { ok: true, pta: tsPta, lines: Array.isArray(tl) ? tl.length : 0,
+          timeline: tl, brief: talkParse(st.brief), last: talkParse(st.last), tile: talkParse(st.tile) } };
+      } catch (e) {
+        return { cmd: "TALK_STATE", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
+      }
+    }
+
     case "TALK": {
       if (!isOp) return { cmd: "TALK", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const tkRaw = String(rest || "").trim();
@@ -9516,7 +9532,7 @@ async function processCommand(line, env, isOp) {
       // The job sheet, read from their PTA rather than typed. Absent, the cover page simply
       // carries less - it never invents a field.
       let pB = null;
-      if (pPta) { try { pB = await env.AURA_KV.get("talk:brief:" + pPta, "json"); } catch {} }
+      if (pPta) { try { pB = talkParse((await talkStateGet(env, pPta, ["brief"])).brief); } catch {} }
       const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
       const row = (k, v) => v ? "<tr><td>" + esc(k) + "</td><td>" + esc(v) + "</td></tr>" : "";
@@ -61036,6 +61052,45 @@ export class PtaDurableObject {
     return { ok: !!pta, pta };
   }
 
+  // ══ THE TATTOO CONVERSATION'S STATE (2026-09-23) ═════════════════════════════════════════════
+  // The conversation, the brief, the piece on screen, their photo, the tile they came through and
+  // the failed-picture count used to live in KV. KV does not promise that a read sees the last
+  // write, and each turn read, changed and wrote them back - MEASURED on 2026-09-23: a turn sent
+  // seconds after the one before read the older copy and wrote over it, and the turn in between
+  // vanished from her record. One Durable Object per person has exactly one copy, so every read
+  // sees the last write. Values are the same strings KV held.
+  async talkGet(keys) {
+    const list = Array.isArray(keys) ? keys.map(String) : [];
+    const got = list.length ? await this.storage.get(list) : new Map();
+    const values = {};
+    for (const k of list) values[k] = got.has(k) ? got.get(k) : null;
+    return { ok: true, values };
+  }
+
+  async talkPut(entries) {
+    const e = (entries && typeof entries === "object") ? entries : {};
+    if (Object.keys(e).length) await this.storage.put(e);
+    return { ok: true };
+  }
+
+  // The timeline is merged, never overwritten: a turn saves the lines it read plus its own, and a
+  // line written meanwhile by someone else - the background artist-files job - stays. Lines are
+  // matched by time and role; the saving turn wins for its own lines. Newest sixty kept.
+  async talkTimelineSave(json) {
+    let incoming = []; try { incoming = JSON.parse(String(json || "[]")) || []; } catch {}
+    let cur = []; try { cur = JSON.parse((await this.storage.get("talk-state:timeline")) || "[]") || []; } catch {}
+    if (!Array.isArray(incoming)) incoming = [];
+    if (!Array.isArray(cur)) cur = [];
+    const key = (x) => String((x && x.ts) || "") + "|" + String((x && x.role) || "");
+    const m = new Map();
+    for (const x of cur) m.set(key(x), x);
+    for (const x of incoming) m.set(key(x), x);
+    let all = [...m.values()].sort((a, b) => String((a && a.ts) || "").localeCompare(String((b && b.ts) || "")));
+    if (all.length > 60) all = all.slice(-60);
+    await this.storage.put("talk-state:timeline", JSON.stringify(all));
+    return { ok: true, lines: all.length };
+  }
+
   // ── INITIALIZE (called on first creation) ──────────────────────────────────────────────────────
   async init(ptaId, type, name, identity, about, app) {
     const now = new Date().toISOString();
@@ -62241,6 +62296,49 @@ async function makeArtistFiles(env, ctx) {
   return drew;
 }
 
+// ══ WHERE THE TATTOO CONVERSATION'S STATE LIVES (2026-09-23) ═══════════════════════════════════
+// In the person's own Durable Object (see PtaDurableObject.talkGet). The first read of a key the
+// Durable Object does not have yet falls back to the old KV value once and copies it across, so
+// everybody's existing conversation carries over without a migration.
+const TALK_STATE_KV = { timeline: "pta:timeline:", brief: "talk:brief:", last: "talk:last:",
+                        bad: "talk:bad:", ref: "talk:ref:", tile: "talk:tile:" };
+function talkStub(env, me) { return env.PTA_DO.get(env.PTA_DO.idFromName(me)); }
+async function talkDo(env, me, method, params) {
+  const r = await talkStub(env, me).fetch(new Request("http://do", { method: "POST",
+    body: JSON.stringify({ method, params }) }));
+  return await r.json();
+}
+function talkParse(raw) {
+  if (raw == null) return null;
+  if (typeof raw !== "string") return raw;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+async function talkStateGet(env, me, names) {
+  const out = {};
+  let vals = null;
+  try { vals = ((await talkDo(env, me, "talkGet", [names.map((n) => "talk-state:" + n)])) || {}).values || null; }
+  catch (e) { try { console.log("[TALKSTATE] durable object read failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+  const copy = {};
+  for (const n of names) {
+    const v = vals ? vals["talk-state:" + n] : null;
+    if (v != null) { out[n] = v; continue; }
+    let raw = null;
+    try { raw = await env.AURA_KV.get(TALK_STATE_KV[n] + me); } catch {}
+    out[n] = raw;
+    if (raw != null && vals) copy["talk-state:" + n] = raw;
+  }
+  if (Object.keys(copy).length) { try { await talkDo(env, me, "talkPut", [copy]); } catch {} }
+  return out;
+}
+async function talkStatePut(env, me, name, raw) {
+  try {
+    if (name === "timeline") await talkDo(env, me, "talkTimelineSave", [String(raw)]);
+    else await talkDo(env, me, "talkPut", [{ ["talk-state:" + name]: String(raw) }]);
+  } catch (e) {
+    try { console.log("[TALKSTATE] durable object write failed (" + name + "): " + String(e?.message ?? e).slice(0, 160)); } catch {}
+  }
+}
+
 // ══ THE CONVERSATION'S HELPERS, ONE COPY EACH (2026-09-23) ═══════════════════════════════════
 // These four lived inside auraTalk. The artist files now run as a background job, which is handed
 // plain data, not the conversation's closures - so each helper is defined once here and both the
@@ -62356,14 +62454,14 @@ async function recordArtistFiles(env, d, drew) {
   if (!me) return;
   const ok = !!(drew && drew.image && !drew.failed);
   try {
-    let tl = (await env.AURA_KV.get("pta:timeline:" + me, "json")) || [];
+    let tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || [];
     if (!Array.isArray(tl)) tl = [];
     tl.push({ ts: new Date().toISOString(), role: "picture",
               ...(ok ? { image: drew.image, design: drew.design || null } : { failed: true }),
               words: String((drew && drew.changed) || "the artist's files").slice(0, 600),
               artist_files: true, ...(ok ? { files: artistFilesOf(drew) } : {}) });
     if (tl.length > 60) tl = tl.slice(-60);
-    await env.AURA_KV.put("pta:timeline:" + me, JSON.stringify(tl));
+    await talkStatePut(env, me, "timeline", JSON.stringify(tl));
   } catch (e) {
     try { console.log("[FILES] timeline write failed: " + String(e?.message ?? e).slice(0, 160)); } catch {}
   }
@@ -62510,14 +62608,19 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // MEASURED: `catalog` + `import` = 1.2s on a turn with no photo - six storage reads made one
       // after another. They are started together here and each is awaited where it was read
       // before, so nothing downstream changes except that it no longer waits in line.
+      // The conversation's own state comes from the person's Durable Object in one call.
+      const _state = me ? talkStateGet(env, me, ["timeline", "brief", "last", "bad", "ref", "tile"])
+        .catch(() => ({})) : null;
       const _pre = me ? {
-        timeline: env.AURA_KV.get("pta:timeline:" + me).catch(() => null),
+        timeline: _state.then((x) => x.timeline ?? null),
         model:    env.AURA_KV.get("config:talk:model").catch(() => null),
-        brief:    env.AURA_KV.get("talk:brief:" + me, "json").catch(() => null),
-        last:     env.AURA_KV.get("talk:last:" + me, "json").catch(() => null),
-        bad:      env.AURA_KV.get("talk:bad:" + me).catch(() => null),
-        ref:      env.AURA_KV.get("talk:ref:" + me, "json").catch(() => null),
-        tile:     env.AURA_KV.get("talk:tile:" + me, "json").catch(() => null),
+        brief:    _state.then((x) => talkParse(x.brief)),
+        last:     _state.then((x) => talkParse(x.last)),
+        bad:      _state.then((x) => x.bad ?? null),
+        ref:      _state.then((x) => talkParse(x.ref)),
+        // A tile is where they came in - it counts for a day, as the KV key's expiry did.
+        tile:     _state.then((x) => { const t = talkParse(x.tile);
+                    return (t && t.at && (Date.now() - Date.parse(t.at)) < 24 * 3600 * 1000) ? t : null; }),
       } : null;
       // ══ THE RECORD IS WRITTEN AFTER THE REPLY, IN ORDER (2026-09-22) ═══════════════════════
       // MEASURED: 5.7s of a 16.5s turn spent writing her chain and memory AFTER her answer existed,
@@ -62809,12 +62912,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // stays until they change it - the same rule the brief already follows.
         if (me && (refSaw || refUrl)) {
           try {
-            await env.AURA_KV.put("talk:ref:" + me, JSON.stringify({
+            await talkStatePut(env, me, "ref", JSON.stringify({
               // `isolated` is gone with the block above - it described an image that is no longer
               // generated, and a flag that is always false is a field a reader will eventually trust.
               saw: refSaw, url: refUrl, design: refDesign,
               at: new Date().toISOString()
-            }), { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+            }));
           } catch {}
         }
       } else if (me) {
@@ -63284,8 +63387,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const _tw = (_tm && typeof _tm.prompt === "string") ? _tm.prompt.trim() : "";
           if (_tw) {
             _cameFrom = { id: _tileIn, words: _tw.slice(0, 600), at: new Date().toISOString() };
-            await env.AURA_KV.put("talk:tile:" + me, JSON.stringify(_cameFrom),
-              { expirationTtl: 24 * 3600 }).catch(() => {});
+            await talkStatePut(env, me, "tile", JSON.stringify(_cameFrom));
           }
         } catch {}
       } else if (me && _pre) {
@@ -63557,8 +63659,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 }
                 delete _merged.resolved; delete _merged.missing;
                 if (Object.keys(_merged).length) {
-                  await env.AURA_KV.put("talk:brief:" + me, JSON.stringify(_merged),
-                    { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+                  await talkStatePut(env, me, "brief", JSON.stringify(_merged));
                 }
               } catch { /* a brief that fails to bank costs one turn of lag, never a reply */ }
             })()), Promise.resolve(null))
@@ -63707,7 +63808,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // Bounded. This is a cache, not the archive - the chain holds the whole history and
           // an unbounded KV value eventually stops being writable at all.
           if (tline.length > 60) tline = tline.slice(-60);
-          await env.AURA_KV.put("pta:timeline:" + me, JSON.stringify(tline)).catch(() => {});
+          await talkStatePut(env, me, "timeline", JSON.stringify(tline));
         } catch {}
 
         // ══ NO GRANT MEANS NO RECORD, AND THAT IS CORRECT ══════════════════════════════
@@ -64360,7 +64461,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           if (me && cp && cp.ok) {
             const _bad = !!(_mockNote && /^\s*WRONG\b/i.test(_mockNote));
             const _next = _resetToPhoto ? (_bad ? 1 : 0) : (_bad ? badStreak + 1 : 0);
-            try { await env.AURA_KV.put("talk:bad:" + me, String(_next), { expirationTtl: 90 * 24 * 3600 }); } catch {}
+            await talkStatePut(env, me, "bad", String(_next));
           }
           drew = (cp?.ok && cp.image_url)
             ? { design: cp.child, image: cp.image_url,
@@ -64550,11 +64651,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // the piece must never replace the piece, or the chain walks off the design.
       if (me && drew && drew.image && !drew.failed && !drew.for_the_artist) {
         try {
-          await env.AURA_KV.put("talk:last:" + me,
+          await talkStatePut(env, me, "last",
             JSON.stringify({ design: drew.design, image: drew.image,
                              subject: (intent && intent.subject) || null,
-                             at: new Date().toISOString() }),
-            { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+                             at: new Date().toISOString() }));
         } catch {}
       }
 
@@ -64590,11 +64690,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // damage as the artist sheet replacing the design.
       if (me && refDesign && !refHeld && !(drew && drew.image && !drew.failed)) {
         try {
-          await env.AURA_KV.put("talk:last:" + me,
+          await talkStatePut(env, me, "last",
             JSON.stringify({ design: refDesign, image: refUrl || null,
                              subject: (intent && intent.subject) || null,
-                             at: new Date().toISOString() }),
-            { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+                             at: new Date().toISOString() }));
         } catch {}
       }
 
@@ -64611,8 +64710,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             merged[k] = v;
           }
           delete merged.resolved; delete merged.missing;
-          await env.AURA_KV.put("talk:brief:" + me, JSON.stringify(merged),
-            { expirationTtl: 90 * 24 * 3600 }).catch(() => {});
+          await talkStatePut(env, me, "brief", JSON.stringify(merged));
           // ══ A PTA KEEPS THINGS. A CACHE DOES NOT (2026-09-10) ══════════════════════════
           // Aaron: "everything's within a PTA, and if we're using a PTA to manage everything
           // then nothing should ever disappear - that's literally what a PTA does, it keeps
@@ -64694,7 +64792,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                          ...(drew.for_the_artist ? { artist_files: true, files: artistFilesOf(drew) } : {}) });
           }
           if (tline.length > 60) tline = tline.slice(-60);
-          await env.AURA_KV.put("pta:timeline:" + me, JSON.stringify(tline)).catch(() => {});
+          await talkStatePut(env, me, "timeline", JSON.stringify(tline));
           if (stage === "pta") {
             const _cmdAura = "PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
               said: _said.slice(0, 600), who: "aura", channel: "chat", mode: "tattoo",
@@ -65410,7 +65508,7 @@ export class PublicEntry extends WorkerEntrypoint {
       // Nothing is drawn here, and nothing is read that is not theirs.
       if (action === "mine") {
         let tl = [];
-        try { tl = (await env.AURA_KV.get("pta:timeline:" + me, "json")) || []; } catch {}
+        try { tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || []; } catch {}
         const items = [];
         for (let i = 0; i < tl.length; i++) {
           const e = tl[i];

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.395.0-2026-09-23-the-files-are-made-in-the-background";
+const BUILD = "aura-core-v9.396.0-2026-09-23-a-state-batch-skips-what-is-not-a-parlour";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25489,16 +25489,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // those shops were never looked at twice - including the Next.js sites whose pictures were
         // all refused by a resizer bug (fixed v9.359). Opt-in only; a plain READ still re-reads nothing.
         const beAgain = /(^|\s)AGAIN(\s|$)/i.test(beRaw);
+        const _beAllFlag = /(^|\s)ALL(\s|$)/i.test(beRaw);
+        const _beCountFlag = /(^|\s)COUNT(\s|$)/i.test(beRaw);
         beRaw = beRaw.replace(/(^|\s)READ(\s|$)/i, " ").replace(/(^|\s)DRAFT(\s|$)/i, " ")
           .replace(/(^|\s)UNTIL_DONE(\s|$)/ig, " ").replace(/(^|\s)NOREG(\s|$)/ig, " ")
-          .replace(/(^|\s)AGAIN(\s|$)/ig, " ").trim();
+          .replace(/(^|\s)AGAIN(\s|$)/ig, " ").replace(/(^|\s)ALL(\s|$)/ig, " ")
+          .replace(/(^|\s)COUNT(\s|$)/ig, " ").trim();
         const beArgs = beRaw.split(/\s+/).filter(Boolean);
-        let ids = [];
         // STATE works the same way as CITY, for going state by state.
-        if ((beArgs[0] || "").toUpperCase() === "STATE") {
-          const st2 = beArgs.slice(1, -1).join(" ") || beArgs[1] || "";
-          const lim2 = Math.min(Number(beArgs[beArgs.length - 1]) || 50, 500);
-          const rows2 = (await env.AURA_MEMORY.prepare(
             // ══ `sections` IS THE MARKER (2026-09-18) ═════════════════════════════════════════
             // Two wrong answers before this one. `understanding IS NULL` excluded everything,
             // because the CRAWL writes that column too - artists, styles, booking. Then `images`,
@@ -25507,39 +25505,69 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Only the read stage writes `sections` - it is built from the card itself, one entry
             // per artist or gallery - so that is what "this shop has been read" actually looks like.
             // The lesson both times: ask the database what is stored, do not reason about it.
-            cgMode === "read"
-              ? (beAgain
-                  ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
-                    "AND crawl_verdict = 'ok' AND (understanding LIKE '%no_pictures%' OR understanding LIKE '%last_empty_read%') LIMIT ?"
-                  : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
-                    "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
-                    "AND (understanding IS NULL OR (understanding NOT LIKE '%\"sections\"%' " +
-                    "AND understanding NOT LIKE '%last_empty_read%')) LIMIT ?")
-              : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(region) = ? " +
-                "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL LIMIT ?")
-            .bind(String(st2).toLowerCase(), lim2).all())?.results || [];
-          ids = rows2.map(r => r.id);
-        } else if ((beArgs[0] || "").toUpperCase() === "CITY") {
-          const city = beArgs.slice(1, -1).join(" ") || beArgs[1] || "";
-          const lim = Math.min(Number(beArgs[beArgs.length - 1]) || 50, 500);
           // Crawling wants shops nobody has crawled. Reading wants shops that HAVE been crawled -
           // the archive is the input - and have no card yet.
           // RESUME IS THE QUERY. A batch that died at 400 is restarted by running the same command:
           // crawling skips anything with a verdict already, reading skips anything already carded,
           // so nothing is done twice and nobody has to remember where it stopped.
-          const rows = (await env.AURA_MEMORY.prepare(
-            cgMode === "read"
-              ? (beAgain
-                  ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
-                    "AND crawl_verdict = 'ok' AND (understanding LIKE '%no_pictures%' OR understanding LIKE '%last_empty_read%') LIMIT ?"
-                  : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
-                    "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
-                    "AND (understanding IS NULL OR (understanding NOT LIKE '%\"sections\"%' " +
-                    "AND understanding NOT LIKE '%last_empty_read%')) LIMIT ?")
-              : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
-                "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL LIMIT ?")
-            .bind(String(city).toLowerCase(), lim).all())?.results || [];
-          ids = rows.map(r => r.id);
+        let ids = [];
+        // ══ A STATE BATCH SKIPS WHAT IS NOT A TATTOO PARLOUR (2026-09-23, Aaron) ════════════════
+        // "Lose all junk." MEASURED on California: the source labels every shop the same
+        // (`tattoo_and_piercing`), so the category cannot tell a parlour from a piercing studio, a
+        // brow bar or a cosmetic-tattoo clinic - and a spot check of the reads that came back empty
+        // found 10 of 12 were not tattoo parlours at all. The name and web address can: across the
+        // whole list 83% of crawlable shops say tattoo, ink or studio. So a STATE or CITY batch now
+        // picks only shops whose name or address says tattoo or ink, or whose name says studio -
+        // and whose name says none of the non-parlour words below - with a website that is not
+        // Instagram or Facebook. `ALL` restores the old selection. `COUNT` starts nothing: it says
+        // how many the batch would pick, how many the filter skips, and names a few of each.
+        const beAll = _beAllFlag;
+        const beCount = _beCountFlag;
+        const _NOT_A_PARLOUR = ["cosmetic", "brow", "lash", "aesthetic", "beauty", "microblad",
+                                "threading", "makeup", "removal", " spa", "salon"];
+        const _LIKELY =
+          " AND (instr(lower(name),'tatt')>0 OR instr(lower(name),'ink')>0 OR instr(lower(name),'studio')>0" +
+          " OR instr(lower(COALESCE(website,'')),'tatt')>0 OR instr(lower(COALESCE(website,'')),'ink')>0)" +
+          " AND NOT (" + _NOT_A_PARLOUR.map((w) => "instr(lower(name),'" + w + "')>0").join(" OR ") + ")" +
+          // A piercing studio says "studio" too: piercing is kept only beside tattoo or ink.
+          " AND NOT (instr(lower(name),'pierc')>0 AND instr(lower(name),'tatt')=0 AND instr(lower(name),'ink')=0)" +
+          " AND instr(lower(COALESCE(website,'')),'instagram.com')=0" +
+          " AND instr(lower(COALESCE(website,'')),'facebook.com')=0";
+        const _scope = (beArgs[0] || "").toUpperCase();
+        if (_scope === "STATE" || _scope === "CITY") {
+          const col = _scope === "STATE" ? "region" : "locality";
+          const _selKey = String(beArgs.slice(1, -1).join(" ") || beArgs[1] || "").toLowerCase();
+          const _selLim = Math.min(Number(beArgs[beArgs.length - 1]) || 50, 500);
+          const _selSql = cgMode === "read"
+            ? (beAgain
+                ? "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(" + col + ") = ? " +
+                  "AND crawl_verdict = 'ok' AND (understanding LIKE '%no_pictures%' OR understanding LIKE '%last_empty_read%')"
+                : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(" + col + ") = ? " +
+                  "AND crawled_at IS NOT NULL AND crawl_verdict = 'ok' " +
+                  "AND (understanding IS NULL OR (understanding NOT LIKE '%\"sections\"%' " +
+                  "AND understanding NOT LIKE '%last_empty_read%'))")
+            : "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(" + col + ") = ? " +
+              "AND website IS NOT NULL AND website != '' AND crawl_verdict IS NULL";
+          const _picked = _selSql + (beAll ? "" : _LIKELY);
+          if (beCount) {
+            const _n = async (sql) => Number((await env.AURA_MEMORY.prepare(
+              sql.replace(/^SELECT id FROM/, "SELECT COUNT(*) AS n FROM")).bind(_selKey).first())?.n || 0);
+            const _names = async (sql) => ((await env.AURA_MEMORY.prepare(
+              sql.replace(/^SELECT id FROM/, "SELECT name, website FROM") + " ORDER BY RANDOM() LIMIT 8")
+              .bind(_selKey).all())?.results || []);
+            const nAll = await _n(_selSql);
+            const nKeep = await _n(_selSql + _LIKELY);
+            return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, counted_only: true, mode: cgMode,
+              scope: _scope.toLowerCase() + " " + _selKey,
+              would_pick: beAll ? nAll : nKeep, eligible_before_filter: nAll,
+              filter_skips: nAll - nKeep, filter_on: !beAll, one_batch_takes: _selLim,
+              sample_kept: await _names(_selSql + _LIKELY),
+              sample_skipped: beAll ? [] : await _names(_selSql + " AND NOT (1=1" + _LIKELY + ")"),
+              note: "Nothing was started. Drop COUNT to run it; add ALL to run without the filter." } };
+          }
+          const rows2 = (await env.AURA_MEMORY.prepare(_picked + " LIMIT ?")
+            .bind(_selKey, _selLim).all())?.results || [];
+          ids = rows2.map(r => r.id);
         } else ids = beArgs;
         if (!ids.length) return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, shops: 0, mode: cgMode,
           note: cgMode === "read"

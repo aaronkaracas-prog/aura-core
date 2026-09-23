@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.394.0-2026-09-22-she-knows-what-they-were-looking-at";
+const BUILD = "aura-core-v9.395.0-2026-09-23-the-files-are-made-in-the-background";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61327,6 +61327,16 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         try { console.log("[WORKFLOW] progress write failed: " + kvTrouble); } catch {}
       }
     };
+    if (String(event.payload?.mode || "") === "artist_files") {
+      const d = event.payload?.data || {};
+      const drew = await step.do("artist-files", { retries: { limit: 0, delay: "10 seconds" }, timeout: "15 minutes" },
+        async () => {
+          try { return (await runArtistFilesJob(this.env, d)) || { failed: true }; }
+          catch (e) { return { failed: true, error: String(e?.message ?? e).slice(0, 300) }; }
+        });
+      await step.do("record", async () => { await recordArtistFiles(this.env, d, drew); return true; });
+      return { ok: !!(drew && drew.image && !drew.failed), me: d.me || null };
+    }
     if (String(event.payload?.mode || "") === "enrich") {
       const ids = (event.payload?.ids || []).slice(0, 2000);
       // The caller chooses the id BEFORE creating the instance and passes it as `tag`, so the
@@ -62203,6 +62213,143 @@ async function makeArtistFiles(env, ctx) {
   return drew;
 }
 
+// ══ THE CONVERSATION'S HELPERS, ONE COPY EACH (2026-09-23) ═══════════════════════════════════
+// These four lived inside auraTalk. The artist files now run as a background job, which is handed
+// plain data, not the conversation's closures - so each helper is defined once here and both the
+// conversation and the job use the same one. Bodies unchanged.
+function talkReadAct(txt) {
+    let o = null;
+    try { o = JSON.parse(String(txt || "").trim()); }
+    catch { try { o = repairJson(String(txt || "")); } catch {} }
+    if (o) o = unwrapSchema(o);
+    if (!o || typeof o !== "object") return null;
+    const say = typeof o.say === "string" ? o.say.trim() : "";
+    if (!say) return null;
+    const act = String(o.do || "none").trim().toLowerCase();
+    // ══ A FIELD SHE CAN FILL AND NOBODY READS (2026-09-10) ═════════════════════════════
+    // `use` was added to the contract and wired into the evolve in the same hour, and this
+    // line - which is every field of her answer that survives - was not touched. She may
+    // have named both pictures on the first live run; it was discarded here before anything
+    // downstream could see it, and the reply's missing `used` looked exactly like her
+    // choosing not to reach. A contract and its parser are one thing in two places, and this
+    // file has now been burned three times in one day by something reporting the ask instead
+    // of the act.
+    const strList = (v, n, cap) => (Array.isArray(v) ? v : [])
+      .map((x) => String(x == null ? "" : x).trim()).filter(Boolean).slice(0, n)
+      .map((x) => x.slice(0, cap));
+    return { say,
+             act: ["draw", "change", "artist", "none"].includes(act) ? act : "none",
+             prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
+             // KEEP THE FIELD SHE WRITES (2026-09-20). This reader keeps a fixed set of keys
+             // and drops the rest, so v9.353 asked her for `ask` and then threw it away - the
+             // frame fallback ran every time and the measured failure never changed. A new
+             // field in her contract is useless until it survives this line.
+             ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 900) : "",
+             words: typeof o.words === "string" ? o.words.trim().slice(0, 900) : "",
+             // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
+             // first version of this field took that name, and the duplicate key silently lost.
+             lines: Array.isArray(o.lines) ? o.lines.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
+             use: strList(o.use, 4, 400),
+             // The body sections the NEW work spans, hers to name. Capped at six because a
+             // human body does not have more separate stencil areas than that on one job, and
+             // each one is a real image call.
+             // Widened from 40: an entry is now `section: what part of the design goes there`,
+             // because a placement word alone produced the same picture three times.
+             panels: strList(o.panels, 6, 200),
+             brief: (o.brief && typeof o.brief === "object" && !Array.isArray(o.brief))
+               ? o.brief : null };
+  }
+
+function talkUseOne(n, want, refDesign, refUrl, lastDrawn) {
+    const k = String(n || "").trim();
+    const low = k.toLowerCase();
+    if (low === "photo" || low === "the photo" || low === "photograph")
+      return want === "design" ? (refDesign || null) : (refUrl || null);
+    if (low === "piece" || low === "the piece" || low === "last")
+      return want === "design" ? ((lastDrawn && lastDrawn.design) || null)
+                               : ((lastDrawn && lastDrawn.image) || null);
+    if (/^https?:\/\//i.test(k)) return want === "design" ? null : k;
+    if (/^(ent_|img_)/.test(k)) return want === "design" ? k : null;
+    return null;
+  }
+
+function talkVerdict(reply, parsed) {
+  return String((parsed && parsed.say) || reply).replace(/^\s*[{\[]/, "").trim();
+}
+
+async function talkCheckOn(env, k) {
+  try { return String((await env.AURA_KV.get("config:check:" + k)) || "").trim().toLowerCase() !== "off"; }
+  catch { return true; }
+}
+
+// What the artist files job produced, in the shape My Tattoos and the page already read.
+function artistFilesOf(drew) {
+  if (!drew) return null;
+  const f = {};
+  for (const k of ["flat_artwork", "image", "shows_finished", "print_pdf", "print_inches", "print_sheets"]) {
+    if (drew[k] != null) f[k] = drew[k];
+  }
+  if (Array.isArray(drew.panels)) f.panels = drew.panels;
+  return f;
+}
+
+// ══ THE ARTIST FILES RUN IN THE BACKGROUND (2026-09-23, handoff item 2) ═════════════════════════
+// MEASURED: the lock-in took 112s inside the request, and on 2026-09-21 a dropped phone cancelled it
+// twice with no files written - `waitUntil` only outlives a disconnect by about 30s. The job now runs
+// as a mode of the Workflow the crawl already uses, so it survives the phone, a redeploy and the
+// person walking away. The conversation answers at once; the job writes the finished files onto
+// their timeline, where My Tattoos reads them. If it cannot start, the files are made inline as
+// before - nothing is ever skipped.
+async function startArtistFilesJob(env, data) {
+  try {
+    if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
+    const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: "artist_files", data } });
+    return (inst && inst.id) ? inst.id : null;
+  } catch (e) {
+    try { console.log("[FILES] background job did not start - making them inline: " + String(e?.message ?? e).slice(0, 160)); } catch {}
+    return null;
+  }
+}
+
+async function runArtistFilesJob(env, d) {
+  const refDesign = d.refDesign || null, refUrl = d.refUrl || null, lastDrawn = d.lastDrawn || null;
+  return await makeArtistFiles(env, {
+    me: d.me, world: d.world, seeing: !!d.seeing, jobNow: d.jobNow || null, refUrl, lastDrawn,
+    useRaw: Array.isArray(d.useRaw) ? d.useRaw : [], acted: d.acted || {}, intent: d.intent || null,
+    useOne: (n, want) => talkUseOne(n, want, refDesign, refUrl, lastDrawn),
+    _checkOn: (k) => talkCheckOn(env, k), _verdict: talkVerdict, readAct: talkReadAct,
+  });
+}
+
+// The finished files go onto the person's timeline. The timeline is RE-READ here, never carried
+// from the turn: the person may have kept talking while the files were made.
+async function recordArtistFiles(env, d, drew) {
+  const me = d.me;
+  if (!me) return;
+  const ok = !!(drew && drew.image && !drew.failed);
+  try {
+    let tl = (await env.AURA_KV.get("pta:timeline:" + me, "json")) || [];
+    if (!Array.isArray(tl)) tl = [];
+    tl.push({ ts: new Date().toISOString(), role: "picture",
+              ...(ok ? { image: drew.image, design: drew.design || null } : { failed: true }),
+              words: String((drew && drew.changed) || "the artist's files").slice(0, 600),
+              artist_files: true, ...(ok ? { files: artistFilesOf(drew) } : {}) });
+    if (tl.length > 60) tl = tl.slice(-60);
+    await env.AURA_KV.put("pta:timeline:" + me, JSON.stringify(tl));
+  } catch (e) {
+    try { console.log("[FILES] timeline write failed: " + String(e?.message ?? e).slice(0, 160)); } catch {}
+  }
+  if (d.stage === "pta") {
+    try {
+      await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
+        said: ok ? "Artist files made: the flat artwork, the line art and a print PDF."
+                  : "Artist files failed - nothing was made.",
+        who: "picture", channel: "chat", mode: "tattoo", at: new Date().toISOString(),
+        ...(ok ? { image: drew.image } : {}) }), env, true);
+    } catch {}
+  }
+}
+
 async function auraTalk(env, me, stage, saidIn, history, opts) {
       // ══ MEASURE IT, DO NOT REASON ABOUT IT (2026-09-09) ═══════════════════════════════════
       // One turn took 131 SECONDS. Typical is 26-45. Nobody waits half a minute on a phone, and
@@ -62552,10 +62699,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // check is switched off: `config:check:mockup` and `config:check:sheets`, "off" to skip.
       // Defined HERE, near the top of the turn: v9.279 defined it after the artist-files branch
       // that calls it, and that branch died with "Cannot access '_checkOn' before initialization".
-      const _checkOn = async (k) => {
-        try { return String((await env.AURA_KV.get("config:check:" + k)) || "").trim().toLowerCase() !== "off"; }
-        catch { return true; }
-      };
+      const _checkOn = (k) => talkCheckOn(env, k);
 
       // ══ THEY POINTED AT ONE (2026-09-07) ══════════════════════════════════════════════════
       // The wall is a fork, not the tattoo. When somebody taps a photograph, what travels is not
@@ -63174,48 +63318,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
       // Both get the same contract, so the shape of the answer does not depend on which replied.
-      const readAct = (txt) => {
-        let o = null;
-        try { o = JSON.parse(String(txt || "").trim()); }
-        catch { try { o = repairJson(String(txt || "")); } catch {} }
-        if (o) o = unwrapSchema(o);
-        if (!o || typeof o !== "object") return null;
-        const say = typeof o.say === "string" ? o.say.trim() : "";
-        if (!say) return null;
-        const act = String(o.do || "none").trim().toLowerCase();
-        // ══ A FIELD SHE CAN FILL AND NOBODY READS (2026-09-10) ═════════════════════════════
-        // `use` was added to the contract and wired into the evolve in the same hour, and this
-        // line - which is every field of her answer that survives - was not touched. She may
-        // have named both pictures on the first live run; it was discarded here before anything
-        // downstream could see it, and the reply's missing `used` looked exactly like her
-        // choosing not to reach. A contract and its parser are one thing in two places, and this
-        // file has now been burned three times in one day by something reporting the ask instead
-        // of the act.
-        const strList = (v, n, cap) => (Array.isArray(v) ? v : [])
-          .map((x) => String(x == null ? "" : x).trim()).filter(Boolean).slice(0, n)
-          .map((x) => x.slice(0, cap));
-        return { say,
-                 act: ["draw", "change", "artist", "none"].includes(act) ? act : "none",
-                 prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
-                 // KEEP THE FIELD SHE WRITES (2026-09-20). This reader keeps a fixed set of keys
-                 // and drops the rest, so v9.353 asked her for `ask` and then threw it away - the
-                 // frame fallback ran every time and the measured failure never changed. A new
-                 // field in her contract is useless until it survives this line.
-                 ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 900) : "",
-                 words: typeof o.words === "string" ? o.words.trim().slice(0, 900) : "",
-                 // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
-                 // first version of this field took that name, and the duplicate key silently lost.
-                 lines: Array.isArray(o.lines) ? o.lines.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
-                 use: strList(o.use, 4, 400),
-                 // The body sections the NEW work spans, hers to name. Capped at six because a
-                 // human body does not have more separate stencil areas than that on one job, and
-                 // each one is a real image call.
-                 // Widened from 40: an entry is now `section: what part of the design goes there`,
-                 // because a placement word alone produced the same picture three times.
-                 panels: strList(o.panels, 6, 200),
-                 brief: (o.brief && typeof o.brief === "object" && !Array.isArray(o.brief))
-                   ? o.brief : null };
-      };
+      const readAct = talkReadAct;
 
       _tick("prompt_build");
       // ══ HER ANSWER WAS BEING DROPPED IN SILENCE (2026-09-10) ═════════════════════════════
@@ -63230,8 +63333,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // returned, because that is the only place her raw answer exists.
       // Her verdicts come back either as a bare sentence or wrapped in the channel's contract. One
       // stripper, used by both readers, so the two cannot drift apart.
-      const _verdict = (reply, parsed) => String((parsed && parsed.say) || reply)
-        .replace(/^\s*[{\[]/, "").trim();
+      const _verdict = talkVerdict;
       let acted = null, agentVia = null, agentNote = null;
       // What she says after LOOKING at what she made (2026-09-20). See _lookAtResult.
       let _reaction = null;
@@ -63678,18 +63780,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // image model can actually answer.
       // READ HERE, ABOVE THE ACT, because it now decides the act as well as feeding the call.
       const useRaw = Array.isArray(acted.use) ? acted.use.slice(0, 4) : [];
-      const useOne = (n, want) => {
-        const k = String(n || "").trim();
-        const low = k.toLowerCase();
-        if (low === "photo" || low === "the photo" || low === "photograph")
-          return want === "design" ? (refDesign || null) : (refUrl || null);
-        if (low === "piece" || low === "the piece" || low === "last")
-          return want === "design" ? ((lastDrawn && lastDrawn.design) || null)
-                                   : ((lastDrawn && lastDrawn.image) || null);
-        if (/^https?:\/\//i.test(k)) return want === "design" ? null : k;
-        if (/^(ent_|img_)/.test(k)) return want === "design" ? k : null;
-        return null;
-      };
+      const useOne = (n, want) => talkUseOne(n, want, refDesign, refUrl, lastDrawn);
 
       // ══ A DRAW THROWS THE PIXELS AWAY (2026-09-10) ═══════════════════════════════════════
       // MEASURED, side by side: her sleeve was pointed petal caps and delicate open linework;
@@ -63793,8 +63884,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try { await onStage(act === "artist" ? "files" : "drawing"); } catch {}
       }
       if (act === "artist" && me) {
-        drew = await makeArtistFiles(env, { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw,
-                                            acted, intent, useOne, _checkOn, _verdict, readAct });
+        const _job = await startArtistFilesJob(env, {
+          me, world, stage, seeing: !!seeing, jobNow: jobNow || null, refUrl: refUrl || null,
+          refDesign: refDesign || null, lastDrawn: lastDrawn || null,
+          useRaw: Array.isArray(useRaw) ? useRaw : [], acted, intent: intent || null });
+        drew = _job
+          ? { for_the_artist: true, pending: true, job: _job, from: (lastDrawn && lastDrawn.design) || null }
+          : await makeArtistFiles(env, { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw,
+                                         acted, intent, useOne, _checkOn, _verdict, readAct });
       }
 
       // ══ SOMEBODY HAS TO LOOK AT THE MOCKUP (2026-09-15) ═══════════════════════════════════
@@ -64566,7 +64663,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             tline.push({ ts: new Date().toISOString(), role: "picture",
                          ...(drew.image ? { image: drew.image, design: drew.design || null } : { failed: true }),
                          words: String(drew.changed || acted.prompt || "").slice(0, 600),
-                         ...(drew.for_the_artist ? { artist_files: true } : {}) });
+                         ...(drew.for_the_artist ? { artist_files: true, files: artistFilesOf(drew) } : {}) });
           }
           if (tline.length > 60) tline = tline.slice(-60);
           await env.AURA_KV.put("pta:timeline:" + me, JSON.stringify(tline)).catch(() => {});
@@ -65300,7 +65397,8 @@ export class PublicEntry extends WorkerEntrypoint {
           }
           items.push({ image: e.image, design: e.design || null, words: e.words || null,
                        asked: asked, said_after: after, at: e.ts || null,
-                       ...(e.artist_files ? { artist_files: true } : {}) });
+                       ...(e.artist_files ? { artist_files: true } : {}),
+                       ...(e.files ? { files: e.files } : {}) });
         }
         items.reverse();
         return { ok: true, items: items.slice(0, 60), count: items.length };

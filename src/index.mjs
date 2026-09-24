@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.407.0-2026-09-23-a-record-of-the-design-she-drew";
+const BUILD = "aura-core-v9.408.0-2026-09-23-she-looks-at-it-on-them";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64329,6 +64329,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         if (!verdict && !say) return null;
         return { verdict, say };
       };
+
+      // ══ SHE LOOKS AT IT ON THEM (2026-09-23) ════════════════════════════════════════════════
+      // MEASURED: the clown came back on his side and stomach when he said "on my chest", and her
+      // reply - "Let me put the circus clown on your chest... What do you think?" - was written
+      // before the picture existed. A drawing and a change have always ended with her looking at
+      // what came out; put-it-on-me never did. Same look, same body check, same place in her reply.
+      if (act === "onme" && drew && drew.on_me && drew.image && !drew.failed) {
+        const _lkOn = await _lookAtResult(drew.image, true);
+        if (_lkOn && _lkOn.say) _reaction = _lkOn.say;
+        if (_lkOn && _lkOn.verdict) {
+          drew.she_looked = _lkOn.verdict;
+          drew.placement_ok = /^\s*RIGHT\b/i.test(_lkOn.verdict);
+        }
+      }
 
       if (act === "change" && me) {
         // `IMAGE EVOLVE` sends the PARENT'S PIXELS with the instruction, so the piece on screen

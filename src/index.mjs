@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.413.0-2026-09-24-a-new-design-starts-blank";
+const BUILD = "aura-core-v9.414.0-2026-09-24-they-want-to-see-it-on-them";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63971,7 +63971,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               detail:      one(parsed.detail, ["bold", "balanced", "intricate", "ultra"]),
               elements:    Array.isArray(parsed.elements)
                 ? parsed.elements.map(x => str(x, 40)).filter(Boolean).slice(0, 6) : null,
-              meaning:     str(parsed.meaning, 300)
+              meaning:     str(parsed.meaning, 300),
+              // THEY WANT TO SEE IT ON THEM (2026-09-24). Set by her, the moment they say so; once
+              // set it stays for this tattoo - a fresh start clears the brief with everything else.
+              on_me: (parsed.on_me === true || /^(yes|true)$/i.test(String(parsed.on_me ?? "")) ||
+                      (carriedObj && carriedObj.on_me === true)) ? true : null
             };
             // The paragraph, from the same answer. A shop reads this; the fields are for us.
             brief = str(parsed.brief, 400);
@@ -64392,8 +64396,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // See It On You, she said so herself, and after the drawing this line - the only close-out
               // she gets after a look - offered two doors. Her guidance decides who gets the third; this
               // line no longer overrules it. Not after a picture that is already on them.
-              (onBody ? "" : " If they have told you they want to see it on them, also ask whether they " +
-                "would like to see it on them now.") + " (" + url + ")]",
+              // A fact she wrote down (`on_me` in her brief), not a judgement remade on every picture.
+              ((!onBody && intent && intent.on_me) ? " They want to see it on them - end by asking " +
+                "whether they would like to see it on them now." : "") + " (" + url + ")]",
               false, me, url, world);
             if (rx && rx.reply && !rx.failed) {
               const t2 = _verdict(rx.reply, readAct(rx.reply)).trim();

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.421.0-2026-09-24-only-their-latest-words";
+const BUILD = "aura-core-v9.422.0-2026-09-24-base-body-photo-plus-new-tattoo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62645,12 +62645,30 @@ const ONME_SENTENCE = "Place the tattoo design from the second image onto the sk
 const ONME_SIDES = /\b(right|left)\b/i;
 const ONME_SIZED = /\b(small|smaller|tiny|little|mini|big|bigger|large|larger|huge|palm|hand|half|whole|full|entire|cover|covering|inch|inches|cm|size|sized|across|down to|halfway|wide|tall)\b/i;
 function onmeAsk(words) {
+  // ══ BASE BODY PHOTO + NEW TATTOO (2026-09-24, Aaron's frame) ═══════════════════════════════
+  // The operation, stated literally - which image is which, that this is an EDIT of their photo,
+  // that ink already on them is old ink that stays - with ONLY where it goes taken from them, as
+  // they said it. Same lesson as the add-on frame: the models are literal. Image 1 is the design,
+  // image 2 is their photo, and the refs are sent in that order.
   const w = String(words || "").replace(/\s+/g, " ").trim().slice(0, 600);
-  return "Image 1 is a photo of a person. Image 2 is a tattoo design. Put the tattoo from Image 2 on " +
-    "the person in Image 1" + (w ? ": \"" + w.replace(/"/g, "'") + "\"" : "") +
-    // NOTHING ADDED (2026-09-24, Aaron: "don't add things - it literally is exactly what the human
-    // says"). The size line and the right/left line added earlier today are gone.
-    ". Keep everything else exactly as it is.";
+  const where = w ? "the place they asked for: \"" + w.replace(/"/g, "'") + "\"" : "the spot that suits it";
+  return [
+    "TWO-IMAGE TATTOO VISUALIZATION",
+    "",
+    "IMAGE 1 = TATTOO DESIGN SOURCE. This image supplies ONLY the tattoo artwork/design that will be applied.",
+    "IMAGE 2 = BASE BODY PHOTO. This image is the image to EDIT. It owns the person, body, pose, camera angle, crop, background, lighting, skin, existing tattoos, clothing, environment and overall composition.",
+    "",
+    "GOAL: Return IMAGE 2 with the tattoo from IMAGE 1 realistically applied to the requested body location.",
+    "THIS IS AN IMAGE EDIT, NOT A NEW IMAGE GENERATION.",
+    "",
+    "PRESERVATION RULE: Preserve IMAGE 2 as closely as possible. Do NOT recreate the person, replace the person, change the pose, change the body, change the camera angle, change the crop, change the background, change the environment, change the lighting, remove or redesign existing tattoos, invent additional tattoos, reinterpret IMAGE 2 as inspiration, or generate a new photograph resembling IMAGE 2. The only intended visual change is the addition of the tattoo design from IMAGE 1.",
+    "",
+    "TATTOO APPLICATION: Extract the tattoo artwork from IMAGE 1 and apply it to " + where + " in IMAGE 2. Adapt only what is physically necessary to make the tattoo believable on that body: scale, rotation, perspective, curvature, anatomical wrapping, skin contour, natural occlusion, local lighting, skin texture. Preserve the recognizable design, structure, subject and visual character of IMAGE 1. The tattoo must appear IN the skin rather than pasted on top of the photograph. Preserve pores, skin texture, highlights, shadows and body curvature through the tattoo.",
+    "",
+    "EXISTING INK: Any tattoos already visible in IMAGE 2 are OLD/EXISTING INK. They are part of the base photograph and must remain unchanged unless the user explicitly asks to modify or cover them. The tattoo supplied in IMAGE 1 is NEW INK. NEW INK is the only tattoo artwork being added.",
+    "",
+    "OUTPUT: Return the BASE BODY PHOTO with the NEW INK realistically visualized on the requested body location. OUTPUT = BASE BODY PHOTO + NEW TATTOO, NOT a newly generated person inspired by both images."
+  ].join("\n");
 }
 
 // ══ WHAT'S HOT RIGHT NOW (2026-09-24, Aaron) ═══════════════════════════════════════════════
@@ -64504,7 +64522,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try {
           const _om = await processCommand("SHOW_IT " + JSON.stringify({
             subject: onmeAsk(_onmeWords), context: "seeing a tattoo on their own body", name: "on me",
-            raw: true, refs: [refUrl, _onmeDesign.image], source: "onme", parent: _onmeDesign.design
+            raw: true, refs: [_onmeDesign.image, refUrl], source: "onme", parent: _onmeDesign.design
           }), env, true);
           const _op = (_om && _om.payload) ? _om.payload : _om;
           drew = (_op && _op.ok && _op.image_url)

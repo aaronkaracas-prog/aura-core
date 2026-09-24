@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.424.0-2026-09-24-the-2026-vocabulary";
+const BUILD = "aura-core-v9.426.0-2026-09-24-one-name-once";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62745,7 +62745,8 @@ const TALK_TRENDS = [
   "sketch (looks like an artist's working drawing - construction lines, loose strokes) [general creature]",
   "hand-drawn (keeps the personality of a real drawing rather than polished perfection) [general playful]",
   "abstract (shapes, lines and forms rather than a literal picture) [general]",
-  "freehand (drawn individually, spontaneous and artistic rather than flash) [general floral creature]"
+  "freehand (drawn individually, spontaneous and artistic rather than flash) [general floral creature]",
+  "pin-up girls (classic vintage pin-up women - glamorous, playful, retro poster charm) [playful memory dark]"
 ];
 // THE TREND FOLLOWS THE IDEA (2026-09-24, Aaron). A coarse, visible first cut - which kinds of
 // direction suit what they said - so the short list she is handed always holds ones that fit. She
@@ -64561,6 +64562,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             .sort((a, b) => b.length - a.length)[0] || null;
           if (_subjHit && _fHay.includes(" " + _sing(_subjHit) + " ")) _subjHit = _sing(_subjHit);
         } catch {}
+        // ONE NAME, ONCE (2026-09-24). MEASURED: embroidered patch is on her list AND a catalogue
+        // category, and was searched as "embroidered patch embroidered patch tattoo" - one poor
+        // result, where "embroidered patch tattoo" found several. When the two are the same thing,
+        // the name is used once.
+        if (_trendHit && _subjHit) {
+          const _a = _norm(_trendHit), _b = _norm(_subjHit);
+          if (_a.includes(_b) || _b.includes(_a)) _subjHit = null;
+        }
         const _fq = (_trendHit || _subjHit)
           ? [_trendHit, _subjHit].filter(Boolean).join(" ") + " tattoo" : "";
         if (!_fq) { act = "none"; }

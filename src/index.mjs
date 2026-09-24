@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.418.0-2026-09-24-the-wall-asks-plainly";
+const BUILD = "aura-core-v9.419.0-2026-09-24-she-looks-at-what-the-wall-found";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -31154,6 +31154,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "WALL", payload: wr };
     }
 
+    // ══ WALL_LOOK - THE WALL, THEN SHE LOOKS (2026-09-24) ══════════════════════════════════
+    // The wall is untouched and shared (the WALL command, the page's wall action). This runs it
+    // exactly as they do, then looks at every picture it returned - one look per picture, side by
+    // side - and says what is actually in each. Anything that is not a tattoo on skin is dropped;
+    // four are kept. Built for her conversation; this command is how it is tested first.
+    case "WALL_LOOK": {
+      if (!isOp) return { cmd: "WALL_LOOK", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const lq = (rest || "").trim();
+      if (!lq) return { cmd: "WALL_LOOK", payload: { ok: false, error: "Usage: WALL_LOOK <what to look for>" } };
+      const wr = await findReference(lq, env, { count: 6 });
+      if (!wr || !wr.ok) return { cmd: "WALL_LOOK", payload: { ok: false, wall: wr } };
+      const lk = await lookAtWall(env, wr.found || [], 4);
+      return { cmd: "WALL_LOOK", payload: { ...lk, query: lq, wall_ms: wr.ms, wall_found: (wr.found || []).length } };
+    }
+
     case "SEE": {
       // ══ AN OPERATOR PROBE, NOT THE PRODUCT DOOR ═══════════════════════════════════════════════
       // `processCommand` is operator-gated, so a stranger designing a tattoo can never reach this.
@@ -57304,6 +57319,63 @@ async function resolveShop(env, given) {
     return { key: row.id, pta: row.pta || null, row, claimed: !!row.claimed_at, crawled: true,
              name: row.name || null, email: row.email || row.email_found || null };
   } catch { return null; }
+}
+
+// ══ SHE LOOKS AT WHAT THE WALL FOUND (2026-09-24, Aaron) ══════════════════════════════════════
+// MEASURED: the wall's lines are the search model's prose from WHILE it searched - one of six
+// happened to match its picture ("the guy with dreadlocks"), the rest described other things.
+// Nobody looked at the files. Here every picture gets its own look, all at once, on the same
+// model the wall uses: one line of what is actually in it, whatever the subject. Separate from
+// findReference - the wall itself does not change.
+async function lookAtWall(env, found, keep) {
+  const t0 = Date.now();
+  const list = (Array.isArray(found) ? found : []).filter((f) => f && f.image).slice(0, 8);
+  if (!list.length) return { ok: false, error: "NOTHING_TO_LOOK_AT" };
+  const wallPin = await env.AURA_KV.get("config:wall:model").catch(() => null);
+  const route = await _brainRoute(env, (wallPin && wallPin.trim()) || null);
+  if (route.provider !== "grok") return { ok: false, error: "NO_LOOK_FOR_PROVIDER", provider: route.provider };
+  const key = await getSecret(env, "xai");
+  if (!key) return { ok: false, error: "NO_XAI_KEY" };
+  const ask = "Look at this picture. In one short line, say what tattoo is in it and what it looks " +
+    "like - only what you can actually see. If it is not a real tattoo on skin, answer only: NOT A TATTOO";
+  const textOf = (d) => {
+    const parts = [];
+    const walk = (n) => {
+      if (!n) return;
+      if (typeof n === "string") { parts.push(n); return; }
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      if (typeof n === "object") {
+        if (typeof n.text === "string") parts.push(n.text);
+        if (n.content) walk(n.content);
+        if (n.message) walk(n.message);
+      }
+    };
+    walk(d && (d.output || d.choices));
+    return parts.join(" ").replace(/\s+/g, " ").trim();
+  };
+  const looked = await Promise.all(list.map(async (f) => {
+    try {
+      const r = await pfetch(env, "xai", "core:wall-look", "https://api.x.ai/v1/responses", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: route.model, input: [{ role: "user", content: [
+          { type: "input_text", text: ask },
+          { type: "input_image", image_url: f.image }
+        ] }] })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return { ...f, saw: null, look_error: (d && d.error && (d.error.message || d.error)) || ("http " + r.status) };
+      return { ...f, saw: textOf(d).slice(0, 240) || null };
+    } catch (e) {
+      return { ...f, saw: null, look_error: String((e && e.message) || e).slice(0, 160) };
+    }
+  }));
+  const isTattoo = (x) => x.saw && !/^\s*NOT A TATTOO/i.test(x.saw);
+  const kept = looked.filter(isTattoo).slice(0, keep || 4);
+  return { ok: kept.length > 0, found: kept.map(({ look_error, ...rest }) => rest),
+    said: kept.map((x) => x.saw).join("\n\n") || null,
+    dropped: looked.filter((x) => !isTattoo(x)).map((x) => ({ image: x.image, saw: x.saw, error: x.look_error || null })),
+    model: route.model, look_ms: Date.now() - t0 };
 }
 
 async function findReference(query, env, opts = {}) {

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.405.0-2026-09-23-the-design-she-made-not-the-photo";
+const BUILD = "aura-core-v9.406.0-2026-09-23-show-it-keeps-the-job-it-is-given";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -19063,7 +19063,7 @@ async function successionGate(env) {
       // wrong answer, which is the most expensive kind.
       let subject = after, ctx = null, nm = null, viaP = null, hostP = null;
       let refsP = null, rawP = false, parentP = null, creatorP = null;
-      let aspP = null, resP = null, modelP = null;
+      let aspP = null, resP = null, modelP = null, srcP = null;
       if (/^\s*\{/.test(after)) {
         try {
           const p = JSON.parse(after);
@@ -19084,6 +19084,13 @@ async function successionGate(env) {
             // of it. A caller that names the model is exact and immediate; showIt already passes it
             // through, only this door never accepted it.
             modelP = (typeof p.model === "string" && p.model.trim()) ? p.model.trim() : null;
+            // THE JOB IT IS GIVEN (2026-09-23). MEASURED: put-it-on-me sent {source:"onme", refs:[body,
+            // design]} and this renamed every call "show_it_cmd". The engine only attaches reference
+            // pictures for edit jobs ("onme" is one; "show_it_cmd" is not), so both pictures were
+            // dropped and the model drew from the sentence alone - a portrait, a muscle arm - on Grok
+            // and GPT alike. The same rename hid the job's own model setting. A caller that names its
+            // job keeps it; anything unnamed is still "show_it_cmd".
+            srcP = (typeof p.source === "string" && /^[a-z_]{2,40}$/.test(p.source.trim())) ? p.source.trim() : null;
           }
         } catch (e) {}
       }
@@ -19101,7 +19108,7 @@ async function successionGate(env) {
       // every later version evolves from this first drawing, so its pixels are the ceiling for
       // the whole piece.
       // Optional, so every existing caller is unchanged.
-      const r = await showIt(subject, env, { source: "show_it_cmd", context: ctx || subject, name: nm,
+      const r = await showIt(subject, env, { source: srcP || "show_it_cmd", context: ctx || subject, name: nm,
         via: viaP, host: hostP, refs: refsP || undefined, raw: rawP, parent: parentP, creator: creatorP,
         ...(aspP ? { aspect: aspP } : {}), ...(resP ? { res: resP } : {}),
         ...(modelP ? { model: modelP } : {}) });

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.414.0-2026-09-24-they-want-to-see-it-on-them";
+const BUILD = "aura-core-v9.415.0-2026-09-24-whats-hot-right-now";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62588,6 +62588,54 @@ function onmeAsk(words) {
     ". Keep everything else exactly as it is.";
 }
 
+// ══ WHAT'S HOT RIGHT NOW (2026-09-24, Aaron) ═══════════════════════════════════════════════
+// The current directions, each with a few words of what it looks like (the home screen tiles' own
+// words). Buried in a long guidance the talking model read past them; handed to her at the moment
+// she answers - ten of them, shuffled per tattoo, enough that some always fit the idea - she cannot miss them, and two people asking for
+// roses hear different, equally good ideas. `config:talk:trends` (a JSON array of lines) replaces
+// this list without a deploy.
+const TALK_TRENDS = [
+  "patchwork (small unrelated pieces collected like stickers on a laptop - the biggest thing this year)",
+  "sticker style (bright little designs, each with a white sticker border)",
+  "fine-line florals (delicate flowers in thin elegant line - what everyone is asking for)",
+  "birth flowers (the flower of their birth month, usually fine line - blowing up)",
+  "Y2K chrome (glossy early-2000s chrome hearts, stars and butterflies - peaking right now)",
+  "chrome / metallic (liquid chrome with mirrored highlights)",
+  "ignorant doodle (deliberately crude, funny scribbled cartoons - the surprise of the summer)",
+  "cybersigilism (spiky thorn-like black linework, sharp and futuristic)",
+  "neo-tribal (bold black tribal shapes with sharp points and flowing curves)",
+  "blackout (bold solid black with a clean edge)",
+  "negative space (the shape carved out of heavy black ink by bare skin)",
+  "blackwork (heavy solid black shapes and dense patterns)",
+  "micro realism (one tiny, astonishingly detailed realistic piece)",
+  "micro tattoos (minuscule, precise little designs)",
+  "ornamental (symmetrical mandala and lace, jewellery-like)",
+  "body jewelry (fine chains and hanging pendants drawn as tattoo jewellery)",
+  "red ink (the whole piece in bright red, no black)",
+  "handwritten scribble (loose script like ink straight from a pen)",
+  "tiny lettering (a few very small delicate words)",
+  "botanical fine line (a precise study of leaves and stems in thin line)",
+  "abstract linework (flowing abstract lines, minimal and modern)",
+  "organic body-flow (long flowing curves that follow the body)",
+  "delicate (soft, feather-light, quiet and refined)",
+  "tiny symbols (a scatter of very small simple symbols)",
+  "bows and ribbons (tied bows and trailing ribbon in fine line)",
+  "celestial (moon, stars and orbiting lines)",
+  "personal symbols (a few meaningful emblems, simple and iconic)",
+  "memory / story (keepsakes - a date, a flower, a small object - telling one story)",
+  "nostalgic objects (a cassette, a film camera, a payphone)",
+  "pixel / 8-bit (retro video-game pixel art)"
+];
+function talkShuffle(list, seedText) {
+  let h = 2166136261;
+  for (const ch of String(seedText || "")) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  const rnd = () => { h = (h + 0x6D2B79F5) >>> 0; let t = h; t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
 async function startArtistFilesJob(env, data) {
   try {
     if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
@@ -63595,9 +63643,29 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         ? "\n\nWHERE THEY CAME IN: they came in through a picture on the home screen" +
           (_cameFrom.at ? " on " + String(_cameFrom.at).slice(0, 10) : "") + ". " +
           "It was drawn from these words: \"" + _cameFrom.words + "\". That is what they were " +
-          "looking at - it is not a picture of theirs."
+          "looking at - it is not a picture of theirs." +
+          (_tileIn ? " They tapped that card: that is the direction they picked - get excited " +
+            "about it and go with it; do not offer others." : "")
         : "";
-      const agentSys = shelf + found + stateNote + resetNote + picNote + refNote + refBlind + tileNote;
+      // While they are still finding a direction - nothing of hers drawn in this tattoo yet, and
+      // they did not come in through a card this turn - she gets ten current directions, shuffled
+      // for this tattoo, at the moment she answers.
+      let trendNote = "";
+      try {
+        let _dNow = null; try { _dNow = _pre ? await _pre.design : null; } catch {}
+        if (!_tileIn && !(_dNow && _dNow.image) && !(lastDrawn && lastDrawn.design)) {
+          let _list = TALK_TRENDS;
+          try {
+            const _kvT = JSON.parse((await env.AURA_KV.get("config:talk:trends")) || "null");
+            if (Array.isArray(_kvT) && _kvT.length >= 4) _list = _kvT.map(String);
+          } catch {}
+          let _proj = ""; try { _proj = String((_pre && await _pre.project) || ""); } catch {}
+          const _six = talkShuffle(_list, String(me || "") + "|" + _proj).slice(0, 10);
+          trendNote = "\n\nWHAT'S HOT RIGHT NOW - lead with the ones that fit their idea and say so " +
+            "with energy, then one question: " + _six.join("; ") + ".";
+        }
+      } catch {}
+      const agentSys = shelf + found + stateNote + resetNote + picNote + refNote + refBlind + tileNote + trendNote;
 
       // ══ A GREETING HAS TO LOOK LIKE A GREETING (2026-09-14) ════════════════════
       // Aaron, and it is the only thing this session was ever about: "I can't say hello to an agent."
@@ -63611,7 +63679,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // THE MOMENT ANYTHING IS LIVE, IT ALL RIDES AGAIN. A piece on screen, a photograph, a brief
       // already settled - then "hey" means "I am still here" and she needs the room to answer it,
       // which is exactly what she did on the back piece today.
-      const hasLive = !!(lastDrawn && lastDrawn.design) || !!refUrl || !!refSaw || !!carried || !!tileNote;
+      const hasLive = !!(lastDrawn && lastDrawn.design) || !!refUrl || !!refSaw || !!carried || !!tileNote || !!trendNote;
       // ══ A FRESH INSTANCE HAS NO EXAMPLES TO COPY (2026-09-14) ═══════════════════════════════
       // MEASURED, two identities, same channel, same contract, same model: the one with dozens of
       // her own JSON replies in its session returns JSON every time. A brand new one returned

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.416.0-2026-09-24-whats-hot-that-fits";
+const BUILD = "aura-core-v9.417.0-2026-09-24-say-it-is-hot";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63687,8 +63687,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const _theirs = String(said || "") + " " + String((carriedObj && carriedObj.subject) || "");
           const _pick = talkTrendPick(_list, _theirs, String(me || "") + "|" + _proj, 10);
           _hotPicks = _pick.picks;
-          trendNote = "\n\nWHAT'S HOT RIGHT NOW, AND FITS WHAT THEY SAID - the only things you may call " +
-            "hot: " + _pick.picks.join("; ") + ".";
+          // SAY IT (2026-09-24, Aaron). MEASURED: handed a fitting list, she picked well but only once
+          // in three said it was hot - "if the text does not come back with this is what's hot, no one
+          // is gonna understand it". Permission became an instruction.
+          trendNote = "\n\nWHAT'S HOT RIGHT NOW, AND FITS WHAT THEY SAID: " + _pick.picks.join("; ") + ". " +
+            "Pick two or three that fit their idea and tell them plainly that it's what's hot right now - " +
+            "something like \"what's really hot right now is...\" - and why it would look great. Then hand " +
+            "it back to them (\"but this is your idea - we can take it anywhere\"), and ask one question. " +
+            "Only these may be called hot.";
         }
       } catch {}
       const agentSys = shelf + found + stateNote + resetNote + picNote + refNote + refBlind + tileNote + trendNote;

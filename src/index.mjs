@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.419.0-2026-09-24-she-looks-at-what-the-wall-found";
+const BUILD = "aura-core-v9.420.0-2026-09-24-find-real-tattoos-for-inspiration";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62562,7 +62562,7 @@ function talkReadAct(txt) {
       .map((x) => String(x == null ? "" : x).trim()).filter(Boolean).slice(0, n)
       .map((x) => x.slice(0, cap));
     return { say,
-             act: ["draw", "change", "onme", "artist", "none"].includes(act) ? act : "none",
+             act: ["draw", "change", "onme", "find", "artist", "none"].includes(act) ? act : "none",
              prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
              // KEEP THE FIELD SHE WRITES (2026-09-20). This reader keeps a fixed set of keys
              // and drops the rest, so v9.353 asked her for `ask` and then threw it away - the
@@ -64449,6 +64449,51 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         const _ptd = (acted.lines || []).map((n) => _convLines.find((l) => l.n === n))
           .filter((l) => l && l.said);
         _onmeWords = _ptd.length ? _ptd.map((l) => String(l.said).trim()).join(" ") : String(said || "").trim();
+      }
+      // ══ FIND - REAL TATTOOS FOR INSPIRATION (2026-09-24, Aaron) ═══════════════════════════
+      // Get Inspired: the wall (unchanged, shared) finds real tattoos of what they described, she
+      // looks at each one, four are kept. They are CONTEXT ONLY - other people's work, never a
+      // canvas, never the piece on screen, never drawn from. `drew` carries no `image`, so no
+      // record of hers (the piece on screen, the design, the timeline picture) is touched.
+      // Saved per search: only the first person to ask for "neo tribal" waits.
+      if (act === "find") {
+        const _fq = String((acted && acted.prompt) || said || "").replace(/\s+/g, " ").trim().slice(0, 120);
+        if (!_fq) { act = "none"; }
+        else {
+          const _fk = "walllook:" + _fq.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+          let _fl = null;
+          try { const _h = await env.AURA_KV.get(_fk); if (_h) _fl = { ...JSON.parse(_h), cached: true }; } catch {}
+          if (!_fl) {
+            try {
+              const _wr = await findReference(_fq, env, { count: 6 });
+              if (_wr && _wr.ok) {
+                const _lk = await lookAtWall(env, _wr.found || [], 4);
+                if (_lk && _lk.ok) {
+                  _fl = { found: _lk.found, cached: false };
+                  try { await env.AURA_KV.put(_fk, JSON.stringify({ found: _lk.found })); } catch {}
+                }
+              }
+            } catch {}
+          }
+          drew = (_fl && Array.isArray(_fl.found) && _fl.found.length)
+            ? { found: _fl.found.map((f) => ({ image: f.image, source: f.source || null, saw: f.saw || null })),
+                find_query: _fq, cached: !!_fl.cached }
+            : { failed: true, find_query: _fq, error: "NOTHING_FOUND" };
+          if (me && drew && !drew.failed) {
+            const _lines = drew.found.map((f, i) => (i + 1) + ") " + (f.saw || "a tattoo")).join("\n");
+            try {
+              const _fx = await proxyToAgent(env,
+                "[You looked for \"" + _fq + "\" and found these real tattoos other people have gotten - " +
+                "they are on their screen now, in this order:\n" + _lines + "\nTell them what you found in " +
+                "one or two lines, pointing at them by what is in them, then ask which one grabs them. These " +
+                "are other people's tattoos - inspiration only.]", false, me, null, world);
+              if (_fx && _fx.reply && !_fx.failed) {
+                const _t = _verdict(_fx.reply, readAct(_fx.reply)).trim();
+                if (_t) _reaction = _t.slice(0, 600);
+              }
+            } catch {}
+          }
+        }
       }
       if (act === "onme" && me) {
         try {

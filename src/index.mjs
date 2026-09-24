@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.420.0-2026-09-24-find-real-tattoos-for-inspiration";
+const BUILD = "aura-core-v9.421.0-2026-09-24-only-their-latest-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62648,8 +62648,8 @@ function onmeAsk(words) {
   const w = String(words || "").replace(/\s+/g, " ").trim().slice(0, 600);
   return "Image 1 is a photo of a person. Image 2 is a tattoo design. Put the tattoo from Image 2 on " +
     "the person in Image 1" + (w ? ": \"" + w.replace(/"/g, "'") + "\"" : "") +
-    (ONME_SIDES.test(w) ? " (their own right and left, as they see their body - not the viewer's)" : "") +
-    (ONME_SIZED.test(w) ? "" : ", at the size a tattoo artist would actually put it there - not covering more of the body than it needs") +
+    // NOTHING ADDED (2026-09-24, Aaron: "don't add things - it literally is exactly what the human
+    // says"). The size line and the right/left line added earlier today are gone.
     ". Keep everything else exactly as it is.";
 }
 
@@ -64448,7 +64448,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (act === "onme") {
         const _ptd = (acted.lines || []).map((n) => _convLines.find((l) => l.n === n))
           .filter((l) => l && l.said);
-        _onmeWords = _ptd.length ? _ptd.map((l) => String(l.said).trim()).join(" ") : String(said || "").trim();
+        // THEIR LATEST WORDS ONLY (2026-09-24). MEASURED: "put it on my knee" reached the model as
+        // "put it on my knee in between my tattoos, don't cover any of them put it on my knee" - she
+        // pointed at the old line and the new one and they were joined. Where it goes is whatever they
+        // said last: the newest line she points at, or what they said this turn.
+        const _newest = _ptd.slice().sort((a, b) => (b.n || 0) - (a.n || 0))[0];
+        _onmeWords = _newest ? String(_newest.said).trim() : String(said || "").trim();
       }
       // ══ FIND - REAL TATTOOS FOR INSPIRATION (2026-09-24, Aaron) ═══════════════════════════
       // Get Inspired: the wall (unchanged, shared) finds real tattoos of what they described, she

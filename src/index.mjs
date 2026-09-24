@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.408.0-2026-09-23-she-looks-at-it-on-them";
+const BUILD = "aura-core-v9.409.0-2026-09-23-where-they-asked-for-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62567,6 +62567,16 @@ const ONME_SENTENCE = "Place the tattoo design from the second image onto the sk
   "and make the ink sit UNDER the skin like a real healed tattoo - not a sticker, not a " +
   "flat overlay. Keep the person, the pose and the background exactly as they are.";
 
+// WHERE THEY ASKED FOR IT (2026-09-23). MEASURED: "on my chest", and the clown landed on his side -
+// the sentence said "onto the skin" and nothing else, so the model chose. The place is their own word
+// from the brief ("chest", "left forearm"); with none, the sentence is exactly as it was.
+function onmeSentenceFor(where) {
+  const w = String(where || "").toLowerCase().replace(/[^a-z\s\-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!w) return ONME_SENTENCE;
+  return ONME_SENTENCE.replace("onto the skin in the first image",
+    "onto their " + w.replace(/^(my|the|their|his|her)\s+/, "") + " in the first image");
+}
+
 async function startArtistFilesJob(env, data) {
   try {
     if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
@@ -64232,7 +64242,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (act === "onme" && me) {
         try {
           const _om = await processCommand("SHOW_IT " + JSON.stringify({
-            subject: ONME_SENTENCE, context: "seeing a tattoo on their own body", name: "on me",
+            subject: onmeSentenceFor(intent && intent.placement), context: "seeing a tattoo on their own body", name: "on me",
             raw: true, refs: [refUrl, _onmeDesign.image], source: "onme", parent: _onmeDesign.design
           }), env, true);
           const _op = (_om && _om.payload) ? _om.payload : _om;
@@ -64281,7 +64291,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // on its own first line; what follows is what she says to them.
       // `config:check:react` = off turns the talking look off; `config:check:mockup` = off turns
       // the placement verdict off. A look that fails never costs them the picture.
-      const _lookAtResult = async (url, onBody) => {
+      const _lookAtResult = async (url, onBody, where) => {
         if (!url || !me) return null;
         const body = !!(onBody && seeing && (await _checkOn("mockup")));
         const talk = await _checkOn("react");
@@ -64303,7 +64313,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               "[A CHECK FOR US - THIS IS NOT SHOWN TO THEM. This is the mock-up on their own body. " +
               "Compare it to the photograph they sent. Answer RIGHT or WRONG, then one short sentence " +
               "saying why: is the tattoo they already had still there - not removed or covered over - " +
-              "is what they asked for there, and is every bit of the new ink on their skin? Ink on " +
+              "is what they asked for there, and is every bit of the new ink on their skin?" +
+              (where ? " Is it on their " + String(where).slice(0, 40) + ", where they asked for it?" : "") + " Ink on " +
               "clothing, hair or the background is WRONG. Nothing else. (" + url + ")]",
               false, me, url, world);
             if (chk && chk.reply && !chk.failed) {
@@ -64336,7 +64347,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // before the picture existed. A drawing and a change have always ended with her looking at
       // what came out; put-it-on-me never did. Same look, same body check, same place in her reply.
       if (act === "onme" && drew && drew.on_me && drew.image && !drew.failed) {
-        const _lkOn = await _lookAtResult(drew.image, true);
+        const _lkOn = await _lookAtResult(drew.image, true, (intent && intent.placement) || null);
         if (_lkOn && _lkOn.say) _reaction = _lkOn.say;
         if (_lkOn && _lkOn.verdict) {
           drew.she_looked = _lkOn.verdict;

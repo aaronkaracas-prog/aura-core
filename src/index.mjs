@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.412.0-2026-09-24-the-files-come-from-the-design";
+const BUILD = "aura-core-v9.413.0-2026-09-24-a-new-design-starts-blank";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62791,9 +62791,20 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         // expiring") - a newer tap replaces it, and the note below says when it happened.
         tile:     _state.then((x) => talkParse(x.tile)),
         project:  _state.then((x) => x.project ?? null),
-        design:   _state.then((x) => talkParse(x.design)),
-        onme:     _state.then((x) => talkParse(x.onme)),
+        design:   (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => talkParse(x.design)),
+        onme:     (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => talkParse(x.onme)),
       } : null;
+      // ══ A FRESH START CLEARS WHAT IS STORED, NOT ONLY WHAT IS READ (2026-09-24) ═════════════
+      // MEASURED on the site: the fresh flag hid the last tattoo's state on the FIRST turn only.
+      // The turn after read the stored copy again - the pool photo from the tattoo before - and
+      // "do it" drew the new clown onto his face. On a fresh start everything from the last tattoo
+      // is cleared where it is kept: the brief, the piece on screen, the held photo, the record of
+      // her design and of the last look on them.
+      if (me && opts && opts.fresh) {
+        for (const _k of ["brief", "last", "ref", "design", "onme"]) {
+          try { await talkStatePut(env, me, _k, ""); } catch {}
+        }
+      }
       // ══ THE RECORD IS WRITTEN AFTER THE REPLY, IN ORDER (2026-09-22) ═══════════════════════
       // MEASURED: 5.7s of a 16.5s turn spent writing her chain and memory AFTER her answer existed,
       // while the person waited. The writes still happen, in the same order - they just stop
@@ -64145,12 +64156,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // and the old piece is left alone rather than mutated into something it is not.
       // WHEN EITHER SUBJECT IS UNKNOWN, KEEP THE PIXELS. Dropping them is the failure being
       // fixed, and an unwanted evolve is one sentence to correct; a lost piece is not.
+      // ══ A NEW DESIGN STARTS BLANK (2026-09-24, Aaron) ════════════════════════════════════════
+      // MEASURED on the site: "do it" on a brand-new clown became a CHANGE of the piece on screen,
+      // and the piece on screen was his pool photo from the tattoo before - so the new design was
+      // drawn onto his face. A drawing only continues from a picture she DREW (the record of her
+      // design). A photo is a canvas only for add / cover / rework (below) and for put-it-on-me.
+      let _herDesign = null; try { _herDesign = _pre ? await _pre.design : null; } catch {}
+      const _isHerDrawing = !!(lastDrawn && lastDrawn.design && _herDesign && _herDesign.design === lastDrawn.design);
       if (act === "draw" && hasParent) {
         const namedParent = useRaw.length ? useOne(useRaw[0], "design") : null;
         const wasSubj = String((lastDrawn && lastDrawn.subject) || "").trim().toLowerCase();
         const nowSubj = String((intent && intent.subject) || "").trim().toLowerCase();
         const subjectMoved = !!(wasSubj && nowSubj && wasSubj !== nowSubj);
-        if (namedParent || !subjectMoved) {
+        if (namedParent || (!subjectMoved && _isHerDrawing)) {
           act = "change";
           if (namedParent && namedParent !== lastDrawn.design) {
             lastDrawn = { design: namedParent, image: useOne(useRaw[0], "url") || null,
@@ -64175,6 +64193,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // turn, so each change went back to the bare arm and the T-rex was never there to modify.
       // Right for the first draw, wrong for everything after it. Once she has drawn on their
       // skin, THAT is the piece being changed - the photograph has done its job.
+      // A change on a NEW tattoo with nothing of hers drawn yet would change their photo - it is a
+      // new drawing, on a blank canvas.
+      if (act === "change" && !["cover", "add", "rework"].includes(jobNow) && !_isHerDrawing &&
+          !(useRaw.length && useOne(useRaw[0], "design"))) act = "draw";
       const startsFromPhoto = !(lastDrawn && lastDrawn.design && lastDrawn.design !== refDesign);
       if (act === "draw" && refDesign && startsFromPhoto &&
           ["cover", "add", "rework"].includes(jobNow)) {

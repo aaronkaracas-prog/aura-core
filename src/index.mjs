@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.415.0-2026-09-24-whats-hot-right-now";
+const BUILD = "aura-core-v9.416.0-2026-09-24-whats-hot-that-fits";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62595,37 +62595,61 @@ function onmeAsk(words) {
 // roses hear different, equally good ideas. `config:talk:trends` (a JSON array of lines) replaces
 // this list without a deploy.
 const TALK_TRENDS = [
-  "patchwork (small unrelated pieces collected like stickers on a laptop - the biggest thing this year)",
-  "sticker style (bright little designs, each with a white sticker border)",
-  "fine-line florals (delicate flowers in thin elegant line - what everyone is asking for)",
-  "birth flowers (the flower of their birth month, usually fine line - blowing up)",
-  "Y2K chrome (glossy early-2000s chrome hearts, stars and butterflies - peaking right now)",
-  "chrome / metallic (liquid chrome with mirrored highlights)",
-  "ignorant doodle (deliberately crude, funny scribbled cartoons - the surprise of the summer)",
-  "cybersigilism (spiky thorn-like black linework, sharp and futuristic)",
-  "neo-tribal (bold black tribal shapes with sharp points and flowing curves)",
-  "blackout (bold solid black with a clean edge)",
-  "negative space (the shape carved out of heavy black ink by bare skin)",
-  "blackwork (heavy solid black shapes and dense patterns)",
-  "micro realism (one tiny, astonishingly detailed realistic piece)",
-  "micro tattoos (minuscule, precise little designs)",
-  "ornamental (symmetrical mandala and lace, jewellery-like)",
-  "body jewelry (fine chains and hanging pendants drawn as tattoo jewellery)",
-  "red ink (the whole piece in bright red, no black)",
-  "handwritten scribble (loose script like ink straight from a pen)",
-  "tiny lettering (a few very small delicate words)",
-  "botanical fine line (a precise study of leaves and stems in thin line)",
-  "abstract linework (flowing abstract lines, minimal and modern)",
-  "organic body-flow (long flowing curves that follow the body)",
-  "delicate (soft, feather-light, quiet and refined)",
-  "tiny symbols (a scatter of very small simple symbols)",
-  "bows and ribbons (tied bows and trailing ribbon in fine line)",
-  "celestial (moon, stars and orbiting lines)",
-  "personal symbols (a few meaningful emblems, simple and iconic)",
-  "memory / story (keepsakes - a date, a flower, a small object - telling one story)",
-  "nostalgic objects (a cassette, a film camera, a payphone)",
-  "pixel / 8-bit (retro video-game pixel art)"
+  "patchwork (small unrelated pieces collected like stickers on a laptop - the biggest thing this year) [general playful creature dark floral memory]",
+  "sticker style (bright little designs, each with a white sticker border) [playful dark creature general]",
+  "fine-line florals (delicate flowers in thin elegant line - what everyone is asking for) [floral]",
+  "birth flowers (the flower of their birth month, usually fine line - blowing up) [floral memory]",
+  "Y2K chrome (glossy early-2000s chrome hearts, stars and butterflies - peaking right now) [playful tech celestial]",
+  "chrome / metallic (liquid chrome with mirrored highlights) [tech dark creature]",
+  "ignorant doodle (deliberately crude, funny scribbled cartoons - the surprise of the summer) [playful dark creature]",
+  "cybersigilism (spiky thorn-like black linework, sharp and futuristic) [dark tech creature]",
+  "neo-tribal (bold black tribal shapes with sharp points and flowing curves) [dark creature tech]",
+  "blackout (bold solid black with a clean edge) [dark creature]",
+  "negative space (the shape carved out of heavy black ink by bare skin) [dark floral creature celestial]",
+  "blackwork (heavy solid black shapes and dense patterns) [dark creature floral]",
+  "micro realism (one tiny, astonishingly detailed realistic piece) [creature memory floral]",
+  "micro tattoos (minuscule, precise little designs) [general celestial playful memory]",
+  "ornamental (symmetrical mandala and lace, jewellery-like) [floral celestial dark]",
+  "body jewelry (fine chains and hanging pendants drawn as tattoo jewellery) [floral general]",
+  "red ink (the whole piece in bright red, no black) [floral dark creature playful]",
+  "handwritten scribble (loose script like ink straight from a pen) [lettering memory playful]",
+  "tiny lettering (a few very small delicate words) [lettering memory]",
+  "botanical fine line (a precise study of leaves and stems in thin line) [floral]",
+  "abstract linework (flowing abstract lines, minimal and modern) [general floral creature]",
+  "organic body-flow (long flowing curves that follow the body) [floral creature dark]",
+  "delicate (soft, feather-light, quiet and refined) [floral celestial memory]",
+  "tiny symbols (a scatter of very small simple symbols) [celestial memory general]",
+  "bows and ribbons (tied bows and trailing ribbon in fine line) [playful floral]",
+  "celestial (moon, stars and orbiting lines) [celestial]",
+  "personal symbols (a few meaningful emblems, simple and iconic) [memory general]",
+  "memory / story (keepsakes - a date, a flower, a small object - telling one story) [memory]",
+  "nostalgic objects (a cassette, a film camera, a payphone) [memory playful]",
+  "pixel / 8-bit (retro video-game pixel art) [playful tech]"
 ];
+// THE TREND FOLLOWS THE IDEA (2026-09-24, Aaron). A coarse, visible first cut - which kinds of
+// direction suit what they said - so the short list she is handed always holds ones that fit. She
+// still chooses among them. Groups and tags live beside the list; a KV list may carry [tags] too.
+const TALK_TREND_GROUPS = {
+  floral: /\b(flowers?|roses?|peon(y|ies)|lotus|dais(y|ies)|sunflowers?|tulips?|lil(y|ies)|orchids?|popp(y|ies)|lavender|bouquet|botanical|lea(f|ves)|plants?|garden|blossoms?|vines?|ferns?|floral)\b/i,
+  dark: /\b(clowns?|skulls?|skeletons?|demons?|devil|horror|scary|creepy|death|reaper|zombies?|witch(es)?|ghosts?|gothic|goth|evil|monsters?|vampires?|blood|spiders?|menac\w*)\b/i,
+  creature: /\b(dragons?|tigers?|wolf|wolves|lions?|snakes?|serpents?|birds?|eagles?|owls?|ravens?|phoenix|fish|koi|sharks?|bears?|horses?|dogs?|cats?|animals?|fox(es)?|deer|octopus|butterfl(y|ies))\b/i,
+  playful: /\b(cute|fun|funny|cartoon|smiley|cherr(y|ies)|bows?|hearts?|kawaii|silly|doodles?|teddy|candy)\b/i,
+  memory: /\b(mom|mum|dad|mother|father|grand\w*|memorial|remember\w*|dates?|family|kids?|son|daughter|baby|wife|husband|loss|passed|born)\b/i,
+  celestial: /\b(moons?|stars?|sun|planets?|space|zodiac|galax(y|ies)|cosmic|constellations?|astro\w*)\b/i,
+  lettering: /\b(words?|quotes?|script|text|letters?|lettering|names?|saying|phrase)\b/i,
+  tech: /\b(cyber\w*|robots?|tech|chrome|futur\w*|machines?|circuits?|mech\w*|androids?|gam(e|es|ing)|pixel)\b/i
+};
+function talkTrendPick(list, words, seedText, n) {
+  const said = String(words || "");
+  const want = Object.keys(TALK_TREND_GROUPS).filter((g) => TALK_TREND_GROUPS[g].test(said));
+  const rows = talkShuffle(list, seedText).map((line) => {
+    const m = String(line).match(/\[([^\]]*)\]\s*$/);
+    const tags = m ? m[1].split(/\s+/).filter(Boolean) : [];
+    return { text: String(line).replace(/\s*\[[^\]]*\]\s*$/, ""), score: tags.filter((t) => want.includes(t)).length };
+  });
+  if (want.length) rows.sort((a, b) => b.score - a.score);   // stable: the shuffle survives within a score
+  return { fits: want, picks: rows.slice(0, n).map((r) => r.text) };
+}
 function talkShuffle(list, seedText) {
   let h = 2166136261;
   for (const ch of String(seedText || "")) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
@@ -63650,7 +63674,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // While they are still finding a direction - nothing of hers drawn in this tattoo yet, and
       // they did not come in through a card this turn - she gets ten current directions, shuffled
       // for this tattoo, at the moment she answers.
-      let trendNote = "";
+      let trendNote = "", _hotPicks = null;
       try {
         let _dNow = null; try { _dNow = _pre ? await _pre.design : null; } catch {}
         if (!_tileIn && !(_dNow && _dNow.image) && !(lastDrawn && lastDrawn.design)) {
@@ -63660,9 +63684,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             if (Array.isArray(_kvT) && _kvT.length >= 4) _list = _kvT.map(String);
           } catch {}
           let _proj = ""; try { _proj = String((_pre && await _pre.project) || ""); } catch {}
-          const _six = talkShuffle(_list, String(me || "") + "|" + _proj).slice(0, 10);
-          trendNote = "\n\nWHAT'S HOT RIGHT NOW - lead with the ones that fit their idea and say so " +
-            "with energy, then one question: " + _six.join("; ") + ".";
+          const _theirs = String(said || "") + " " + String((carriedObj && carriedObj.subject) || "");
+          const _pick = talkTrendPick(_list, _theirs, String(me || "") + "|" + _proj, 10);
+          _hotPicks = _pick.picks;
+          trendNote = "\n\nWHAT'S HOT RIGHT NOW, AND FITS WHAT THEY SAID - the only things you may call " +
+            "hot: " + _pick.picks.join("; ") + ".";
         }
       } catch {}
       const agentSys = shelf + found + stateNote + resetNote + picNote + refNote + refBlind + tileNote + trendNote;
@@ -65260,6 +65286,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                // rather than pretending every visit is the first one.
                ...(agentNote && !agentVia ? { agent_note: agentNote } : {}),
                remembering: me ? tline.length : 0,
+               ...(_hotPicks ? { hot: _hotPicks } : {}),
                ...(_cameFrom ? { came_from: _cameFrom.id } : {}),
                ...(_pid ? { project: _pid } : {}),
                kept: stage === "pta",

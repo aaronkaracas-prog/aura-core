@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.427.0-2026-09-24-search-what-they-named";
+const BUILD = "aura-core-v9.428.0-2026-09-24-touch-to-change-and-keep-their-ink";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62665,7 +62665,9 @@ function onmeAsk(words) {
     "",
     "TATTOO APPLICATION: Extract the tattoo artwork from IMAGE 1 and apply it to " + where + " in IMAGE 2. Adapt only what is physically necessary to make the tattoo believable on that body: scale, rotation, perspective, curvature, anatomical wrapping, skin contour, natural occlusion, local lighting, skin texture. Preserve the recognizable design, structure, subject and visual character of IMAGE 1. The tattoo must appear IN the skin rather than pasted on top of the photograph. Preserve pores, skin texture, highlights, shadows and body curvature through the tattoo.",
     "",
-    "EXISTING INK: Any tattoos already visible in IMAGE 2 are OLD/EXISTING INK. They are part of the base photograph and must remain unchanged unless the user explicitly asks to modify or cover them. The tattoo supplied in IMAGE 1 is NEW INK. NEW INK is the only tattoo artwork being added.",
+    // "must not touch or cover" (2026-09-24): MEASURED - without it, both tries covered the flowers
+    // around the empty space; with it, Grok and GPT both put the bike in the gap and kept every flower.
+    "EXISTING INK: Any tattoos already visible in IMAGE 2 are OLD/EXISTING INK. They are part of the base photograph and must remain unchanged unless the user explicitly asks to modify or cover them. The new tattoo must not touch or cover any of the existing tattoos - it goes only on bare skin. The tattoo supplied in IMAGE 1 is NEW INK. NEW INK is the only tattoo artwork being added.",
     "",
     "OUTPUT: Return the BASE BODY PHOTO with the NEW INK realistically visualized on the requested body location. OUTPUT = BASE BODY PHOTO + NEW TATTOO, NOT a newly generated person inspired by both images."
   ].join("\n");
@@ -64291,6 +64293,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       let drew = null;
       const hasParent = !!(me && lastDrawn && lastDrawn.design);
       let act = acted.act;
+      // TOUCH TO CHANGE (2026-09-24): they drew on a picture and said what to change there.
+      if (opts && opts.touch && refUrl && me) act = "touch";
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
       if (act === "artist" && !hasParent) act = "none";
@@ -64617,6 +64621,50 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               }
             } catch {}
           }
+        }
+      }
+      // ══ TOUCH TO CHANGE (2026-09-24, Aaron) ════════════════════════════════════════════════
+      // The picture arrives with their marks on it. The model gets that picture and one fixed
+      // line around their words - nothing else. Model: config:source:touch:model. If the picture
+      // they marked was the latest look-on-them, the result is the new look-on-them; otherwise it
+      // is the new design.
+      if (act === "touch") {
+        let _onRec = null;
+        try { _onRec = await _pre.onme; } catch {}
+        const _wasOnMe = !!(_onRec && opts && opts.from && _onRec.design === opts.from);
+        const _tw = String(said || "").replace(/\s+/g, " ").trim().slice(0, 600);
+        try {
+          const _tm = await processCommand("SHOW_IT " + JSON.stringify({
+            subject: "The red marks show exactly where to change - change only that, and leave no marks in the result: \"" +
+              _tw.replace(/"/g, "'") + "\"",
+            context: "a change they marked on the picture", name: "touch to change",
+            raw: true, refs: [refUrl], source: "touch", parent: (opts && opts.from) || null
+          }), env, true);
+          const _tp = (_tm && _tm.payload) ? _tm.payload : _tm;
+          drew = (_tp && _tp.ok && _tp.image_url)
+            ? { design: _tp.entity_id || null, image: _tp.image_url, touched: true, on_me: _wasOnMe,
+                from: (opts && opts.from) || null, asked: "their marks on the picture", their_words: _tw }
+            : { failed: true, touched: true, error: String((_tp && _tp.error) || "COULD_NOT_CHANGE").slice(0, 200) };
+        } catch (e) {
+          drew = { failed: true, touched: true, error: String(e?.message ?? e).slice(0, 200) };
+        }
+        if (drew && drew.image && !drew.failed) {
+          try {
+            if (_wasOnMe) await talkStatePut(env, me, "onme",
+              JSON.stringify({ design: drew.design, image: drew.image, from: _onRec.from || null, at: new Date().toISOString() }));
+            else await talkStatePut(env, me, "design",
+              JSON.stringify({ design: drew.design, image: drew.image, at: new Date().toISOString() }));
+          } catch {}
+          try {
+            const _rx = await proxyToAgent(env,
+              "[They marked part of the picture and asked: \"" + _tw + "\". The changed picture is on their " +
+              "screen now. In one short line, say it is done and ask if that is right - keep it, or mark " +
+              "something else.]", false, me, null, world);
+            if (_rx && _rx.reply && !_rx.failed) {
+              const _t = _verdict(_rx.reply, readAct(_rx.reply)).trim();
+              if (_t) _reaction = _t.slice(0, 400);
+            }
+          } catch {}
         }
       }
       if (act === "onme" && me) {
@@ -66288,7 +66336,7 @@ export class PublicEntry extends WorkerEntrypoint {
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -66307,7 +66355,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh,
+              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.426.0-2026-09-24-one-name-once";
+const BUILD = "aura-core-v9.427.0-2026-09-24-search-what-they-named";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64539,7 +64539,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // a subject in our catalogue. Core builds the words - "patchwork tattoo", "fine-line
         // florals rose tattoo" - she never writes them. Nothing known named: no search; she
         // guides them to one.
-        const _fText = (String((acted && acted.prompt) || "") + " " + String(said || "")).toLowerCase();
+        // ONLY WHAT THEY NAMED (2026-09-24). MEASURED on the site: "I want to see tattoos people have
+        // gotten" named nothing, and she searched "skull" - from his old tattoos, via her `prompt`.
+        // A search runs only on the person's own words (a card tap, "show me embroidered patch").
+        const _fText = String(said || "").toLowerCase();
         let _fList = TALK_TRENDS;
         try {
           const _kvT = JSON.parse((await env.AURA_KV.get("config:talk:trends")) || "null");
@@ -64570,8 +64573,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const _a = _norm(_trendHit), _b = _norm(_subjHit);
           if (_a.includes(_b) || _b.includes(_a)) _subjHit = null;
         }
+        // THE STYLE, FOR THEIR THING (2026-09-24): a card tap names a style; what it is for is the
+        // subject they already gave ("roses" -> "sticker rose tattoo"), when it is a few plain words.
+        let _theirSubj = null;
+        if (_trendHit && !_subjHit) {
+          const _bs = _norm((carriedObj && carriedObj.subject) || "");
+          if (_bs && _bs.split(" ").length <= 3 && !_bs.includes(_norm(_trendHit))) _theirSubj = _bs;
+        }
         const _fq = (_trendHit || _subjHit)
-          ? [_trendHit, _subjHit].filter(Boolean).join(" ") + " tattoo" : "";
+          ? [_trendHit, _subjHit || _theirSubj].filter(Boolean).join(" ") + " tattoo" : "";
         if (!_fq) { act = "none"; }
         else {
           const _fk = "walllook:" + _fq.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");

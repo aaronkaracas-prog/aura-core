@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.417.0-2026-09-24-say-it-is-hot";
+const BUILD = "aura-core-v9.418.0-2026-09-24-the-wall-asks-plainly";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -57356,21 +57356,14 @@ async function findReference(query, env, opts = {}) {
           // demoted to how to CHOOSE AMONG pictures that already show the right thing, and names
           // no styles at all. A style list inside a subject search is a second query competing
           // with the first, and the prettier one wins.
-          input: "Find " + want + " real photographs of tattoos of: " + q + "\n\n" +
-                 "THE SUBJECT IS NOT NEGOTIABLE. Every photograph must show a tattoo of " + q +
-                 " as the clear main subject of the design. If somebody asks for a car, every " +
-                 "picture has a car in it. Do not substitute a more common or better-photographed " +
-                 "subject - a beautiful photograph of the wrong thing is a failure.\n\n" +
-                 "Among photographs that DO show it, prefer the ones an artist would put in their " +
-                 "portfolio: the tattoo fills most of the frame, sharp, evenly lit, well executed, " +
-                 "on real skin. Prefer tattoo studio and artist sites and tattoo magazines.\n\n" +
-                 "Avoid drawings and designs on paper, stock and AI images, YouTube thumbnails, " +
-                 "celebrity and news photographs, listicle header graphics, wide shots where the " +
-                 "tattoo is small in frame, and anything blurry or dark.\n\n" +
-                 "If you genuinely cannot find " + want + " good ones of this subject, return " +
-                 "fewer and say so. Do not pad with other subjects.\n\n" +
-                 "Show each image, and after each one write ONE short line saying what makes it " +
-                 "different from the others.",
+          // ASK PLAINLY (2026-09-24, Aaron: "we're doing something wrong"). MEASURED: `WALL neo tribal
+          // tattoo` came back with nothing - "unable to find any real photographs that match the exact
+          // subject" - while the same model, asked plainly on grok.com, found plenty. ~150 words of
+          // rules around their words ("THE SUBJECT IS NOT NEGOTIABLE", "return fewer and say so") made a
+          // STYLE unfindable as a "subject" and permitted an empty answer. Same lesson as the pictures:
+          // their words, plainly. The quality filters below still run - in code, after.
+          input: "Show me " + want + " real photos of " + q + ". Show each image, and after each one " +
+                 "write one short line about it.",
           tools: [{ type: "web_search", enable_image_search: true }]
         })
       });

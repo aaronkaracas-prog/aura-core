@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.411.0-2026-09-24-their-right-a-real-size-and-the-third-door";
+const BUILD = "aura-core-v9.412.0-2026-09-24-the-files-come-from-the-design";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62774,7 +62774,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // after another. They are started together here and each is awaited where it was read
       // before, so nothing downstream changes except that it no longer waits in line.
       // The conversation's own state comes from the person's Durable Object in one call.
-      const _state = me ? talkStateGet(env, me, ["timeline", "brief", "last", "bad", "ref", "tile", "project", "design"])
+      const _state = me ? talkStateGet(env, me, ["timeline", "brief", "last", "bad", "ref", "tile", "project", "design", "onme"])
         .catch(() => ({})) : null;
       const _pre = me ? {
         timeline: _state.then((x) => x.timeline ?? null),
@@ -62792,6 +62792,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         tile:     _state.then((x) => talkParse(x.tile)),
         project:  _state.then((x) => x.project ?? null),
         design:   _state.then((x) => talkParse(x.design)),
+        onme:     _state.then((x) => talkParse(x.onme)),
       } : null;
       // ══ THE RECORD IS WRITTEN AFTER THE REPLY, IN ORDER (2026-09-22) ═══════════════════════
       // MEASURED: 5.7s of a 16.5s turn spent writing her chain and memory AFTER her answer existed,
@@ -64273,6 +64274,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           drew = { failed: true, on_me: true, error: String(e?.message ?? e).slice(0, 200) };
         }
       }
+      // ══ THE FILES COME FROM THE DESIGN (2026-09-24) ════════════════════════════════════════
+      // MEASURED on the site: a new clown design, put on the pool photo, locked in - and the flat
+      // artwork and line art were of his SWIM SHORTS. The photo arrived on a turn where she asked
+      // where and how big, nothing was drawn, so the rule for arriving photos made the photo "the
+      // piece on screen", and the files were made from that. The files now start from the design
+      // she drew - or, when she has put that design on them since, from that look, which is the
+      // mockup the files have always been made from. A photo never.
+      if (act === "artist" && me) {
+        let _dRec = null, _oRec = null;
+        try { _dRec = await _pre.design; } catch {}
+        try { _oRec = await _pre.onme; } catch {}
+        const _base = (_oRec && _oRec.image && _dRec && _oRec.from === _dRec.design) ? _oRec
+          : (_dRec && _dRec.image) ? _dRec : null;
+        if (_base) lastDrawn = { design: _base.design, image: _base.image,
+                                 subject: (lastDrawn && lastDrawn.subject) || null };
+      }
       if (act === "artist" && me) {
         const _job = await startArtistFilesJob(env, {
           project: _pid,
@@ -64374,6 +64391,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (act === "onme" && drew && drew.on_me && drew.image && !drew.failed) {
         const _lkOn = await _lookAtResult(drew.image, true, _onmeWords || null);
         if (_lkOn && _lkOn.say) _reaction = _lkOn.say;
+        if (me) {
+          try {
+            await talkStatePut(env, me, "onme",
+              JSON.stringify({ design: drew.design, image: drew.image, from: drew.from, at: new Date().toISOString() }));
+          } catch {}
+        }
         if (_lkOn && _lkOn.verdict) {
           drew.she_looked = _lkOn.verdict;
           drew.placement_ok = /^\s*RIGHT\b/i.test(_lkOn.verdict);

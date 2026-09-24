@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.406.0-2026-09-23-show-it-keeps-the-job-it-is-given";
+const BUILD = "aura-core-v9.407.0-2026-09-23-a-record-of-the-design-she-drew";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62753,7 +62753,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // after another. They are started together here and each is awaited where it was read
       // before, so nothing downstream changes except that it no longer waits in line.
       // The conversation's own state comes from the person's Durable Object in one call.
-      const _state = me ? talkStateGet(env, me, ["timeline", "brief", "last", "bad", "ref", "tile", "project"])
+      const _state = me ? talkStateGet(env, me, ["timeline", "brief", "last", "bad", "ref", "tile", "project", "design"])
         .catch(() => ({})) : null;
       const _pre = me ? {
         timeline: _state.then((x) => x.timeline ?? null),
@@ -62770,6 +62770,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         // expiring") - a newer tap replaces it, and the note below says when it happened.
         tile:     _state.then((x) => talkParse(x.tile)),
         project:  _state.then((x) => x.project ?? null),
+        design:   _state.then((x) => talkParse(x.design)),
       } : null;
       // ══ THE RECORD IS WRITTEN AFTER THE REPLY, IN ORDER (2026-09-22) ═══════════════════════
       // MEASURED: 5.7s of a 16.5s turn spent writing her chain and memory AFTER her answer existed,
@@ -64039,8 +64040,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // The design is the last picture SHE drew: what was on screen before this turn, or what is
       // on screen now if it is not their photo.
       const _isPhoto = (x) => !!(x && refDesign && x.design === refDesign);
-      const _onmeDesign = (_madeBefore && _madeBefore.image && !_isPhoto(_madeBefore)) ? _madeBefore
-        : ((lastDrawn && lastDrawn.image && !_isPhoto(lastDrawn)) ? lastDrawn : null);
+      let _drewRec = null; try { _drewRec = _pre ? await _pre.design : null; } catch {}
+      // Before the record existed: the newest picture on their timeline that she drew - not their
+      // photo, not a put-it-on-me result, not the artist's files.
+      let _fromTimeline = null;
+      if (!(_drewRec && _drewRec.image)) {
+        for (let i = (Array.isArray(tline) ? tline.length : 0) - 1; i >= 0; i--) {
+          const e = tline[i];
+          if (e && e.role === "picture" && e.image && e.design && !e.failed && !e.artist_files &&
+              !String(e.words || "").startsWith("the design on screen")) { _fromTimeline = { design: e.design, image: e.image }; break; }
+        }
+      }
+      const _onmeDesign = (_drewRec && _drewRec.image) ? _drewRec
+        : (_fromTimeline || ((_madeBefore && _madeBefore.image && !_isPhoto(_madeBefore)) ? _madeBefore
+        : ((lastDrawn && lastDrawn.image && !_isPhoto(lastDrawn)) ? lastDrawn : null)));
       if (act === "onme" && !(_onmeDesign && refUrl)) act = "none";
 
       // HER WORDS DECIDE (2026-09-21). MEASURED twice today: she said "Shall I show you?" and her
@@ -64878,6 +64891,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                              subject: (intent && intent.subject) || null,
                              at: new Date().toISOString() }));
         } catch {}
+        // ══ A RECORD OF THE DESIGN SHE DREW (2026-09-23) ══════════════════════════════════════
+        // "The piece on screen" is also where an arriving photo goes - right for an add-on, where the
+        // photo IS the piece. So it cannot answer "which design is theirs". MEASURED: a put-it-on-me
+        // failed on a download, the rule for arriving photos saved the photo as the piece, and the
+        // retry sent the photo as the design - the model copied the palm trees off his shorts. This
+        // is written ONLY here: a picture she drew or changed, successfully. Photos, failed turns,
+        // put-it-on-me results and artist files never touch it.
+        if (act === "draw" || act === "change") {
+          try {
+            await talkStatePut(env, me, "design",
+              JSON.stringify({ design: drew.design, image: drew.image, at: new Date().toISOString() }));
+          } catch {}
+        }
       }
 
       // \u2550\u2550 A PICTURE THAT ARRIVES IS CURRENT TOO, AND IT WAS NOT BEING SAVED (2026-09-13) \u2550\u2550

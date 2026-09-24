@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.409.0-2026-09-23-where-they-asked-for-it";
+const BUILD = "aura-core-v9.410.0-2026-09-23-their-own-words-for-where-it-goes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62567,14 +62567,17 @@ const ONME_SENTENCE = "Place the tattoo design from the second image onto the sk
   "and make the ink sit UNDER the skin like a real healed tattoo - not a sticker, not a " +
   "flat overlay. Keep the person, the pose and the background exactly as they are.";
 
-// WHERE THEY ASKED FOR IT (2026-09-23). MEASURED: "on my chest", and the clown landed on his side -
-// the sentence said "onto the skin" and nothing else, so the model chose. The place is their own word
-// from the brief ("chest", "left forearm"); with none, the sentence is exactly as it was.
-function onmeSentenceFor(where) {
-  const w = String(where || "").toLowerCase().replace(/[^a-z\s\-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
-  if (!w) return ONME_SENTENCE;
-  return ONME_SENTENCE.replace("onto the skin in the first image",
-    "onto their " + w.replace(/^(my|the|their|his|her)\s+/, "") + " in the first image");
+// ══ THE IMAGES AND EXACTLY WHAT THEY ASKED FOR (2026-09-23, Aaron) ═══════════════════════════
+// "The only thing that I'm certain is going to work is if the model has the images and exactly
+// what we want done to them." The add-ons learned it first: the person's words, not Aura's. Here:
+// one line saying which image is which, then their own words, as they said them - "on the right
+// side of my chest going halfway down", or one day "on my leg exactly between the rose and the
+// skull". Nothing about craft, nothing of hers.
+function onmeAsk(words) {
+  const w = String(words || "").replace(/\s+/g, " ").trim().slice(0, 600);
+  return "Image 1 is a photo of a person. Image 2 is a tattoo design. Put the tattoo from Image 2 on " +
+    "the person in Image 1" + (w ? ": \"" + w.replace(/"/g, "'") + "\"" : "") +
+    ". Keep everything else exactly as it is.";
 }
 
 async function startArtistFilesJob(env, data) {
@@ -64239,16 +64242,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // her actions - so asked to show a design on somebody, she said honestly that she could not.
       // Same step, same sentence: their photo first, the design on screen second. The result is a
       // look at the design on them, not a new design - the piece on screen stays the design.
+      // Their words: the lines she points at, as they said them; if she points at none, what they
+      // said this turn.
+      let _onmeWords = "";
+      if (act === "onme") {
+        const _ptd = (acted.lines || []).map((n) => _convLines.find((l) => l.n === n))
+          .filter((l) => l && l.said);
+        _onmeWords = _ptd.length ? _ptd.map((l) => String(l.said).trim()).join(" ") : String(said || "").trim();
+      }
       if (act === "onme" && me) {
         try {
           const _om = await processCommand("SHOW_IT " + JSON.stringify({
-            subject: onmeSentenceFor(intent && intent.placement), context: "seeing a tattoo on their own body", name: "on me",
+            subject: onmeAsk(_onmeWords), context: "seeing a tattoo on their own body", name: "on me",
             raw: true, refs: [refUrl, _onmeDesign.image], source: "onme", parent: _onmeDesign.design
           }), env, true);
           const _op = (_om && _om.payload) ? _om.payload : _om;
           drew = (_op && _op.ok && _op.image_url)
             ? { design: _op.entity_id || null, image: _op.image_url, on_me: true, from: _onmeDesign.design,
-                asked: "the design on screen, on their photo" }
+                asked: "the design on screen, on their photo", their_words: _onmeWords }
             : { failed: true, on_me: true, error: String((_op && _op.error) || "COULD_NOT_PLACE").slice(0, 200) };
         } catch (e) {
           drew = { failed: true, on_me: true, error: String(e?.message ?? e).slice(0, 200) };
@@ -64314,7 +64325,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               "Compare it to the photograph they sent. Answer RIGHT or WRONG, then one short sentence " +
               "saying why: is the tattoo they already had still there - not removed or covered over - " +
               "is what they asked for there, and is every bit of the new ink on their skin?" +
-              (where ? " Is it on their " + String(where).slice(0, 40) + ", where they asked for it?" : "") + " Ink on " +
+              (where ? " They asked: \"" + String(where).slice(0, 300) + "\" - is it where and how they asked?" : "") + " Ink on " +
               "clothing, hair or the background is WRONG. Nothing else. (" + url + ")]",
               false, me, url, world);
             if (chk && chk.reply && !chk.failed) {
@@ -64347,7 +64358,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // before the picture existed. A drawing and a change have always ended with her looking at
       // what came out; put-it-on-me never did. Same look, same body check, same place in her reply.
       if (act === "onme" && drew && drew.on_me && drew.image && !drew.failed) {
-        const _lkOn = await _lookAtResult(drew.image, true, (intent && intent.placement) || null);
+        const _lkOn = await _lookAtResult(drew.image, true, _onmeWords || null);
         if (_lkOn && _lkOn.say) _reaction = _lkOn.say;
         if (_lkOn && _lkOn.verdict) {
           drew.she_looked = _lkOn.verdict;

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.410.0-2026-09-23-their-own-words-for-where-it-goes";
+const BUILD = "aura-core-v9.411.0-2026-09-24-their-right-a-real-size-and-the-third-door";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62573,10 +62573,18 @@ const ONME_SENTENCE = "Place the tattoo design from the second image onto the sk
 // one line saying which image is which, then their own words, as they said them - "on the right
 // side of my chest going halfway down", or one day "on my leg exactly between the rose and the
 // skull". Nothing about craft, nothing of hers.
+// Two plain additions, both general (2026-09-24). MEASURED on the site: "the right side of my chest"
+// came back dead centre and as big as the chest. "Right" and "left" are the person's own - a model
+// looking at a photo takes the viewer's. And with no size in their words, the model filled the
+// space: a real artist sizes a piece to the spot. When their words give a size, their words win.
+const ONME_SIDES = /\b(right|left)\b/i;
+const ONME_SIZED = /\b(small|smaller|tiny|little|mini|big|bigger|large|larger|huge|palm|hand|half|whole|full|entire|cover|covering|inch|inches|cm|size|sized|across|down to|halfway|wide|tall)\b/i;
 function onmeAsk(words) {
   const w = String(words || "").replace(/\s+/g, " ").trim().slice(0, 600);
   return "Image 1 is a photo of a person. Image 2 is a tattoo design. Put the tattoo from Image 2 on " +
     "the person in Image 1" + (w ? ": \"" + w.replace(/"/g, "'") + "\"" : "") +
+    (ONME_SIDES.test(w) ? " (their own right and left, as they see their body - not the viewer's)" : "") +
+    (ONME_SIZED.test(w) ? "" : ", at the size a tattoo artist would actually put it there - not covering more of the body than it needs") +
     ". Keep everything else exactly as it is.";
 }
 
@@ -64325,7 +64333,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               "Compare it to the photograph they sent. Answer RIGHT or WRONG, then one short sentence " +
               "saying why: is the tattoo they already had still there - not removed or covered over - " +
               "is what they asked for there, and is every bit of the new ink on their skin?" +
-              (where ? " They asked: \"" + String(where).slice(0, 300) + "\" - is it where and how they asked?" : "") + " Ink on " +
+              (where ? " They asked: \"" + String(where).slice(0, 300) + "\" - is it where they asked (their own right and left, not the viewer's) and the size they asked, or a sensible real tattoo size if they gave none?" : "") + " Ink on " +
               "clothing, hair or the background is WRONG. Nothing else. (" + url + ")]",
               false, me, url, world);
             if (chk && chk.reply && !chk.failed) {
@@ -64340,7 +64348,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             const rx = await proxyToAgent(env,
               "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
               "in one warm line, then ask whether they are happy to go with it or want to change " +
-              "something - in your own words, different each time. (" + url + ")]",
+              "something - in your own words, different each time." +
+              // THE THIRD DOOR SURVIVES THE LOOK (2026-09-24). MEASURED on the site: they came in through
+              // See It On You, she said so herself, and after the drawing this line - the only close-out
+              // she gets after a look - offered two doors. Her guidance decides who gets the third; this
+              // line no longer overrules it. Not after a picture that is already on them.
+              (onBody ? "" : " If they have told you they want to see it on them, also ask whether they " +
+                "would like to see it on them now.") + " (" + url + ")]",
               false, me, url, world);
             if (rx && rx.reply && !rx.failed) {
               const t2 = _verdict(rx.reply, readAct(rx.reply)).trim();

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.423.0-2026-09-24-guided-discovery-their-lines-only";
+const BUILD = "aura-core-v9.424.0-2026-09-24-the-2026-vocabulary";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62677,37 +62677,75 @@ function onmeAsk(words) {
 // she answers - ten of them, shuffled per tattoo, enough that some always fit the idea - she cannot miss them, and two people asking for
 // roses hear different, equally good ideas. `config:talk:trends` (a JSON array of lines) replaces
 // this list without a deploy.
+// THE 2026 VOCABULARY (2026-09-24, Aaron's list). Her working vocabulary of what is happening in
+// tattoos right now - name, what it looks like, and which kinds of idea it suits. Patchwork (a
+// collection) and embroidered patch (sewn-on look) are NOT the same thing. A KV list under
+// `config:talk:trends` replaces this without a deploy.
 const TALK_TRENDS = [
-  "patchwork (small unrelated pieces collected like stickers on a laptop - the biggest thing this year) [general playful creature dark floral memory]",
-  "sticker style (bright little designs, each with a white sticker border) [playful dark creature general]",
-  "fine-line florals (delicate flowers in thin elegant line - what everyone is asking for) [floral]",
-  "birth flowers (the flower of their birth month, usually fine line - blowing up) [floral memory]",
-  "Y2K chrome (glossy early-2000s chrome hearts, stars and butterflies - peaking right now) [playful tech celestial]",
-  "chrome / metallic (liquid chrome with mirrored highlights) [tech dark creature]",
-  "ignorant doodle (deliberately crude, funny scribbled cartoons - the surprise of the summer) [playful dark creature]",
-  "cybersigilism (spiky thorn-like black linework, sharp and futuristic) [dark tech creature]",
-  "neo-tribal (bold black tribal shapes with sharp points and flowing curves) [dark creature tech]",
-  "blackout (bold solid black with a clean edge) [dark creature]",
-  "negative space (the shape carved out of heavy black ink by bare skin) [dark floral creature celestial]",
-  "blackwork (heavy solid black shapes and dense patterns) [dark creature floral]",
-  "micro realism (one tiny, astonishingly detailed realistic piece) [creature memory floral]",
-  "micro tattoos (minuscule, precise little designs) [general celestial playful memory]",
-  "ornamental (symmetrical mandala and lace, jewellery-like) [floral celestial dark]",
-  "body jewelry (fine chains and hanging pendants drawn as tattoo jewellery) [floral general]",
-  "red ink (the whole piece in bright red, no black) [floral dark creature playful]",
-  "handwritten scribble (loose script like ink straight from a pen) [lettering memory playful]",
-  "tiny lettering (a few very small delicate words) [lettering memory]",
-  "botanical fine line (a precise study of leaves and stems in thin line) [floral]",
-  "abstract linework (flowing abstract lines, minimal and modern) [general floral creature]",
-  "organic body-flow (long flowing curves that follow the body) [floral creature dark]",
-  "delicate (soft, feather-light, quiet and refined) [floral celestial memory]",
-  "tiny symbols (a scatter of very small simple symbols) [celestial memory general]",
-  "bows and ribbons (tied bows and trailing ribbon in fine line) [playful floral]",
-  "celestial (moon, stars and orbiting lines) [celestial]",
-  "personal symbols (a few meaningful emblems, simple and iconic) [memory general]",
-  "memory / story (keepsakes - a date, a flower, a small object - telling one story) [memory]",
-  "nostalgic objects (a cassette, a film camera, a payphone) [memory playful]",
-  "pixel / 8-bit (retro video-game pixel art) [playful tech]"
+  "cybersigilism (sharp, thorny, symmetrical digital-occult forms - neo-tribal colliding with cyber and Y2K) [dark tech creature]",
+  "neo-tribal (the contemporary tribal revival - sharper and more abstract than 90s tribal) [dark creature tech]",
+  "chrome (liquid chrome and reflective metal with polished highlights - makes ordinary subjects feel new) [tech playful creature floral]",
+  "Y2K (early-2000s visual culture - chrome, hearts, stars, butterflies, flames, playful pop) [playful tech celestial]",
+  "micro-realism (very small tattoos with surprisingly realistic detail) [creature memory floral general]",
+  "hyperrealism (so realistic people ask how it is even a tattoo - faces, eyes, animals, horror) [creature dark memory]",
+  "fine-line (very delicate linework - flowers, small objects, symbols, lettering) [floral lettering celestial general]",
+  "single-needle (extremely delicate detail, almost pencil-like or photographic at small scale) [floral memory general]",
+  "micro tattoos (very small standalone tattoos - symbols, objects, animals, words) [general playful celestial memory]",
+  "tattoo-as-jewelry (tattoos that feel like jewelry - chains, charms, gems, pearls, bows) [floral general playful]",
+  "ornamental (decorative flowing compositions - filigree, lace, Art Nouveau, symmetry) [floral celestial general]",
+  "dark ornamental (ornamental pushed darker - gothic, pointed, heavy black, thorns) [dark floral]",
+  "embroidered patch (looks like a real embroidered cloth patch sewn onto the skin - thread texture, stitched border, raised and dimensional) [playful creature floral general]",
+  "patchwork (a collection of separate small tattoos with space between them, growing over time - the biggest thing this year) [general playful creature floral memory]",
+  "sticker (a single tattoo made to look like a sticker or decal - bold graphic colour, dimensional edge) [playful general]",
+  "doodle (looks casually drawn - stars, faces, creatures, notebook scribbles) [playful general]",
+  "ignorant style (deliberately crude, childlike, funny - the imperfection is intentional) [playful dark]",
+  "post-ironic meme (deliberately strange or unserious - memes, jokes, ridiculous combinations) [playful]",
+  "surrealism (impossible combinations - objects transforming, dream imagery, distorted reality) [dark creature floral general]",
+  "dark surrealism (surrealism pushed toward horror, grotesque and nightmares) [dark creature]",
+  "horror surrealism (horror with dreamlike transformations - great for clowns, faces, monsters, skulls) [dark creature]",
+  "cyberpunk (futuristic visual language - machines, neon, synthetic surfaces, robotics) [tech dark]",
+  "cyber-realism (realistic subjects with futuristic synthetic details breaking through) [tech dark creature]",
+  "biomechanical (machinery integrated into anatomy - cables, metal, robotic joints) [tech dark]",
+  "bio-organic (alien, skeletal, plant-like, anatomical organic structures) [dark creature floral]",
+  "blackwork (strong solid black - bold graphic shapes and silhouettes) [dark creature floral]",
+  "blackout (large areas of saturated black) [dark]",
+  "negative space (untouched skin becomes part of the design inside heavy black) [dark floral creature celestial]",
+  "abstract blackwork (blackwork used freely - brush marks, splashes, gestural lines) [dark general]",
+  "etching (looks like an old engraved illustration - crosshatching, antique book imagery) [creature floral dark memory]",
+  "woodcut (looks carved and printed from a woodblock - bold carved lines) [creature dark]",
+  "medieval (knights, castles, weapons, dragons, manuscript imagery) [creature dark]",
+  "medieval marginalia (the weird, funny creatures from medieval manuscript margins) [creature playful]",
+  "gothic (cathedrals, arches, crosses, thorns, angels, dark lettering) [dark lettering]",
+  "dark romantic (roses, lace, angels, hearts and antique objects pushed darker) [dark floral memory]",
+  "sacred iconography (sacred hearts, saints, rosaries, religious painting) [memory dark]",
+  "nostalgia (inspiration from the 70s, 80s, 90s and 2000s - toys, old media, old advertising) [memory playful]",
+  "1970s horror poster (sun-faded colour and old print texture like a 70s horror movie one-sheet - great for clowns, horror, creatures) [dark creature]",
+  "1980s airbrush (airbrushed fantasy, neon, chrome, VHS and album-cover imagery) [tech playful creature]",
+  "1990s nostalgia (90s cartoons, toys, flames and pop imagery) [playful memory]",
+  "Y2K nostalgia (early-2000s chrome, butterflies, bows, cherries, stars and tribal) [playful tech]",
+  "coquette bows (bows, ribbons, lace and pearls - hyper-feminine and delicate) [playful floral]",
+  "cherries (cherries and small nostalgic objects - cute, retro, graphic) [playful]",
+  "fine-line botanical (delicate botanically accurate flowers, leaves and stems) [floral]",
+  "micro-real botanical (tiny flowers with realistic detail) [floral]",
+  "birth flowers (the flower of a birth month - for family, children, partners, dates) [floral memory]",
+  "dark florals (flowers with blackwork, gothic or surreal darkness) [floral dark]",
+  "ornamental florals (flowers woven into jewelry, filigree and decorative framing) [floral]",
+  "fluid florals (flowers melting into lines, paint, smoke and movement) [floral general]",
+  "chrome florals (flowers treated as chrome and liquid metal - futuristic botanicals) [floral tech]",
+  "pet portrait (a portrait of their own animal - micro-real, hyperreal or illustrative) [creature memory]",
+  "locket portrait (a person or pet inside an antique locket or ornate frame) [memory creature]",
+  "personal handwriting (real handwriting from someone they love - notes, signatures) [memory lettering]",
+  "personal artifacts (real objects from their life - tickets, jewelry, letters, photos) [memory]",
+  "childrens drawings (a child's actual drawing kept raw or built into a piece) [memory playful]",
+  "pop of color (mostly black and grey with one deliberate burst of colour) [general floral creature]",
+  "pastel (soft pinks, lavender, baby blue - playful candy colour) [playful floral]",
+  "red ink (all-red or mostly red designs) [floral dark playful]",
+  "liquid metal (metal that melts, drips and flows - chrome gone surreal) [tech dark]",
+  "glass effect (transparent, glass-like, crystalline and refractive) [tech floral]",
+  "sketch (looks like an artist's working drawing - construction lines, loose strokes) [general creature]",
+  "hand-drawn (keeps the personality of a real drawing rather than polished perfection) [general playful]",
+  "abstract (shapes, lines and forms rather than a literal picture) [general]",
+  "freehand (drawn individually, spontaneous and artistic rather than flash) [general floral creature]"
 ];
 // THE TREND FOLLOWS THE IDEA (2026-09-24, Aaron). A coarse, visible first cut - which kinds of
 // direction suit what they said - so the short list she is handed always holds ones that fit. She
@@ -62728,9 +62766,13 @@ function talkTrendPick(list, words, seedText, n) {
   const rows = talkShuffle(list, seedText).map((line) => {
     const m = String(line).match(/\[([^\]]*)\]\s*$/);
     const tags = m ? m[1].split(/\s+/).filter(Boolean) : [];
-    return { text: String(line).replace(/\s*\[[^\]]*\]\s*$/, ""), score: tags.filter((t) => want.includes(t)).length };
+    // A direction they NAMED goes first, whatever its tags ("embroidered patch", "patchwork").
+    const nm = String(line).split(" (")[0].trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const named = nm && (" " + said.toLowerCase().replace(/[^a-z0-9]+/g, " ") + " ").includes(" " + nm + " ");
+    return { text: String(line).replace(/\s*\[[^\]]*\]\s*$/, ""),
+             score: tags.filter((t) => want.includes(t)).length + (named ? 10 : 0) };
   });
-  if (want.length) rows.sort((a, b) => b.score - a.score);   // stable: the shuffle survives within a score
+  rows.sort((a, b) => b.score - a.score);   // stable: the shuffle survives within a score
   return { fits: want, picks: rows.slice(0, n).map((r) => r.text) };
 }
 function talkShuffle(list, seedText) {

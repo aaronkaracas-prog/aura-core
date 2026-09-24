@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.422.0-2026-09-24-base-body-photo-plus-new-tattoo";
+const BUILD = "aura-core-v9.423.0-2026-09-24-guided-discovery-their-lines-only";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64464,8 +64464,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // said this turn.
       let _onmeWords = "";
       if (act === "onme") {
-        const _ptd = (acted.lines || []).map((n) => _convLines.find((l) => l.n === n))
-          .filter((l) => l && l.said);
+        // THEIR LINES ONLY (2026-09-24). MEASURED: she pointed at her own sentence ("Got it this
+        // time - that's your knee in the bath... Want me to place it there now?") and it went to
+        // the model as where to put it. Only the person's lines count; if she points at none of
+        // theirs, the newest thing they said that says more than a go-ahead.
+        let _ptd = (acted.lines || []).map((n) => _convLines.find((l) => l.n === n))
+          .filter((l) => l && l.said && l.who === "them");
+        if (!_ptd.length) {
+          const _theirs = _convLines.filter((l) => l.who === "them" && String(l.said).trim().split(/\s+/).length >= 4);
+          if (_theirs.length) _ptd = [_theirs[_theirs.length - 1]];
+        }
         // THEIR LATEST WORDS ONLY (2026-09-24). MEASURED: "put it on my knee" reached the model as
         // "put it on my knee in between my tattoos, don't cover any of them put it on my knee" - she
         // pointed at the old line and the new one and they were joined. Where it goes is whatever they
@@ -64480,7 +64488,39 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // record of hers (the piece on screen, the design, the timeline picture) is touched.
       // Saved per search: only the first person to ask for "neo tribal" waits.
       if (act === "find") {
-        const _fq = String((acted && acted.prompt) || said || "").replace(/\s+/g, " ").trim().slice(0, 120);
+        // ══ GUIDED DISCOVERY - ONLY WHAT IS IN OUR WORLD, BY ITS EXACT NAME (2026-09-24, Aaron) ══
+        // MEASURED: "patchwork tattoos" was searched as her description of patchwork ("small
+        // unrelated mixed-style pieces scattered across an arm...") and came back as small arm
+        // tattoos, not patchwork. A search needs the name people use. And the asset is locked to
+        // tattoos: discovery only ever searches a direction we already know (the current list) or
+        // a subject in our catalogue. Core builds the words - "patchwork tattoo", "fine-line
+        // florals rose tattoo" - she never writes them. Nothing known named: no search; she
+        // guides them to one.
+        const _fText = (String((acted && acted.prompt) || "") + " " + String(said || "")).toLowerCase();
+        let _fList = TALK_TRENDS;
+        try {
+          const _kvT = JSON.parse((await env.AURA_KV.get("config:talk:trends")) || "null");
+          if (Array.isArray(_kvT) && _kvT.length >= 4) _fList = _kvT.map(String);
+        } catch {}
+        const _norm = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        const _fHay = " " + _norm(_fText) + " ";
+        const _trendHit = _fList.map((l) => String(l).split(" (")[0].trim())
+          .filter((nm) => nm && _fHay.includes(" " + _norm(nm) + " "))
+          .sort((a, b) => b.length - a.length)[0] || null;
+        let _subjHit = null;
+        try {
+          const _tree = JSON.parse((await env.AURA_KV.get("card:tree")) || "{}");
+          const _parts = [];
+          for (const cat of Object.keys((_tree && _tree.subjects) || {})) {
+            for (const part of cat.split(/[&,/]| and /i)) { const pn = _norm(part); if (pn.length > 2) _parts.push(pn); }
+          }
+          const _sing = (w) => w.replace(/ies$/, "y").replace(/s$/, "");
+          _subjHit = _parts.filter((pn) => _fHay.includes(" " + pn + " ") || _fHay.includes(" " + _sing(pn) + " "))
+            .sort((a, b) => b.length - a.length)[0] || null;
+          if (_subjHit && _fHay.includes(" " + _sing(_subjHit) + " ")) _subjHit = _sing(_subjHit);
+        } catch {}
+        const _fq = (_trendHit || _subjHit)
+          ? [_trendHit, _subjHit].filter(Boolean).join(" ") + " tattoo" : "";
         if (!_fq) { act = "none"; }
         else {
           const _fk = "walllook:" + _fq.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");

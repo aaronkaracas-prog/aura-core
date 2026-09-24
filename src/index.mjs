@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.404.0-2026-09-23-she-can-put-it-on-them";
+const BUILD = "aura-core-v9.405.0-2026-09-23-the-design-she-made-not-the-photo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62961,6 +62961,9 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // than a history display.
       let lastDrawn = null;
       if (me) { try { lastDrawn = await _pre.last; } catch {} }
+      // What she had made BEFORE anything arrived this turn. A photo that lands this turn becomes
+      // the working picture below - right for an add-on, and wrong for putting a design on them.
+      const _madeBefore = lastDrawn;
       // ══ TWO BAD RESULTS AND WE START AGAIN FROM THE PHOTO (2026-09-16, v9.277) ══════════════
       // Practitioners on stacked edits: every pass re-renders the whole picture and a bad child
       // only gets worse when patched. After two wrong results in a row, the next change goes back
@@ -64022,7 +64025,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (act === "artist" && !hasParent) act = "none";
       // PUT IT ON THEM needs both halves: a design she made, and their photo. Without either it
       // is talk - she asks for what is missing - never a guess at a body or a design.
-      if (act === "onme" && !(hasParent && lastDrawn.image && refUrl)) act = "none";
+      // ══ THE DESIGN SHE MADE, NOT THE PHOTO (2026-09-23) ═══════════════════════════════════
+      // MEASURED: the photo arrived on the same turn as "put it on me", became the piece on screen,
+      // and was sent as BOTH images - `from` was the photo (ent_c6ba...), not the phoenix
+      // (ent_e6554...). With no design in the request, the model invented a portrait on an arm.
+      // The design is the last picture SHE drew: what was on screen before this turn, or what is
+      // on screen now if it is not their photo.
+      const _isPhoto = (x) => !!(x && refDesign && x.design === refDesign);
+      const _onmeDesign = (_madeBefore && _madeBefore.image && !_isPhoto(_madeBefore)) ? _madeBefore
+        : ((lastDrawn && lastDrawn.image && !_isPhoto(lastDrawn)) ? lastDrawn : null);
+      if (act === "onme" && !(_onmeDesign && refUrl)) act = "none";
 
       // HER WORDS DECIDE (2026-09-21). MEASURED twice today: she said "Shall I show you?" and her
       // action field said `draw`, so the picture was made before they said go. Then their "show me"
@@ -64201,11 +64213,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try {
           const _om = await processCommand("SHOW_IT " + JSON.stringify({
             subject: ONME_SENTENCE, context: "seeing a tattoo on their own body", name: "on me",
-            raw: true, refs: [refUrl, lastDrawn.image], source: "onme", parent: lastDrawn.design
+            raw: true, refs: [refUrl, _onmeDesign.image], source: "onme", parent: _onmeDesign.design
           }), env, true);
           const _op = (_om && _om.payload) ? _om.payload : _om;
           drew = (_op && _op.ok && _op.image_url)
-            ? { design: _op.entity_id || null, image: _op.image_url, on_me: true, from: lastDrawn.design,
+            ? { design: _op.entity_id || null, image: _op.image_url, on_me: true, from: _onmeDesign.design,
                 asked: "the design on screen, on their photo" }
             : { failed: true, on_me: true, error: String((_op && _op.error) || "COULD_NOT_PLACE").slice(0, 200) };
         } catch (e) {

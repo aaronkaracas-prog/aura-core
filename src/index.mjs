@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.429.0-2026-09-24-ink-lock-mask-and-true-shape";
+const BUILD = "aura-core-v9.430.0-2026-09-24-their-own-colourway";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64311,6 +64311,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       let act = acted.act;
       // TOUCH TO CHANGE (2026-09-24): they drew on a picture and said what to change there.
       if (opts && opts.touch && refUrl && me) act = "touch";
+      // THEIR OWN COLOURWAY (2026-09-24): they dragged the colour slider and kept it. The picture is
+      // already made - nothing to draw - it becomes the new version of the design.
+      if (opts && opts.recolor && refUrl && me) act = "recolor";
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
       if (act === "artist" && !hasParent) act = "none";
@@ -64637,6 +64640,28 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               }
             } catch {}
           }
+        }
+      }
+      if (act === "recolor") {
+        try {
+          const _rid = (String(refUrl).match(/\/image\/(img_[A-Za-z0-9_]+)/) || [])[1] || null;
+          const _reg = await registerSmartFile(env, { id: _rid, filetype: "image", name: "their own colourway",
+            url: refUrl, subject: "their own colourway of the design", source: "recolor",
+            creator: me, parent: (opts && opts.from) || null, context: "they chose the colours themselves" });
+          drew = { design: (_reg && _reg.entity_id) || null, image: refUrl, recolored: true,
+                   from: (opts && opts.from) || null, asked: "their own colours" };
+          await talkStatePut(env, me, "design",
+            JSON.stringify({ design: drew.design, image: drew.image, at: new Date().toISOString() }));
+          const _rx = await proxyToAgent(env,
+            "[They changed the colours of the design themselves with the colour slider and kept this " +
+            "colourway - it is on their screen now. In one short line, react to the new colours and offer " +
+            "the next step: keep going, or see it on them.]", false, me, null, world);
+          if (_rx && _rx.reply && !_rx.failed) {
+            const _t = _verdict(_rx.reply, readAct(_rx.reply)).trim();
+            if (_t) _reaction = _t.slice(0, 400);
+          }
+        } catch (e) {
+          drew = { failed: true, recolored: true, error: String(e?.message ?? e).slice(0, 200) };
         }
       }
       // ══ TOUCH TO CHANGE (2026-09-24, Aaron) ════════════════════════════════════════════════
@@ -66348,11 +66373,12 @@ export class PublicEntry extends WorkerEntrypoint {
             say: "That photo is over six megabytes. A normal phone picture is well under it." };
           const _tmp = "img_t" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
             .map(x => x.toString(16).padStart(2, "0")).join("");
-          await env.AURA_KV.put("image:" + _tmp, _b64, { expirationTtl: 2 * 3600 });
+          // A colourway they chose is their design, so it is kept; any other photo is kept two hours.
+          await env.AURA_KV.put("image:" + _tmp, _b64, b.recolor ? {} : { expirationTtl: 2 * 3600 });
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -66371,7 +66397,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch,
+              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },

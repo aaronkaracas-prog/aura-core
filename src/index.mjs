@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.431.0-2026-09-25-read-the-page-when-it-loads";
+const BUILD = "aura-core-v9.432.0-2026-09-25-looks-they-keep";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64664,9 +64664,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           await talkStatePut(env, me, "design",
             JSON.stringify({ design: drew.design, image: drew.image, at: new Date().toISOString() }));
           const _rx = await proxyToAgent(env,
-            "[They changed the colours of the design themselves with the colour slider and kept this " +
-            "colourway - it is on their screen now. In one short line, react to the new colours and offer " +
-            "the next step: keep going, or see it on them.]", false, me, null, world);
+            // LOOKS TOO (2026-09-25): the same keep carries a look ("I tried the Chrome look"), so she
+            // is told what they did in their own words rather than assuming it was colour.
+            "[They changed the design themselves on their screen - \"" + String(said || "").slice(0, 160) +
+            "\" - and kept it; it is on their screen now. In one short line, react to how it looks now and " +
+            "offer the next step: keep going, or see it on them.]", false, me, null, world);
           if (_rx && _rx.reply && !_rx.failed) {
             const _t = _verdict(_rx.reply, readAct(_rx.reply)).trim();
             if (_t) _reaction = _t.slice(0, 400);

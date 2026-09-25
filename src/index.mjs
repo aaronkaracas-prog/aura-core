@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.430.0-2026-09-24-their-own-colourway";
+const BUILD = "aura-core-v9.431.0-2026-09-25-read-the-page-when-it-loads";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -25283,7 +25283,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           browser = await puppeteer.launch(env.BROWSER);
           const page = await browser.newPage();
           await page.setViewport({ width: 1400, height: 1000 });
-          const resp = await page.goto(siUrl, { waitUntil: "networkidle0", timeout: 30000 });
+          // READ IT WHEN IT HAS LOADED, NOT WHEN IT GOES QUIET (2026-09-25). MEASURED: Kings County
+          // Tattoo's front page shows its pictures, and this returned "Navigation timeout of 30000 ms
+          // exceeded" with nothing - it waited for the network to go completely idle, which a site
+          // with a chat widget, analytics or an Instagram feed never does, and then threw away a page
+          // whose pictures had arrived in the first seconds. Now: wait for "load"; if even that runs
+          // long, read whatever is on screen anyway; then a short settle, then the scroll.
+          let resp = null;
+          try { resp = await page.goto(siUrl, { waitUntil: "load", timeout: 20000 }); }
+          catch (navErr) {
+            if (!/timeout/i.test(String(navErr?.message ?? navErr))) throw navErr;
+          }
+          await new Promise((r) => setTimeout(r, 2500));
           // Lazy galleries only load what has been scrolled past, so walk the page down and back.
           await page.evaluate(async () => {
             const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

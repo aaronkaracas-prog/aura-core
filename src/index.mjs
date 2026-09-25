@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.428.0-2026-09-24-touch-to-change-and-keep-their-ink";
+const BUILD = "aura-core-v9.429.0-2026-09-24-ink-lock-mask-and-true-shape";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -19063,7 +19063,7 @@ async function successionGate(env) {
       // wrong answer, which is the most expensive kind.
       let subject = after, ctx = null, nm = null, viaP = null, hostP = null;
       let refsP = null, rawP = false, parentP = null, creatorP = null;
-      let aspP = null, resP = null, modelP = null, srcP = null;
+      let aspP = null, resP = null, modelP = null, srcP = null, maskP = null;
       if (/^\s*\{/.test(after)) {
         try {
           const p = JSON.parse(after);
@@ -19091,6 +19091,7 @@ async function successionGate(env) {
             // and GPT alike. The same rename hid the job's own model setting. A caller that names its
             // job keeps it; anything unnamed is still "show_it_cmd".
             srcP = (typeof p.source === "string" && /^[a-z_]{2,40}$/.test(p.source.trim())) ? p.source.trim() : null;
+            maskP = (typeof p.mask === "string" && /^https:\/\//i.test(p.mask.trim())) ? p.mask.trim() : null;
           }
         } catch (e) {}
       }
@@ -19111,7 +19112,7 @@ async function successionGate(env) {
       const r = await showIt(subject, env, { source: srcP || "show_it_cmd", context: ctx || subject, name: nm,
         via: viaP, host: hostP, refs: refsP || undefined, raw: rawP, parent: parentP, creator: creatorP,
         ...(aspP ? { aspect: aspP } : {}), ...(resP ? { res: resP } : {}),
-        ...(modelP ? { model: modelP } : {}) });
+        ...(modelP ? { model: modelP } : {}), ...(maskP ? { mask: maskP } : {}) });
       return { cmd: "SHOW_IT", payload: r };
     }
 
@@ -60082,7 +60083,22 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         // it just never reached the request. New drawings always sent theirs.
         if (quality) fd.append("quality", quality);
         fd.append("n", "1");
-        fd.append("size", "1024x1024");
+        // THE PHOTO'S OWN SHAPE (2026-09-24). MEASURED: every GPT edit was forced to 1024x1024, so a
+        // portrait arm photo came back square - reshaped, and impossible to line up with the
+        // original for the ink lock. "auto" keeps the shape of what it is editing.
+        fd.append("size", "auto");
+        // THE INK LOCK MASK (2026-09-24): a PNG the size of the first image; see-through where the
+        // model may paint (bare skin), solid where it may not (their existing ink, everything else).
+        if (opts.mask) {
+          let mb = null;
+          const mOwn = String(opts.mask).match(/\/image\/(img_[a-z0-9]+)/i);
+          if (mOwn) {
+            const mk = await env.AURA_KV.get("image:" + mOwn[1]).catch(() => null);
+            if (mk) { const bin = atob(mk); const u = new Uint8Array(bin.length);
+                      for (let n = 0; n < bin.length; n++) u[n] = bin.charCodeAt(n); mb = u.buffer; }
+          }
+          if (mb) fd.append("mask", new Blob([mb], { type: "image/png" }), "mask.png");
+        }
         // ══ OUR OWN IMAGES COME OFF THE SHELF, NOT OVER THE WIRE ═══════════════════════════
         // MEASURED: this fetched `auras.guide/image/<id>` - aura-core reaching back into its OWN
         // zone, through aura-host, through RPC, to bytes it already has bound. It failed, and the
@@ -60655,7 +60671,7 @@ async function showIt(subject, env, opts = {}) {
   // matter which model, which quality tier or which endpoint, and `[XAI-IMG]` printed
   // `asked aspect=- res=-` the moment it was pointed at the right branch. An afternoon of
   // theories about xAI's silent fallbacks, and the parameters never left this worker.
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null });
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, mask: opts.mask || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════
@@ -67622,6 +67638,18 @@ export class PublicEntry extends WorkerEntrypoint {
       // `by` is null on purpose. A stranger has no PTA yet, and one is not invented for them here:
       // the file gets its own identity now, and the PERSON attaches when they cross a doorway. That
       // is the same order the whole system already works in.
+      // STASH A PICTURE (2026-09-24): the ink-lock lab keeps the lock mask it made, for a day, so a
+      // test can send it. PNG only, under six megabytes.
+      if (action === "stash_image") {
+        const raw = String(b.photo || "");
+        if (!/^data:image\/png;base64,/i.test(raw)) return { ok: false, error: "PNG_ONLY" };
+        const b64 = raw.replace(/^data:[^,]+,/, "");
+        if (b64.length * 0.75 > 6 * 1024 * 1024) return { ok: false, error: "TOO_BIG" };
+        const sid = "img_m" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
+          .map(x => x.toString(16).padStart(2, "0")).join("");
+        await env.AURA_KV.put("image:" + sid, b64, { expirationTtl: 24 * 3600 });
+        return { ok: true, id: sid, url: "https://" + (await imageHost(env)) + "/image/" + sid };
+      }
       if (action === "import") {
         const photo = String(b.photo || "").trim();
         const url = String(b.url || "").trim();

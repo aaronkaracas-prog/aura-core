@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.432.0-2026-09-25-looks-they-keep";
+const BUILD = "aura-core-v9.433.0-2026-09-25-a-photo-on-its-own";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62982,7 +62982,9 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
   // The body below is the extracted method, byte for byte. It reads `b.said` and `b.history`, so
   // the arguments are handed back in that shape rather than editing three hundred proven lines.
   const b = { said: saidIn, history };
-      const said = String(b.said || "").trim().slice(0, 2000);
+      // A PHOTO ON ITS OWN (2026-09-25): they can send a picture with no words. She is told only
+      // that, and does what her guidance says for any picture: say what she sees, ask what they want.
+      const said = (String(b.said || "").trim() || ((opts && opts.ref) ? "[they sent a photo, with no words]" : "")).slice(0, 2000);
       if (!said) return { ok: false, error: "NOTHING_SAID" };
 
       // ══ SHE REMEMBERS THE PERSON NOW (2026-09-06) ══════════════════════════════════════
@@ -64668,7 +64670,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // is told what they did in their own words rather than assuming it was colour.
             "[They changed the design themselves on their screen - \"" + String(said || "").slice(0, 160) +
             "\" - and kept it; it is on their screen now. In one short line, react to how it looks now and " +
-            "offer the next step: keep going, or see it on them.]", false, me, null, world);
+            "ask if there is anything else they want to change.]", false, me, null, world);
           if (_rx && _rx.reply && !_rx.failed) {
             const _t = _verdict(_rx.reply, readAct(_rx.reply)).trim();
             if (_t) _reaction = _t.slice(0, 400);

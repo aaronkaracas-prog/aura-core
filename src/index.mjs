@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.434.0-2026-09-26-use-this-one";
+const BUILD = "aura-core-v9.435.0-2026-09-26-the-door-carries-use";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66448,6 +66448,9 @@ export class PublicEntry extends WorkerEntrypoint {
         // exactly as REF does. auraTalk is not touched: page and terminal run the identical chain.
         // STORED THE WAY `import` STORES IT, with the ON ME lifetime: IMAGE IMPORT inside auraTalk
         // copies the bytes into its own store, so this temporary key only has to outlive the turn.
+        // `use` and `pick` (2026-09-26) are passed through below like `touch` and `recolor`. v9.434 added
+        // them inside auraTalk and not here, so the page sent them and they never arrived - MEASURED:
+        // "Use this one" ran as an ordinary turn and she edited the dragon (grok edit, refs=1).
         let _ref = null;
         const _refIn = String(b.ref || "").trim();
         const _photoIn = String(b.photo || "").trim();
@@ -66464,7 +66467,7 @@ export class PublicEntry extends WorkerEntrypoint {
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -66483,7 +66486,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor,
+              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },

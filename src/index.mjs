@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.441.0-2026-09-26-the-picture-they-chose";
+const BUILD = "aura-core-v9.442.0-2026-09-26-the-approved-picture-is-the-artwork";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62251,7 +62251,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
 // person straight away.
 async function makeArtistFiles(env, ctx) {
   const { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw, acted, intent,
-          useOne, _checkOn, _verdict, readAct } = ctx;
+          useOne, _checkOn, _verdict, readAct, alreadyFlat } = ctx;
   let drew = null;
 
         try {
@@ -62283,7 +62283,7 @@ async function makeArtistFiles(env, ctx) {
           // is nothing left to subtract. The split is the fix, not a feature beside it.
           // ONE PANEL OR NONE RUNS THE IDENTICAL PATH IT ALWAYS DID - `panelList` falls back to a
           // single unnamed pass, `ADDED` still rides on it, and the reply keeps its old shape.
-          let panelList = (acted && Array.isArray(acted.panels) && acted.panels.length)
+          let panelList = (acted && Array.isArray(acted.panels) && acted.panels.length && !alreadyFlat)
             ? acted.panels.slice(0, 6) : [null];
 
           // ══ ASK HER ONE THING AND SHE ANSWERS IT WELL (2026-09-16) ══════════════════════
@@ -62329,8 +62329,15 @@ async function makeArtistFiles(env, ctx) {
             const label = panel ? String(panel).split(":")[0].trim().slice(0, 40) : null;
             const only = panel ? " ONLY " + panel : "";
             const _ask = "FINAL " + mockUrl + (priorInk ? " ADDED " + priorInk : "") + only;
-            const fr = await processCommand(_ask, env, true);
-            let fpp = (fr && fr.payload) ? fr.payload : fr;
+            // Already flat artwork: the approved picture IS the sheet - see THE APPROVED PICTURE IS
+            // THE ARTWORK at the lock-in. Nothing is converted, so nothing can be dropped.
+            let fpp = alreadyFlat
+              ? { ok: true, image: mockUrl, design: shopParent, as_approved: true }
+              : null;
+            if (!fpp) {
+              const fr = await processCommand(_ask, env, true);
+              fpp = (fr && fr.payload) ? fr.payload : fr;
+            }
 
             // ══ ASK AGAIN THE WAY A PERSON WOULD (2026-09-16) ══════════════════════════
             // MEASURED by Aaron by hand, in a plain ChatGPT window, three turns:
@@ -62357,7 +62364,7 @@ async function makeArtistFiles(env, ctx) {
             // Every sheet is asked, not only add-ons: the flat is a REDRAW of the approved design
             // and can add or lose things (three sunflowers where the mock-up had two).
             let _v1 = null, _redone = false;
-            if (fpp && fpp.ok && fpp.image && me && seeing && _checkSheets) {
+            if (fpp && fpp.ok && fpp.image && !fpp.as_approved && me && seeing && _checkSheets) {
               try {
                 const look1 = await proxyToAgent(env,
                   "[This is the flat artwork going to their tattooist" +
@@ -62841,6 +62848,7 @@ async function runArtistFilesJob(env, d) {
   return await makeArtistFiles(env, {
     me: d.me, world: d.world, seeing: !!d.seeing, jobNow: d.jobNow || null, refUrl, lastDrawn,
     useRaw: Array.isArray(d.useRaw) ? d.useRaw : [], acted: d.acted || {}, intent: d.intent || null,
+    alreadyFlat: !!d.alreadyFlat,
     useOne: (n, want) => talkUseOne(n, want, refDesign, refUrl, lastDrawn),
     _checkOn: (k) => talkCheckOn(env, k), _verdict: talkVerdict, readAct: talkReadAct,
   });
@@ -64865,6 +64873,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // piece on screen", and the files were made from that. The files now start from the design
       // she drew - or, when she has put that design on them since, from that look, which is the
       // mockup the files have always been made from. A photo never.
+      let _filesFlat = false;
       if (act === "artist" && me && !_usedPick) {
         let _dRec = null, _oRec = null;
         try { _dRec = await _pre.design; } catch {}
@@ -64881,17 +64890,31 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                                _base && _base.design !== _picked && !(_oRec && _oRec.from === _picked));
         if (_base && !_keepPicked) lastDrawn = { design: _base.design, image: _base.image,
                                  subject: (lastDrawn && lastDrawn.subject) || null };
+        // ══ THE APPROVED PICTURE IS THE ARTWORK (2026-09-26) ════════════════════════════════
+        // MEASURED on the site, the geisha: "How it will look" was the approved flat drawing and it
+        // was perfect; "Flat artwork" came back as the peonies and kimono with NO GEISHA, and the
+        // line art and PDF were made from that. The conversion tells the model to take the tattoo
+        // off the body with no skin and no person - and a geisha IS a person, so she was removed.
+        // The ship had no person in it and passed. When the picture they approved is one WE drew
+        // and it is not on a body (not their photo, not a look on them, not an add-on, cover or
+        // rework), it already is flat artwork: it is used as it is, and nothing converts it.
+        _filesFlat = !!(lastDrawn && lastDrawn.image && lastDrawn.design &&
+                        lastDrawn.design !== refDesign &&
+                        !["add", "cover", "rework"].includes(String(jobNow || "")) &&
+                        !(_oRec && _oRec.image && lastDrawn.design === _oRec.design));
       }
       if (act === "artist" && me) {
         const _job = await startArtistFilesJob(env, {
           project: _pid,
           me, world, stage, seeing: !!seeing, jobNow: jobNow || null, refUrl: refUrl || null,
           refDesign: refDesign || null, lastDrawn: lastDrawn || null,
-          useRaw: Array.isArray(useRaw) ? useRaw : [], acted, intent: intent || null });
+          useRaw: Array.isArray(useRaw) ? useRaw : [], acted, intent: intent || null,
+          alreadyFlat: _filesFlat });
         drew = _job
           ? { for_the_artist: true, pending: true, job: _job, from: (lastDrawn && lastDrawn.design) || null }
           : await makeArtistFiles(env, { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw,
-                                         acted, intent, useOne, _checkOn, _verdict, readAct });
+                                         acted, intent, useOne, _checkOn, _verdict, readAct,
+                                         alreadyFlat: _filesFlat });
       }
       if (_usedPick && drew && !drew.failed) {
         drew.used = true;

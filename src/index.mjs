@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.435.0-2026-09-26-the-door-carries-use";
+const BUILD = "aura-core-v9.436.0-2026-09-26-make-your-own";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63820,13 +63820,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       } else if (me && _pre) {
         try { _cameFrom = await _pre.tile; } catch {}
       }
+      // ══ MAKE YOUR OWN (2026-09-26, Aaron) ═══════════════════════════════════════════════════
+      // Some catalogue sets are shown on a model (Body Jewelry, Patchwork, Micro Tattoos...) or are
+      // For Her ideas (Birthstones, Lockets...). A pick from one of those is not their tattoo: it is
+      // what they liked, and they want their own. `own:<kind>` in KV marks the set; the page sends
+      // `own`. She LOOKS at the picture - it rides on her turn - and it is never sent to the picture
+      // model as something to edit or copy, so a model's body can never end up in their drawing.
+      const _ownLook = (opts && opts.own && _tileIn && _cameFrom && _cameFrom.id === _tileIn)
+        ? "https://" + (await imageHost(env)) + "/image/" + _tileIn : null;
       const tileNote = (_cameFrom && _cameFrom.words)
         ? "\n\nWHERE THEY CAME IN: they came in through a picture on the home screen" +
           (_cameFrom.at ? " on " + String(_cameFrom.at).slice(0, 10) : "") + ". " +
           "It was drawn from these words: \"" + _cameFrom.words + "\". That is what they were " +
           "looking at - it is not a picture of theirs." +
           (_tileIn ? " They tapped that card: that is the direction they picked - get excited " +
-            "about it and go with it; do not offer others." : "")
+            "about it and go with it; do not offer others." : "") +
+          (_ownLook ? " It is at " + _ownLook + " and it is attached to this turn - look at it to see " +
+            "the design. It is shown on a model; the tattoo is the design on her. They want their own " +
+            "tattoo based on it: a new design, drawn fresh. Never draw the person." : "")
         : "";
       // While they are still finding a direction - nothing of hers drawn in this tattoo yet, and
       // they did not come in through a card this turn - she gets ten current directions, shuffled
@@ -63953,7 +63964,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (me) {
         try {
           const proxied = await proxyToAgent(env, agentLine,
-            false, me, seeing ? refUrl : null, world, _fwdDelta);
+            false, me, seeing ? refUrl : (_ownLook || null), world, _fwdDelta);
           if (proxied && proxied.reply && !proxied.failed) {
             acted = readAct(proxied.reply);
             // ══ THE CHEAPEST RUNG DOES NOT SPEAK JSON ══════════════════════════════════════
@@ -64060,7 +64071,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         acted ? Promise.resolve(null) : callBrain({
           model: talkModel,
           system: fullSys,
-          image: seeing ? refUrl : null,
+          image: seeing ? refUrl : (_ownLook || null),
           messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
                                          content: String(h.said || "").slice(0, 1500) })),
                      { role: "user", content: said }],
@@ -66467,7 +66478,7 @@ export class PublicEntry extends WorkerEntrypoint {
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -66486,7 +66497,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick,
+              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },
@@ -67499,6 +67510,9 @@ export class PublicEntry extends WorkerEntrypoint {
         // ── one kind: the leaves and their pictures ────────────────────────────────────────
         if (askKind) {
           const kindName = Object.keys(spec).find((x) => tatSlug(x) === tatSlug(askKind)) || askKind;
+          // MAKE YOUR OWN (2026-09-26): `own:<kind>` in KV. The page shows these as ideas to start
+          // their own tattoo from, never as the tattoo itself.
+          const _own = String((await env.AURA_KV.get("own:" + tatSlug(kindName)).catch(() => null)) || "").trim() === "1";
           const leaves = leavesOf(askKind);
           // ══ A KIND WITH NO LEAVES IS ITS OWN LEAF ══════════════════════════════════════
           // WALK's rule, and this branch did not honour it: it returned an empty list and
@@ -67508,8 +67522,8 @@ export class PublicEntry extends WorkerEntrypoint {
           // `self` tells the caller to skip the question rather than draw one with one answer.
           if (!leaves.length) {
             const own = await faceOf(kindName);
-            return { ok: true, type: "row", kind: kindName, label: kindName, self: true,
-                     items: [{ value: tatSlug(kindName), label: kindName, image: own }],
+            return { ok: true, type: "row", kind: kindName, label: kindName, self: true, own: _own,
+                     items: [{ value: tatSlug(kindName), label: kindName, image: own, own: _own }],
                      pictures: own ? 1 : 0 };
           }
           const items = [];
@@ -67517,10 +67531,10 @@ export class PublicEntry extends WorkerEntrypoint {
           // forty round trips and a visible pause on a phone.
           for (let i = 0; i < leaves.length; i += 40) {
             const part = await Promise.all(leaves.slice(i, i + 40).map(async (lf) => ({
-              value: tatSlug(lf), label: String(lf), image: await faceOf(lf) })));
+              value: tatSlug(lf), label: String(lf), image: await faceOf(lf), own: _own })));
             items.push(...part);
           }
-          return { ok: true, type: "row", kind: kindName, label: kindName, items,
+          return { ok: true, type: "row", kind: kindName, label: kindName, items, own: _own,
                    pictures: items.filter((x) => x.image).length };
         }
 
@@ -67542,10 +67556,14 @@ export class PublicEntry extends WorkerEntrypoint {
               for (const lf of (lv.length ? lv : [k])) flat.push({ leaf: lf, kind: k });
             }
             const items = [];
+            const _ownK = {};
+            for (const k of new Set(flat.map((x) => x.kind))) {
+              _ownK[k] = String((await env.AURA_KV.get("own:" + tatSlug(k)).catch(() => null)) || "").trim() === "1";
+            }
             for (let i = 0; i < flat.length; i += 40) {
               const part = await Promise.all(flat.slice(i, i + 40).map(async (x) => ({
                 value: tatSlug(x.leaf), label: String(x.leaf), kind: String(x.kind),
-                image: await faceOf(x.leaf)
+                image: await faceOf(x.leaf), own: !!_ownK[x.kind]
               })));
               items.push(...part);
             }

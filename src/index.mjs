@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.440.0-2026-09-26-her-sentence-not-her-code";
+const BUILD = "aura-core-v9.441.0-2026-09-26-the-picture-they-chose";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63024,7 +63024,9 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         // says this is a fresh start, the new project begins from nothing.
         brief:    (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => talkParse(x.brief)),
         last:     (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => talkParse(x.last)),
-        bad:      _state.then((x) => x.bad ?? null),
+        // The wrong-streak belongs to the tattoo it was counted on (2026-09-26): it carried across
+        // tattoos, so a new one restarted from the photo after two looks on the LAST one.
+        bad:      (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => x.bad ?? null),
         ref:      (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => talkParse(x.ref)),
         // A tile is where they came in. It is kept (Aaron, 2026-09-23: "I don't see a reason for
         // expiring") - a newer tap replaces it, and the note below says when it happened.
@@ -63040,7 +63042,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // is cleared where it is kept: the brief, the piece on screen, the held photo, the record of
       // her design and of the last look on them.
       if (me && opts && opts.fresh) {
-        for (const _k of ["brief", "last", "ref", "design", "onme"]) {
+        for (const _k of ["brief", "last", "ref", "design", "onme", "bad"]) {
           try { await talkStatePut(env, me, _k, ""); } catch {}
         }
       }
@@ -64869,7 +64871,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try { _oRec = await _pre.onme; } catch {}
         const _base = (_oRec && _oRec.image && _dRec && _oRec.from === _dRec.design) ? _oRec
           : (_dRec && _dRec.image) ? _dRec : null;
-        if (_base) lastDrawn = { design: _base.design, image: _base.image,
+        // ══ THE PICTURE THEY CHOSE (2026-09-26) ═══════════════════════════════════════════════
+        // MEASURED on the site: they tapped the geisha WITH the mask and said "this is the one I want";
+        // the files were made from the last picture drawn (without the mask). `from` - the picture
+        // they picked, already checked as theirs above - wins over "the last design", unless the
+        // look on them was made from that same picture.
+        const _picked = String((opts && opts.from) || "").trim();
+        const _keepPicked = !!(_picked && lastDrawn && lastDrawn.design === _picked && lastDrawn.image &&
+                               _base && _base.design !== _picked && !(_oRec && _oRec.from === _picked));
+        if (_base && !_keepPicked) lastDrawn = { design: _base.design, image: _base.image,
                                  subject: (lastDrawn && lastDrawn.subject) || null };
       }
       if (act === "artist" && me) {
@@ -65066,7 +65076,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // is their photograph until something has been drawn, then the last drawing - every
           // time. `use` no longer picks the parent: on pta_af518d910eac5f03 she named "photo" on
           // "try that again" and the edit restarted from the bare arm. Nothing else rides along.
-          const _resetToPhoto = badStreak >= 2 && !!refDesign;
+          // ══ AN INSPIRATION PICTURE IS NOT A CANVAS TO GO BACK TO (2026-09-26) ══════════════
+          // MEASURED: "without the mask" was drawn from the original photo again, not from the flat
+          // design on screen - the words sent carried the lift-off sentence a second time. The streak
+          // below had reached two because the body check (next) marks every flat picture WRONG.
+          const _resetToPhoto = badStreak >= 2 && !!refDesign && !(opts && opts.inspire);
           const parentId = (_drewNow() && !_resetToPhoto) ? lastDrawn.design : (refDesign || lastDrawn.design);
           const alsoRefs = [];
           // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════
@@ -65371,7 +65385,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // picture existed, in the same breath as the instruction to draw - so it guessed, and the
           // next step was dropped. One look, on Neurons, and her words come from what she sees.
           if (me && cp && cp.ok && cp.image_url) {
-            const _lkC = await _lookAtResult(cp.image_url, true);
+            // A picture made from an inspiration photo is flat artwork, not their body - the check
+            // "is every bit of the new ink on their skin" can only answer WRONG there (2026-09-26).
+            const _lkC = await _lookAtResult(cp.image_url, !(opts && opts.inspire));
             if (_lkC && _lkC.verdict) _mockNote = _lkC.verdict;
             if (_lkC && _lkC.say) _reaction = _lkC.say;
           }
@@ -65470,7 +65486,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // Nothing in the reply said so; `cached` was already captured here and read by nobody.
             // The field is the fix. `same_picture` is the plain statement of what happened, so a
             // caller cannot narrate a new version and neither can she on the turn after.
-            const _lk2 = await _lookAtResult(dp.image_url, true);
+            const _lk2 = await _lookAtResult(dp.image_url, !(opts && opts.inspire));
             const _mockNote2 = _lk2 && _lk2.verdict;
             _reaction = (_lk2 && _lk2.say) || null;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
@@ -65748,7 +65764,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                        words: String(drew.changed || drew.asked || "").slice(0, 300) }] : []) ],
               // Named from its first picture - the words it was drawn from, up to the first comma.
               // A catalogue pick is named after the design they chose ("Micro-Real Lion").
+              // Her brief's subject when she has one ("geisha with hannya mask") - the words a picture
+              // was drawn from can be a fixed instruction, and a card titled "Take the tattoo from
+              // this picture..." names nothing (2026-09-26).
               title: (opts && opts.name) ? String(opts.name).slice(0, 70)
+                : (intent && intent.subject) ? String(intent.subject).slice(0, 70)
                 : (drew && drew.image && !drew.failed && !drew.for_the_artist)
                 ? (String(drew.asked || drew.changed || "").split(",")[0].trim().slice(0, 70) || null) : null,
               came_from: _cameFrom ? _cameFrom.id : null,

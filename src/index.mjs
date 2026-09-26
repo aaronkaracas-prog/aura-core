@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.433.0-2026-09-25-a-photo-on-its-own";
+const BUILD = "aura-core-v9.434.0-2026-09-26-use-this-one";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63854,7 +63854,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             "Only these may be called hot.";
         }
       } catch {}
-      const agentSys = shelf + found + stateNote + resetNote + picNote + refNote + refBlind + tileNote + trendNote;
+      // ══ A DESIGN THEY CHOSE FROM OUR CATALOGUE (2026-09-26, Aaron) ═══════════════════════════
+      // MEASURED on the site: Red Dragon picked from the catalogue arrived as a "photograph" and as
+      // "the direction they picked", so she described it back and then drew her own version -
+      // refs=1, a different dragon. A catalogue design is the tattoo itself, not a photo of skin and
+      // not inspiration: it is kept exactly, and changed only in the way they ask. The page says so
+      // with `pick` (their words change it) or `use` (they take it as it is).
+      const _catPick = !!(opts && (opts.pick || opts.use) && refUrl);
+      const _pickNote = _catPick
+        ? "\n\nTHEY CHOSE THIS DESIGN FROM OUR CATALOGUE" + (seeing ? " - it is attached to this turn" : " - it is at " + refUrl) +
+          ". It is the tattoo they want, exactly as drawn - not a photograph of their skin and not inspiration. " +
+          (opts.use ? "They are taking it as it is." :
+           "Their words say what to change on it; change only that, on this design. Do not describe it back to them.")
+        : "";
+      const agentSys = shelf + found + stateNote + resetNote + picNote + (_catPick ? _pickNote : refNote) + refBlind +
+                       (_catPick ? "" : tileNote) + trendNote;
 
       // ══ A GREETING HAS TO LOOK LIKE A GREETING (2026-09-14) ════════════════════
       // Aaron, and it is the only thing this session was ever about: "I can't say hello to an agent."
@@ -64327,6 +64341,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // THEIR OWN COLOURWAY (2026-09-24): they dragged the colour slider and kept it. The picture is
       // already made - nothing to draw - it becomes the new version of the design.
       if (opts && opts.recolor && refUrl && me) act = "recolor";
+      // USE THIS ONE (2026-09-26, Aaron): a catalogue design taken exactly as it is, straight to the
+      // artist's files. Nothing is drawn. Resolved to "artist" below, once the picture is theirs.
+      if (opts && opts.use && refUrl && me) act = "use";
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
       if (act === "artist" && !hasParent) act = "none";
@@ -64354,6 +64371,36 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         : (_fromTimeline || ((_madeBefore && _madeBefore.image && !_isPhoto(_madeBefore)) ? _madeBefore
         : ((lastDrawn && lastDrawn.image && !_isPhoto(lastDrawn)) ? lastDrawn : null)));
       if (act === "onme" && !(_onmeDesign && refUrl)) act = "none";
+
+      // ══ USE THIS ONE (2026-09-26, Aaron) ═══════════════════════════════════════════════════
+      // "The catalogue is to be passed on to the very end if people want that image." The picture
+      // they chose becomes THEIR DESIGN exactly as it is - the same record `recolor` writes when they
+      // keep their own colours - and the artist's files are made from it. No model draws anything.
+      // The picture was imported on arrival this turn (it is `lastDrawn`); if that did not happen it
+      // is registered the way `recolor` registers a picture.
+      let _usedPick = false;
+      if (act === "use") {
+        try {
+          let _base = (lastDrawn && lastDrawn.design && refDesign && lastDrawn.design === refDesign)
+            ? { design: lastDrawn.design, image: lastDrawn.image || refUrl } : null;
+          if (!_base) {
+            const _rid = (String(refUrl).match(/\/image\/(img_[A-Za-z0-9_]+)/) || [])[1] || null;
+            const _reg = await registerSmartFile(env, { id: _rid, filetype: "image", name: "their catalogue pick",
+              url: refUrl, subject: "a design they chose from the catalogue", source: "catalogue",
+              creator: me, parent: null, context: "they chose this design as it is" });
+            if (_reg && _reg.entity_id) _base = { design: _reg.entity_id, image: refUrl };
+          }
+          if (_base) {
+            await talkStatePut(env, me, "design",
+              JSON.stringify({ design: _base.design, image: _base.image, at: new Date().toISOString() }));
+            lastDrawn = { design: _base.design, image: _base.image, subject: null };
+            _usedPick = true; act = "artist";
+          } else act = "none";
+        } catch (e) {
+          console.log("[USE] could not take the picture as theirs: " + String(e?.message ?? e).slice(0, 160));
+          act = "none";
+        }
+      }
 
       // HER WORDS DECIDE (2026-09-21). MEASURED twice today: she said "Shall I show you?" and her
       // action field said `draw`, so the picture was made before they said go. Then their "show me"
@@ -64443,6 +64490,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         }
       }
 
+      // ══ A CATALOGUE DESIGN THEY CHOSE TO CHANGE (2026-09-26, Aaron) ═══════════════════════
+      // The design they picked is the parent and their words change it. A fresh drawing would throw
+      // away the very picture they chose - MEASURED: Red Dragon came back as a different dragon.
+      if (opts && opts.pick && refUrl && me && hasParent && act === "draw") act = "change";
+
       // ══ IT HAS TO COME BACK ON THE SAME ARM (2026-09-07) ══════════════════════════════════
       // MEASURED: a cover-up dolphin drawn as a fresh piece "on the forearm" - a forearm, not
       // THEIRS. Aaron: "it still needs to come back on the same arm, because when we do add-ons
@@ -64461,7 +64513,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // skin, THAT is the piece being changed - the photograph has done its job.
       // A change on a NEW tattoo with nothing of hers drawn yet would change their photo - it is a
       // new drawing, on a blank canvas.
+      // A catalogue design they chose IS the piece being changed, though she did not draw it (2026-09-26).
       if (act === "change" && !["cover", "add", "rework"].includes(jobNow) && !_isHerDrawing &&
+          !(opts && opts.pick) &&
           !(useRaw.length && useOne(useRaw[0], "design"))) act = "draw";
       const startsFromPhoto = !(lastDrawn && lastDrawn.design && lastDrawn.design !== refDesign);
       if (act === "draw" && refDesign && startsFromPhoto &&
@@ -64745,7 +64799,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // piece on screen", and the files were made from that. The files now start from the design
       // she drew - or, when she has put that design on them since, from that look, which is the
       // mockup the files have always been made from. A photo never.
-      if (act === "artist" && me) {
+      if (act === "artist" && me && !_usedPick) {
         let _dRec = null, _oRec = null;
         try { _dRec = await _pre.design; } catch {}
         try { _oRec = await _pre.onme; } catch {}
@@ -64764,6 +64818,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           ? { for_the_artist: true, pending: true, job: _job, from: (lastDrawn && lastDrawn.design) || null }
           : await makeArtistFiles(env, { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw,
                                          acted, intent, useOne, _checkOn, _verdict, readAct });
+      }
+      if (_usedPick && drew && !drew.failed) {
+        drew.used = true;
+        try {
+          const _ux = await proxyToAgent(env,
+            "[They chose a design from our catalogue and are taking it exactly as it is - \"" +
+            String(said || "").slice(0, 120) + "\". It is saved in My Tattoos and their artist's files are " +
+            "being made from it now; they land there in a few minutes. In one or two short lines, tell them.]",
+            false, me, null, world);
+          if (_ux && _ux.reply && !_ux.failed) {
+            const _t = _verdict(_ux.reply, readAct(_ux.reply)).trim();
+            if (_t) _reaction = _t.slice(0, 400);
+          }
+        } catch {}
       }
 
       // ══ SOMEBODY HAS TO LOOK AT THE MOCKUP (2026-09-15) ═══════════════════════════════════
@@ -64882,7 +64950,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // hand a customer is worse than untidy - it is another shop's name on our work.
           const fromRef = !!(refDesign && lastDrawn.design === refDesign);
           const onTheirSkin = fromRef && ["cover", "add", "rework"].includes(jobNow);
-          const cleanUp = !fromRef ? ""
+          const cleanUp = (!fromRef || (opts && opts.pick)) ? ""
             : onTheirSkin
               // Their own arm. The body stays exactly as it is - same limb, same skin, same
               // surrounding ink - and only the piece changes. For an add-on especially: the
@@ -65552,9 +65620,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (drew && drew.failed) {
         // REPLACED, not added to (v9.280): measured, "I've made the artist files... Honestly,
         // that didn't come out" - one reply saying both.
-        _said = acted.act === "artist"
+        _said = (acted.act === "artist" || _usedPick)
           ? "I went to make your artist files, but they didn't come out this time - nothing was made yet."
           : "I went to make that picture, but it didn't come out this time - nothing new was made yet.";
+      } else if (drew && drew.used && _reaction) {
+        // USE THIS ONE: her line about the design they took, not what she said before it was theirs.
+        _said = _reaction;
       } else if (drew && !drew.for_the_artist && _reaction) {
         // What she said after looking at it replaces what she said before it existed.
         _said = _reaction;

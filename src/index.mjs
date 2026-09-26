@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.438.0-2026-09-26-the-tattoo-she-is-on";
+const BUILD = "aura-core-v9.439.0-2026-09-26-inspiration-comes-off-the-skin";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62669,6 +62669,7 @@ const ONME_SENTENCE = "Place the tattoo design from the second image onto the sk
 // came back dead centre and as big as the chest. "Right" and "left" are the person's own - a model
 // looking at a photo takes the viewer's. And with no size in their words, the model filled the
 // space: a real artist sizes a piece to the spot. When their words give a size, their words win.
+const INSPIRE_FRAME = "Take the tattoo from this picture and make it flat tattoo artwork on its own, on a plain white background - no skin, no body.";
 const ONME_SIDES = /\b(right|left)\b/i;
 const ONME_SIZED = /\b(small|smaller|tiny|little|mini|big|bigger|large|larger|huge|palm|hand|half|whole|full|entire|cover|covering|inch|inches|cm|size|sized|across|down to|halfway|wide|tall)\b/i;
 function onmeAsk(words) {
@@ -64754,8 +64755,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               const _fx = await proxyToAgent(env,
                 "[You looked for \"" + _fq + "\" and found these real tattoos other people have gotten - " +
                 "they are on their screen now, in this order:\n" + _lines + "\nTell them what you found in " +
-                "one or two lines, pointing at them by what is in them, then ask which one grabs them. These " +
-                "are other people's tattoos - inspiration only.]", false, me, null, world);
+                "one or two lines, pointing at them by what is in them, then ask which one grabs them.]", false, me, null, world);
               if (_fx && _fx.reply && !_fx.failed) {
                 const _t = _verdict(_fx.reply, readAct(_fx.reply)).trim();
                 if (_t) _reaction = _t.slice(0, 600);
@@ -65265,7 +65265,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const _sent = (_pointed.length ? _pointed.map((l) => l.said.trim()).join(" ")
                                          : (_isCopied ? _copied : _oneAsk)).slice(0, 900);
           const _wordsFrom = _pointed.length ? "pointed" : (_isCopied ? "copied" : "their_messages");
-          const _asks = [_sent];
+          // ══ INSPIRATION COMES OFF THE SKIN (2026-09-26, Aaron) ═══════════════════════════════
+          // An add-on keeps the arm because it is an add-on. A picture brought in through Get Inspired
+          // is something they like - the tattoo is what they want, not the arm or the screen around it.
+          // MEASURED: "exactly like it" on the geisha went to the model with her whole description of
+          // it as a half-sleeve "down the shoulder", on the photo of the arm - and came back on the arm.
+          // So the first picture made from the inspiration photo is one fixed sentence (a setting,
+          // `config:frame:inspire`) and the person's own words as they said them - nothing of hers.
+          // Every change after that works on the flat design she made.
+          let _sentNow = _sent;
+          if (opts && opts.inspire && refDesign && parentId === refDesign) {
+            let _ifr = null;
+            try { _ifr = String((await env.AURA_KV.get("config:frame:inspire")) || "").trim() || null; } catch {}
+            _sentNow = ((_ifr || INSPIRE_FRAME) + " " + String(said || "").trim()).trim().slice(0, 900);
+          }
+          const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {
             try {
               const r = await processCommand("IMAGE EVOLVE " + parent + " " +
@@ -65433,7 +65447,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             aspect: "3:4", res: "2k",
             subject: askLine + ". " + reg + " " + frm +
               (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
-                        "the way it sits - but draw a NEW original piece rather than copying it." : ""),
+                        "the way it sits." : ""),
             context: "a tattoo somebody is designing for themselves: " + askLine,
             name: askLine.slice(0, 60),
             ...(refUrl ? { refs: [refUrl] } : {}),
@@ -66532,7 +66546,7 @@ export class PublicEntry extends WorkerEntrypoint {
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -66551,7 +66565,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null,
+              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },
@@ -66645,8 +66659,7 @@ export class PublicEntry extends WorkerEntrypoint {
         const r = await processCommand("SHOW_IT " + JSON.stringify({
           subject: tatBuildAsk(subject, [], {}, null) +
                    (ref ? " Take the STYLE and FEELING of the reference image - the linework, the " +
-                          "shading, the way it sits - but draw a NEW original piece rather than " +
-                          "copying it." : ""),
+                          "shading, the way it sits." : ""),
           context: "a tattoo somebody is designing for themselves: " + subject,
           name: subject.slice(0, 60),
           ...(ref ? { refs: [ref] } : {}),

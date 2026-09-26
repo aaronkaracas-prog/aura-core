@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.436.0-2026-09-26-make-your-own";
+const BUILD = "aura-core-v9.437.0-2026-09-26-change-it-from-one-look";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63835,9 +63835,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           "looking at - it is not a picture of theirs." +
           (_tileIn ? " They tapped that card: that is the direction they picked - get excited " +
             "about it and go with it; do not offer others." : "") +
+          // CHANGE IT ON A BODY SHOT (2026-09-26, Aaron): one look, then never again. She learns what
+          // the tattoo is; what she draws is the tattoo itself, never the person, never on a body.
           (_ownLook ? " It is at " + _ownLook + " and it is attached to this turn - look at it to see " +
-            "the design. It is shown on a model; the tattoo is the design on her. They want their own " +
-            "tattoo based on it: a new design, drawn fresh. Never draw the person." : "")
+            "what the tattoo is. It is shown on a model; the tattoo is the design on her. Ask what they " +
+            "would like to change. What you draw is the tattoo itself, as a new design on its own - never " +
+            "the person, never back on a body." : "")
         : "";
       // While they are still finding a direction - nothing of hers drawn in this tattoo yet, and
       // they did not come in through a card this turn - she gets ten current directions, shuffled
@@ -65668,11 +65671,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 { ts: _atP, role: "them", said: String(said || "").slice(0, 600),
                   ...((wantRef && refUrl) ? { photo: refUrl } : {}) },
                 { ts: _atP, role: "aura", said: _said.slice(0, 600) } ],
-              pictures: (drew && drew.image && !drew.failed && !drew.for_the_artist)
-                ? [{ ts: _atP, image: drew.image, design: drew.design || null,
-                     words: String(drew.changed || drew.asked || "").slice(0, 300) }] : [],
+              // A CATALOGUE DESIGN THEY CHOSE (2026-09-26): taken as it is, or being changed - it is the
+              // first picture of this tattoo, so My Tattoos shows it rather than "0 pictures".
+              pictures: [
+                ...((opts && (opts.use || opts.pick) && wantRef && refUrl)
+                  // The address they picked, not the copy imported this turn - it is the same on every turn,
+                  // so the picture is recorded once.
+                  ? [{ ts: _atP, image: wantRef, design: refDesign || null,
+                       words: String((opts && opts.name) || "their catalogue pick").slice(0, 300) }] : []),
+                ...((drew && drew.image && !drew.failed && !drew.for_the_artist)
+                  ? [{ ts: _atP, image: drew.image, design: drew.design || null,
+                       words: String(drew.changed || drew.asked || "").slice(0, 300) }] : []) ],
               // Named from its first picture - the words it was drawn from, up to the first comma.
-              title: (drew && drew.image && !drew.failed && !drew.for_the_artist)
+              // A catalogue pick is named after the design they chose ("Micro-Real Lion").
+              title: (opts && opts.name) ? String(opts.name).slice(0, 70)
+                : (drew && drew.image && !drew.failed && !drew.for_the_artist)
                 ? (String(drew.asked || drew.changed || "").split(",")[0].trim().slice(0, 70) || null) : null,
               came_from: _cameFrom ? _cameFrom.id : null,
               ...(act === "artist" ? { locked: true } : {}),
@@ -66478,7 +66491,7 @@ export class PublicEntry extends WorkerEntrypoint {
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -66497,7 +66510,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own,
+              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },

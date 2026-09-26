@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.442.0-2026-09-26-the-approved-picture-is-the-artwork";
+const BUILD = "aura-core-v9.443.0-2026-09-26-split-cards";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6214,8 +6214,11 @@ async function processCommand(line, env, isOp) {
           // the wrong register and the dials all read correct.
           const infoR = await tatOwnerInfo(env, nm);
           one.style_from = tatStyleNote(infoR, !!ctxR);
+          // A set can name its own picture shape (`shape:<set>`, e.g. 3:2 for the split cards -
+          // the design on the left, the same design on a body on the right). No setting, no change.
+          const shpR = ownR ? String((await env.AURA_KV.get("shape:" + tatSlug(ownR)).catch(() => null)) || "").trim() : "";
           const r = await showIt(askR,
-            env, { model, raw: true, source: "redo", subject: nm,
+            env, { model, raw: true, source: "redo", subject: nm, ...(shpR ? { aspect: shpR } : {}),
                    ...(fromOptR.refs ? { refs: fromOptR.refs, parent: fromOptR.parent,
                                          source: fromOptR.source } : {}),
                    seed: Math.floor(Math.random() * 900000) + 1000 });
@@ -58916,6 +58919,46 @@ async function tatRenderFor(env, kindOrLeaf) {
 // The frame lookup already learned this lesson today and this one had not. The singular form is
 // how a person types a subject and how the prompt should read; the tree stores the plural label.
 // Exact match still wins, so nothing that resolved before resolves differently.
+// The left half of a split card, trimmed to where the ink is. Cached per picture, so the same
+// card always gives the same address (My Tattoos records the address once).
+async function splitCardLeft(env, url) {
+  const id = (String(url).match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
+  if (!id) return null;
+  const was = await env.AURA_KV.get("splitcut:" + id).catch(() => null);
+  if (was) return was;
+  const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+  if (!b64) return null;
+  const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+  const W = im.get_width(), H = im.get_height();
+  const xmax = Math.max(1, Math.floor(W / 2) - Math.round(W * 0.01));
+  const px = im.get_raw_pixels();
+  let x1 = xmax, y1 = H, x2 = -1, y2 = -1;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < xmax; x++) {
+      const o = (y * W + x) * 4;
+      if (px[o] < 235 || px[o + 1] < 235 || px[o + 2] < 235) {
+        if (x < x1) x1 = x; if (x > x2) x2 = x; if (y < y1) y1 = y; if (y > y2) y2 = y;
+      }
+    }
+  }
+  if (x2 < 0) { try { im.free(); } catch {} return null; }
+  const pad = Math.round(Math.max(W, H) * 0.02);
+  x1 = Math.max(0, x1 - pad); y1 = Math.max(0, y1 - pad);
+  x2 = Math.min(xmax - 1, x2 + pad); y2 = Math.min(H - 1, y2 + pad);
+  const cut = photonCrop(im, x1, y1, x2 + 1, y2 + 1);
+  try { im.free(); } catch {}
+  const bts = cut.get_bytes();
+  try { cut.free(); } catch {}
+  let t = "";
+  for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+  const nid = "img_s" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
+    .map((x) => x.toString(16).padStart(2, "0")).join("");
+  await env.AURA_KV.put("image:" + nid, btoa(t));
+  const out = "https://" + (await imageHost(env)) + "/image/" + nid;
+  await env.AURA_KV.put("splitcut:" + id, out).catch(() => {});
+  return out;
+}
+
 async function tatOwnerOf(env, leaf) {
   try {
     const t = await env.AURA_KV.get("card:tree", "json");
@@ -63323,7 +63366,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // The fact that separates the two already exists: a drawing is never the reference itself.
       const _drewNow = () => !!(lastDrawn && lastDrawn.image && lastDrawn.design &&
                                 lastDrawn.design !== refDesign);
-      const wantRef = String((opts && opts.ref) || "").trim();
+      let wantRef = String((opts && opts.ref) || "").trim();
+      // ══ A SPLIT CARD IS WORKED ON BY ITS LEFT HALF (2026-09-26, Aaron) ══════════════════════
+      // Sets marked `split:<set>` are drawn as one picture: the design alone on white on the LEFT,
+      // the same design on a body on the RIGHT. The card shows both; a pick works only from the
+      // design - the left half, trimmed to the ink. A pixel cut, no model, so nothing is redrawn.
+      if (wantRef && me && opts && opts.name) {
+        try {
+          const _sOwn = await tatOwnerOf(env, String(opts.name));
+          const _sOn = _sOwn ? await env.AURA_KV.get("split:" + tatSlug(_sOwn)).catch(() => null) : null;
+          if (_sOn) { const _cut = await splitCardLeft(env, wantRef); if (_cut) wantRef = _cut; }
+        } catch {}
+      }
       if (wantRef && me && /^https?:\/\//i.test(wantRef)) {
         try {
           // The URL is POSITIONAL - `IMAGE IMPORT <url> {json}` - not a field in the payload.

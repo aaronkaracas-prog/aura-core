@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.437.0-2026-09-26-change-it-from-one-look";
+const BUILD = "aura-core-v9.438.0-2026-09-26-the-tattoo-she-is-on";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63055,11 +63055,52 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           const raw = await _pre.timeline;
           if (raw) tline = JSON.parse(raw) || [];
         } catch {}
-        const spoken = tline.filter((e) => e && e.said && e.role);
-        if (spoken.length) {
-          hist = spoken.slice(-12).map((e) => ({ role: e.role, said: e.said }));
-        }
       }
+      // ══ THE TATTOO SHE IS ON, FROM THE PTA (2026-09-26, Aaron) ═══════════════════════════════
+      // MEASURED on the site: a new tattoo started from the Micro-Real Lion, and her first words were
+      // about "the two lions" - the tattoo before, already locked in. The PTA already keeps every
+      // tattoo as its own project (lines, pictures, locked, files) and knows which one is open; what
+      // she was handed was the flat timeline across ALL of them, labelled as this conversation and
+      // "where this tattoo stands". Aaron: "Aura always knows your whole history via PTA - but she
+      // brings up the last thing she did." She keeps the whole history; it is now handed to her by
+      // tattoo: this one in full, the earlier ones as finished. No new storage - the PTA's records.
+      // `tnow` is this tattoo's conversation and pictures, in the timeline's own shape. A fresh start
+      // has none. With no project on record (before projects existed) the whole timeline is used, as
+      // it always was.
+      let _workPid = null, _workPj = null, _earlierPjs = [];
+      if (me) {
+        try {
+          const _fromD0 = String((opts && opts.from) || "").trim();
+          if (_fromD0) _workPid = ((await talkDo(env, me, "talkProjectOf", [_fromD0])) || {}).project || null;
+          if (!_workPid && !(opts && opts.fresh)) _workPid = (_pre ? await _pre.project : null) || null;
+          if (_workPid) {
+            const _wr = await talkDo(env, me, "talkProject", [_workPid]);
+            _workPj = (_wr && _wr.ok && _wr.project) ? _wr.project : null;
+          }
+          const _ix = ((await talkDo(env, me, "talkProjects", [])) || {}).projects || [];
+          _earlierPjs = (Array.isArray(_ix) ? _ix : []).filter((x) => x && x.id !== _workPid).slice(0, 8);
+        } catch {}
+      }
+      const tnow = _workPj
+        ? [...(_workPj.lines || []).map((l) => ({ ts: l.ts, role: l.role === "them" ? "them" : "aura", said: l.said })),
+           ...(_workPj.pictures || []).map((x) => ({ ts: x.ts, role: "picture", image: x.image, design: x.design || null, words: x.words || "" }))]
+            .sort((a, c) => String(a.ts || "").localeCompare(String(c.ts || "")))
+        : ((opts && opts.fresh) ? [] : tline);
+      if (me) {
+        const spoken = tnow.filter((e) => e && e.said && e.role);
+        hist = spoken.slice(-12).map((e) => ({ role: e.role, said: e.said }));
+      }
+      const _projNote = me
+        ? "\n\nTHE TATTOO YOU ARE ON NOW: " +
+          (_workPj && _workPj.title ? "\"" + _workPj.title + "\"" : "a new tattoo - nothing made for it yet") +
+          (_workPj && _workPj.started ? " (started " + String(_workPj.started).slice(0, 10) + ")" : "") +
+          (_workPj && _workPj.locked ? ", locked in - their artist's files are made" : "") + "." +
+          (_earlierPjs.length
+            ? "\nTHEIR EARLIER TATTOOS WITH YOU - finished, kept in My Tattoos; bring one up only if they do:\n" +
+              _earlierPjs.map((x) => "  - " + (x.title || "untitled") + " (" + String(x.started || "").slice(0, 10) +
+                (x.locked ? ", locked in" : "") + ")").join("\n")
+            : "")
+        : "";
       // ══ TWO CALLS, ONE WAIT (2026-08-24) ═══════════════════════════════════════════════
       // MEASURED: about a minute for a reply. `talk` makes two model calls - her answer, then a
       // cheap read of whether they are ready - and they ran ONE AFTER THE OTHER, on the floor
@@ -63623,13 +63664,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // this tattoo stands is plain.
       const _story = (() => {
         const pics = [];
-        for (let i = 0; i < tline.length; i++) {
-          const e = tline[i];
+        for (let i = 0; i < tnow.length; i++) {
+          const e = tnow[i];
           if (!e || e.role !== "picture") continue;
           let after = null;
-          for (let j = i + 1; j < tline.length; j++) {
-            if (tline[j] && tline[j].role === "them") { after = tline[j].said; break; }
-            if (tline[j] && tline[j].role === "picture") break;
+          for (let j = i + 1; j < tnow.length; j++) {
+            if (tnow[j] && tnow[j].role === "them") { after = tnow[j].said; break; }
+            if (tnow[j] && tnow[j].role === "picture") break;
           }
           pics.push({ e, after });
         }
@@ -63650,7 +63691,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // she says WHICH lines hold what is to be drawn, and core sends those lines exactly as written.
       // Her judgement picks the request (a correction, a yes to her own idea); core does the exact copy.
       const _convLines = (() => {
-        const spoken = tline.filter((e) => e && e.said && (e.role === "them" || e.role === "aura"))
+        const spoken = tnow.filter((e) => e && e.said && (e.role === "them" || e.role === "aura"))
           .map((e) => ({ who: e.role === "them" ? "them" : "you", said: String(e.said) }));
         spoken.push({ who: "them", said: String(said || ""), now: true });
         return spoken.map((e, i) => ({ n: i + 1, ...e }));
@@ -63658,7 +63699,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const _convNote = "\n\nTHE CONVERSATION, NUMBERED (\"you\" is you):\n" +
         _convLines.slice(-20).map((l) => "  " + l.n + ". " + l.who + ": " + l.said.slice(0, 500) +
           (l.now ? "   <- what they just said" : "")).join("\n");
-      const stateNote = _convNote + (_drewNow()
+      const stateNote = _projNote + _convNote + (_drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
         : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story;
@@ -65695,7 +65736,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           }
           if (stage === "pta") {
             const _cmdAura = "PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
-              said: _said.slice(0, 600), who: "aura", channel: "chat", mode: "tattoo",
+              said: _said.slice(0, 600), who: "aura", channel: "chat", mode: "tattoo", project: _pid || null,
               at: new Date().toISOString() });
             await _record(() => processCommand(_cmdAura, env, true));
             if (drew && (drew.image || drew.failed)) {

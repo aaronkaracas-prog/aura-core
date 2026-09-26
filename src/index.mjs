@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.439.0-2026-09-26-inspiration-comes-off-the-skin";
+const BUILD = "aura-core-v9.440.0-2026-09-26-her-sentence-not-her-code";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62625,7 +62625,16 @@ function talkUseOne(n, want, refDesign, refUrl, lastDrawn) {
   }
 
 function talkVerdict(reply, parsed) {
-  return String((parsed && parsed.say) || reply).replace(/^\s*[{\[]/, "").trim();
+  if (parsed && parsed.say) return String(parsed.say).replace(/^\s*[{\[]/, "").trim();
+  // HER SENTENCE, NOT HER CODE (2026-09-26). MEASURED on the site: her look after the ship drawing
+  // came back as `"say":"This one turned out strong...","do":"none"...}` - the opening brace missing -
+  // so nothing could parse it and the raw contract, plus the question she had been asked, went into
+  // the chat. When the reply cannot be read but her sentence is plainly there after "say", that
+  // sentence is what she said. Her words only; nothing is added or guessed.
+  const raw = String(reply || "");
+  const m = raw.match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (m) { try { return JSON.parse('"' + m[1] + '"').trim(); } catch { return m[1].trim(); } }
+  return raw.replace(/^\s*[{\[]/, "").trim();
 }
 
 async function talkCheckOn(env, k) {

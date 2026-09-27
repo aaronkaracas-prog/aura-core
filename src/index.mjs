@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.445.0-2026-09-26-no-arm-in-the-files";
+const BUILD = "aura-core-v9.446.0-2026-09-27-her-idea-not-her-pitch";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65392,7 +65392,31 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // cool let's do it" - and sent the lot. Aaron: that is not the request. It is now ONE message,
           // exactly as they typed it: the longest one since the last picture, which is the one that asked.
           const _oneAsk = _since.slice().sort((a, b) => b.length - a.length)[0] || String(said).trim();
-          const _pointed = (acted.lines || []).map((n) => _convLines.find((l) => l.n === n)).filter(Boolean);
+          let _pointed = (acted.lines || []).map((n) => _convLines.find((l) => l.n === n)).filter(Boolean);
+          // ══ HER IDEA GOES, NOT HER PITCH - AND THEIR REQUEST GOES WITH IT (2026-09-27, Aaron) ══════
+          // MEASURED on the calf add-on (pta_3e2eae988448670c): she pointed at her own offer and the
+          // "yes", and the model got "Here's one: a trippy frog... Want me to sketch it so you can see
+          // how it'd sit above the piece? yes" on their calf photo - and drew a new leg. Nothing said
+          // what the person asked for ("something right above it same crazy style"), and her question
+          // to them told the model to SKETCH. Two general rules, for every picture she points at:
+          //   1. A question she asked THEM is never an instruction to the model - her sentences that
+          //      end in "?" are dropped from her lines.
+          //   2. When she points at her own line, the person's request travels with it, first: the lines
+          //      of theirs she points at if they say more than a go-ahead, otherwise their request since
+          //      the last picture. A bare "yes" adds nothing and is dropped.
+          const _realAsk = (l) => l && l.who === "them" && String(l.said).trim().split(/\s+/).length >= 4;
+          if (_pointed.some((l) => l.who === "you")) {
+            _pointed = _pointed.map((l) => l.who !== "you" ? l : ({ ...l,
+              said: (String(l.said).match(/[^.!?]+[.!?]*/g) || [String(l.said)])
+                .filter((x) => !/\?\s*$/.test(x)).join("").trim() }))
+              .filter((l) => l.who === "you" ? !!l.said : _realAsk(l));
+            // Their request is the one core already uses when she points at nothing (ONE REQUEST,
+            // NEVER THE TRANSCRIPT, above): the longest thing they said since the last picture.
+            if (!_pointed.some(_realAsk) && _oneAsk && !/^\[/.test(_oneAsk)) {
+              _pointed.push({ n: -1, who: "them", said: _oneAsk });
+            }
+            _pointed.sort((x, y) => (x.n || 0) - (y.n || 0));
+          }
           const _sent = (_pointed.length ? _pointed.map((l) => l.said.trim()).join(" ")
                                          : (_isCopied ? _copied : _oneAsk)).slice(0, 900);
           const _wordsFrom = _pointed.length ? "pointed" : (_isCopied ? "copied" : "their_messages");

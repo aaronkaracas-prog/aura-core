@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.447.0-2026-09-27-an-add-on-says-it-is-an-add-on";
+const BUILD = "aura-core-v9.448.0-2026-09-27-our-own-photo-off-the-shelf";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18848,7 +18848,41 @@ async function successionGate(env) {
             return new Uint8Array(b);
           } catch { return null; }
         };
-        iBytes = await _tryFetch({ cf: { cacheTtl: 3600 } }, "plain");
+        // ══ OUR OWN PHOTO COMES OFF THE SHELF, NOT OVER THE WIRE (2026-09-27) ═══════════════
+        // MEASURED: `IMAGE IMPORT https://auras.guide/image/img_i03cb2888958662a96c99` took 46s and
+        // came back `fetched_by: "cloudflare browser"`, a 281KB PNG - a SCREENSHOT of the page at
+        // 1280x1600, not the person's photo. Core fetching its own domain fails (the same failure
+        // the OpenAI path measured and fixed with a shelf read), both cheap tries fall through, and
+        // the browser photographs the screen. Every site upload is imported from our own address,
+        // and every talk turn imports its reference again - so the leg the image model was handed
+        // was a screenshot, twice over. The original is the first image and it is never rewritten:
+        // the bytes we hold are copied exactly, with their own type.
+        const _ownId = (String(ref).match(/\/image\/(img_[a-z0-9]+)/i) || [])[1] || null;
+        if (_ownId) {
+          try {
+            if (env.AURA_IMAGES) {
+              const obj = await env.AURA_IMAGES.get(_ownId + ".png").catch(() => null);
+              if (obj) { const b = await obj.arrayBuffer();
+                if (b && b.byteLength > 1024) { iBytes = new Uint8Array(b); iHow = "our own store";
+                  iType = (obj.httpMetadata && obj.httpMetadata.contentType) || iType; } }
+            }
+            if (!iBytes) {
+              const k = await env.AURA_KV.get("image:" + _ownId).catch(() => null);
+              if (k) { const bin = atob(k); const u = new Uint8Array(bin.length);
+                for (let n = 0; n < bin.length; n++) u[n] = bin.charCodeAt(n);
+                if (u.length > 1024) { iBytes = u; iHow = "our own store"; } }
+            }
+            if (iBytes && iHow === "our own store") {
+              // KV holds no type; read it from the bytes themselves.
+              const h = iBytes;
+              if (h[0] === 0x89 && h[1] === 0x50) iType = "image/png";
+              else if (h[0] === 0xff && h[1] === 0xd8) iType = "image/jpeg";
+              else if (h[0] === 0x52 && h[1] === 0x49 && h[8] === 0x57 && h[9] === 0x45) iType = "image/webp";
+              else if (h[0] === 0x47 && h[1] === 0x49) iType = "image/gif";
+            }
+          } catch { iBytes = null; iHow = "plain"; }
+        }
+        if (!iBytes) iBytes = await _tryFetch({ cf: { cacheTtl: 3600 } }, "plain");
         if (iBytes && iBytes.tooBig) return { cmd: "IMAGE", payload: { ok: false, error: "TOO_BIG", bytes: iBytes.tooBig } };
         if (!iBytes) {
           let origin = ""; try { origin = new URL(ref).origin + "/"; } catch {}
@@ -18888,7 +18922,7 @@ async function successionGate(env) {
         let iBin = "";
         for (let i = 0; i < iBytes.length; i += 8192) iBin += String.fromCharCode.apply(null, iBytes.subarray(i, i + 8192));
         if (env.AURA_IMAGES) { try { await env.AURA_IMAGES.put(iId + ".png", iBytes, { httpMetadata: { contentType: iType } }); } catch {} }
-        const _fetchedBy = iHow;   // plain | browser headers | cloudflare browser
+        const _fetchedBy = iHow;   // our own store | plain | browser headers | cloudflare browser
         await env.AURA_KV.put("image:" + iId, btoa(iBin));
         const iUrl = "https://" + (await imageHost(env)) + "/image/" + iId;
 

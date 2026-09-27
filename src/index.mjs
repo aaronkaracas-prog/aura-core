@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.443.0-2026-09-26-split-cards";
+const BUILD = "aura-core-v9.444.0-2026-09-26-a-pick-asks-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64952,8 +64952,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // The ship had no person in it and passed. When the picture they approved is one WE drew
         // and it is not on a body (not their photo, not a look on them, not an add-on, cover or
         // rework), it already is flat artwork: it is used as it is, and nothing converts it.
+        // A design picked from our catalogue is flat artwork too - every catalogue design is drawn
+        // flat, and a split card has already been cut to its left half. Locked in as it stands
+        // ("I like this one" -> "this is the one"), it is the flat sheet itself (2026-09-26).
         _filesFlat = !!(lastDrawn && lastDrawn.image && lastDrawn.design &&
-                        lastDrawn.design !== refDesign &&
+                        (lastDrawn.design !== refDesign || (opts && opts.pick)) &&
                         !["add", "cover", "rework"].includes(String(jobNow || "")) &&
                         !(_oRec && _oRec.image && lastDrawn.design === _oRec.design));
       }

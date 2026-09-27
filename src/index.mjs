@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.448.0-2026-09-27-our-own-photo-off-the-shelf";
+const BUILD = "aura-core-v9.449.0-2026-09-27-photo-and-their-words-only";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65468,19 +65468,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             try { _ifr = String((await env.AURA_KV.get("config:frame:inspire")) || "").trim() || null; } catch {}
             _sentNow = ((_ifr || INSPIRE_FRAME) + " " + String(said || "").trim()).trim().slice(0, 900);
           }
-          // ══ AN ADD-ON ON THEIR PHOTO SAYS IT IS AN ADD-ON (2026-09-27, Aaron) ══════════════════════
-          // The job frames above have been BUILT on every draw since 9-21 and never SENT ("only words
-          // they saw"). So an add-on worked only when the lines happened to say so ("extend this tattoo
-          // down my back"), and broke when they did not. MEASURED on the calf photo: "I want to do a
-          // similar style on my thigh" MOVED the existing tattoo onto a thigh; her pitch drew a new leg.
-          // ISOLATED: only a drawing whose parent is THEIR PHOTO, on an add / cover / rework job, and
-          // never an inspiration picture. New tattoos, discovery, inspiration and every change to a
-          // drawing already on screen are untouched. The sentence is the job's frame - the proven one
-          // in _FRAMES, or `config:frame:<job>` when set - with the words that would have been sent in
-          // the blank.
-          if (_onPhoto && _frame && ["add", "cover", "rework"].includes(_frameKey) && !(opts && opts.inspire)) {
-            _sentNow = _frame.replace("____", String(_sent).trim().replace(/[.\s]+$/, "")).slice(0, 900);
-          }
+          // ══ THE IMAGE MODEL GETS THE PHOTO AND THEIR WORDS - NOTHING ELSE (2026-09-27, Aaron) ════
+          // v9.447 put a stock sentence in front of add / cover / rework draws ("Here's my original
+          // tattoo on me. Show me what this additional one looks like on me: ____"). REMOVED. It was
+          // added for a tattoo drawn onto a new leg; the real error was that the import handed the
+          // image model a SCREENSHOT of our own page instead of the photo (fixed in v9.448). With the
+          // real photo, the model sees the leg and the tattoo itself. Where the person came in (Add On,
+          // Cover Up, plain chat) is context for Aura, never words for the image model.
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {
             try {

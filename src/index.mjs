@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.444.0-2026-09-26-a-pick-asks-first";
+const BUILD = "aura-core-v9.445.0-2026-09-26-no-arm-in-the-files";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58921,15 +58921,19 @@ async function tatRenderFor(env, kindOrLeaf) {
 // Exact match still wins, so nothing that resolved before resolves differently.
 // The left half of a split card, trimmed to where the ink is. Cached per picture, so the same
 // card always gives the same address (My Tattoos records the address once).
-async function splitCardLeft(env, url) {
+async function splitCardLeft(env, url, onlyWide) {
   const id = (String(url).match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
   if (!id) return null;
+  if (onlyWide && /^img_s/.test(id)) return null;   // already a cut - never cut a cut
   const was = await env.AURA_KV.get("splitcut:" + id).catch(() => null);
   if (was) return was;
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return null;
   const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
   const W = im.get_width(), H = im.get_height();
+  // At lock-in only a picture still in the split shape (wide: design | body) is cut. An edit that
+  // came back as plain flat artwork is left whole.
+  if (onlyWide && W < H * 1.2) { try { im.free(); } catch {} return null; }
   const xmax = Math.max(1, Math.floor(W / 2) - Math.round(W * 0.01));
   const px = im.get_raw_pixels();
   let x1 = xmax, y1 = H, x2 = -1, y2 = -1;
@@ -63064,7 +63068,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // after another. They are started together here and each is awaited where it was read
       // before, so nothing downstream changes except that it no longer waits in line.
       // The conversation's own state comes from the person's Durable Object in one call.
-      const _state = me ? talkStateGet(env, me, ["timeline", "brief", "last", "bad", "ref", "tile", "project", "design", "onme"])
+      const _state = me ? talkStateGet(env, me, ["timeline", "brief", "last", "bad", "ref", "tile", "project", "design", "onme", "split"])
         .catch(() => ({})) : null;
       const _pre = me ? {
         timeline: _state.then((x) => x.timeline ?? null),
@@ -63085,6 +63089,8 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
         project:  _state.then((x) => x.project ?? null),
         design:   (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => talkParse(x.design)),
         onme:     (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => talkParse(x.onme)),
+        // This tattoo started from a split card (2026-09-26) - read at lock-in, see NO ARM IN THE FILES.
+        split:    (opts && opts.fresh) ? Promise.resolve(null) : _state.then((x) => x.split ?? null),
       } : null;
       // ══ A FRESH START CLEARS WHAT IS STORED, NOT ONLY WHAT IS READ (2026-09-24) ═════════════
       // MEASURED on the site: the fresh flag hid the last tattoo's state on the FIRST turn only.
@@ -63093,7 +63099,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // is cleared where it is kept: the brief, the piece on screen, the held photo, the record of
       // her design and of the last look on them.
       if (me && opts && opts.fresh) {
-        for (const _k of ["brief", "last", "ref", "design", "onme", "bad"]) {
+        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split"]) {
           try { await talkStatePut(env, me, _k, ""); } catch {}
         }
       }
@@ -63376,6 +63382,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const _sOwn = await tatOwnerOf(env, String(opts.name));
           const _sOn = _sOwn ? await env.AURA_KV.get("split:" + tatSlug(_sOwn)).catch(() => null) : null;
           if (_sOn) { const _cut = await splitCardLeft(env, wantRef); if (_cut) wantRef = _cut; }
+          // Remembered for the lock-in: edits of a split pick redraw the whole split picture (the
+          // body half with the change - Aaron likes that), so the files must cut it again at the end.
+          // A pick from a set that is not split clears it.
+          await talkStatePut(env, me, "split", _sOn ? "yes" : "");
         } catch {}
       }
       if (wantRef && me && /^https?:\/\//i.test(wantRef)) {
@@ -64959,6 +64969,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                         (lastDrawn.design !== refDesign || (opts && opts.pick)) &&
                         !["add", "cover", "rework"].includes(String(jobNow || "")) &&
                         !(_oRec && _oRec.image && lastDrawn.design === _oRec.design));
+        // ══ NO ARM IN THE FILES (2026-09-26, Aaron) ═══════════════════════════════════════════
+        // MEASURED on the site: "Bow Tied Around Rose" (a split card) -> "I want two roses" -> the
+        // edit redrew the WHOLE split picture, two roses flat on the left and on an arm on the right.
+        // Locked in, the flat artwork, line art and "how it will look" were all that split picture,
+        // arm included - the left-half cut had only run on the first pick. Aaron: "it cannot be in
+        // the artist files at the end". When this tattoo came from a split card and the approved
+        // picture is still split-shaped, the same pixel cut runs here; the files are made from the
+        // design half. The pictures in the conversation are left as they are.
+        if (_filesFlat) {
+          let _wasSplit = null;
+          try { _wasSplit = await _pre.split; } catch {}
+          if (_wasSplit === "yes") {
+            try {
+              const _cutEnd = await splitCardLeft(env, lastDrawn.image, true);
+              if (_cutEnd) lastDrawn = { ...lastDrawn, image: _cutEnd };
+            } catch (e) { try { console.log("[FILES] split cut at lock-in failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+          }
+        }
       }
       if (act === "artist" && me) {
         const _job = await startArtistFilesJob(env, {

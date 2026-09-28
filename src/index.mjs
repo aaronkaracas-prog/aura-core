@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.452.0-2026-09-28-only-what-they-said-since-the-last-picture";
+const BUILD = "aura-core-v9.453.0-2026-09-28-the-picture-and-their-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7521,7 +7521,7 @@ async function processCommand(line, env, isOp) {
                 "piece, tile and projects. Identity, sign-in, chain and stored pictures are untouched." } };
         await talkDo(env, trPta, "talkPut", [{
           "talk-state:timeline": "[]", "talk-state:brief": "", "talk-state:last": "",
-          "talk-state:bad": "", "talk-state:ref": "", "talk-state:tile": "", "talk-state:project": "",
+          "talk-state:bad": "", "talk-state:ref": "", "talk-state:tile": "", "talk-state:project": "", "talk-state:added": "",
           "talk-proj:index": "[]", "talk-proj:by-design": "{}" }]);
         return { cmd: "TALK_RESET", payload: { ok: true, cleared: true, before: holds,
           note: "Cleared. Their next tattoo conversation starts from nothing." } };
@@ -62404,9 +62404,62 @@ async function makeArtistFiles(env, ctx) {
               }
             } catch { /* her answer is an improvement, never a requirement */ }
           }
-          const sheets = [];
+          // ══ AN ADD-ON GETS TWO SHEETS: THE WHOLE PIECE, AND THE NEW WORK (2026-09-28, Aaron) ════════
+          // PROVEN by command on the crane back piece, one picture each, plain words:
+          //   "Draw this whole tattoo flat on plain white paper, with no body and no skin."
+          //       -> crane, blossoms, dragon and clouds, flat (img_mulo81fd35vm)
+          //   "Draw only the dragon with storm clouds from this picture, flat on plain white paper,
+          //    with no body and no skin." -> the dragon and clouds alone (img_mulo7638t1ef, and
+          //    img_mulo0r5fbay9 before the colour change)
+          // What FAILED on the same piece, four times: comparing against the original photo ("the
+          // second picture is my body before... draw only what is new"). The model cannot find the
+          // seam; told WHAT is new by name, it lifts it out. The name comes from what they asked to
+          // add (saved at the first picture), put into a few words by her - the one question below.
+          // Both sheets go to the artist: the whole piece always works, the new work is the stencil.
+          let _addSheets = null;
+          if (jobNow === "add" && refUrl && !alreadyFlat) {
+            const _src = /^ent_/.test(String(shopParent || "")) ? shopParent
+              : ((String(mockUrl).match(/\/image\/(img_[a-z0-9]+)/i) || [])[1] || shopParent);
+            const _flat = async (prompt) => {
+              for (let tries = 0; tries < 2; tries++) {
+                try {
+                  const r = await processCommand("IMAGE EVOLVE " + _src + " " +
+                    JSON.stringify({ prompt, by: me, res: "2k", ...(tries ? { seed: "again" } : {}) }), env, true);
+                  const p = (r && r.payload) ? r.payload : r;
+                  if (p && p.ok && p.image_url) return { flat: p.image_url, id: p.child || null };
+                } catch {}
+              }
+              return null;
+            };
+            _addSheets = [];
+            const _whole = await _flat("Draw this whole tattoo flat on plain white paper, with no body and no skin.");
+            if (_whole) _addSheets.push({ panel: "Whole piece", asked: "the whole tattoo", flat: _whole.flat,
+                                          id: _whole.id, checked: null, ok: true });
+            let _saved = null, _name = null;
+            try { _saved = String((await talkStateGet(env, me, ["added"])).added || "").trim() || null; } catch {}
+            try {
+              const q = await proxyToAgent(env,
+                "[FOR YOU, NOT THEM. The artist sheet of only the NEW tattoo work is being drawn now." +
+                (_saved ? " What they asked to add was: \"" + _saved.slice(0, 300) + "\"." : "") +
+                " In a few words, name only the new tattoo work that was added to the tattoo they already" +
+                " had - for example \"the dragon with storm clouds\". Reply with only those words.]",
+                false, me, mockUrl, world);
+              if (q && q.reply && !q.failed) {
+                _name = String(_verdict(q.reply, readAct(q.reply)) || "").trim()
+                  .replace(/^["'\s]+|["'.\s]+$/g, "").slice(0, 120) || null;
+              }
+            } catch {}
+            if (_name) {
+              const _new = await _flat("Draw only " + _name + " from this picture, flat on plain white paper, " +
+                                       "with no body and no skin.");
+              if (_new) _addSheets.push({ panel: "New work", asked: _name, flat: _new.flat, id: _new.id,
+                                          checked: null, ok: true });
+            }
+            if (!_addSheets.length) _addSheets = null;
+          }
+          const sheets = _addSheets || [];
           const _checkSheets = await _checkOn("sheets");
-          for (const panel of panelList) {
+          for (const panel of (_addSheets ? [] : panelList)) {
             // `section: what goes there`. The label before the colon is what the sheet is CALLED
             // and what she is asked to verify it against; the whole phrase is what gets drawn,
             // because the description is the only thing that makes one panel different from another.
@@ -63136,7 +63189,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // is cleared where it is kept: the brief, the piece on screen, the held photo, the record of
       // her design and of the last look on them.
       if (me && opts && opts.fresh) {
-        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split"]) {
+        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added"]) {
           try { await talkStatePut(env, me, _k, ""); } catch {}
         }
       }
@@ -65084,9 +65137,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // the placement verdict off. A look that fails never costs them the picture.
       // Set when the picture being looked at carries the add-on's red marker line (AN ADD-ON MARKS
       // WHAT IS NEW). Her check and her reaction are told it is a marker, not ink.
-      let _outlinedNow = false;
-      const _REDLINE = " The thin red line in this picture only marks what was just added or changed - " +
-        "it is a marker for the next change, not part of the tattoo.";
       const _lookAtResult = async (url, onBody, where) => {
         if (!url || !me) return null;
         const body = !!(onBody && seeing && (await _checkOn("mockup")));
@@ -65110,7 +65160,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               "Compare it to the photograph they sent. Answer RIGHT or WRONG, then one short sentence " +
               "saying why: is the tattoo they already had still there - not removed or covered over - " +
               "is what they asked for there, and is every bit of the new ink on their skin?" +
-              (_outlinedNow ? _REDLINE + " Do not judge it." : "") +
               (where ? " They asked: \"" + String(where).slice(0, 300) + "\" - is it where they asked (their own right and left, not the viewer's) and the size they asked, or a sensible real tattoo size if they gave none?" : "") + " Ink on " +
               "clothing, hair or the background is WRONG. Nothing else. (" + url + ")]",
               false, me, url, world);
@@ -65124,8 +65173,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // EVERY PICTURE COMES BACK WITH A NEXT STEP (2026-09-21): a real reaction and a clear next
             // step, in her own words, never one stock phrase ("it looks like software").
             const rx = await proxyToAgent(env,
-              "[This is the picture you just made for them." + (_outlinedNow ? _REDLINE : "") +
-              " Look at it. Tell them what you think of it " +
+              "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
               "in one warm line, then ask whether they are happy to go with it or want to change " +
               "something - in your own words, different each time." +
               // THE THIRD DOOR SURVIVES THE LOOK (2026-09-24). MEASURED on the site: they came in through
@@ -65523,26 +65571,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // image model a SCREENSHOT of our own page instead of the photo (fixed in v9.448). With the
           // real photo, the model sees the leg and the tattoo itself. Where the person came in (Add On,
           // Cover Up, plain chat) is context for Aura, never words for the image model.
-          // ══ AN ADD-ON MARKS WHAT IS NEW (2026-09-28, Aaron) ═══════════════════════════════════════
-          // PROVEN by command the same morning, on a forearm scene and a chest-and-neck floral piece:
-          // the image model cannot tell the ink they already have from what it added last time, so a
-          // follow-up edit has nothing to aim at. Marked, it does. Each picture carries a thin red
-          // line around what was just added or changed; the next edit changes only what is inside it
-          // and re-marks only what it changed. Lion and wolf added beside the old scene (old kept,
-          // line around the new), "give the stream color" with two streams in the picture (only the
-          // outlined one changed), then "color in the sunflower", then "change the small sunflower
-          // to a blue jay" - each one only inside the line, each line redrawn around just that change.
-          // Their words go in the middle exactly as they said them; these sentences are the only
-          // thing added, on add-ons only. The artist files take the line back out (FINAL ... ADDED).
-          const _theirs = String(_sentNow || "").trim().replace(/[.\s]+$/, "");
-          if (String(jobNow || "") === "add" && refDesign && _theirs && !(opts && opts.inspire)) {
-            _sentNow = (parentId === refDesign
-              ? _theirs + ". Do not cover or change any of the existing ink. Draw a thin bright red " +
-                "outline around only the new artwork you added."
-              : "Change only what is inside the red outline: " + _theirs + ". Leave everything outside " +
-                "the red outline exactly as it is. Remove the old red outline, and draw a new thin red " +
-                "outline around only what you changed.").slice(0, 1200);
-            _outlinedNow = true;
+          // ══ THE PICTURE AND THEIR WORDS - NOTHING ADDED (2026-09-28, Aaron) ══════════════════════
+          // The red-outline sentences (v9.450) are GONE. PROVEN the same day on the crane back piece:
+          // the same photo and the same request drew a perfect black-and-grey dragon in ChatGPT and
+          // with our words alone, and drew the dragon IN RED, onto the clothing, with the two outline
+          // sentences added. Every draw is the picture and what they asked for.
+          // What they ASKED TO ADD is saved with the conversation the first time it is drawn on their
+          // photo, so the artist files can name the new work later - saved data, never memory.
+          if (String(jobNow || "") === "add" && refDesign && parentId === refDesign && _sentNow &&
+              !(opts && opts.inspire) && me) {
+            try { await talkStatePut(env, me, "added", String(_sentNow).slice(0, 600)); } catch {}
           }
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {
@@ -65568,6 +65606,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // with the instruction. New drawings are looked at; see the draw path below.
               if (t && t.ok && t.image_url) got = t;
               else got = t;
+            }
+            // ══ A REFUSAL IS SENT ONCE MORE AS IT IS (2026-09-28, Aaron) ════════════════════════
+            // MEASURED on the crane back piece: the identical request was refused as "sexual" and
+            // drew perfectly on the very next try. So the same words go once more before anything
+            // is rewritten or anyone is told.
+            if (!(got && got.ok && got.image_url) &&
+                /safety system|safety_violations|content policy|moderation|rejected/i.test(String(got?.error || ""))) {
+              const tAgain = await _evolve(cur, ask, "again");
+              if (tAgain && tAgain.ok && tAgain.image_url) got = tAgain;
             }
             // A REFUSAL COMES BACK TO HER (2026-09-21). MEASURED on the same back-piece conversation:
             // every instruction that said "lower back" or "hips" was drawn; every one that said "butt"

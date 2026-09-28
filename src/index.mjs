@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.449.0-2026-09-27-photo-and-their-words-only";
+const BUILD = "aura-core-v9.450.0-2026-09-28-add-on-marks-what-is-new";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -9458,10 +9458,13 @@ async function processCommand(line, env, isOp) {
                 "belongs on the " + fnOnly.toUpperCase() + ". Not a crop of the photograph: the " +
                 "artwork itself. No skin, no arm, no body, no outline of a limb, no background, " +
                 "and nothing from the tattoo that was already on them - only the new " +
-                fnOnly + " work, drawn flat and complete."
-              : "The first image is the finished piece. The second is what was already tattooed " +
-                "before this work. Show me only the new work - the artwork alone, off the body, " +
-                "without the piece that was already there.") +
+                fnOnly + " work, drawn flat and complete, with no red outline."
+              // PROVEN 2026-09-28 on the chest piece (img_mulewrupqlze): the wildflowers, the coloured
+              // sunflower and the blue jay came back flat on white, the Japanese neck piece left out.
+              // "no red outline" because an add-on's pictures carry the marker line.
+              : "The first picture is my tattoo design now. The second picture is my body before. " +
+                "Draw only the new tattoo artwork that is in the first picture and not in the second, " +
+                "flat on plain white paper, with no body, no skin and no red outline.") +
             (fnStencil ? " " + fnCard[1] : "")
           // FLAT ARTWORK IS ITS OWN TASK (2026-09-22). The flat sheet was TAT_SOURCE_LOCK ("...Transform
           // only the artistic rendering into the style described...") plus a list of don'ts that ended
@@ -65075,6 +65078,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // on its own first line; what follows is what she says to them.
       // `config:check:react` = off turns the talking look off; `config:check:mockup` = off turns
       // the placement verdict off. A look that fails never costs them the picture.
+      // Set when the picture being looked at carries the add-on's red marker line (AN ADD-ON MARKS
+      // WHAT IS NEW). Her check and her reaction are told it is a marker, not ink.
+      let _outlinedNow = false;
+      const _REDLINE = " The thin red line in this picture only marks what was just added or changed - " +
+        "it is a marker for the next change, not part of the tattoo.";
       const _lookAtResult = async (url, onBody, where) => {
         if (!url || !me) return null;
         const body = !!(onBody && seeing && (await _checkOn("mockup")));
@@ -65098,6 +65106,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               "Compare it to the photograph they sent. Answer RIGHT or WRONG, then one short sentence " +
               "saying why: is the tattoo they already had still there - not removed or covered over - " +
               "is what they asked for there, and is every bit of the new ink on their skin?" +
+              (_outlinedNow ? _REDLINE + " Do not judge it." : "") +
               (where ? " They asked: \"" + String(where).slice(0, 300) + "\" - is it where they asked (their own right and left, not the viewer's) and the size they asked, or a sensible real tattoo size if they gave none?" : "") + " Ink on " +
               "clothing, hair or the background is WRONG. Nothing else. (" + url + ")]",
               false, me, url, world);
@@ -65111,7 +65120,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // EVERY PICTURE COMES BACK WITH A NEXT STEP (2026-09-21): a real reaction and a clear next
             // step, in her own words, never one stock phrase ("it looks like software").
             const rx = await proxyToAgent(env,
-              "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
+              "[This is the picture you just made for them." + (_outlinedNow ? _REDLINE : "") +
+              " Look at it. Tell them what you think of it " +
               "in one warm line, then ask whether they are happy to go with it or want to change " +
               "something - in your own words, different each time." +
               // THE THIRD DOOR SURVIVES THE LOOK (2026-09-24). MEASURED on the site: they came in through
@@ -65427,6 +65437,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // exactly as they typed it: the longest one since the last picture, which is the one that asked.
           const _oneAsk = _since.slice().sort((a, b) => b.length - a.length)[0] || String(said).trim();
           let _pointed = (acted.lines || []).map((n) => _convLines.find((l) => l.n === n)).filter(Boolean);
+          // ══ CORE'S OWN NOTES ARE NOT THEIR WORDS (2026-09-28) ═══════════════════════════════════
+          // MEASURED on Aaron's STS arm: the model got "[they sent a photo, with no words] I want to
+          // do Ne-Yo Iber tribal..." - the bracketed line is what core writes for Aura when a photo
+          // arrives with no text. It is for her, never for the image model. Removed from any line.
+          _pointed = _pointed.map((l) => ({ ...l, said: String(l.said || "").replace(/^\s*\[[^\]]*\]\s*/, "").trim() }))
+            .filter((l) => !!l.said);
           // ══ HER IDEA GOES, NOT HER PITCH - AND THEIR REQUEST GOES WITH IT (2026-09-27, Aaron) ══════
           // MEASURED on the calf add-on (pta_3e2eae988448670c): she pointed at her own offer and the
           // "yes", and the model got "Here's one: a trippy frog... Want me to sketch it so you can see
@@ -65475,6 +65491,27 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // image model a SCREENSHOT of our own page instead of the photo (fixed in v9.448). With the
           // real photo, the model sees the leg and the tattoo itself. Where the person came in (Add On,
           // Cover Up, plain chat) is context for Aura, never words for the image model.
+          // ══ AN ADD-ON MARKS WHAT IS NEW (2026-09-28, Aaron) ═══════════════════════════════════════
+          // PROVEN by command the same morning, on a forearm scene and a chest-and-neck floral piece:
+          // the image model cannot tell the ink they already have from what it added last time, so a
+          // follow-up edit has nothing to aim at. Marked, it does. Each picture carries a thin red
+          // line around what was just added or changed; the next edit changes only what is inside it
+          // and re-marks only what it changed. Lion and wolf added beside the old scene (old kept,
+          // line around the new), "give the stream color" with two streams in the picture (only the
+          // outlined one changed), then "color in the sunflower", then "change the small sunflower
+          // to a blue jay" - each one only inside the line, each line redrawn around just that change.
+          // Their words go in the middle exactly as they said them; these sentences are the only
+          // thing added, on add-ons only. The artist files take the line back out (FINAL ... ADDED).
+          const _theirs = String(_sentNow || "").trim().replace(/[.\s]+$/, "");
+          if (String(jobNow || "") === "add" && refDesign && _theirs && !(opts && opts.inspire)) {
+            _sentNow = (parentId === refDesign
+              ? _theirs + ". Do not cover or change any of the existing ink. Draw a thin bright red " +
+                "outline around only the new artwork you added."
+              : "Change only what is inside the red outline: " + _theirs + ". Leave everything outside " +
+                "the red outline exactly as it is. Remove the old red outline, and draw a new thin red " +
+                "outline around only what you changed.").slice(0, 1200);
+            _outlinedNow = true;
+          }
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {
             try {

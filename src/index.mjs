@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.456.0-2026-09-28-their-words-only";
+const BUILD = "aura-core-v9.457.0-2026-09-28-ask-her-again";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64192,8 +64192,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // everything that WRITES a person's chain - a lead has no chain until they say who they are.
       if (me) {
         try {
-          const proxied = await proxyToAgent(env, agentLine,
+          let proxied = await proxyToAgent(env, agentLine,
             false, me, seeing ? refUrl : (_ownLook || null), world, _fwdDelta);
+          // ══ HER BRAIN DROPPED THE TURN - ASK HER AGAIN, ONCE (2026-09-28) ══════════════════════
+          // MEASURED twice on one test (pta_aeac9123b5e593b0, pta_c4fc584f7dba63cb), both on the photo
+          // turn: aura-think answered 502 - "The brain returned an empty answer at rung L3" and "The
+          // turn was interrupted: the Durable Object was reset mid-flight". Her own log says the next
+          // turn runs fine, and it did. Instead the stand-in model answered in her place and the test
+          // was spoiled. So the same turn goes to her once more, unchanged, before anyone else answers.
+          if (!(proxied && proxied.reply && !proxied.failed) &&
+              /empty answer|interrupted|reset|isolate|http 50[0-9]/i.test(String((proxied && proxied.failed) || ""))) {
+            try {
+              const _again = await proxyToAgent(env, agentLine,
+                false, me, seeing ? refUrl : (_ownLook || null), world, _fwdDelta);
+              if (_again && _again.reply && !_again.failed) proxied = _again;
+            } catch {}
+          }
           if (proxied && proxied.reply && !proxied.failed) {
             acted = readAct(proxied.reply);
             // ══ THE CHEAPEST RUNG DOES NOT SPEAK JSON ══════════════════════════════════════

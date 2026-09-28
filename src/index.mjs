@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.451.0-2026-09-28-a-go-ahead-is-not-a-request";
+const BUILD = "aura-core-v9.452.0-2026-09-28-only-what-they-said-since-the-last-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63812,9 +63812,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // she says WHICH lines hold what is to be drawn, and core sends those lines exactly as written.
       // Her judgement picks the request (a correction, a yes to her own idea); core does the exact copy.
       const _convLines = (() => {
-        const spoken = tnow.filter((e) => e && e.said && (e.role === "them" || e.role === "aura"))
-          .map((e) => ({ who: e.role === "them" ? "them" : "you", said: String(e.said) }));
-        spoken.push({ who: "them", said: String(said || ""), now: true });
+        // `fresh`: said since the last picture. A request already drawn is not sent again (2026-09-28).
+        let _lastPic = -1;
+        tnow.forEach((e, i) => { if (e && e.role === "picture") _lastPic = i; });
+        const spoken = tnow.map((e, i) => ({ e, i }))
+          .filter(({ e }) => e && e.said && (e.role === "them" || e.role === "aura"))
+          .map(({ e, i }) => ({ who: e.role === "them" ? "them" : "you", said: String(e.said), fresh: i > _lastPic }));
+        spoken.push({ who: "them", said: String(said || ""), now: true, fresh: true });
         return spoken.map((e, i) => ({ n: i + 1, ...e }));
       })();
       const _convNote = "\n\nTHE CONVERSATION, NUMBERED (\"you\" is you):\n" +
@@ -65452,6 +65456,25 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           if (_pointed.some((l) => l.who === "them" && String(l.said).trim().split(/\s+/).length >= 4)) {
             _pointed = _pointed.filter((l) => l.who !== "them" || String(l.said).trim().split(/\s+/).length >= 4);
           }
+          // ══ ONLY WHAT THEY SAID SINCE THE LAST PICTURE, WITHOUT THE GO-AHEAD (2026-09-28, Aaron) ═══
+          // MEASURED in the UI (pta_ed8bd7cc93dfd9b7): the change to a hummingbird went to the model as
+          // "Let's add Steven's name within the new artwork and yes show me Let's change the sunflower to
+          // a Hummingbird" - the Steven line was already drawn in the picture before. And "and yes show
+          // me" sat on the end of a real request, so the go-ahead rule above (whole lines only) let it
+          // through. Both draws that came back with the new flowers drawn in red had "show me" right
+          // before the outline sentence; both that came back right did not.
+          //   1. A line of theirs from before the last picture is not sent when they have said
+          //      something since.
+          //   2. A go-ahead on the END of a request is trimmed off; the request goes as they said it.
+          if (_pointed.some((l) => l.who === "them" && l.fresh)) {
+            _pointed = _pointed.filter((l) => l.who !== "them" || l.fresh);
+          }
+          const _goAhead = /[\s,.!-]*(?:\b(?:and|so)\s+)?(?:\b(?:yes|yeah|yep|ok|okay|sure)\b[\s,.!-]*)?\b(?:show me(?: it| that| what (?:that|it) looks like)?|let'?s see (?:it|that)|draw it|show it to me)[\s.!]*$/i;
+          _pointed = _pointed.map((l) => {
+            if (l.who !== "them") return l;
+            const cut = String(l.said).replace(_goAhead, "").trim();
+            return cut.split(/\s+/).filter(Boolean).length >= 4 ? { ...l, said: cut } : l;
+          });
           // ══ HER IDEA GOES, NOT HER PITCH - AND THEIR REQUEST GOES WITH IT (2026-09-27, Aaron) ══════
           // MEASURED on the calf add-on (pta_3e2eae988448670c): she pointed at her own offer and the
           // "yes", and the model got "Here's one: a trippy frog... Want me to sketch it so you can see

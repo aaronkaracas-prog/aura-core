@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.453.0-2026-09-28-the-picture-and-their-words";
+const BUILD = "aura-core-v9.454.0-2026-09-28-every-request-names-the-new-work";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7535,10 +7535,13 @@ async function processCommand(line, env, isOp) {
       const tsPta = String(rest || "").trim().split(/\s+/)[0] || "";
       if (!/^pta_[a-z0-9]+$/i.test(tsPta)) return { cmd: "TALK_STATE", payload: { ok: false, error: "Usage: TALK_STATE <pta>" } };
       try {
-        const st = await talkStateGet(env, tsPta, ["timeline", "brief", "last", "tile"]);
+        const st = await talkStateGet(env, tsPta, ["timeline", "brief", "last", "tile", "added"]);
         const tl = talkParse(st.timeline) || [];
         return { cmd: "TALK_STATE", payload: { ok: true, pta: tsPta, lines: Array.isArray(tl) ? tl.length : 0,
-          timeline: tl, brief: talkParse(st.brief), last: talkParse(st.last), tile: talkParse(st.tile) } };
+          timeline: tl, brief: talkParse(st.brief), last: talkParse(st.last), tile: talkParse(st.tile),
+          // What they asked for on an add-on, in their words, one request per line - what the new-work
+          // artist sheet is named from (2026-09-28). Shown so a test can see it.
+          added: st.added || null } };
       } catch (e) {
         return { cmd: "TALK_STATE", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
       }
@@ -62440,7 +62443,7 @@ async function makeArtistFiles(env, ctx) {
             try {
               const q = await proxyToAgent(env,
                 "[FOR YOU, NOT THEM. The artist sheet of only the NEW tattoo work is being drawn now." +
-                (_saved ? " What they asked to add was: \"" + _saved.slice(0, 300) + "\"." : "") +
+                (_saved ? " What they asked for, in their words, in order:\n" + _saved.slice(-1200) + "\n" : "") +
                 " In a few words, name only the new tattoo work that was added to the tattoo they already" +
                 " had - for example \"the dragon with storm clouds\". Reply with only those words.]",
                 false, me, mockUrl, world);
@@ -65578,9 +65581,26 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // sentences added. Every draw is the picture and what they asked for.
           // What they ASKED TO ADD is saved with the conversation the first time it is drawn on their
           // photo, so the artist files can name the new work later - saved data, never memory.
+          // ══ EVERY LATER REQUEST IS KEPT WITH IT, IN THEIR WORDS (2026-09-28, Aaron) ═══════════════
+          // MEASURED on the crane back piece (pta_e9e1e60cb34c2d6a): only the FIRST request was kept
+          // ("I want to add a dragon with storm clouds..."), so after "add color to the dragon" the
+          // new-work sheet was named "the dragon with storm clouds" and drew the dragon GREY
+          // (img_mulpmyeio7l4). The same sheet sentence with "the colored dragon with storm clouds"
+          // drew it in colour (img_mulq277ht4xq). So each change they ask for on an add-on goes on
+          // the end of what was saved, one per line, and she names the new work from all of it.
           if (String(jobNow || "") === "add" && refDesign && parentId === refDesign && _sentNow &&
               !(opts && opts.inspire) && me) {
             try { await talkStatePut(env, me, "added", String(_sentNow).slice(0, 600)); } catch {}
+          } else if (String(jobNow || "") === "add" && refDesign && parentId !== refDesign && _sentNow &&
+                     !(opts && opts.inspire) && me) {
+            try {
+              const _had = String((await talkStateGet(env, me, ["added"])).added || "").trim();
+              const _now = String(_sentNow).trim().slice(0, 600);
+              const _lines = _had ? _had.split("\n") : [];
+              if (_lines[_lines.length - 1] !== _now) {
+                await talkStatePut(env, me, "added", _lines.concat([_now]).join("\n").slice(-1800));
+              }
+            } catch {}
           }
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {

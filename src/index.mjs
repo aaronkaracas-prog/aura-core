@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.450.0-2026-09-28-add-on-marks-what-is-new";
+const BUILD = "aura-core-v9.451.0-2026-09-28-a-go-ahead-is-not-a-request";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65443,6 +65443,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // arrives with no text. It is for her, never for the image model. Removed from any line.
           _pointed = _pointed.map((l) => ({ ...l, said: String(l.said || "").replace(/^\s*\[[^\]]*\]\s*/, "").trim() }))
             .filter((l) => !!l.said);
+          // ══ A GO-AHEAD IS NOT A REQUEST (2026-09-28, Aaron) ═════════════════════════════════════
+          // MEASURED on the chest add-on (pta_63291993af0e9b40): the same words that passed by command
+          // failed through the system because "yes show me" rode on the end of the request - she
+          // pointed at it as one of their lines. v9.446 already dropped a bare go-ahead when she
+          // pointed at her own line; now it is dropped whenever one of their pointed lines is a real
+          // request (four words or more). A lone "yes" with nothing else pointed still goes.
+          if (_pointed.some((l) => l.who === "them" && String(l.said).trim().split(/\s+/).length >= 4)) {
+            _pointed = _pointed.filter((l) => l.who !== "them" || String(l.said).trim().split(/\s+/).length >= 4);
+          }
           // ══ HER IDEA GOES, NOT HER PITCH - AND THEIR REQUEST GOES WITH IT (2026-09-27, Aaron) ══════
           // MEASURED on the calf add-on (pta_3e2eae988448670c): she pointed at her own offer and the
           // "yes", and the model got "Here's one: a trippy frog... Want me to sketch it so you can see

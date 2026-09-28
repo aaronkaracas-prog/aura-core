@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.455.0-2026-09-28-the-add-on-is-locked";
+const BUILD = "aura-core-v9.456.0-2026-09-28-their-words-only";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65488,7 +65488,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             const e = tline[i];
             if (!e) continue;
             if (e.role === "picture") break;
-            if (e.role === "them" && e.said) _since.unshift(String(e.said).trim());
+            // Core's own bracket notes ("[they sent a photo, with no words]") are never their words.
+            if (e.role === "them" && e.said && !/^\s*\[/.test(String(e.said))) _since.unshift(String(e.said).trim());
           }
           // ONE REQUEST, NEVER THE TRANSCRIPT (2026-09-21). MEASURED: the fallback joined every message
           // since the last picture - "take a look at this" + the Italy story + the request + "yeah that's
@@ -65541,22 +65542,23 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           //   2. When she points at her own line, the person's request travels with it, first: the lines
           //      of theirs she points at if they say more than a go-ahead, otherwise their request since
           //      the last picture. A bare "yes" adds nothing and is dropped.
+          // ══ THEIR WORDS ONLY - HER LINES NEVER GO (2026-09-28, Aaron) ═══════════════════════════════
+          // The 2026-09-27 rule above let her own line travel when she pointed at it. MEASURED the same
+          // day: the Sagittarius run by command sent her sentence ("I'm picturing the ornamental spine
+          // growing downward... finishing with a small ornamental medallion at the lower back") with
+          // theirs, and the lion run on the site - where she pointed only at theirs - did not. Same code,
+          // different words, different placement. Aaron: the model gets the picture and what the
+          // PERSON said. Nothing of hers, ever - not a line she points at, not words she copies from
+          // her own replies. Their lines only, in the order they said them; if she points at none of
+          // theirs, the one request they made since the last picture.
           const _realAsk = (l) => l && l.who === "them" && String(l.said).trim().split(/\s+/).length >= 4;
-          if (_pointed.some((l) => l.who === "you")) {
-            _pointed = _pointed.map((l) => l.who !== "you" ? l : ({ ...l,
-              said: (String(l.said).match(/[^.!?]+[.!?]*/g) || [String(l.said)])
-                .filter((x) => !/\?\s*$/.test(x)).join("").trim() }))
-              .filter((l) => l.who === "you" ? !!l.said : _realAsk(l));
-            // Their request is the one core already uses when she points at nothing (ONE REQUEST,
-            // NEVER THE TRANSCRIPT, above): the longest thing they said since the last picture.
-            if (!_pointed.some(_realAsk) && _oneAsk && !/^\[/.test(_oneAsk)) {
-              _pointed.push({ n: -1, who: "them", said: _oneAsk });
-            }
-            _pointed.sort((x, y) => (x.n || 0) - (y.n || 0));
+          _pointed = _pointed.filter((l) => l.who === "them");
+          if (!_pointed.some(_realAsk) && _oneAsk && !/^\[/.test(_oneAsk)) {
+            _pointed = [{ n: -1, who: "them", said: _oneAsk }];
           }
-          const _sent = (_pointed.length ? _pointed.map((l) => l.said.trim()).join(" ")
-                                         : (_isCopied ? _copied : _oneAsk)).slice(0, 900);
-          const _wordsFrom = _pointed.length ? "pointed" : (_isCopied ? "copied" : "their_messages");
+          _pointed.sort((x, y) => (x.n || 0) - (y.n || 0));
+          const _sent = (_pointed.length ? _pointed.map((l) => l.said.trim()).join(" ") : _oneAsk).slice(0, 900);
+          const _wordsFrom = _pointed.length ? "their_lines" : "their_messages";
           // ══ INSPIRATION COMES OFF THE SKIN (2026-09-26, Aaron) ═══════════════════════════════
           // An add-on keeps the arm because it is an add-on. A picture brought in through Get Inspired
           // is something they like - the tattoo is what they want, not the arm or the screen around it.

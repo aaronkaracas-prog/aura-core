@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.454.0-2026-09-28-every-request-names-the-new-work";
+const BUILD = "aura-core-v9.455.0-2026-09-28-the-add-on-is-locked";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62450,6 +62450,10 @@ async function makeArtistFiles(env, ctx) {
               if (q && q.reply && !q.failed) {
                 _name = String(_verdict(q.reply, readAct(q.reply)) || "").trim()
                   .replace(/^["'\s]+|["'.\s]+$/g, "").slice(0, 120) || null;
+                // "Draw only the dragon..." is the proven sentence; her answer arrives capitalised
+                // ("The coloured dragon..."). Only a leading The / A / An goes lower-case - a name
+                // like "Sagittarius" keeps its capital.
+                if (_name) _name = _name.replace(/^(The|A|An)\b/, (w) => w.toLowerCase());
               }
             } catch {}
             if (_name) {

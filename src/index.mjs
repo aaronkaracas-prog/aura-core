@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.465.0-2026-09-29-discovery";
+const BUILD = "aura-core-v9.466.0-2026-09-29-tile-no-hot";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64100,7 +64100,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       try {
         let _dNow = null; try { _dNow = _pre ? await _pre.design : null; } catch {}
-        if (!_ownInk && !_tileIn && !(_dNow && _dNow.image) && !(lastDrawn && lastDrawn.design)) {
+        // A WORLD THEY PICKED STAYS PICKED (2026-09-29, Aaron). MEASURED on pta_e21d40a432742c08: the
+        // Body Jewelry tile skipped the hot list on the tap turn only; on "yeah show me" she was handed
+        // ten styles again with "use them as your four" - and drew one necklace in four styles
+        // (dark romantic, Y2K, ornamental florals off that list) instead of four jewelry ideas. The
+        // tile is remembered for the conversation (_cameFrom), so the list stays off with it.
+        if (!_ownInk && !_tileIn && !(_cameFrom && _cameFrom.id) && !(_dNow && _dNow.image) && !(lastDrawn && lastDrawn.design)) {
           let _list = TALK_TRENDS;
           try {
             const _kvT = JSON.parse((await env.AURA_KV.get("config:talk:trends")) || "null");

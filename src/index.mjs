@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.463.0-2026-09-29-trend-fit";
+const BUILD = "aura-core-v9.464.0-2026-09-29-grid-pick";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64108,7 +64108,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           } catch {}
           let _proj = ""; try { _proj = String((_pre && await _pre.project) || ""); } catch {}
           const _theirs = String(said || "") + " " + String((carriedObj && carriedObj.subject) || "");
-          const _pick = talkTrendPick(_list, _theirs, String(me || "") + "|" + _proj, 10);
+          // ONE LIST FOR THE WHOLE CONVERSATION (2026-09-29). MEASURED on pta_92acf94bd58dd74a: the
+          // project did not exist on turn 1, so turn 1 and turn 2 were shuffled differently - she called
+          // "medieval" hot on turn 1 and it was gone from her list on turn 2. Keyed on the person only.
+          const _pick = talkTrendPick(_list, _theirs, String(me || ""), 10);
           _hotPicks = _pick.picks;
           // SAY IT (2026-09-24, Aaron). MEASURED: handed a fitting list, she picked well but only once
           // in three said it was hot - "if the text does not come back with this is what's hot, no one
@@ -65638,7 +65641,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           }
           const _sent = (_pointed.length ? _pointed.map((l) => l.said.trim()).join(" ")
                                          : ((_isCopied && !_addOnly) ? _copied : _oneAsk)).slice(0, 900);
-          const _wordsFrom = _addOnly ? (_pointed.length ? _addFrom : "their_messages")
+          let _wordsFrom = _addOnly ? (_pointed.length ? _addFrom : "their_messages")
                            : (_pointed.length ? "pointed" : (_isCopied ? "copied" : "their_messages"));
           // ══ INSPIRATION COMES OFF THE SKIN (2026-09-26, Aaron) ═══════════════════════════════
           // An add-on keeps the arm because it is an add-on. A picture brought in through Get Inspired
@@ -65675,6 +65678,43 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // (img_mulpmyeio7l4). The same sheet sentence with "the colored dragon with storm clouds"
           // drew it in colour (img_mulq277ht4xq). So each change they ask for on an add-on goes on
           // the end of what was saved, one per line, and she names the new work from all of it.
+          // ══ PICKING ONE OF THE FOUR IS ONE FIXED SENTENCE (2026-09-29, Aaron) ═══════════════════
+          // PROVEN by command on the dragon grid (ent_7a14d8937bbf43e8): "I want image number 2." gave
+          // number 2 back on its own, as drawn, on white. MEASURED through talk: "I love number 2" -
+          // a reaction, not an instruction - came back as a new realistic painting with a sky. Adding
+          // words ("same style, same background") bought nothing; simple is what works. So when the
+          // picture being changed is a four-direction grid and their line names one number, the model
+          // gets exactly the pick sentence (a setting, `config:frame:pick`, {n} = the number). If they
+          // asked for something more in the same line ("number 2 but in colour"), their line follows.
+          let _gridPick = null;
+          try {
+            let _pic = null;
+            for (let i = tline.length - 1; i >= 0; i--) {
+              const e = tline[i];
+              if (e && e.role === "picture" && e.design === parentId) { _pic = e; break; }
+            }
+            if (_pic && /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_pic.words || ""))) {
+              const _line = String(said || "").toLowerCase();
+              const _w = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
+              const _nums = new Set();
+              // "one" is a number only after "number/image/picture/option" - "the third one" is 3, not 3 and 1.
+              for (const m of _line.matchAll(/\b([1-4])(?:st|nd|rd|th)?\b|(?:(?:number|image|picture|option|pic)\s+)(one)\b|\b(first|two|second|three|third|four|fourth)\b/g)) {
+                _nums.add(m[1] ? Number(m[1]) : _w[m[2] || m[3]]);
+              }
+              if (_nums.size === 1) {
+                const n = [..._nums][0];
+                let _pf = null;
+                try { _pf = String((await env.AURA_KV.get("config:frame:pick")) || "").trim() || null; } catch {}
+                const _fixed = (_pf || "I want image number {n}.").replace(/\{n\}/g, String(n));
+                const _filler = /^(i|i'?m|love|like|want|wanna|the|a|one|number|image|picture|pic|option|go|going|with|let'?s|lets|do|that|this|it|is|please|pick|choose|take|best|most|grabs|me|yeah|yes|yep|ok|okay|really|definitely|def|my|favorite|favourite|for|sure|has|to|be|gotta|think|and|so|oh|wow|nice|cool|love|awesome|perfect|one'?s|#|no)$/;
+                const _rest = _line.replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean)
+                  .filter((t) => !_filler.test(t) && !/^([1-4])(st|nd|rd|th)?$/.test(t) && !(t in _w));
+                _gridPick = n;
+                _sentNow = _rest.length ? (_fixed + " " + String(said || "").trim()).slice(0, 900) : _fixed;
+                _wordsFrom = "grid_pick";
+              }
+            }
+          } catch {}
           if (String(jobNow || "") === "add" && refDesign && parentId === refDesign && _sentNow &&
               !(opts && opts.inspire) && me) {
             try { await talkStatePut(env, me, "added", String(_sentNow).slice(0, 600)); } catch {}

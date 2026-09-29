@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.458.0-2026-09-28-back-to-what-worked";
+const BUILD = "aura-core-v9.459.0-2026-09-28-add-on-their-words-only";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65556,7 +65556,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           //      of theirs she points at if they say more than a go-ahead, otherwise their request since
           //      the last picture. A bare "yes" adds nothing and is dropped.
           const _realAsk = (l) => l && l.who === "them" && String(l.said).trim().split(/\s+/).length >= 4;
-          if (_pointed.some((l) => l.who === "you")) {
+          // ══ ADD TO EXISTING: THEIR WORDS ONLY (2026-09-28, Aaron + Grok) ═══════════════════════════
+          // MEASURED on v9.458, same four steps: PowerShell sent the Sabrina line + the lioness line;
+          // the site sent the same two lines WITH her layout sentence between them ("What I'd love to
+          // see: that ornamental spine line carrying down...") because she pointed at her own line.
+          // On an add-on the model gets the picture and only what the person typed - never her lines,
+          // never words she copied. Other jobs (cover, rework, catalogue changes) are unchanged.
+          const _addOnly = String(jobNow || "") === "add";
+          if (_addOnly) {
+            _pointed = _pointed.filter((l) => l.who === "them");
+            if (!_pointed.some(_realAsk)) {
+              const _ownAsk = _since.filter((x) => !/^\s*\[/.test(x)).sort((a, b) => b.length - a.length)[0] || "";
+              _pointed = _ownAsk ? [{ n: -1, who: "them", said: _ownAsk }] : [];
+            }
+            _pointed.sort((x, y) => (x.n || 0) - (y.n || 0));
+          }
+          if (!_addOnly && _pointed.some((l) => l.who === "you")) {
             _pointed = _pointed.map((l) => l.who !== "you" ? l : ({ ...l,
               said: (String(l.said).match(/[^.!?]+[.!?]*/g) || [String(l.said)])
                 .filter((x) => !/\?\s*$/.test(x)).join("").trim() }))
@@ -65569,8 +65584,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             _pointed.sort((x, y) => (x.n || 0) - (y.n || 0));
           }
           const _sent = (_pointed.length ? _pointed.map((l) => l.said.trim()).join(" ")
-                                         : (_isCopied ? _copied : _oneAsk)).slice(0, 900);
-          const _wordsFrom = _pointed.length ? "pointed" : (_isCopied ? "copied" : "their_messages");
+                                         : ((_isCopied && !_addOnly) ? _copied : _oneAsk)).slice(0, 900);
+          const _wordsFrom = _addOnly ? (_pointed.length ? "their_lines" : "their_messages")
+                           : (_pointed.length ? "pointed" : (_isCopied ? "copied" : "their_messages"));
           // ══ INSPIRATION COMES OFF THE SKIN (2026-09-26, Aaron) ═══════════════════════════════
           // An add-on keeps the arm because it is an add-on. A picture brought in through Get Inspired
           // is something they like - the tattoo is what they want, not the arm or the screen around it.

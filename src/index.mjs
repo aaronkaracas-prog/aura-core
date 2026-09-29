@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.467.0-2026-09-29-worlds";
+const BUILD = "aura-core-v9.468.0-2026-09-29-world-held-twist";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64109,7 +64109,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         if (me) {
           try {
             const [_wn, _wp] = String((await talkStateGet(env, me, ["world"])).world || "").split("\n");
-            if (_wn && (!_wp || !_projNow || _wp === _projNow)) _worldHad = _wn.trim();
+            if (_wn && (!_wp || !_projNow || _wp === _projNow)) _worldHad = _wn.trim().toLowerCase().split("|");
           } catch {}
         }
         const _norm2 = (x) => " " + String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " ";
@@ -64117,14 +64117,43 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         _inPlay = _worlds.filter((w) =>
           (_cameFrom && _cameFrom.id && (w.tiles || []).includes(_cameFrom.id)) ||
           (w.words || []).some((p) => _norm2(p).trim() && _saidN.includes(_norm2(p))) ||
-          (_worldHad && String(w.name).toLowerCase() === _worldHad.toLowerCase()));
+          (_worldHad && _worldHad.includes(String(w.name).toLowerCase())));
+        // HELD FROM THE MOMENT IT IS NAMED (2026-09-29). MEASURED on pta_7e55537b4c524de8: "I want a body
+        // jewelry tattoo" put the world in play, but "yeah show me" named nothing, so it was gone - the hot
+        // list came back and the four were coquette and Y2K in colour. The world is remembered for this
+        // piece as soon as it is tapped or named, not only after she draws in it.
+        if (_inPlay.length && me) {
+          try { await talkStatePut(env, me, "world", _inPlay.map((w) => w.name).join("|") + "\n" + _projNow); } catch {}
+        }
+      }
+      // ══ A TWIST, OFFERED - NEVER THE FIRST FOUR (2026-09-29, Aaron) ═══════════════════════════
+      // The same run that showed the gap also drew body jewelry crossed with coquette and Y2K chrome,
+      // and Aaron liked them: "some of those are really funky and people would love it". So once the
+      // pure world has been shown, she is handed what's hot as material for a twist she may OFFER.
+      // A twist is drawn with `world: "twist"` - the crossover, not held to the world's look.
+      let _twistPicks = null;
+      if (_inPlay.length && lastDrawn && lastDrawn.design) {
+        try {
+          let _tl = TALK_TRENDS;
+          try {
+            const _kvT2 = JSON.parse((await env.AURA_KV.get("config:talk:trends")) || "null");
+            if (Array.isArray(_kvT2) && _kvT2.length >= 4) _tl = _kvT2.map(String);
+          } catch {}
+          _twistPicks = talkTrendPick(_tl, String(said || "") + " " + _inPlay.map((w) => w.name).join(" "),
+                                      String(me || ""), 8).picks;
+        } catch {}
       }
       const worldNote = _inPlay.length
         ? "\n\nTHE WORLD THEY ARE IN - they picked it or named it:\n" +
           _inPlay.map((w) => "  - " + w.name + ". Its look: " + String(w.look).trim()).join("\n") +
           "\nThis is how every design in that world was made. When you draw in it, put its exact name in " +
           "`world`; the picture is drawn in that look for you, so your `prompt` says what each idea is and " +
-          "where it sits - never a different style, colour or finish."
+          "where it sits - never a different style, colour or finish." +
+          (_twistPicks && _twistPicks.length
+            ? "\nA TWIST, only if they have seen the pure world and not picked one: you may offer to cross it " +
+              "with something hot right now - " + _twistPicks.join("; ") + ". Choose what would genuinely be fun " +
+              "with it. If they want the twist, draw four crossovers and put \"twist\" in `world`."
+            : "")
         : "";
       // ══ THEIR OWN TATTOO FIRST: SHOW ME, NOT WHAT'S HOT (2026-09-29, Aaron) ═════════════════════
       // MEASURED on every Add to Existing start: the trend instruction below told her to pitch
@@ -65912,8 +65941,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // catalogue side. The floor below is a starting point, not a decision: SETKV
           // `render:talk` is how the house look actually gets chosen.
           // The world she draws in (her `world`, or the only one in play) supplies this sentence.
-          const _wPick = (acted.world && _inPlay.find((w) => String(w.name).toLowerCase() === String(acted.world).toLowerCase())) ||
-                         (_inPlay.length === 1 ? _inPlay[0] : null);
+          const _twist = String(acted.world || "").trim().toLowerCase() === "twist";
+          const _wPick = _twist ? null :
+                         ((acted.world && _inPlay.find((w) => String(w.name).toLowerCase() === String(acted.world).toLowerCase())) ||
+                          (_inPlay.length === 1 ? _inPlay[0] : null));
           const reg = (_wPick ? String(_wPick.look).trim().replace(/\.*$/, ".") : null) ||
             (await env.AURA_KV.get("render:talk").catch(() => null)) ||
             "Rendered tattoo artwork, finished and ready to wear rather than a stencil. Confident " +
@@ -65990,6 +66021,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
+                     ...(_twist ? { world: "twist" } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,
                                         placement_ok: /^\s*RIGHT\b/i.test(_mockNote2) } : {}),
                      ...(dp.cached ? { same_picture: true,

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.464.0-2026-09-29-grid-pick";
+const BUILD = "aura-core-v9.465.0-2026-09-29-discovery";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64124,7 +64124,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             "when you mention one of these, say plainly it's what's hot right now and why it would look great on " +
             "this idea. Then offer to show them four different takes on it - do not ask them to choose between " +
             "two styles in words; the four pictures are how you ask. Only these may be called hot. If one of them " +
-            "does not suit what they told you or showed you, leave it out - you decide.";
+            "does not suit what they told you or showed you, leave it out - you decide. If they haven't said what " +
+            "they want yet (\"I want a tattoo\"), don't pitch these - ask your one line.";
         }
       } catch {}
       // ══ A DESIGN THEY CHOSE FROM OUR CATALOGUE (2026-09-26, Aaron) ═══════════════════════════

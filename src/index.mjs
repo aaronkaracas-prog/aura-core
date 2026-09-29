@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.468.0-2026-09-29-world-held-twist";
+const BUILD = "aura-core-v9.469.0-2026-09-29-world-ideas";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64132,7 +64132,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // pure world has been shown, she is handed what's hot as material for a twist she may OFFER.
       // A twist is drawn with `world: "twist"` - the crossover, not held to the world's look.
       let _twistPicks = null;
-      if (_inPlay.length && lastDrawn && lastDrawn.design) {
+      // A world with its own ideas (Aaron's creative directions) already crosses worlds in its first
+      // four, so it needs no twist.
+      const _hasIdeas = _inPlay.some((w) => w.ideas && String(w.ideas).trim());
+      if (_inPlay.length && !_hasIdeas && lastDrawn && lastDrawn.design) {
         try {
           let _tl = TALK_TRENDS;
           try {
@@ -64145,10 +64148,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       const worldNote = _inPlay.length
         ? "\n\nTHE WORLD THEY ARE IN - they picked it or named it:\n" +
-          _inPlay.map((w) => "  - " + w.name + ". Its look: " + String(w.look).trim()).join("\n") +
-          "\nThis is how every design in that world was made. When you draw in it, put its exact name in " +
+          _inPlay.map((w) => "  - " + w.name + ". Its look: " + String(w.look).trim() +
+            (w.ideas && String(w.ideas).trim()
+              ? "\n    HOW TO THINK ABOUT THIS WORLD - follow this for your four:\n" + String(w.ideas).trim()
+              : "")).join("\n") +
+          "\nThis is how every design in that world is made. When you draw in it, put its exact name in " +
           "`world`; the picture is drawn in that look for you, so your `prompt` says what each idea is and " +
-          "where it sits - never a different style, colour or finish." +
+          "where it sits" + (_hasIdeas ? " - within that look, crossing worlds the way its ideas say."
+                                       : " - never a different style, colour or finish.") +
           (_twistPicks && _twistPicks.length
             ? "\nA TWIST, only if they have seen the pure world and not picked one: you may offer to cross it " +
               "with something hot right now - " + _twistPicks.join("; ") + ". Choose what would genuinely be fun " +

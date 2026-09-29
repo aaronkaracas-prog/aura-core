@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.461.0-2026-09-29-show-me-your-tattoo";
+const BUILD = "aura-core-v9.462.0-2026-09-29-four-directions";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65175,7 +65175,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // the placement verdict off. A look that fails never costs them the picture.
       // Set when the picture being looked at carries the add-on's red marker line (AN ADD-ON MARKS
       // WHAT IS NEW). Her check and her reaction are told it is a marker, not ink.
-      const _lookAtResult = async (url, onBody, where) => {
+      const _lookAtResult = async (url, onBody, where, isGrid) => {
         if (!url || !me) return null;
         const body = !!(onBody && seeing && (await _checkOn("mockup")));
         const talk = await _checkOn("react");
@@ -65211,9 +65211,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // EVERY PICTURE COMES BACK WITH A NEXT STEP (2026-09-21): a real reaction and a clear next
             // step, in her own words, never one stock phrase ("it looks like software").
             const rx = await proxyToAgent(env,
-              "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
-              "in one warm line, then ask whether they are happy to go with it or want to change " +
-              "something - in your own words, different each time." +
+              (isGrid
+                ? "[This is the picture you just made for them: four numbered directions for their tattoo. " +
+                  "Look at it. In one or two short lines, say what makes each direction different, then ask " +
+                  "which number grabs them - in your own words. Do not offer to lock anything in yet."
+                : "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
+                  "in one warm line, then ask whether they are happy to go with it or want to change " +
+                  "something - in your own words, different each time.") +
               // THE THIRD DOOR SURVIVES THE LOOK (2026-09-24). MEASURED on the site: they came in through
               // See It On You, she said so herself, and after the drawing this line - the only close-out
               // she gets after a look - offered two doors. Her guidance decides who gets the third; this
@@ -65837,7 +65841,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // appears in a picture of their tattoo.
           const jobHere = String((intent && intent.job) || "").toLowerCase();
           const wantsBody = acted.act === "draw" && ["cover", "add", "rework"].includes(jobHere);
-          const frm = wantsBody
+          // ══ FOUR DIRECTIONS ON THE FIRST DRAWING (2026-09-29, Aaron) ═══════════════════════════
+          // PROVEN by command: one call drew four numbered versions in a 2x2 grid ($0.006), and the
+          // grid plus "I want image number one" came back as that one alone. Aura chooses the four
+          // directions for the idea and asks for the grid in her own words (her mytattoo contract).
+          // The single-picture frame ("the artwork alone, centred, nothing else in frame") would
+          // fight a grid, so a grid gets the same rule said for each of the four.
+          const _grid = /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(askLine);
+          const frm = _grid
+            ? "Each of the four is the tattoo artwork alone on a plain background - not on skin, not on a " +
+              "person, not a photograph of a tattoo. Number each one clearly, 1 to 4."
+            : wantsBody
             ? ((await env.AURA_KV.get("frame:body").catch(() => null)) ||
                "Shown on a body so the coverage and the wrap read - a plain studio photograph of " +
                "the tattooed limb against a neutral background, the whole piece in frame from end " +
@@ -65848,7 +65862,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // 2k because the first drawing is the ceiling for every later version, and a tattoo is
           // taller than it is wide. If the lane ignores either, the [XAI-IMG] line says so.
           const dr = await processCommand("SHOW_IT " + JSON.stringify({
-            aspect: "3:4", res: "2k",
+            aspect: _grid ? "1:1" : "3:4", res: "2k",
             subject: askLine + ". " + reg + " " + frm +
               (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
                         "the way it sits." : ""),
@@ -65865,11 +65879,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // Nothing in the reply said so; `cached` was already captured here and read by nobody.
             // The field is the fix. `same_picture` is the plain statement of what happened, so a
             // caller cannot narrate a new version and neither can she on the turn after.
-            const _lk2 = await _lookAtResult(dp.image_url, !(opts && opts.inspire));
+            const _lk2 = await _lookAtResult(dp.image_url, !(opts && opts.inspire), null, _grid);
             const _mockNote2 = _lk2 && _lk2.verdict;
             _reaction = (_lk2 && _lk2.say) || null;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
-                     asked: askLine, cached: !!dp.cached,
+                     asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,
                                         placement_ok: /^\s*RIGHT\b/i.test(_mockNote2) } : {}),
                      ...(dp.cached ? { same_picture: true,

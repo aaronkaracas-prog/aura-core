@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.471.0-2026-09-29-talk-library";
+const BUILD = "aura-core-v9.472.0-2026-09-29-library-all-sets";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5983,9 +5983,13 @@ async function processCommand(line, env, isOp) {
           const sl = tatSlug(k);
           if (seenL.has(sl)) continue;
           seenL.add(sl);
+          // EVERY SET, NOT ONLY THE ONES WITH A RECIPE (2026-09-29). MEASURED: asked "what doodle tattoos
+          // have you already made", she said none - Ignorant Doodle Ideas (20 designs) had no `render:`
+          // on itself or its category, so the library skipped it with 444 others. A set with no recipe
+          // still exists: it goes in with its designs (and their own words), and no look.
           const rec = (await readR(sl)) || (await readR(tatSlug(cat)));
-          if (!rec) { noRecipe++; continue; }
-          let look = talkInkOf(rec);
+          if (!rec) noRecipe++;
+          let look = rec ? talkInkOf(rec) : "";
           if (look.length < 40) look = "";
           const designs = ((treeL.specific && treeL.specific[k]) || []).slice(0, 40);
           const ent = { name: k, category: cat, look, designs };
@@ -6001,17 +6005,17 @@ async function processCommand(line, env, isOp) {
             }
             if (words.length) ent.design_words = words;
           }
-          if ((!look && !ent.design_words) || look.length > 600) unsureL.push({ name: k, look });
+          if ((!look && !ent.design_words && !designs.length) || look.length > 600) unsureL.push({ name: k, look });
           setsL.push(ent);
         }
       }
       await env.AURA_KV.put("config:talk:library", JSON.stringify({ at: new Date().toISOString(), sets: setsL }));
       _TALK_LIB = null;
-      return { cmd: "TALK_LIBRARY", payload: { ok: true, sets: setsL.length, without_a_recipe: noRecipe,
+      return { cmd: "TALK_LIBRARY", payload: { ok: true, sets: setsL.length, of_them_without_a_recipe: noRecipe,
         looks_in_the_designs: setsL.filter((x) => x.design_words).length, build_reads: buildReads,
         check_these: unsureL.slice(0, 40), check_count: unsureL.length,
         sample: setsL.slice(0, 3).map((x) => ({ name: x.name, look: x.look })),
-        note: "Sets with no render: key on themselves or their category are left out - they were drawn with the default." } };
+        note: "Every set is in. A set with no render: key has no look - she knows its designs; the house sentence draws it." } };
     }
     case "LEAVES": {
       const raw = String(rest || "").trim();

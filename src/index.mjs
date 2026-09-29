@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.459.0-2026-09-28-add-on-their-words-only";
+const BUILD = "aura-core-v9.460.0-2026-09-28-add-on-every-line-they-typed";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63470,6 +63470,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const _drewNow = () => !!(lastDrawn && lastDrawn.image && lastDrawn.design &&
                                 lastDrawn.design !== refDesign);
       let wantRef = String((opts && opts.ref) || "").trim();
+      // When their photo arrived (talk-state:ref `at`) - an add-on's words are their lines from here on.
+      let _refAt = null;
       // ══ A SPLIT CARD IS WORKED ON BY ITS LEFT HALF (2026-09-26, Aaron) ══════════════════════
       // Sets marked `split:<set>` are drawn as one picture: the design alone on white on the LEFT,
       // the same design on a body on the RIGHT. The card shows both; a pick works only from the
@@ -63549,11 +63551,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // stays until they change it - the same rule the brief already follows.
         if (me && (refSaw || refUrl)) {
           try {
+            _refAt = new Date().toISOString();
             await talkStatePut(env, me, "ref", JSON.stringify({
               // `isolated` is gone with the block above - it described an image that is no longer
               // generated, and a flag that is always false is a field a reader will eventually trust.
               saw: refSaw, url: refUrl, design: refDesign,
-              at: new Date().toISOString()
+              at: _refAt
             }));
           } catch {}
         }
@@ -63562,7 +63565,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try {
           const held = await _pre.ref;
           if (held) { refSaw = held.saw || null; refUrl = held.url || null;
-                      refDesign = held.design || null; refHeld = true; }
+                      refDesign = held.design || null; refHeld = true; _refAt = held.at || null; }
         } catch {}
       }
 
@@ -65556,20 +65559,39 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           //      of theirs she points at if they say more than a go-ahead, otherwise their request since
           //      the last picture. A bare "yes" adds nothing and is dropped.
           const _realAsk = (l) => l && l.who === "them" && String(l.said).trim().split(/\s+/).length >= 4;
-          // ══ ADD TO EXISTING: THEIR WORDS ONLY (2026-09-28, Aaron + Grok) ═══════════════════════════
-          // MEASURED on v9.458, same four steps: PowerShell sent the Sabrina line + the lioness line;
-          // the site sent the same two lines WITH her layout sentence between them ("What I'd love to
-          // see: that ornamental spine line carrying down...") because she pointed at her own line.
-          // On an add-on the model gets the picture and only what the person typed - never her lines,
-          // never words she copied. Other jobs (cover, rework, catalogue changes) are unchanged.
+          // ══ ADD TO EXISTING: EVERY LINE THEY TYPED, NOT THE LINES SHE POINTS AT (2026-09-28, Aaron + Grok)
+          // MEASURED, same four steps on v9.459: PowerShell sent the Sabrina line + the lioness line
+          // (she pointed at both); the site sent ONLY the lioness line (she pointed at one), so the
+          // model never got "add", "down my lower back" or the name, and redesigned the whole back.
+          // Before that (v9.458) the site also sent her own layout sentence because she pointed at it.
+          // So on an add-on her pointing is not read at all. The model gets the picture and:
+          //   first picture on their photo - every line they typed since the photo arrived;
+          //   every change after that       - every line they typed since the last picture.
+          // Core's bracket notes are dropped, a trailing go-ahead is trimmed, and bare go-aheads
+          // ("yes show me") are dropped when a real request is there. Other jobs are unchanged.
           const _addOnly = String(jobNow || "") === "add";
+          let _addFrom = null;
           if (_addOnly) {
-            _pointed = _pointed.filter((l) => l.who === "them");
-            if (!_pointed.some(_realAsk)) {
-              const _ownAsk = _since.filter((x) => !/^\s*\[/.test(x)).sort((a, b) => b.length - a.length)[0] || "";
-              _pointed = _ownAsk ? [{ n: -1, who: "them", said: _ownAsk }] : [];
-            }
-            _pointed.sort((x, y) => (x.n || 0) - (y.n || 0));
+            const _atMs = _refAt ? Date.parse(_refAt) : NaN;
+            let _lastPicI = -1;
+            for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "picture") { _lastPicI = i; break; } }
+            const _picAfterPhoto = _lastPicI >= 0 &&
+              (!isFinite(_atMs) || Date.parse(String(tline[_lastPicI].ts || "")) >= _atMs);
+            const _theirs = [];
+            tline.forEach((e, i) => {
+              if (!e || e.role !== "them" || !e.said) return;
+              if (_picAfterPhoto) { if (i <= _lastPicI) return; }
+              else if (isFinite(_atMs)) { if (!(Date.parse(String(e.ts || "")) >= _atMs)) return; }
+              else if (i <= _lastPicI) return;
+              let t = String(e.said).replace(/^\s*\[[^\]]*\]\s*/, "").trim();
+              if (!t) return;
+              const cut = t.replace(_goAhead, "").trim();
+              if (cut.split(/\s+/).filter(Boolean).length >= 4) t = cut;
+              _theirs.push({ n: i, who: "them", said: t });
+            });
+            const _real = _theirs.filter((l) => l.said.split(/\s+/).filter(Boolean).length >= 4);
+            _pointed = _real.length ? _real : _theirs;
+            _addFrom = _picAfterPhoto ? "their_lines_since_picture" : "their_lines_since_photo";
           }
           if (!_addOnly && _pointed.some((l) => l.who === "you")) {
             _pointed = _pointed.map((l) => l.who !== "you" ? l : ({ ...l,
@@ -65585,7 +65607,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           }
           const _sent = (_pointed.length ? _pointed.map((l) => l.said.trim()).join(" ")
                                          : ((_isCopied && !_addOnly) ? _copied : _oneAsk)).slice(0, 900);
-          const _wordsFrom = _addOnly ? (_pointed.length ? "their_lines" : "their_messages")
+          const _wordsFrom = _addOnly ? (_pointed.length ? _addFrom : "their_messages")
                            : (_pointed.length ? "pointed" : (_isCopied ? "copied" : "their_messages"));
           // ══ INSPIRATION COMES OFF THE SKIN (2026-09-26, Aaron) ═══════════════════════════════
           // An add-on keeps the arm because it is an add-on. A picture brought in through Get Inspired

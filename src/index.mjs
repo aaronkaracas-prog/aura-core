@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.470.0-2026-09-29-library";
+const BUILD = "aura-core-v9.471.0-2026-09-29-talk-library";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5938,16 +5938,18 @@ async function processCommand(line, env, isOp) {
     // untouched, so a bad list is one command to put back rather than a reseed.
     // Old leaves keep their face records under their own keys. Nothing is deleted: a name that
     // leaves the tree simply stops being listed, and if it comes back its tile is still there.
-    case "LIBRARY": {
-      // `LIBRARY` reads it back; `LIBRARY BUILD` writes it from the tree and every set's recipe.
+    // Named TALK_LIBRARY, not LIBRARY: `LIBRARY` is the catalogue coverage page and was shadowed for one
+    // deploy (v9.470) when this took its name.
+    case "TALK_LIBRARY": {
+      // `TALK_LIBRARY` reads it back; `TALK_LIBRARY BUILD` writes it from the tree and every set's recipe.
       const subL = String(rest || "").trim().toUpperCase();
       if (subL !== "BUILD") {
         const curL = await env.AURA_KV.get("config:talk:library", "json").catch(() => null);
-        return { cmd: "LIBRARY", payload: { ok: true, sets: curL && curL.sets ? curL.sets.length : 0,
-          built: (curL && curL.at) || null, usage: "LIBRARY BUILD" } };
+        return { cmd: "TALK_LIBRARY", payload: { ok: true, sets: curL && curL.sets ? curL.sets.length : 0,
+          built: (curL && curL.at) || null, usage: "TALK_LIBRARY BUILD" } };
       }
       const treeL = await env.AURA_KV.get("card:tree", "json").catch(() => null);
-      if (!treeL?.subjects) return { cmd: "LIBRARY", payload: { ok: false, error: "NO_TREE" } };
+      if (!treeL?.subjects) return { cmd: "TALK_LIBRARY", payload: { ok: false, error: "NO_TREE" } };
       const hasR = {};
       let curR = undefined;
       do {
@@ -5961,6 +5963,19 @@ async function processCommand(line, env, isOp) {
         if (!(sl in recipeOf)) recipeOf[sl] = await env.AURA_KV.get("render:" + sl).catch(() => null);
         return recipeOf[sl];
       };
+      // ══ SOME SETS KEEP THEIR LOOK IN EACH DESIGN, NOT THE RECIPE (2026-09-29) ═══════════════════
+      // MEASURED on the first build: Bows, Birth Flowers, Micro and Patchwork came back with an empty
+      // look - their recipes are only the split-card layout (flat on the left, on a woman on the right).
+      // What each design IS lives in its own `build:<design>` line. For those sets the designs' own
+      // words are what she is given, up to 15 per set.
+      const hasB = {};
+      let curB = undefined;
+      do {
+        const l = await env.AURA_KV.list({ prefix: "build:", limit: 1000, ...(curB ? { cursor: curB } : {}) });
+        for (const k of l.keys) hasB[k.name.slice(6)] = true;
+        curB = l.list_complete ? null : l.cursor;
+      } while (curB);
+      let buildReads = 0;
       const setsL = [], unsureL = [], seenL = new Set();
       let noRecipe = 0;
       for (const [cat, kinds] of Object.entries(treeL.subjects)) {
@@ -5970,16 +5985,30 @@ async function processCommand(line, env, isOp) {
           seenL.add(sl);
           const rec = (await readR(sl)) || (await readR(tatSlug(cat)));
           if (!rec) { noRecipe++; continue; }
-          const look = talkInkOf(rec);
+          let look = talkInkOf(rec);
+          if (look.length < 40) look = "";
           const designs = ((treeL.specific && treeL.specific[k]) || []).slice(0, 40);
           const ent = { name: k, category: cat, look, designs };
-          if (look.length < 40 || look.length > 600) unsureL.push({ name: k, look });
+          if (!look) {
+            const words = [];
+            for (const d of designs) {
+              if (words.length >= 15 || buildReads >= 600) break;
+              const ds = tatSlug(d);
+              if (!hasB[ds]) continue;
+              buildReads++;
+              const b = await env.AURA_KV.get("build:" + ds).catch(() => null);
+              if (b && String(b).trim()) words.push(d + ": " + talkInkOf(b).slice(0, 300));
+            }
+            if (words.length) ent.design_words = words;
+          }
+          if ((!look && !ent.design_words) || look.length > 600) unsureL.push({ name: k, look });
           setsL.push(ent);
         }
       }
       await env.AURA_KV.put("config:talk:library", JSON.stringify({ at: new Date().toISOString(), sets: setsL }));
       _TALK_LIB = null;
-      return { cmd: "LIBRARY", payload: { ok: true, sets: setsL.length, without_a_recipe: noRecipe,
+      return { cmd: "TALK_LIBRARY", payload: { ok: true, sets: setsL.length, without_a_recipe: noRecipe,
+        looks_in_the_designs: setsL.filter((x) => x.design_words).length, build_reads: buildReads,
         check_these: unsureL.slice(0, 40), check_count: unsureL.length,
         sample: setsL.slice(0, 3).map((x) => ({ name: x.name, look: x.look })),
         note: "Sets with no render: key on themselves or their category are left out - they were drawn with the default." } };
@@ -66046,7 +66075,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const _wPick = _twist ? null :
                          ((acted.world && [..._inPlay, ..._libAll].find((w) => String(w.name).toLowerCase() === String(acted.world).toLowerCase())) ||
                           (_inPlay.length === 1 ? _inPlay[0] : null));
-          const reg = (_wPick ? String(_wPick.look).trim().replace(/\.*$/, ".") : null) ||
+          const reg = ((_wPick && String(_wPick.look || "").trim().length >= 20)
+                         ? String(_wPick.look).trim().replace(/\.*$/, ".") : null) ||
             (await env.AURA_KV.get("render:talk").catch(() => null)) ||
             "Rendered tattoo artwork, finished and ready to wear rather than a stencil. Confident " +
             "linework with real depth in the shading, rich contrast, the detail an experienced " +

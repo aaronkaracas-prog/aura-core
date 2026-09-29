@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.472.0-2026-09-29-library-all-sets";
+const BUILD = "aura-core-v9.474.0-2026-09-29-walk-refresh-delete-only";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6017,6 +6017,189 @@ async function processCommand(line, env, isOp) {
         sample: setsL.slice(0, 3).map((x) => ({ name: x.name, look: x.look })),
         note: "Every set is in. A set with no render: key has no look - she knows its designs; the house sentence draws it." } };
     }
+    case "INVENTORY": {
+      // ══ EVERYTHING WE HAVE MADE, AND WHERE (2026-09-29) ═════════════════════════════════════
+      // Aaron: "pull up everything we've made with numbers - this has this amount, this has that
+      // amount ... here's everything we've made and where." Reading every face record is ~9,000
+      // reads. The walk and sheet PAGES already hold every picture, grouped by set - about 330
+      // reads. Every picture id carries its own birth time (img_ + Date.now in base36), so the
+      // dates come free. A set is the union of what its walk page, category sheet and own sheet show.
+      const treeI = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeI?.subjects) return { cmd: "INVENTORY", payload: { ok: false, error: "NO_TREE" } };
+      const t0I = Date.now();
+      const kindCat = {}, kindName = {}, leafKind = {}, catName = {};
+      for (const [cat, kinds] of Object.entries(treeI.subjects)) {
+        catName[tatSlug(cat)] = cat;
+        for (const k of (kinds || [])) {
+          const ks = tatSlug(k);
+          if (!kindCat[ks]) { kindCat[ks] = cat; kindName[ks] = k; }
+          for (const d of ((treeI.specific && treeI.specific[k]) || [])) if (!leafKind[tatSlug(d)]) leafKind[tatSlug(d)] = ks;
+        }
+      }
+      const listAll = async (prefix) => {
+        const out = []; let cur;
+        do {
+          const l = await env.AURA_KV.list({ prefix, limit: 1000, ...(cur ? { cursor: cur } : {}) }).catch(() => null);
+          if (!l) break;
+          for (const k of l.keys) out.push(k.name);
+          cur = l.list_complete ? null : l.cursor;
+        } while (cur);
+        return out;
+      };
+      const [walkKeys, sheetKeys, shapeKeys, renderKeys] = await Promise.all([
+        listAll("page:auras.guide/walk/"), listAll("page:auras.guide/sheet/"),
+        listAll("shape:"), listAll("render:")]);
+      const hasShape = new Set(shapeKeys.map((k) => k.slice(6)));
+      const hasRec = new Set(renderKeys.map((k) => k.slice(7)));
+      const unesc = (t) => String(t || "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/<[^>]+>/g, "").trim();
+      const sets = {};   // key -> { name, category, pics:Set, pages:Set }
+      const bucket = (key, name, cat) => (sets[key] = sets[key] || { name, category: cat, pics: new Set(), pages: new Set() });
+      const srcs = (html) => {
+        const o = []; const re = /<img[^>]*?\ssrc=['"]([^'"]+)['"]/g; let m;
+        while ((m = re.exec(html))) o.push(m[1].replace(/&amp;/g, "&"));
+        return o;
+      };
+      const kindOfHeading = (h, cat) => {
+        const s = tatSlug(unesc(h));
+        return kindName[s] ? s : null;
+      };
+      // Pages: walk/<cat> (skip walk/<cat>/<leaf> - its pictures are on the category page) and every sheet.
+      const pages = walkKeys.filter((k) => k.slice("page:auras.guide/walk/".length).split("/").length === 1)
+        .map((k) => ({ key: k, kind: "walk" }))
+        .concat(sheetKeys.map((k) => ({ key: k, kind: "sheet" })));
+      const loose = [];
+      const eat = (pg, html) => {
+        const slug = pg.key.split("/").pop();
+        const link = "https://auras.guide/" + pg.key.slice("page:auras.guide/".length);
+        const hasH2 = /<h2[\s>]/.test(html);
+        const catOfPage = catName[slug] || null;
+        if (catOfPage && hasH2) {
+          // A category page: one <h2> per set.
+          const parts = html.split(/<h2[\s>]/).slice(1);
+          for (const p of parts) {
+            const head = p.slice(0, p.indexOf("</h2>")).replace(/<span[\s\S]*$/, "");
+            const ks = kindOfHeading(head.replace(/^[^>]*>/, ""), catOfPage);
+            if (!ks) continue;
+            const b = bucket(ks, kindName[ks], kindCat[ks]);
+            for (const u of srcs(p)) b.pics.add(u);
+            b.pages.add(link);
+          }
+          return;
+        }
+        if (catOfPage) {
+          // A tight walk page: every figure carries its leaf; the tree says which set it is.
+          const figs = html.split("<figure").slice(1);
+          for (const f of figs) {
+            const cap = (f.match(/<figcaption>([\s\S]*?)(<br>|<\/figcaption>)/) || [])[1];
+            const ls = tatSlug(unesc(cap));
+            const ks = leafKind[ls] || (kindName[ls] ? ls : null);
+            const b = ks ? bucket(ks, kindName[ks], kindCat[ks]) : bucket("cat:" + slug, catOfPage + " (unsorted)", catOfPage);
+            for (const u of srcs(f)) b.pics.add(u);
+            b.pages.add(link);
+          }
+          return;
+        }
+        const ks = kindName[slug] ? slug : (leafKind[slug] || null);
+        if (ks) {
+          const b = bucket(ks, kindName[ks], kindCat[ks]);
+          for (const u of srcs(html)) b.pics.add(u);
+          b.pages.add(link);
+          return;
+        }
+        // A page the tree doesn't know - a one-off batch. Still something we made.
+        const b = bucket("page:" + slug, unesc((html.match(/<title>([\s\S]*?)<\/title>/) || [])[1]) || slug, "(own page)");
+        for (const u of srcs(html)) b.pics.add(u);
+        b.pages.add(link);
+        loose.push(slug);
+      };
+      for (let i = 0; i < pages.length; i += 25) {
+        const chunk = pages.slice(i, i + 25);
+        const got = await Promise.all(chunk.map((pg) => env.AURA_KV.get(pg.key).catch(() => null)));
+        chunk.forEach((pg, j) => { if (got[j]) eat(pg, String(got[j])); });
+      }
+      // Sets in the tree with no page at all still exist - listed with their design count.
+      for (const ks of Object.keys(kindName)) bucket(ks, kindName[ks], kindCat[ks]);
+      const born = (u) => {
+        const m = String(u).match(/img_([a-z0-9]{8})/);
+        if (!m) return null;
+        const t = parseInt(m[1], 36);
+        return (t > 1.6e12 && t < 2.2e12) ? t : null;
+      };
+      const day = (t) => t ? new Date(t).toISOString().slice(0, 10) : "";
+      const rows = [], byMonth = {};
+      let allPics = 0;
+      const seenAll = new Set();
+      for (const [key, s] of Object.entries(sets)) {
+        let first = null, last = null;
+        for (const u of s.pics) {
+          const t = born(u);
+          if (!seenAll.has(u)) {
+            seenAll.add(u); allPics++;
+            const mo = t ? day(t).slice(0, 7) : "undated";
+            byMonth[mo] = (byMonth[mo] || 0) + 1;
+          }
+          if (t) { if (!first || t < first) first = t; if (!last || t > last) last = t; }
+        }
+        const ks = key.includes(":") ? null : key;
+        const designs = ks ? (((treeI.specific && treeI.specific[kindName[ks]]) || []).length || 1) : null;
+        rows.push({ name: s.name, category: s.category, designs, pictures: s.pics.size,
+          first: day(first), last: day(last), _last: last || 0,
+          split: ks ? hasShape.has(ks) : false, recipe: ks ? (hasRec.has(ks) || hasRec.has(tatSlug(s.category))) : false,
+          pages: [...s.pages] });
+      }
+      rows.sort((a, b) => (b._last - a._last) || (b.pictures - a.pictures) || a.name.localeCompare(b.name));
+      const made = rows.filter((r) => r.pictures);
+      const empty = rows.filter((r) => !r.pictures);
+      const byCat = {};
+      for (const r of made) {
+        const c = byCat[r.category] = byCat[r.category] || { sets: 0, pictures: 0, last: 0 };
+        c.sets++; c.pictures += r.pictures; if (r._last > c.last) c.last = r._last;
+      }
+      const eI = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const months = Object.keys(byMonth).sort().reverse();
+      const htmlI =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>Everything We've Made</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.2rem;font-weight:800}h2{font-size:.75rem;text-transform:uppercase;letter-spacing:.09em;color:#94a3b8;margin:1.4rem 0 .5rem}" +
+        ".top{color:#94a3b8;font-size:.85rem;margin:.3rem 0 .8rem}.chips{display:flex;flex-wrap:wrap;gap:6px}" +
+        ".chips span{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:999px;padding:3px 10px;font-size:.78rem}" +
+        "input{width:100%;max-width:420px;background:#141a28;border:1px solid rgba(148,163,184,.25);color:#e9edf5;border-radius:8px;padding:8px 10px;font-size:15px;margin:.4rem 0 .6rem}" +
+        ".w{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.82rem}" +
+        "th{text-align:left;color:#94a3b8;font-weight:600;padding:6px 8px;border-bottom:1px solid rgba(148,163,184,.2);white-space:nowrap;position:sticky;top:0;background:#0b0d12}" +
+        "td{padding:6px 8px;border-bottom:1px solid rgba(148,163,184,.08);vertical-align:top}td.n{text-align:right;font-variant-numeric:tabular-nums}" +
+        "td.d{white-space:nowrap;color:#94a3b8}a{color:#7aa2ff;text-decoration:none;margin-right:8px;white-space:nowrap}" +
+        ".tag{font-size:.68rem;color:#f0abfc;border:1px solid #6b2f75;border-radius:4px;padding:0 4px;margin-left:4px}" +
+        ".none{color:#64748b}</style></head><body>" +
+        "<h1>Everything we've made</h1><p class=top>" + made.length + " sets with pictures &middot; <b>" + allPics.toLocaleString() +
+        " pictures</b> &middot; " + Object.keys(byCat).length + " categories &middot; built " + eI(new Date().toISOString().slice(0, 16).replace("T", " ")) + " UTC</p>" +
+        "<h2>Pictures by month made</h2><div class=chips>" + months.map((m) => "<span>" + eI(m) + " &middot; <b>" + byMonth[m].toLocaleString() + "</b></span>").join("") + "</div>" +
+        "<h2>Every set, newest first</h2><input id=q placeholder='Filter - a set, a category, a date (2026-09)'>" +
+        "<div class=w><table id=t><thead><tr><th>Set</th><th>Category</th><th>Designs</th><th>Pictures</th><th>First</th><th>Last</th><th>Where</th></tr></thead><tbody>" +
+        made.map((r) => "<tr><td>" + eI(r.name) + (r.split ? "<span class=tag>split card</span>" : "") + "</td><td>" + eI(r.category) +
+          "</td><td class=n>" + (r.designs == null ? "" : r.designs) + "</td><td class=n><b>" + r.pictures + "</b></td><td class=d>" + r.first +
+          "</td><td class=d>" + r.last + "</td><td>" + r.pages.map((p) => "<a href=\"" + eI(p) + "\" target=_blank>" +
+          eI(p.replace("https://auras.guide/", "")) + "</a>").join("") + "</td></tr>").join("") +
+        "</tbody></table></div>" +
+        "<h2>By category</h2><div class=w><table><thead><tr><th>Category</th><th>Sets</th><th>Pictures</th><th>Last</th></tr></thead><tbody>" +
+        Object.entries(byCat).sort((a, b) => b[1].last - a[1].last).map(([c, v]) => "<tr><td>" + eI(c) + "</td><td class=n>" + v.sets +
+          "</td><td class=n>" + v.pictures + "</td><td class=d>" + day(v.last) + "</td></tr>").join("") + "</tbody></table></div>" +
+        "<h2>In the tree, nothing drawn on any page (" + empty.length + ")</h2><p class=none>" +
+        empty.map((r) => eI(r.name) + " <i>(" + eI(r.category) + ")</i>").join(" &middot; ") + "</p>" +
+        "<script>const q=document.getElementById('q'),rs=[...document.querySelectorAll('#t tbody tr')];" +
+        "q.addEventListener('input',()=>{const v=q.value.toLowerCase();rs.forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(v)?'':'none'})})</script>" +
+        "</body></html>";
+      await env.AURA_KV.put("page:auras.guide/inventory", htmlI);
+      return { cmd: "INVENTORY", payload: { ok: true, url: "https://auras.guide/inventory",
+        sets_with_pictures: made.length, pictures: allPics, categories: Object.keys(byCat).length,
+        pages_read: pages.length, own_pages: loose.length, empty_sets: empty.length,
+        by_month: Object.fromEntries(months.map((m) => [m, byMonth[m]])),
+        newest: made.slice(0, 20).map((r) => r.last + "  " + r.name + " (" + r.category + ")  " + r.pictures + " pictures"),
+        ms: Date.now() - t0I } };
+    }
     case "LEAVES": {
       const raw = String(rest || "").trim();
       if (!raw) return { cmd: "LEAVES", payload: { ok: false,
@@ -6948,8 +7131,13 @@ async function processCommand(line, env, isOp) {
           const things = kinds.reduce((n, k) => n + (kindLeaves(k).length || 1), 0);
           const cnt = await env.AURA_KV.get("walk:count:" + tatSlug(c), "json").catch(() => null);
           return { category: c, kinds: kinds.length, things,
-                   pics: cnt ? cnt.pics : null, built: !!cnt };
+                   pics: cnt ? cnt.pics : null, built: !!cnt,
+                   at: cnt && cnt.at ? String(cnt.at).slice(0, 10) : "",
+                   tight: cnt && typeof cnt.tight === "boolean" ? cnt.tight : true };
         }));
+        const buildKeyI = await env.AURA_KV.get("config:build:key").catch(() => null);
+        const ownerPtaI = (await env.AURA_KV.get("config:owner:pta").catch(() => null) || "").trim();
+        const sessI = (buildKeyI && ownerPtaI) ? (buildKeyI + "." + ownerPtaI) : "";
         const htmlI =
           '<!doctype html><html lang=en><head><meta charset=utf-8>' +
           '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
@@ -6968,16 +7156,34 @@ async function processCommand(line, env, isOp) {
           "<h1>walk</h1><p class=sub>" + rowsW.length + " categories \u00b7 " +
           rowsW.reduce((n, r) => n + (r.pics || 0), 0) + " pictures across " +
           rowsW.filter((r) => r.built).length + " built \u00b7 tap one to see every picture in it</p>" +
+          // ══ ONE BUTTON BRINGS EVERY PAGE UP TO DATE (2026-09-29) ══════════════════════════
+          // Aaron: "it's already pulling everything in my catalog, it's not pulling all this new
+          // stuff." Every page here is a stored snapshot - Get Inspired was in the tree and not on
+          // this index at all, because nothing had rebuilt it since. The button rebuilds this index
+          // (new categories appear), then walks every category one at a time through the same
+          // /_design door the page's re-walk uses, counting as it goes, then reloads.
+          "<p class=sub><button id=all style='background:#1d4ed8;color:#fff;border:0;border-radius:6px;padding:7px 14px;font:600 13px system-ui;cursor:pointer'>refresh everything</button> <span id=st></span></p>" +
           "<table><tr><th>category</th><th class=n>kinds</th><th class=n>things</th>" +
-          "<th class=n>pictures</th></tr>" +
+          "<th class=n>pictures</th><th class=n>updated</th></tr>" +
           rowsW.map((r) =>
-            "<tr><td><a href='/walk/" + eW(tatSlug(r.category)) + "'>" + eW(r.category) +
+            "<tr data-c=\"" + eW(r.category) + "\" data-t=" + (r.tight ? 1 : 0) + "><td><a href='/walk/" + eW(tatSlug(r.category)) + "'>" + eW(r.category) +
             "</a></td><td class=n>" + r.kinds + "</td><td class=n>" + r.things + "</td>" +
             // A category that has never been walked says so. "0" would be a lie about the
             // catalogue; "not built" is the truth about this page.
             '<td class="n ' + (r.built ? "full" : "none") + '">' +
-            (r.built ? r.pics : "not built") + "</td></tr>"
-          ).join("") + "</table></body></html>";
+            (r.built ? r.pics : "not built") + "</td><td class=n>" + eW(r.at) + "</td></tr>"
+          ).join("") + "</table>" +
+          "<script>(function(){var S='" + sessI + "',b=document.getElementById('all'),st=document.getElementById('st');" +
+          "function call(o){o.session=S;o.action='walk';return fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o)}).then(function(r){return r.json()})}" +
+          "b.onclick=function(){if(!S){alert('No operator session. Arm config:build:key first.');return}" +
+          "b.disabled=true;st.textContent='rebuilding the list...';" +
+          "call({index:true}).then(function(d){var cs=(d&&d.names)||[],i=0,bad=[];" +
+          "function next(){if(i>=cs.length){st.textContent='done'+(bad.length?' - failed: '+bad.join(', '):'')+' - reloading';" +
+          "return call({index:true}).then(function(){setTimeout(function(){location.reload()},500)})}" +
+          "var c=cs[i++];st.textContent=i+' of '+cs.length+': '+c.name;" +
+          "call({category:c.name,tight:c.tight}).then(function(r){if(!r||!r.ok)bad.push(c.name)}).catch(function(){bad.push(c.name)}).then(next)}" +
+          "next()}).catch(function(x){st.textContent='failed: '+x;b.disabled=false})}})()</script>" +
+          "</body></html>";
         await env.AURA_KV.put("page:auras.guide/walk", htmlI);
         return { cmd: "WALK", payload: { ok: true, url: "https://auras.guide/walk",
           categories: rowsW.length,
@@ -6985,6 +7191,7 @@ async function processCommand(line, env, isOp) {
           pictures: rowsW.reduce((n, r) => n + (r.pics || 0), 0),
           built: rowsW.filter((r) => r.built).length,
           not_built: rowsW.filter((r) => !r.built).map((r) => r.category),
+          names: rowsW.map((r) => ({ name: r.category, tight: r.tight })),
           note: "Nothing was drawn. Alphabetical. A picture count appears once WALK has been " +
                 "run for that category - the index cannot count them itself." } };
       }
@@ -7114,7 +7321,10 @@ async function processCommand(line, env, isOp) {
         "<figure" + (fresh ? " class=fresh" : "") + " data-t=" + t + " data-a=\"" + eW(a) +
         "\"><a href=\"" + eW(src) + "\" target=_blank rel=noopener>" +
         "<img loading=lazy src='" + eW(src) + "'></a>" +
-        "<div class=chips><b class=r>R</b><b class=e>E</b><b class=d>D</b></div>" +
+        // ══ DELETE ONLY (2026-09-29) ══════════════════════════════════════════════════════
+        // Aaron: "I don't need to rerun stuff anymore but I wanna be able to delete them." R and E
+        // are gone from the page; D still calls the same /_design drop it always did.
+        "<div class=chips><b class=d>D</b></div>" +
         "<figcaption>" + eW(name) + "<br><i>" + eW(sub2) + "</i></figcaption></figure>";
       const htmlW =
         '<!doctype html><html lang=en><head><meta charset=utf-8>' +
@@ -7180,7 +7390,7 @@ async function processCommand(line, env, isOp) {
           // nothing is lost, and the eye can cross the whole category in one screen.
           ? "<div class=g>" + secs.map((s) => s.items.map((i) =>
               (i.url ? cell("redo", i.name, i.url, i.name, s.kind, i.fresh)
-                     : "<figure class=gap data-e=\"1\" data-t=redo data-a=\"" + eW(i.name) + "\"><div class=chips><b class=r>R</b></div><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
+                     : "<figure class=gap><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
               i.sets.map((x) => x.imgs.map((m) =>
                 cell("shot", x.key + " " + m.opt, "https://auras.guide/image/" + m.img,
                      i.name, x.step + " " + m.opt)).join("")).join("")
@@ -7194,7 +7404,7 @@ async function processCommand(line, env, isOp) {
             : "") + "</span></h2><div class=g>" +
           s.items.map((i) =>
             (i.url ? cell("redo", i.name, i.url, i.name, "tile", i.fresh)
-                   : "<figure class=gap data-e=\"1\" data-t=redo data-a=\"" + eW(i.name) + "\"><div class=chips><b class=r>R</b></div><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
+                   : "<figure class=gap><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
             i.sets.map((x) => x.imgs.map((m) =>
               // ══ THE PATH IS WHY TWO PICTURES SHARE A LABEL ═══════════════════════════════
               // Owl showed "expression sleepy" twice and it looked like a duplicate. It is two
@@ -7206,8 +7416,8 @@ async function processCommand(line, env, isOp) {
             ).join("")).join("")
           ).join("") + "</div>").join("")) +
         "<div id=bar><div class=t><span><b id=cnt>0</b> tagged</span>" +
-        "<span><button id=go>go</button> <button id=rw>re-walk</button> <button id=clr>clear</button></span></div>" +
-        "<pre id=out>R redraws \u00b7 E evolves \u00b7 D drops \u00b7 all three act now, nothing to paste</pre></div>" +
+        "<span><button id=rw>re-walk</button></span></div>" +
+        "<pre id=out>D deletes a picture \u00b7 re-walk rebuilds this page from what is saved now</pre></div>" +
         // ══ .replace WITH A STRING ONLY SWAPS THE FIRST ONE (2026-09-03) ══════════════════
         // MEASURED: the re-walk button pasted `RUN "WALK __CAT____TIGHT__"` verbatim. The
         // placeholders appear TWICE now - once in build() and once in the re-walk handler -
@@ -7253,7 +7463,7 @@ async function processCommand(line, env, isOp) {
       try {
         await env.AURA_KV.put("walk:count:" + tatSlug(catW), JSON.stringify({
           at: new Date().toISOString(), pics: picTotal, things: secs.reduce((n, x) => n + x.items.length, 0),
-          no_tile: missing.length, no_wall: noWall.length }));
+          no_tile: missing.length, no_wall: noWall.length, tight: tightW }));
       } catch {}
       return { cmd: "WALK", payload: { ok: true,
         url: "https://auras.guide/walk/" + tatSlug(catW),
@@ -58852,7 +59062,7 @@ const WALK_TAG_JS = [
   // which silently killed the counter, the command block AND the go button.
   "var bd=f.querySelector('b.d');if(bd)bd.classList.toggle('on',v==='d')});",
   "var o=build();document.getElementById('cnt').textContent=Object.keys(T).length;",
-  "document.getElementById('out').textContent=o.length?o.join('\\n'):'R redraws now \u00b7 D deletes'}",
+  "document.getElementById('out').textContent=o.length?o.join('\\n'):'D deletes a picture'}",
   "document.addEventListener('click',function(e){",
   // ══ CLIPBOARD FAILS QUIETLY, SO NEVER RELY ON IT ALONE ═══════════════════════════════
   // navigator.clipboard is unavailable on an insecure origin and can reject without throwing,
@@ -58949,7 +59159,7 @@ const WALK_TAG_JS = [
   // `data-t` has said which kind of card it is since the page was built. Read it.
   "var isShot=(cf.dataset.t==='shot');",
   "if(!'__SESSION__'){alert('No operator session. Arm config:build:key first.');return}",
-  "if(isD&&!confirm('Drop the tile for '+cl+'?'))return;",
+  "if(isD&&!confirm('Delete this picture? ('+(cf.querySelector('figcaption')||{}).textContent+')'))return;",
   "var ot=e.target.textContent;e.target.textContent='..';",
   "fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},",
   "body:JSON.stringify(isShot&&!isD",
@@ -67501,6 +67711,13 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!whoW2 || whoW2.signed_in_via !== "build key") return { ok: false, error: "OPERATOR_ONLY",
           say: "This is an operator action.",
           why: "Only a session opened with config:build:key may rebuild a catalogue page." };
+        // The index button asks for the index itself first, so new categories get a row.
+        if (b.index) {
+          const rI = await processCommand("WALK", this.env, true).catch(() => null);
+          const pI = (rI && rI.payload) || {};
+          return { ok: !!pI.ok, action: "walk", index: true, names: pI.names || [],
+                   pictures: pI.pictures || 0 };
+        }
         const catW2 = String(b.category || "").trim();
         if (!catW2) return { ok: false, error: "NEED_CATEGORY" };
         try {

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.460.0-2026-09-28-add-on-every-line-they-typed";
+const BUILD = "aura-core-v9.461.0-2026-09-29-show-me-your-tattoo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64075,9 +64075,23 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // they did not come in through a card this turn - she gets ten current directions, shuffled
       // for this tattoo, at the moment she answers.
       let trendNote = "", _hotPicks = null;
+      // ══ THEIR OWN TATTOO FIRST: SHOW ME, NOT WHAT'S HOT (2026-09-29, Aaron) ═════════════════════
+      // MEASURED on every Add to Existing start: the trend instruction below told her to pitch
+      // what's hot and ask one question, so she offered roses, lace and doodles and never asked
+      // for the one thing she needs - their photo. Aaron (2026-09-25): no style suggestions on
+      // Add to Existing or Cover Up. When they are working on a tattoo they already have (the
+      // card's own sentence, or the job she already wrote down) and no photo is here yet, there is
+      // no trend list - she asks to see it.
+      const _ownInk = /^\s*i want to (add to a tattoo i already have|cover up a tattoo)\b/i.test(String(said || "")) ||
+        ["add", "cover"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase());
+      if (_ownInk && !refUrl) {
+        trendNote = "\n\nTHEY WANT TO WORK ON A TATTOO THEY ALREADY HAVE. The first thing you need is to " +
+          "see it: ask them to upload a photo or take a picture of it - one short sentence. No styles, " +
+          "no suggestions yet.";
+      }
       try {
         let _dNow = null; try { _dNow = _pre ? await _pre.design : null; } catch {}
-        if (!_tileIn && !(_dNow && _dNow.image) && !(lastDrawn && lastDrawn.design)) {
+        if (!_ownInk && !_tileIn && !(_dNow && _dNow.image) && !(lastDrawn && lastDrawn.design)) {
           let _list = TALK_TRENDS;
           try {
             const _kvT = JSON.parse((await env.AURA_KV.get("config:talk:trends")) || "null");

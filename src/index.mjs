@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.466.0-2026-09-29-tile-no-hot";
+const BUILD = "aura-core-v9.467.0-2026-09-29-worlds";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62758,6 +62758,8 @@ function talkReadAct(txt) {
              // Widened from 40: an entry is now `section: what part of the design goes there`,
              // because a placement word alone produced the same picture three times.
              panels: strList(o.panels, 6, 200),
+             // The world she is drawing in, by its exact name (2026-09-29).
+             world: typeof o.world === "string" ? o.world.trim().slice(0, 80) : "",
              brief: (o.brief && typeof o.brief === "object" && !Array.isArray(o.brief))
                ? o.brief : null };
   }
@@ -64084,6 +64086,46 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // they did not come in through a card this turn - she gets ten current directions, shuffled
       // for this tattoo, at the moment she answers.
       let trendNote = "", _hotPicks = null;
+      // ══ A WORLD THEY PICKED IS DRAWN THE WAY THAT WORLD WAS MADE (2026-09-29, Aaron) ═══════════
+      // MEASURED: "Body Jewelry" drawn from her words plus the generic house sentence ("...Full colour
+      // where the subject calls for it") came back as real gold jewellery with coloured gems
+      // (img_mun1klk9oh4b). The SAME four ideas with that one sentence swapped for the ink part of the
+      // set's own recipe (`render:body-jewelry-picks`) came back as black-linework tattoo jewellery
+      // (img_mun2hkujj3fy). Every set was made from its name plus its recipe; a world's look is that
+      // recipe's ink part, word for word, kept in `config:talk:worlds`:
+      //   [{name, words:[phrases that name it], tiles:[img ids that open it], look:"..."}]
+      // A world is in play when its tile was tapped, when their words name it, or when she drew in it
+      // before. She is told the world and its look; when she draws in it, the look takes the generic
+      // sentence's place - the same slot, nothing added. No entry, no change.
+      let _worlds = [], _inPlay = [], _projNow = "";
+      try {
+        const _w = JSON.parse((await env.AURA_KV.get("config:talk:worlds")) || "null");
+        if (Array.isArray(_w)) _worlds = _w.filter((x) => x && x.name && x.look);
+      } catch {}
+      if (_worlds.length) {
+        // Remembered per piece: "<name>\n<project>". A different piece does not inherit it.
+        try { _projNow = String((_pre && await _pre.project) || ""); } catch {}
+        let _worldHad = null;
+        if (me) {
+          try {
+            const [_wn, _wp] = String((await talkStateGet(env, me, ["world"])).world || "").split("\n");
+            if (_wn && (!_wp || !_projNow || _wp === _projNow)) _worldHad = _wn.trim();
+          } catch {}
+        }
+        const _norm2 = (x) => " " + String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " ";
+        const _saidN = _norm2(said);
+        _inPlay = _worlds.filter((w) =>
+          (_cameFrom && _cameFrom.id && (w.tiles || []).includes(_cameFrom.id)) ||
+          (w.words || []).some((p) => _norm2(p).trim() && _saidN.includes(_norm2(p))) ||
+          (_worldHad && String(w.name).toLowerCase() === _worldHad.toLowerCase()));
+      }
+      const worldNote = _inPlay.length
+        ? "\n\nTHE WORLD THEY ARE IN - they picked it or named it:\n" +
+          _inPlay.map((w) => "  - " + w.name + ". Its look: " + String(w.look).trim()).join("\n") +
+          "\nThis is how every design in that world was made. When you draw in it, put its exact name in " +
+          "`world`; the picture is drawn in that look for you, so your `prompt` says what each idea is and " +
+          "where it sits - never a different style, colour or finish."
+        : "";
       // ══ THEIR OWN TATTOO FIRST: SHOW ME, NOT WHAT'S HOT (2026-09-29, Aaron) ═════════════════════
       // MEASURED on every Add to Existing start: the trend instruction below told her to pitch
       // what's hot and ask one question, so she offered roses, lace and doodles and never asked
@@ -64105,7 +64147,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // ten styles again with "use them as your four" - and drew one necklace in four styles
         // (dark romantic, Y2K, ornamental florals off that list) instead of four jewelry ideas. The
         // tile is remembered for the conversation (_cameFrom), so the list stays off with it.
-        if (!_ownInk && !_tileIn && !(_cameFrom && _cameFrom.id) && !(_dNow && _dNow.image) && !(lastDrawn && lastDrawn.design)) {
+        if (!_ownInk && !_tileIn && !(_cameFrom && _cameFrom.id) && !_inPlay.length && !(_dNow && _dNow.image) && !(lastDrawn && lastDrawn.design)) {
           let _list = TALK_TRENDS;
           try {
             const _kvT = JSON.parse((await env.AURA_KV.get("config:talk:trends")) || "null");
@@ -64147,7 +64189,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
            "Their words say what to change on it; change only that, on this design. Do not describe it back to them.")
         : "";
       const agentSys = shelf + found + stateNote + resetNote + picNote + (_catPick ? _pickNote : refNote) + refBlind +
-                       (_catPick ? "" : tileNote) + trendNote;
+                       (_catPick ? "" : tileNote) + worldNote + trendNote;
 
       // ══ A GREETING HAS TO LOOK LIKE A GREETING (2026-09-14) ════════════════════
       // Aaron, and it is the only thing this session was ever about: "I can't say hello to an agent."
@@ -64161,7 +64203,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // THE MOMENT ANYTHING IS LIVE, IT ALL RIDES AGAIN. A piece on screen, a photograph, a brief
       // already settled - then "hey" means "I am still here" and she needs the room to answer it,
       // which is exactly what she did on the back piece today.
-      const hasLive = !!(lastDrawn && lastDrawn.design) || !!refUrl || !!refSaw || !!carried || !!tileNote || !!trendNote;
+      const hasLive = !!(lastDrawn && lastDrawn.design) || !!refUrl || !!refSaw || !!carried || !!tileNote || !!worldNote || !!trendNote;
       // ══ A FRESH INSTANCE HAS NO EXAMPLES TO COPY (2026-09-14) ═══════════════════════════════
       // MEASURED, two identities, same channel, same contract, same model: the one with dozens of
       // her own JSON replies in its session returns JSON every time. A brand new one returned
@@ -65869,7 +65911,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // editable without a deploy - the same shape as `render:*` and `frame:*` on the
           // catalogue side. The floor below is a starting point, not a decision: SETKV
           // `render:talk` is how the house look actually gets chosen.
-          const reg = (await env.AURA_KV.get("render:talk").catch(() => null)) ||
+          // The world she draws in (her `world`, or the only one in play) supplies this sentence.
+          const _wPick = (acted.world && _inPlay.find((w) => String(w.name).toLowerCase() === String(acted.world).toLowerCase())) ||
+                         (_inPlay.length === 1 ? _inPlay[0] : null);
+          const reg = (_wPick ? String(_wPick.look).trim().replace(/\.*$/, ".") : null) ||
+            (await env.AURA_KV.get("render:talk").catch(() => null)) ||
             "Rendered tattoo artwork, finished and ready to wear rather than a stencil. Confident " +
             "linework with real depth in the shading, rich contrast, the detail an experienced " +
             "artist would put in. Full colour where the subject calls for it.";
@@ -65943,11 +65989,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             _reaction = (_lk2 && _lk2.say) || null;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}),
+                     ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,
                                         placement_ok: /^\s*RIGHT\b/i.test(_mockNote2) } : {}),
                      ...(dp.cached ? { same_picture: true,
                        note: "IDENTICAL PROMPT - this is the picture that already existed, not a " +
                              "new one. Nothing was drawn. Say so rather than describing a change." } : {}) };
+            // The world stays in play for the rest of the piece.
+            if (_wPick && me) { try { await talkStatePut(env, me, "world", String(_wPick.name) + "\n" + _projNow); } catch {} }
           } else {
             drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
           }

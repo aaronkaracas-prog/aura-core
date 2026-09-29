@@ -1,0 +1,27 @@
+[
+ {
+  "name": "Body Jewelry",
+  "words": [
+   "body jewelry",
+   "body jewellery",
+   "jewelry tattoo",
+   "jewelry tattoos",
+   "jewellery tattoo",
+   "jewellery tattoos"
+  ],
+  "tiles": [
+   "img_mud3fxklar64"
+  ],
+  "look": "An ornamental body-jewelry tattoo that looks like fine jewellery drawn on the skin: delicate chains, filigree, pendant drops, beads and gems in fine black linework with soft shading"
+ },
+ {
+  "name": "Spine and Back Flow",
+  "words": [
+   "spine flow",
+   "back flow",
+   "spine and back flow"
+  ],
+  "tiles": [],
+  "look": "An organic body-flow tattoo designed for exactly that part of the body: long flowing black lines, vines, branches, smoke and neo-tribal curves that follow the muscles and curves of the anatomy"
+ }
+]

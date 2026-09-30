@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.474.0-2026-09-29-walk-refresh-delete-only";
+const BUILD = "aura-core-v9.475.0-2026-09-29-talk-speed-1";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -4758,7 +4758,8 @@ async function proxyToAgent(env, line, isOp, ptaId, image, channel, onDelta) {
       if (finalJson.ok === false) return { failed: "agent said not ok: " + String(finalJson.error || "").slice(0, 200) };
       if (typeof finalJson.reply === "string" && finalJson.reply.trim()) {
         return { reply: finalJson.reply, rung: finalJson.rung || null, cost: finalJson.turn_cost || null,
-                 via: "aura-think", instance, streamed: true };
+                 via: "aura-think", instance, streamed: true,
+                 door: finalJson.door || null, think_ms: finalJson.elapsed_ms || null };
       }
       return { failed: "agent stream final frame carried no reply" };
     }
@@ -4770,7 +4771,7 @@ async function proxyToAgent(env, line, isOp, ptaId, image, channel, onDelta) {
     if (j && j.ok === false) return { failed: "agent said not ok: " + String(j.error || "").slice(0, 200) };
     if (j && typeof j.reply === "string" && j.reply.trim()) {
       return { reply: j.reply, rung: j.rung || null, cost: j.turn_cost || null,
-               via: "aura-think", instance };
+               via: "aura-think", instance, door: j.door || null, think_ms: j.elapsed_ms || null };
     }
     return { failed: "agent replied with no usable text: " + txt.slice(0, 160) };
   } catch (e) { return { failed: "proxy threw: " + String(e?.message ?? e).slice(0, 160) }; }
@@ -63565,11 +63566,15 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
           const _fromD0 = String((opts && opts.from) || "").trim();
           if (_fromD0) _workPid = ((await talkDo(env, me, "talkProjectOf", [_fromD0])) || {}).project || null;
           if (!_workPid && !(opts && opts.fresh)) _workPid = (_pre ? await _pre.project : null) || null;
-          if (_workPid) {
-            const _wr = await talkDo(env, me, "talkProject", [_workPid]);
-            _workPj = (_wr && _wr.ok && _wr.project) ? _wr.project : null;
-          }
-          const _ix = ((await talkDo(env, me, "talkProjects", [])) || {}).projects || [];
+          // ══ BOTH READS AT ONCE (2026-09-29) ═══════════════════════════════════════════════
+          // This phase was labelled "catalog" and is not the catalogue - the book has been closed on
+          // basic talk since 2026-09-22. It is the person's own state and their tattoos, and these two
+          // reads ran one after the other for 0.6-1.8s. They do not depend on each other.
+          const [_wr, _ixR] = await Promise.all([
+            _workPid ? talkDo(env, me, "talkProject", [_workPid]).catch(() => null) : Promise.resolve(null),
+            talkDo(env, me, "talkProjects", []).catch(() => null)]);
+          if (_workPid) _workPj = (_wr && _wr.ok && _wr.project) ? _wr.project : null;
+          const _ix = (_ixR || {}).projects || [];
           _earlierPjs = (Array.isArray(_ix) ? _ix : []).filter((x) => x && x.id !== _workPid).slice(0, 8);
         } catch {}
       }
@@ -63602,7 +63607,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // They do not depend on each other: both read the same conversation. So they go together,
       // and `config:talk:model` gives the lane a faster model without a deploy. Unset, nothing
       // changes.
-      _tick("catalog");
+      _tick("their_tattoos");
       const talkPin = (await (_pre ? _pre.model : env.AURA_KV.get("config:talk:model").catch(() => null))) || null;
       const talkModel = talkPin && talkPin.trim() ? talkPin.trim() : undefined;
 
@@ -64628,7 +64633,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // Her verdicts come back either as a bare sentence or wrapped in the channel's contract. One
       // stripper, used by both readers, so the two cannot drift apart.
       const _verdict = talkVerdict;
-      let acted = null, agentVia = null, agentNote = null;
+      let acted = null, agentVia = null, agentNote = null, _herTurn = null;
       // What she says after LOOKING at what she made (2026-09-20). See _lookAtResult.
       let _reaction = null;
       // What this turn costs, measured rather than estimated (2026-09-20). See costTapOpen.
@@ -64663,6 +64668,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             } catch {}
           }
           if (proxied && proxied.reply && !proxied.failed) {
+            // ══ WHAT FILLS HER THINKING TIME (2026-09-29) ═══════════════════════════════════
+            // Aaron: "let's look at what she's doing that she does not need to be doing on every
+            // turn." aura-think already counts her steps and tokens on every turn; core threw it away.
+            const _dr = proxied.door || {};
+            _herTurn = { handed_chars: String(agentLine || "").length, steps: _dr.steps ?? null,
+              tokens_in: _dr.turn_tokens_in ?? null, cached_in: _dr.turn_cached_in ?? null,
+              tokens_out: _dr.turn_tokens_out ?? null, calls: _dr.turn_provider_calls ?? null,
+              think_ms: proxied.think_ms ?? null, rung: proxied.rung || null };
             acted = readAct(proxied.reply);
             // ══ THE CHEAPEST RUNG DOES NOT SPEAK JSON ══════════════════════════════════════
             // L0 is a fixed table and L1 is a cached answer - both return the sentence itself,
@@ -66408,8 +66421,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             intent && intent.meaning ? "why: " + intent.meaning : null,
             jobNow && jobNow !== "new" ? "a " + jobNow : null
           ].filter(Boolean).join(". ");
-          await storeEventVector(me, "design:" + (drew.design || Date.now()),
-            "A tattoo design they made. " + what, env, "stated", "mytattoo");
+          // AFTER THE REPLY (2026-09-29): an embedding plus an index write, 1-2s the person waited on.
+          // Nothing later in this turn reads it, so it joins the record chain behind the answer.
+          const _dKey = "design:" + (drew.design || Date.now());
+          await _record(() => storeEventVector(me, _dKey, "A tattoo design they made. " + what, env, "stated", "mytattoo"));
         } catch {}
       }
 
@@ -66447,8 +66462,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             intent.placement ? "on the " + intent.placement : null,
             jobNow && jobNow !== "new" ? "a " + jobNow : null
           ].filter(Boolean).join(". ");
-          await storeEventVector(me, "meaning:" + Date.now(),
-            "What this tattoo is for, in their own words. " + why, env, "stated", "mytattoo");
+          const _mKey = "meaning:" + Date.now();
+          await _record(() => storeEventVector(me, _mKey, "What this tattoo is for, in their own words. " + why, env, "stated", "mytattoo"));
         } catch {}
       }
 
@@ -66673,6 +66688,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       const spent = costTapClose(_tap);
       return { ok: true, said: _said, act: acted.act, phase_ms, world, spent,
+               ...(_herTurn ? { her_turn: _herTurn } : {}),
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),
                brief, intent,

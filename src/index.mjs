@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.485.0-2026-09-30-artist-files-retry";
+const BUILD = "aura-core-v9.486.0-2026-09-30-addon-ask-changes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66206,7 +66206,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // their photo and nothing added. Only if it is short and not a question; otherwise their own
           // lines go, as before. Every change after the first picture is unchanged.
           let _herAsk = null;
-          if (String(jobNow || "") === "add" && _bodyPhoto && refDesign && parentId === refDesign &&
+          // CHANGES TOO (2026-09-30, Aaron): MEASURED on pta_4e048acbadd8af04, "Adding color to the new
+          // tattoo" went as typed and the model coloured the original forearm piece as well - one picture
+          // of a tattooed arm does not say which part is new. She knew ("while the original forearm tattoo
+          // stays black and grey"), so every add-on picture takes her sentence, not only the first.
+          if (String(jobNow || "") === "add" && _bodyPhoto && refDesign &&
               !_gridPick && !(opts && opts.inspire)) {
             const _a = String(acted.ask || "").trim();
             const _aWords = _a.split(/\s+/).filter(Boolean).length;

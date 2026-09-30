@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.479.0-2026-09-30-addon-note-true-act";
+const BUILD = "aura-core-v9.480.0-2026-09-30-addon-onme-is-draw";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64237,7 +64237,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         (_bodyPhoto
           ? "\n\nTHEIR OWN PHOTO IS WHERE THIS TATTOO GOES: what they want is shown ON them, in that " +
             "photo - one picture, never four directions or takes. When they're ready, offer to show it " +
-            "on them. Their own words go to the picture, so leave `prompt` empty."
+            "on them, and when they say yes `do` is `draw` - it is drawn on their photo. Their own words go " +
+            "to the picture, so leave `prompt` empty."
           : "");
       const resetNote = (badStreak >= 2 && refDesign)
         ? "\n\nTHE LAST TWO PICTURES WERE WRONG. The next change starts again from their original " +
@@ -65108,7 +65109,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const _onmeDesign = (_drewRec && _drewRec.image) ? _drewRec
         : (_fromTimeline || ((_madeBefore && _madeBefore.image && !_isPhoto(_madeBefore)) ? _madeBefore
         : ((lastDrawn && lastDrawn.image && !_isPhoto(lastDrawn)) ? lastDrawn : null)));
-      if (act === "onme" && !(_onmeDesign && refUrl)) act = "none";
+      // ON THEM, BEFORE ANYTHING IS DRAWN, ON THEIR OWN PHOTO IS THE FIRST PICTURE (2026-09-30). MEASURED on
+      // pta_ab89c9c251afee75: told the photo was theirs, she answered "show me" with `onme` - put a
+      // finished design on them - and there was no design yet, so this dropped it to nothing and she
+      // said "Here it is" over no picture. On an add-on the first picture IS on them: it is a draw, and
+      // the draw starts from their photo below.
+      if (act === "onme" && !(_onmeDesign && refUrl)) act = (_bodyPhoto && refDesign) ? "draw" : "none";
 
       // ══ USE THIS ONE (2026-09-26, Aaron) ═══════════════════════════════════════════════════
       // "The catalogue is to be passed on to the very end if people want that image." The picture

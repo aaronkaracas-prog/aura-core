@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.484.0-2026-09-30-addon-one-picture-fact";
+const BUILD = "aura-core-v9.485.0-2026-09-30-artist-files-retry";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62006,11 +62006,23 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
     };
     if (String(event.payload?.mode || "") === "artist_files") {
       const d = event.payload?.data || {};
-      const drew = await step.do("artist-files", { retries: { limit: 0, delay: "10 seconds" }, timeout: "15 minutes" },
-        async () => {
-          try { return (await runArtistFilesJob(this.env, d)) || { failed: true }; }
-          catch (e) { return { failed: true, error: String(e?.message ?? e).slice(0, 300) }; }
-        });
+      // ══ A CLOUDFLARE HICCUP GETS ANOTHER GO, AND A DEAD JOB STILL SAYS SO (2026-09-30) ══════════
+      // MEASURED on pta_4e048acbadd8af04 (instance 37ba8a50): the step died after 1m38s with
+      // "WorkflowInternalError: Attempt failed due to internal workflows error" - the platform, not our
+      // code (ours catches its own errors below). With no retries the job ended there, and because it
+      // ended the "record" step never ran: no files and no failure on their timeline, while she had
+      // told them the files were on the way. Two more attempts, 30s apart; if all three die, the
+      // failure is still recorded so the conversation knows.
+      let drew;
+      try {
+        drew = await step.do("artist-files", { retries: { limit: 2, delay: "30 seconds", backoff: "constant" }, timeout: "15 minutes" },
+          async () => {
+            try { return (await runArtistFilesJob(this.env, d)) || { failed: true }; }
+            catch (e) { return { failed: true, error: String(e?.message ?? e).slice(0, 300) }; }
+          });
+      } catch (e) {
+        drew = { failed: true, error: "the files job stopped: " + String(e?.message ?? e).slice(0, 240) };
+      }
       await step.do("record", async () => { await recordArtistFiles(this.env, d, drew); return true; });
       return { ok: !!(drew && drew.image && !drew.failed), me: d.me || null };
     }

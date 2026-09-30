@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.483.0-2026-09-30-addon-her-ask";
+const BUILD = "aura-core-v9.484.0-2026-09-30-addon-one-picture-fact";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64228,7 +64228,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const stateNote = _projNote + _convNote + (_drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
-        : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story;
+        : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story +
+        // ══ A FACT, NO ACTION WORDS (2026-09-30, Aaron) ═════════════════════════════════════════
+        // She kept offering "four takes" / "a few directions" on add-ons, where it is always one
+        // picture. The v9.479 note that tried to fix this told her what to OFFER ("show it on them")
+        // and steered her into the wrong action. This states only what is true of this tattoo.
+        (_bodyPhoto ? "\n\nTHIS IS AN ADD-ON ON THEIR OWN PHOTO: it is shown as one picture, never four." : "");
       const resetNote = (badStreak >= 2 && refDesign)
         ? "\n\nTHE LAST TWO PICTURES WERE WRONG. The next change starts again from their original " +
           "photograph: put EVERYTHING they still want into the one sentence in `prompt`."

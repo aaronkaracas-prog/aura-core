@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.475.0-2026-09-29-talk-speed-1";
+const BUILD = "aura-core-v9.476.0-2026-09-29-four-on-the-body";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59031,6 +59031,13 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 // picture and one button at the end: a tile tagged R becomes a REDO, a shot picture tagged R
 // becomes a SHOT for that one option, and anything tagged D becomes a DROP. Tags live in
 // localStorage per category so a long sweep survives a reload.
+// The last sentence of four directions drawn ON the person (2026-09-29). PROVEN on the forearm photo:
+// all four came back on her own shoulder. A setting - `config:frame:bodygrid` - overrides it.
+const BODY_GRID_FRAME = "Each of the four is shown on me, the person in this photo, so I can see how it " +
+  "looks on my body. Number each one clearly, 1 to 4.";
+// After their own words on the first add-on picture (2026-09-29). `config:frame:addgrid` overrides it.
+const ADD_GRID_FRAME = "Show me four different versions of this on me, numbered 1 to 4 in a 2 by 2 grid.";
+
 const WALK_TAG_JS = [
   "(function(){var K='tag:__KEY__',T={};",
   "try{T=JSON.parse(localStorage.getItem(K)||'{}')}catch(e){}",
@@ -63031,13 +63038,13 @@ function talkReadAct(txt) {
       .map((x) => x.slice(0, cap));
     return { say,
              act: ["draw", "change", "onme", "find", "artist", "none"].includes(act) ? act : "none",
-             prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 900) : "",
+             prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 2000) : "",
              // KEEP THE FIELD SHE WRITES (2026-09-20). This reader keeps a fixed set of keys
              // and drops the rest, so v9.353 asked her for `ask` and then threw it away - the
              // frame fallback ran every time and the measured failure never changed. A new
              // field in her contract is useless until it survives this line.
-             ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 900) : "",
-             words: typeof o.words === "string" ? o.words.trim().slice(0, 900) : "",
+             ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 2000) : "",
+             words: typeof o.words === "string" ? o.words.trim().slice(0, 2000) : "",
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
              // first version of this field took that name, and the duplicate key silently lost.
              lines: Array.isArray(o.lines) ? o.lines.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
@@ -63803,6 +63810,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       let wantRef = String((opts && opts.ref) || "").trim();
       // When their photo arrived (talk-state:ref `at`) - an add-on's words are their lines from here on.
       let _refAt = null;
+      const _bodyRefNow = !(opts && (opts.pick || opts.use || opts.inspire || opts.name || opts.tile));
+      let _bodyPhoto = false;
       // ══ A SPLIT CARD IS WORKED ON BY ITS LEFT HALF (2026-09-26, Aaron) ══════════════════════
       // Sets marked `split:<set>` are drawn as one picture: the design alone on white on the LEFT,
       // the same design on a body on the RIGHT. The card shows both; a pick works only from the
@@ -63827,7 +63836,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             context: "a reference somebody pointed at while designing a tattoo", by: me }), env, true);
           const ip = (ir && ir.payload) ? ir.payload : ir;
           if (ip?.ok) { refSaw = ip.saw || null; refUrl = ip.image_url || wantRef;
-                        refDesign = ip.entity || null; }
+                        refDesign = ip.entity || null; _bodyPhoto = _bodyRefNow; }
         } catch {}
         // ══ THE ISOLATE IS DELETED, AND IT IS NOT MOVING ANYWHERE (2026-09-13) ═════════════
         //
@@ -63887,7 +63896,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // `isolated` is gone with the block above - it described an image that is no longer
               // generated, and a flag that is always false is a field a reader will eventually trust.
               saw: refSaw, url: refUrl, design: refDesign,
-              at: _refAt
+              at: _refAt,
+              // THEIR OWN BODY, OR A PICTURE THEY POINTED AT (2026-09-29). A photo that arrives with no
+              // catalogue pick, no Get Inspired card and no tile is a photo of them - the four
+              // directions for this tattoo are then drawn ON them. Anything they pointed at is not.
+              body: _bodyRefNow
             }));
           } catch {}
         }
@@ -63896,7 +63909,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try {
           const held = await _pre.ref;
           if (held) { refSaw = held.saw || null; refUrl = held.url || null;
-                      refDesign = held.design || null; refHeld = true; _refAt = held.at || null; }
+                      refDesign = held.design || null; refHeld = true; _refAt = held.at || null;
+                      _bodyPhoto = held.body === true; }
         } catch {}
       }
 
@@ -66127,7 +66141,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               const e = tline[i];
               if (e && e.role === "picture" && e.design === parentId) { _pic = e; break; }
             }
-            if (_pic && /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_pic.words || ""))) {
+            if (_pic && (_pic.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_pic.words || "")))) {
               const _line = String(said || "").toLowerCase();
               const _w = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
               const _nums = new Set();
@@ -66153,7 +66167,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               !(opts && opts.inspire) && me) {
             try { await talkStatePut(env, me, "added", String(_sentNow).slice(0, 600)); } catch {}
           } else if (String(jobNow || "") === "add" && refDesign && parentId !== refDesign && _sentNow &&
-                     !(opts && opts.inspire) && me) {
+                     !_gridPick && !(opts && opts.inspire) && me) {
             try {
               const _had = String((await talkStateGet(env, me, ["added"])).added || "").trim();
               const _now = String(_sentNow).trim().slice(0, 600);
@@ -66162,6 +66176,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 await talkStatePut(env, me, "added", _lines.concat([_now]).join("\n").slice(-1800));
               }
             } catch {}
+          }
+          // ══ AN ADD-ON SHOWS FOUR VERSIONS ON THEM (2026-09-29, Aaron) ═══════════════════════════
+          // The first picture made on their own photo for an add-on, cover-up or rework is four
+          // numbered versions, on them, instead of one - then "number 2" takes that one off the grid
+          // (the pick sentence above), still on their body. Their words go exactly as before; one
+          // fixed sentence goes after them (`config:frame:addgrid`). Only on their own photo, never
+          // on a picked or inspiration picture, and never on a pick.
+          let _addGrid = false;
+          if (!_gridPick && _bodyPhoto && refDesign && parentId === refDesign &&
+              ["add", "cover", "rework"].includes(String(jobNow || "")) && !(opts && opts.inspire)) {
+            let _ag = null;
+            try { _ag = String((await env.AURA_KV.get("config:frame:addgrid")) || "").trim() || null; } catch {}
+            _sentNow = (String(_sentNow).trim().replace(/[.\s]*$/, ".") + " " + (_ag || ADD_GRID_FRAME)).slice(0, 2000);
+            _addGrid = true;
           }
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {
@@ -66270,6 +66298,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
+                ...(_addGrid ? { four_directions: true, on_their_body: true } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),
                 from: parentId,
@@ -66287,7 +66316,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // writes what the piece looks like, the image model receives that, and nobody hands four
         // typed words to a diffusion model and hopes.
         try {
-          const askLine = String(acted.prompt || said).trim().slice(0, 900);
+          // 2000, not 900 (2026-09-29): MEASURED on the hummingbird grid, her four directions ran past
+          // 900 and the cut took "2 by 2 grid" with it - so the grid frame never applied and a pick
+          // on it could never have been read. The image model takes far more; the cap was ours.
+          const askLine = String(acted.prompt || said).trim().slice(0, 2000);
           // ══ THE HOUSE REGISTER, AND IT IS A DIAL ═══════════════════════════════════════
           // `tatBuildAsk` ends every prompt with TAT_FRAME_INK - "flat tattoo artwork on white
           // paper, like a design sheet in a studio". Correct for the catalogue, where a flash
@@ -66342,7 +66374,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // The single-picture frame ("the artwork alone, centred, nothing else in frame") would
           // fight a grid, so a grid gets the same rule said for each of the four.
           const _grid = /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(askLine);
-          const frm = _grid
+          // ══ THE FOUR GO ON THEM WHEN THIS TATTOO STARTED FROM THEIR PHOTO (2026-09-29, Aaron) ══════
+          // PROVEN by command on the forearm photo (img_muneb3u5oqds): her four directions for a
+          // shoulder piece, the photo as the reference, and this last sentence - all four came back on
+          // her own shoulder. "I want image number 2." on that grid gave number 2 alone, still on her
+          // shoulder (img_munee3rtlgkv). Not her `job` field: she wrote "new" for a new place on the
+          // same person. The test is whether the photo in this tattoo is of them.
+          const _gridOnBody = _grid && _bodyPhoto && !!refUrl;
+          const frm = _gridOnBody
+            ? ((await env.AURA_KV.get("config:frame:bodygrid").catch(() => null)) || BODY_GRID_FRAME)
+            : _grid
             ? "Each of the four is the tattoo artwork alone on a plain background - not on skin, not on a " +
               "person, not a photograph of a tattoo. Number each one clearly, 1 to 4."
             : wantsBody
@@ -66358,7 +66399,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const dr = await processCommand("SHOW_IT " + JSON.stringify({
             aspect: _grid ? "1:1" : "3:4", res: "2k",
             subject: askLine + ". " + reg + " " + frm +
-              (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
+              ((refUrl && !_gridOnBody) ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
                         "the way it sits." : ""),
             context: "a tattoo somebody is designing for themselves: " + askLine,
             name: askLine.slice(0, 60),
@@ -66373,11 +66414,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // Nothing in the reply said so; `cached` was already captured here and read by nobody.
             // The field is the fix. `same_picture` is the plain statement of what happened, so a
             // caller cannot narrate a new version and neither can she on the turn after.
-            const _lk2 = await _lookAtResult(dp.image_url, !(opts && opts.inspire), null, _grid);
+            // THE BODY CHECK ONLY ON A PICTURE THAT IS ON THEIR BODY (2026-09-29). MEASURED: a flat grid on
+            // white was checked as "the mock-up on their own body" and came back "RIGHT: the original
+            // forearm tattoo is untouched... all the new ink is on the skin" - there was no forearm and
+            // no skin. Told it was looking at a body, the check found one.
+            const _lk2 = await _lookAtResult(dp.image_url, (_gridOnBody || wantsBody) && !(opts && opts.inspire), null, _grid);
             const _mockNote2 = _lk2 && _lk2.verdict;
             _reaction = (_lk2 && _lk2.say) || null;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}),
+                     ...(_gridOnBody ? { on_their_body: true } : {}),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
                      ...(_twist ? { world: "twist" } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,
@@ -66633,6 +66679,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             tline.push({ ts: new Date().toISOString(), role: "picture",
                          ...(drew.image ? { image: drew.image, design: drew.design || null } : { failed: true }),
                          words: String(drew.changed || acted.prompt || "").slice(0, 600),
+                         ...(drew.four_directions ? { grid: true } : {}),
                          ...(drew.for_the_artist ? { artist_files: true, files: artistFilesOf(drew) } : {}) });
           }
           if (tline.length > 60) tline = tline.slice(-60);

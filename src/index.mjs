@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.481.0-2026-09-30-back-to-passing-addon";
+const BUILD = "aura-core-v9.482.0-2026-09-30-addon-frame";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59031,6 +59031,10 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 // picture and one button at the end: a tile tagged R becomes a REDO, a shot picture tagged R
 // becomes a SHOT for that one option, and anything tagged D becomes a DROP. Tags live in
 // localStorage per category so a long sweep survives a reload.
+// The first add-on picture (2026-09-30). PROVEN on the forearm photo - see THE FIRST ADD-ON PICTURE.
+const ADDON_FRAME = "Use the attached image as the visual reference.\n\nThe user's request:\n\"{request}\"\n\n" +
+  "Create the requested visualization.";
+
 const WALK_TAG_JS = [
   "(function(){var K='tag:__KEY__',T={};",
   "try{T=JSON.parse(localStorage.getItem(K)||'{}')}catch(e){}",
@@ -66179,6 +66183,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 await talkStatePut(env, me, "added", _lines.concat([_now]).join("\n").slice(-1800));
               }
             } catch {}
+          }
+          // ══ THE FIRST ADD-ON PICTURE IS THEIR REQUEST, QUOTED, WITH THEIR PHOTO AS THE REFERENCE (2026-09-30, Aaron) ══
+          // PROVEN by command on the forearm photo: the same photo and the same edit call, with their words
+          // glued together, scattered the new work (hummingbird on the chest, sunflowers down the arm);
+          // inside this wrapper it came back as one connected piece (img_muo58sg58chd, img_muo5bn2b7o6b).
+          // Their lines go in as typed, one sentence each. Nothing of hers. A setting - `config:frame:addon`,
+          // `{request}` is their words - so the wording changes without a deploy. Only the first picture on
+          // their own photo for an add-on; every change after it is unchanged.
+          if (String(jobNow || "") === "add" && _bodyPhoto && refDesign && parentId === refDesign &&
+              !_gridPick && !(opts && opts.inspire)) {
+            const _req = (_addOnly && _pointed.length
+              ? _pointed.map((l) => String(l.said || "").trim().replace(/[.!?,;:\s]+$/, "")).filter(Boolean).join(". ")
+              : String(_sentNow || "").trim().replace(/[.!?,;:\s]+$/, "")) + ".";
+            let _af = null;
+            try { _af = String((await env.AURA_KV.get("config:frame:addon")) || "").trim() || null; } catch {}
+            if (!_af || !_af.includes("{request}")) _af = ADDON_FRAME;
+            _sentNow = _af.replace("{request}", _req.replace(/"/g, "'")).slice(0, 2000);
+            _wordsFrom = "addon_frame";
           }
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {

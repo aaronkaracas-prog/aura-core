@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.479.0-2026-09-30-addon-note-true-act";
+const BUILD = "aura-core-v9.478.0-2026-09-30-addon-one-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64228,17 +64228,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const stateNote = _projNote + _convNote + (_drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
-        : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story +
-        // ══ A FACT ABOUT THIS TATTOO, NOT A RULE ABOUT TATTOOS (2026-09-30, Aaron) ═══════════════
-        // MEASURED on pta_41c942d138067f0f: her notes said `add`, and she still offered "a few
-        // directions" and wrote four numbered directions into `prompt` on two turns - words nobody
-        // sends on an add-on, costing her writing time. Core knows the photo in this tattoo is theirs;
-        // she is told so, every turn it is true.
-        (_bodyPhoto
-          ? "\n\nTHEIR OWN PHOTO IS WHERE THIS TATTOO GOES: what they want is shown ON them, in that " +
-            "photo - one picture, never four directions or takes. When they're ready, offer to show it " +
-            "on them. Their own words go to the picture, so leave `prompt` empty."
-          : "");
+        : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story;
       const resetNote = (badStreak >= 2 && refDesign)
         ? "\n\nTHE LAST TWO PICTURES WERE WRONG. The next change starts again from their original " +
           "photograph: put EVERYTHING they still want into the one sentence in `prompt`."
@@ -66724,9 +66714,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         } catch {}
       }
       const spent = costTapClose(_tap);
-      // `act` is what was DONE this turn (2026-09-30). It reported her field, so a turn stopped by the
-      // ask-first guard said "draw" with nothing drawn. Her field is kept beside it when they differ.
-      return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,
+      return { ok: true, said: _said, act: acted.act, phase_ms, world, spent,
                ...(_herTurn ? { her_turn: _herTurn } : {}),
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),

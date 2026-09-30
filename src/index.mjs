@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.476.0-2026-09-29-four-on-the-body";
+const BUILD = "aura-core-v9.477.0-2026-09-29-four-on-the-body-any-job";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66184,8 +66184,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // fixed sentence goes after them (`config:frame:addgrid`). Only on their own photo, never
           // on a picked or inspiration picture, and never on a pick.
           let _addGrid = false;
-          if (!_gridPick && _bodyPhoto && refDesign && parentId === refDesign &&
-              ["add", "cover", "rework"].includes(String(jobNow || "")) && !(opts && opts.inspire)) {
+          // NOT HER `job` (fixed 2026-09-29, v9.477): MEASURED on the shoulder test she wrote "new" on
+          // the draw turn and the first picture on their photo came back as one, not four. Whether
+          // the photo is theirs is the whole test - the same one the draw path uses.
+          if (!_gridPick && _bodyPhoto && refDesign && parentId === refDesign && !(opts && opts.inspire)) {
             let _ag = null;
             try { _ag = String((await env.AURA_KV.get("config:frame:addgrid")) || "").trim() || null; } catch {}
             _sentNow = (String(_sentNow).trim().replace(/[.\s]*$/, ".") + " " + (_ag || ADD_GRID_FRAME)).slice(0, 2000);

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.477.0-2026-09-29-four-on-the-body-any-job";
+const BUILD = "aura-core-v9.478.0-2026-09-30-addon-one-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59031,13 +59031,6 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 // picture and one button at the end: a tile tagged R becomes a REDO, a shot picture tagged R
 // becomes a SHOT for that one option, and anything tagged D becomes a DROP. Tags live in
 // localStorage per category so a long sweep survives a reload.
-// The last sentence of four directions drawn ON the person (2026-09-29). PROVEN on the forearm photo:
-// all four came back on her own shoulder. A setting - `config:frame:bodygrid` - overrides it.
-const BODY_GRID_FRAME = "Each of the four is shown on me, the person in this photo, so I can see how it " +
-  "looks on my body. Number each one clearly, 1 to 4.";
-// After their own words on the first add-on picture (2026-09-29). `config:frame:addgrid` overrides it.
-const ADD_GRID_FRAME = "Show me four different versions of this on me, numbered 1 to 4 in a 2 by 2 grid.";
-
 const WALK_TAG_JS = [
   "(function(){var K='tag:__KEY__',T={};",
   "try{T=JSON.parse(localStorage.getItem(K)||'{}')}catch(e){}",
@@ -65238,7 +65231,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // change to the photograph they sent - their skin, their existing ink, their arm - and
       // everything around the new piece has to survive. The mandala legs already proved the edit
       // lane holds a body still while the artwork changes.
-      const jobNow = String((intent && intent.job) || "").toLowerCase();
+      let jobNow = String((intent && intent.job) || "").toLowerCase();
+      // ══ THEIR OWN PHOTO MAKES IT AN ADD-ON (2026-09-30, Aaron) ═══════════════════════════════
+      // MEASURED twice on the forearm photo: she wrote "new" for a piece on the opposite shoulder,
+      // and the first picture came back flat on white instead of on her. Aaron: "It's an add-on so
+      // it needs to come back on the body." When the photo in this tattoo is of them (not a catalogue
+      // pick, an inspiration card or a tile), it is an add-on - unless she said cover-up or rework.
+      // One picture on their photo, their words, then changes, then off the body for the artist.
+      if (_bodyPhoto && !["cover", "add", "rework"].includes(jobNow)) {
+        jobNow = "add";
+        if (intent && typeof intent === "object") intent.job = "add";
+      }
       // ══ ONLY THE FIRST ONE STARTS FROM THE PHOTOGRAPH (2026-09-08) ════════════════════════
       // MEASURED: the T-rex cover came out right, and then "make it stepping on a police car"
       // drew a WOMAN crouching on a car - no dinosaur at all. `from` was the same entity on both
@@ -66177,22 +66180,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               }
             } catch {}
           }
-          // ══ AN ADD-ON SHOWS FOUR VERSIONS ON THEM (2026-09-29, Aaron) ═══════════════════════════
-          // The first picture made on their own photo for an add-on, cover-up or rework is four
-          // numbered versions, on them, instead of one - then "number 2" takes that one off the grid
-          // (the pick sentence above), still on their body. Their words go exactly as before; one
-          // fixed sentence goes after them (`config:frame:addgrid`). Only on their own photo, never
-          // on a picked or inspiration picture, and never on a pick.
-          let _addGrid = false;
-          // NOT HER `job` (fixed 2026-09-29, v9.477): MEASURED on the shoulder test she wrote "new" on
-          // the draw turn and the first picture on their photo came back as one, not four. Whether
-          // the photo is theirs is the whole test - the same one the draw path uses.
-          if (!_gridPick && _bodyPhoto && refDesign && parentId === refDesign && !(opts && opts.inspire)) {
-            let _ag = null;
-            try { _ag = String((await env.AURA_KV.get("config:frame:addgrid")) || "").trim() || null; } catch {}
-            _sentNow = (String(_sentNow).trim().replace(/[.\s]*$/, ".") + " " + (_ag || ADD_GRID_FRAME)).slice(0, 2000);
-            _addGrid = true;
-          }
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {
             try {
@@ -66300,7 +66287,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
-                ...(_addGrid ? { four_directions: true, on_their_body: true } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),
                 from: parentId,
@@ -66376,16 +66362,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // The single-picture frame ("the artwork alone, centred, nothing else in frame") would
           // fight a grid, so a grid gets the same rule said for each of the four.
           const _grid = /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(askLine);
-          // ══ THE FOUR GO ON THEM WHEN THIS TATTOO STARTED FROM THEIR PHOTO (2026-09-29, Aaron) ══════
-          // PROVEN by command on the forearm photo (img_muneb3u5oqds): her four directions for a
-          // shoulder piece, the photo as the reference, and this last sentence - all four came back on
-          // her own shoulder. "I want image number 2." on that grid gave number 2 alone, still on her
-          // shoulder (img_munee3rtlgkv). Not her `job` field: she wrote "new" for a new place on the
-          // same person. The test is whether the photo in this tattoo is of them.
-          const _gridOnBody = _grid && _bodyPhoto && !!refUrl;
-          const frm = _gridOnBody
-            ? ((await env.AURA_KV.get("config:frame:bodygrid").catch(() => null)) || BODY_GRID_FRAME)
-            : _grid
+          // Four on the body was tried for add-ons (v9.476-477) and taken out (2026-09-30, Aaron): an
+          // add-on is one picture on their photo. Four directions are for new tattoos, on white.
+          const frm = _grid
             ? "Each of the four is the tattoo artwork alone on a plain background - not on skin, not on a " +
               "person, not a photograph of a tattoo. Number each one clearly, 1 to 4."
             : wantsBody
@@ -66401,7 +66380,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const dr = await processCommand("SHOW_IT " + JSON.stringify({
             aspect: _grid ? "1:1" : "3:4", res: "2k",
             subject: askLine + ". " + reg + " " + frm +
-              ((refUrl && !_gridOnBody) ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
+              (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
                         "the way it sits." : ""),
             context: "a tattoo somebody is designing for themselves: " + askLine,
             name: askLine.slice(0, 60),
@@ -66420,12 +66399,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // white was checked as "the mock-up on their own body" and came back "RIGHT: the original
             // forearm tattoo is untouched... all the new ink is on the skin" - there was no forearm and
             // no skin. Told it was looking at a body, the check found one.
-            const _lk2 = await _lookAtResult(dp.image_url, (_gridOnBody || wantsBody) && !(opts && opts.inspire), null, _grid);
+            const _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid);
             const _mockNote2 = _lk2 && _lk2.verdict;
             _reaction = (_lk2 && _lk2.say) || null;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}),
-                     ...(_gridOnBody ? { on_their_body: true } : {}),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
                      ...(_twist ? { world: "twist" } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,

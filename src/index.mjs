@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.482.0-2026-09-30-addon-frame";
+const BUILD = "aura-core-v9.483.0-2026-09-30-addon-her-ask";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59031,10 +59031,6 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 // picture and one button at the end: a tile tagged R becomes a REDO, a shot picture tagged R
 // becomes a SHOT for that one option, and anything tagged D becomes a DROP. Tags live in
 // localStorage per category so a long sweep survives a reload.
-// The first add-on picture (2026-09-30). PROVEN on the forearm photo - see THE FIRST ADD-ON PICTURE.
-const ADDON_FRAME = "Use the attached image as the visual reference.\n\nThe user's request:\n\"{request}\"\n\n" +
-  "Create the requested visualization.";
-
 const WALK_TAG_JS = [
   "(function(){var K='tag:__KEY__',T={};",
   "try{T=JSON.parse(localStorage.getItem(K)||'{}')}catch(e){}",
@@ -66184,23 +66180,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               }
             } catch {}
           }
-          // ══ THE FIRST ADD-ON PICTURE IS THEIR REQUEST, QUOTED, WITH THEIR PHOTO AS THE REFERENCE (2026-09-30, Aaron) ══
-          // PROVEN by command on the forearm photo: the same photo and the same edit call, with their words
-          // glued together, scattered the new work (hummingbird on the chest, sunflowers down the arm);
-          // inside this wrapper it came back as one connected piece (img_muo58sg58chd, img_muo5bn2b7o6b).
-          // Their lines go in as typed, one sentence each. Nothing of hers. A setting - `config:frame:addon`,
-          // `{request}` is their words - so the wording changes without a deploy. Only the first picture on
-          // their own photo for an add-on; every change after it is unchanged.
+          // ══ ON AN ADD-ON, SHE SAYS WHAT THEY WANT - PLAINLY (2026-09-30, Aaron) ═════════════════════
+          // MEASURED three times on the forearm photo: she understood "the other arm" and said so, but
+          // only their typed words reached the picture ("similar style of my opposite arm on my
+          // shoulder"), and it landed on the same arm twice. ChatGPT's one plain sentence of the same
+          // request landed on the right arm. She is the tattoo artist: on the first picture on their own
+          // photo her `ask` - their request the way they would say it to a tattoo artist - goes, with
+          // their photo and nothing added. Only if it is short and not a question; otherwise their own
+          // lines go, as before. Every change after the first picture is unchanged.
+          let _herAsk = null;
           if (String(jobNow || "") === "add" && _bodyPhoto && refDesign && parentId === refDesign &&
               !_gridPick && !(opts && opts.inspire)) {
-            const _req = (_addOnly && _pointed.length
-              ? _pointed.map((l) => String(l.said || "").trim().replace(/[.!?,;:\s]+$/, "")).filter(Boolean).join(". ")
-              : String(_sentNow || "").trim().replace(/[.!?,;:\s]+$/, "")) + ".";
-            let _af = null;
-            try { _af = String((await env.AURA_KV.get("config:frame:addon")) || "").trim() || null; } catch {}
-            if (!_af || !_af.includes("{request}")) _af = ADDON_FRAME;
-            _sentNow = _af.replace("{request}", _req.replace(/"/g, "'")).slice(0, 2000);
-            _wordsFrom = "addon_frame";
+            const _a = String(acted.ask || "").trim();
+            const _aWords = _a.split(/\s+/).filter(Boolean).length;
+            if (_a && _aWords >= 4 && _aWords <= 60 && !/\?\s*$/.test(_a) && !/\b2\s*(?:by|x)\s*2\b|\b1:\s/i.test(_a)) {
+              _sentNow = _a;
+              _herAsk = _a;
+              _wordsFrom = "her_ask";
+            }
           }
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {
@@ -66309,6 +66306,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
+                ...((acted.ask && !_herAsk && String(jobNow || "") === "add") ? { her_ask_not_used: String(acted.ask).slice(0, 400) } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),
                 from: parentId,

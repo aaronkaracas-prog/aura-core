@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.492.0-2026-10-01-addon-tattoo-opening";
+const BUILD = "aura-core-v9.493.0-2026-10-01-any-picture-four-options";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64321,42 +64321,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // she saw is in the conversation, in her own words; the picture model gets the photo direct.
             ? (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER is what you are working on. You described it " +
                          "when it arrived - work from that."
-                       : "THE PHOTOGRAPH THEY JUST SENT IS ATTACHED TO THIS TURN. Look at it " +
-                         "and say what is actually there - what the tattoo is of, how well it is " +
-                         "done, and where on the body it sits.")
+                       // ══ A FACT, NOT A JOB (2026-10-01, Aaron) ═══════════════════════════════════
+                       // This told her, before anyone had chosen anything, to judge how well it was
+                       // done and whether it was badly healed (the source of "healed well"), and gave
+                       // her add-on and rework thinking. Any picture: she looks, says what she sees,
+                       // and asks what they want to do with it - her guidance, ANY PICTURE THEY SEND.
+                       : "THE PHOTOGRAPH THEY JUST SENT IS ATTACHED TO THIS TURN.")
             : (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER, still what you are working on:"
                        : "THEY JUST SENT YOU A PHOTOGRAPH. This is what is in it:") + "\n  " + refSaw) +
-          // DESCRIBE IT ONCE (2026-09-21). MEASURED: on the turn after "this is my tattoo, I got it in
-          // Italy with my son Alex", she opened by describing the back piece again and saying it had
-          // "aged beautifully". Everything from here to the three jobs below was added on EVERY turn
-          // the photo was still in play, so every later turn was told to describe it again. It belongs
-          // to the turn the photo arrives; after that the photo stays in front of her to work from.
-          (refHeld ? "\n\nYou have already told them what is in it - do not describe or assess it " +
-                     "again. Work from it.\n\n" : "") +
-          (refHeld ? "" : "\n\nSAY WHAT YOU SEE FIRST, in your own words, before anything else - \"that's a " +
-          "cartoon fish with a face on it\", \"that's a full Japanese back piece, koi and " +
-          "lotus\". Plainly, like somebody looking at their arm. Never ask a question about a " +
-          "picture without first showing them you looked at it.\n" +
-          // MEASURED: the same photograph read as "a mermaid tail with a face", "a stylized face
-          // coming out of a scaled body" and "a suited male figure with light hair" on three
-          // runs. The fish went missing every time, and the fish is most of the ink.
-          "NAME EVERY PART OF IT, not just the bit that caught your eye. A fish AND a face AND " +
-          "lettering underneath is three things, and on a cover-up the one you skip is usually " +
-          "the one that makes it hard.\n" +
-          // Aaron: "she needs to say - oh this is a fish with a head on it, looks like someone
-          // did it when they were in fourth grade."
-          "AND SAY HOW WELL IT IS DONE. If it is amateur, wobbly, faded, badly healed or just " +
-          "bad, say so like a person would - kindly, but do not pretend a bad tattoo is a good " +
-          "one. They already know. Pretending otherwise is how you lose them.\n") +
-          "It is a REFERENCE or their own tattoo - never something you made, and never something " +
-          "to copy.\n\n" +
-          // The three jobs are one flow with one difference: what happens to the ink already
-          // there. `job` in the brief already carries new | cover | add | rework.
-          "IF IT IS THEIR OWN TATTOO and they want it changed:\n" +
-          (_isCover ? COVER_DOCTRINE : "") +
-          "  ADDING TO IT - the existing work is a neighbour, not a problem. Match its style and " +
-          "let the new piece flow with it.\n" +
-          "  REWORKING IT - same idea, done properly. Keep what they liked, fix what they did not.\n\n" +
+          (refHeld ? "\n\nYou have already told them what is in it - do not describe it again." : "") +
+          // Cover-up guidance only once they have chosen to cover it.
+          (_isCover ? "\n\n" + COVER_DOCTRINE + "\n" : "") +
           // MEASURED: asked to make a cover-up raven "light grey and delicate", she did it without
           // a word. That design cannot be tattooed over dark linework, and the person finds out in
           // the chair. She had the constraint in front of her, said it once, and dropped it the
@@ -65321,10 +65296,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // it needs to come back on the body." When the photo in this tattoo is of them (not a catalogue
       // pick, an inspiration card or a tile), it is an add-on - unless she said cover-up or rework.
       // One picture on their photo, their words, then changes, then off the body for the artist.
-      if (_bodyPhoto && !["cover", "add", "rework"].includes(jobNow)) {
-        jobNow = "add";
-        if (intent && typeof intent === "object") intent.job = "add";
-      }
+      // ══ THE PERSON CHOOSES THE JOB (2026-10-01, Aaron) ══════════════════════════════════════
+      // The block above forced "add" onto every photo of them. A picture arrives, she says what she
+      // sees and offers the four - add to it, cover it up, rework it, make something new from it -
+      // and the job is the one THEY choose, as she records it. Nothing here decides it for them.
       // ══ ONLY THE FIRST ONE STARTS FROM THE PHOTOGRAPH (2026-09-08) ════════════════════════
       // MEASURED: the T-rex cover came out right, and then "make it stepping on a police car"
       // drew a WOMAN crouching on a car - no dinosaur at all. `from` was the same entity on both

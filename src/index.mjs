@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.498.0-2026-10-01-photo-stays-on-body";
+const BUILD = "aura-core-v9.499.0-2026-10-01-her-brief-to-the-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64314,7 +64314,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         !["cover", "rework"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase());
       const stateNote = _langNote + _projNote + _convNote + (_photoChain
         ? "\n\nEVERY PICTURE STARTS FROM THEIR PHOTO. The picture model sees only their photo and your " +
-          "`ask` - it has never seen any picture you made."
+          "`brief` - it has never seen any picture you made."
         : _drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
@@ -65280,29 +65280,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = _after.slice(0, 600); break; } }
           if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
         }
-      }
-
-      // ══ A PICTURE ON THEIR PHOTO NEEDS HER WORDS (2026-10-01, Aaron) ═══════════════════════════
-      // MEASURED (pta_40c895e602b5e608, turns 4 and 5): she left `ask` empty on a change, so their raw
-      // lines went instead - the whole history, "maybe" and "instead of butterflies" and "bees and
-      // butterflies" together, with no request in it - and the butterflies were lost. Only she knows
-      // where the conversation stands. When she leaves it empty she is asked once to write it; their
-      // lines go only if she still does not.
-      if ((act === "draw" || act === "change") && _bodyPhoto && refDesign && !(opts && opts.inspire) &&
-          !["cover", "rework"].includes(String((intent && intent.job) || "").toLowerCase()) &&
-          !String(acted.ask || "").trim() && typeof agentLine === "string" && agentLine) {
-        try {
-          const _shape = "\n\n(Reply with the JSON object. No prose.)";
-          const _base = agentLine.endsWith(_shape) ? agentLine.slice(0, -_shape.length) : agentLine;
-          const _redo = await proxyToAgent(env, _base + "\n\nYou are making a picture on their photo and `ask` " +
-            "is empty. The picture model sees only their photo and your `ask` - write it: everything " +
-            "decided so far, folded into one." + _shape,
-            false, me, null, world, null);
-          const _ra = (_redo && _redo.reply && !_redo.failed) ? readAct(_redo.reply) : null;
-          const _rask = _ra ? String(_ra.ask || "").trim() : "";
-          console.log("[ASK] redo: " + (_rask ? _rask.slice(0, 200) : ("still empty" + (_redo && _redo.failed ? " - " + String(_redo.failed).slice(0, 120) : ""))));
-          if (_rask) acted.ask = _rask;
-        } catch (e) { console.log("[ASK] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
       }
 
       // ══ A GO-AHEAD IS NOT A SECOND REQUEST (2026-09-16) ══════════════════════════════════
@@ -66369,34 +66346,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // stays black and grey"), so every add-on picture takes her sentence, not only the first.
           if (String(jobNow || "") === "add" && _bodyPhoto && refDesign &&
               !_gridPick && !(opts && opts.inspire)) {
-            const _a = String(acted.ask || "").trim();
-            const _aWords = _a.split(/\s+/).filter(Boolean).length;
-            if (_a && _aWords >= 3 && _aWords <= 120 && !/\?\s*$/.test(_a) && !/\b2\s*(?:by|x)\s*2\b|\b1:\s/i.test(_a)) {
-              _sentNow = _a;
-              _herAsk = _a;
-              _wordsFrom = "her_ask";
-            }
-            // ══ THE IMAGE MODEL IS ALWAYS TOLD IT IS A TATTOO (2026-10-01, Aaron) ══════════════════
-            // MEASURED the same morning: the same photo with "this is my tattoo ... extend it all the way
-            // across my back ... show me that" came back right; her third-person description ("extend the
-            // existing flowing line-work tattoo across the back") did not. The opening is fixed and the
-            // same every time - she writes only the end, everything decided so far, said as them. With
-            // no sentence from her, their own lines since the photo follow the opening as they said them.
-            // A setting (config:frame:addon, "____" is the blank) so the wording can move without a deploy.
-            let _open = "This is my tattoo. Show me what it would look like if I ____.";
-            try { const _k = String((await env.AURA_KV.get("config:frame:addon")) || "").trim(); if (_k.includes("____")) _open = _k; } catch {}
-            if (_herAsk) {
-              // MEASURED (pta_c57a67ce2679deee): her sentence began "Show me the same extension...", so
-              // the model got "...look like if I Show me the same extension". A leading "show me" is the
-              // opening's job, never the blank's.
-              const _end = _herAsk.replace(/^\s*this is my (existing |current |original )?tattoo\.?\s*/i, "")
-                .replace(/^\s*show me what it (would|will) look like if i\s+/i, "")
-                .replace(/^\s*show (me|it|us|them)\s+/i, "")
-                .replace(/^\s*if i\s+/i, "").replace(/[.\s]+$/, "");
-              _sentNow = _open.replace("____", _end);
-            } else if (_sentNow) {
-              _sentNow = _open.split("____")[0].replace(/\s*show me[\s\S]*$/i, "").trim() + " " +
-                String(_sentNow).replace(/^\s*this is my (existing |current |original )?tattoo\.?\s*/i, "");
+            // ══ HER BRIEF, ALWAYS (2026-10-01, v9.499, Aaron) ═════════════════════════════════════
+            // MEASURED (pta_cecb3d1218d48755): on a change she left `ask` empty, was asked again, and left
+            // it empty again - so their raw lines went ("...thats sick. can we add a samurai guy...") and
+            // the existing sleeve was painted over. Her brief that same turn had it exactly: the sleeve on
+            // the other arm, the dragon, the samurai, the koi. Aaron: their lines never go to the model;
+            // what they want does, and she already understands it - the brief is that understanding,
+            // rewritten every turn with everything decided so far. So the picture is their photo, the
+            // fixed opening (`config:frame:addon:brief`, "____" is her brief) and her brief. Nothing else.
+            let _open = "This is my tattoo. Show me: ____";
+            try { const _k = String((await env.AURA_KV.get("config:frame:addon:brief")) || "").trim(); if (_k.includes("____")) _open = _k; } catch {}
+            const _b = String(brief || "").trim();
+            const _her = _b || String(acted.ask || "").trim() || String(acted.prompt || "").trim();
+            if (_her) {
+              _sentNow = _open.replace("____", _her.replace(/[\s]+$/, ""));
+              _herAsk = _her;
+              _wordsFrom = _b ? "her_brief" : (acted.ask ? "her_ask" : "her_prompt");
             }
           }
           const _asks = [_sentNow];

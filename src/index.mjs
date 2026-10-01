@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.488.0-2026-10-01-photo-read-once";
+const BUILD = "aura-core-v9.489.0-2026-10-01-go-ahead-guarantee";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65169,6 +65169,46 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           act = "none";
           console.log("[ASKFIRST] she asked to show it - nothing drawn until they say go");
         }
+      }
+
+      // ══ NOTHING IS DRAWN UNTIL THEY SAY GO - A GUARANTEE (2026-10-01, Aaron) ═════════════════
+      // "There's no maybe show it sometimes - we don't, with any tattoo, until someone says go. It's a
+      // rule." MEASURED the same morning, same guidance, same words from the person: she waited on
+      // some runs and drew on the next, and on two she said "here it is" over nothing. Her guidance
+      // says it five ways; a model still slips. So the FIRST picture of a conversation is checked
+      // against the person's own words: a go phrase (Aaron's list - show me, let's see, go for it,
+      // do it, try that, what it looks like), or a yes right after she offered to show it.
+      // Buttons (a pick, use, inspire, recolor, a tile) are their own go and are not checked.
+      // After the first picture nothing is checked: "once they have said yes, stop asking".
+      // When it blocks, her reply is redone ONCE with that fact, so she never says "here it is"
+      // over nothing - her own words, made true, never ours.
+      let _goBlocked = false;
+      if ((act === "draw" || act === "change") && !_drewNow() &&
+          !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
+        const _them = String(said || "").trim();
+        let _prevAura = "";
+        for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _prevAura = String(tnow[i].said || ""); break; } }
+        const _offered = /\b(show|draw|sketch|see|picture|mock)\b[^?]*\?\s*$/i.test(_prevAura.trim());
+        const _goWords = /\b(show me|show us|let'?s see|let me see|go for it|go ahead|do it|try it|try that|draw it|draw that|see (it|what|that|how)|looks? like)\b/i.test(_them);
+        const _yes = /^\s*(yes|yeah|yep|yup|sure|ok|okay|please|absolutely|definitely|of course|go)\b/i.test(_them);
+        if (!(_goWords || (_offered && _yes))) {
+          act = "none"; _goBlocked = true;
+          console.log("[GO] no go-ahead in their words - nothing drawn" + (_offered ? " (she had offered; their reply was not a yes)" : ""));
+        }
+      }
+      if (_goBlocked && typeof agentLine === "string" && agentLine) {
+        try {
+          const _shape = "\n\n(Reply with the JSON object. No prose.)";
+          const _base = agentLine.endsWith(_shape) ? agentLine.slice(0, -_shape.length) : agentLine;
+          const _redo = await proxyToAgent(env, _base + "\n\nNOTHING WAS DRAWN THIS TURN: they have not asked to see it yet." + _shape,
+            false, me, null, world, null);
+          const _ra = (_redo && _redo.reply && !_redo.failed) ? readAct(_redo.reply) : null;
+          if (_ra && _ra.say) {
+            acted.say = _ra.say;
+            for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(_ra.say).slice(0, 600); break; } }
+            if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
+          }
+        } catch (e) { console.log("[GO] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
       }
 
       // ══ A GO-AHEAD IS NOT A SECOND REQUEST (2026-09-16) ══════════════════════════════════

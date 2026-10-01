@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.499.0-2026-10-01-her-brief-to-the-picture";
+const BUILD = "aura-core-v9.500.0-2026-10-01-addon-never-leaves-photo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65402,6 +65402,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // drew last is.
         act = "change";
         lastDrawn = { design: refDesign, subject: (intent && intent.subject) || null };
+      }
+      // ══ AN ADD-ON ON THEIR PHOTO NEVER LEAVES THE PHOTO (2026-10-01, v9.500, Aaron) ═══════════════
+      // MEASURED (pta_24c181a44ea0f7de): after the first picture she chose `draw` for "show me" on two
+      // more bouquets; the subject had changed, so the rule above did not apply and it went to a fresh
+      // drawing off their body, with the new-design frame added. On an add-on on their photo every
+      // picture is a change on their original photo (the parent is forced to it further down).
+      if (act === "draw" && refDesign && _bodyPhoto && jobNow === "add" && !(opts && opts.inspire)) {
+        act = "change";
       }
 
       // ══ THE ARTIST'S SHEET - THE OPERATION, NOT A DESCRIPTION (2026-09-10) ═══════════════

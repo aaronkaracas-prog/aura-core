@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.494.0-2026-10-01-photo-pictures-her-words";
+const BUILD = "aura-core-v9.495.0-2026-10-01-no-double-show-me";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66317,8 +66317,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             let _open = "This is my tattoo. Show me what it would look like if I ____.";
             try { const _k = String((await env.AURA_KV.get("config:frame:addon")) || "").trim(); if (_k.includes("____")) _open = _k; } catch {}
             if (_herAsk) {
+              // MEASURED (pta_c57a67ce2679deee): her sentence began "Show me the same extension...", so
+              // the model got "...look like if I Show me the same extension". A leading "show me" is the
+              // opening's job, never the blank's.
               const _end = _herAsk.replace(/^\s*this is my (existing |current |original )?tattoo\.?\s*/i, "")
                 .replace(/^\s*show me what it (would|will) look like if i\s+/i, "")
+                .replace(/^\s*show me\s+/i, "")
                 .replace(/^\s*if i\s+/i, "").replace(/[.\s]+$/, "");
               _sentNow = _open.replace("____", _end);
             } else if (_sentNow) {

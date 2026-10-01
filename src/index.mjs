@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.489.0-2026-10-01-go-ahead-guarantee";
+const BUILD = "aura-core-v9.490.0-2026-10-01-go-ahead-honest-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65200,15 +65200,34 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         try {
           const _shape = "\n\n(Reply with the JSON object. No prose.)";
           const _base = agentLine.endsWith(_shape) ? agentLine.slice(0, -_shape.length) : agentLine;
-          const _redo = await proxyToAgent(env, _base + "\n\nNOTHING WAS DRAWN THIS TURN: they have not asked to see it yet." + _shape,
+          // Her own add-on rule ("until then, talk"), at the moment she decides. MEASURED (v9.489): the
+          // first wording, "NOTHING WAS DRAWN THIS TURN", read as "so draw it now" - she picked draw
+          // again and wrote "here it is" again.
+          const _redo = await proxyToAgent(env, _base + "\n\nThey have not asked to see it yet - nothing is drawn this turn. " +
+            "Talk with them and ask if they want to see it." + _shape,
             false, me, null, world, null);
           const _ra = (_redo && _redo.reply && !_redo.failed) ? readAct(_redo.reply) : null;
+          console.log("[GO] redo: " + (_ra ? ("do=" + (_ra.act || "?") + " say=" + String(_ra.say || "").slice(0, 120))
+            : ("unreadable" + (_redo && _redo.failed ? " - " + String(_redo.failed).slice(0, 120) : ""))));
           if (_ra && _ra.say) {
             acted.say = _ra.say;
             for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(_ra.say).slice(0, 600); break; } }
             if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
           }
         } catch (e) { console.log("[GO] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
+      }
+      // THE LAST SAFETY NET: nothing was drawn, so a sentence claiming a picture is not true. That
+      // sentence alone comes out - nothing is added, her other words stand.
+      if (_goBlocked) {
+        const _claim = /(^|[.!?]\s+)[^.!?]*\b(here it is|here's (it|your|the)|here you go|take a look|check it out|have a look)\b[^.!?]*[.!?]?/gi;
+        const _before = String(acted.say || "");
+        const _after = _before.replace(_claim, "$1").replace(/\s{2,}/g, " ").trim();
+        if (_after !== _before.trim() && _after) {
+          console.log("[GO] removed a claim of a picture that was not made");
+          acted.say = _after;
+          for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = _after.slice(0, 600); break; } }
+          if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
+        }
       }
 
       // ══ A GO-AHEAD IS NOT A SECOND REQUEST (2026-09-16) ══════════════════════════════════

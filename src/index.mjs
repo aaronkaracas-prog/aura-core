@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.500.0-2026-10-01-addon-never-leaves-photo";
+const BUILD = "aura-core-v9.501.0-2026-10-01-files-get-full-brief";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65736,6 +65736,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         }
       }
       if (act === "artist" && me) {
+        // ══ THE FILES GET EVERYTHING DECIDED, NOT THIS TURN'S SLICE (2026-10-01, v9.501, Aaron) ═════
+        // MEASURED (pta_1c5dcf9da1de80fd): her running brief said "about 5 inches tall", but on the
+        // lock-in turn she did not restate it, and the gaps are only filled from the running brief at
+        // the END of the turn - after this job starts. The files got `size: ""` and printed at the 8in
+        // default ([PRINT-SIZE] her size="" placement="hip"). So the job gets the running brief with
+        // this turn's answers on top.
+        const _intentFull = Object.assign({}, carriedObj || {});
+        if (intent && typeof intent === "object") {
+          for (const k of Object.keys(intent)) {
+            const v = intent[k];
+            if (v == null || v === "" || (Array.isArray(v) && !v.length)) continue;
+            _intentFull[k] = v;
+          }
+        }
+        intent = (intent || carriedObj) ? _intentFull : intent;
         const _job = await startArtistFilesJob(env, {
           project: _pid,
           me, world, stage, seeing: !!seeing, jobNow: jobNow || null, refUrl: refUrl || null,

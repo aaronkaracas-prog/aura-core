@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.501.0-2026-10-01-files-get-full-brief";
+const BUILD = "aura-core-v9.502.0-2026-10-01-new-work-sheet-never-silent";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62745,10 +62745,11 @@ async function makeArtistFiles(env, ctx) {
           // seam; told WHAT is new by name, it lifts it out. The name comes from what they asked to
           // add (saved at the first picture), put into a few words by her - the one question below.
           // Both sheets go to the artist: the whole piece always works, the new work is the stencil.
-          let _addSheets = null;
+          let _addSheets = null, _newWorkFail = null;
           if (jobNow === "add" && refUrl && !alreadyFlat) {
             const _src = /^ent_/.test(String(shopParent || "")) ? shopParent
               : ((String(mockUrl).match(/\/image\/(img_[a-z0-9]+)/i) || [])[1] || shopParent);
+            let _flatErr = null;
             const _flat = async (prompt) => {
               for (let tries = 0; tries < 2; tries++) {
                 try {
@@ -62756,7 +62757,8 @@ async function makeArtistFiles(env, ctx) {
                     JSON.stringify({ prompt, by: me, res: "2k", ...(tries ? { seed: "again" } : {}) }), env, true);
                   const p = (r && r.payload) ? r.payload : r;
                   if (p && p.ok && p.image_url) return { flat: p.image_url, id: p.child || null };
-                } catch {}
+                  _flatErr = String((p && (p.error || p.why || p.reason)) || "no image came back").slice(0, 200);
+                } catch (e) { _flatErr = String(e?.message ?? e).slice(0, 200); }
               }
               return null;
             };
@@ -62782,11 +62784,36 @@ async function makeArtistFiles(env, ctx) {
                 if (_name) _name = _name.replace(/^(The|A|An)\b/, (w) => w.toLowerCase());
               }
             } catch {}
+            // ══ THE NEW-WORK SHEET NEVER DISAPPEARS SILENTLY (2026-10-01, v9.502, Aaron) ══════════════
+            // MEASURED: on the Japanese sleeve the new-work sheet was missing three runs out of three
+            // (pta_833a8453ed00cdcb, pta_a6b5b5a0dfbebe59, pta_d17a7ead05b96ec1) and nothing said why.
+            // If her one-question answer is missing, the subject she already wrote names it instead -
+            // cut before any "matching / to match their existing..." part, which names old ink. Every
+            // step is logged, and a failure rides with the files.
+            if (_name) { try { console.log("[FILES] new work named by her: " + _name); } catch {} }
+            if (!_name) {
+              const _subj = String((intent && intent.subject) || "").trim()
+                .split(/[,;]?\s+(?:matching|to match|that matches|pairing with|to pair with)\b/i)[0]
+                .replace(/^(full colou?r\s+)?/i, "").trim();
+              if (_subj) {
+                _name = _subj.replace(/^(The|A|An)\b/, (w) => w.toLowerCase()).slice(0, 160);
+                try { console.log("[FILES] her answer was empty - new work named from her subject: " + _name); } catch {}
+              }
+            }
             if (_name) {
               const _new = await _flat("Draw only " + _name + " from this picture, flat on plain white paper, " +
                                        "with no body and no skin.");
-              if (_new) _addSheets.push({ panel: "New work", asked: _name, flat: _new.flat, id: _new.id,
-                                          checked: null, ok: true });
+              if (_new) {
+                _addSheets.push({ panel: "New work", asked: _name, flat: _new.flat, id: _new.id,
+                                  checked: null, ok: true });
+                try { console.log("[FILES] new work sheet -> ok"); } catch {}
+              } else {
+                _newWorkFail = "new work sheet failed: " + (_flatErr || "no image came back");
+                try { console.log("[FILES] " + _newWorkFail); } catch {}
+              }
+            } else {
+              _newWorkFail = "new work sheet failed: nothing to name it from";
+              try { console.log("[FILES] " + _newWorkFail); } catch {}
             }
             if (!_addSheets.length) _addSheets = null;
           }
@@ -62966,6 +62993,7 @@ async function makeArtistFiles(env, ctx) {
               // `image` is what the needle does: the line art, new ink only on an add-on.
               image: lineUrl || fp.image,
               changed: "the artist's files", from: shopParent, for_the_artist: true,
+              ...(_newWorkFail ? { new_work_failed: _newWorkFail } : {}),
               // The whole package, in the order a shop uses it.
               flat_artwork: fp.image,
               shows_finished: mockUrl,
@@ -63140,7 +63168,7 @@ async function talkCheckOn(env, k) {
 function artistFilesOf(drew) {
   if (!drew) return null;
   const f = {};
-  for (const k of ["flat_artwork", "image", "shows_finished", "print_pdf", "print_inches", "print_sheets"]) {
+  for (const k of ["flat_artwork", "image", "shows_finished", "print_pdf", "print_inches", "print_sheets", "new_work_failed"]) {
     if (drew[k] != null) f[k] = drew[k];
   }
   if (Array.isArray(drew.panels)) f.panels = drew.panels;

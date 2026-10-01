@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.496.0-2026-10-01-bigger-edits";
+const BUILD = "aura-core-v9.497.0-2026-10-01-her-print-size";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62899,6 +62899,21 @@ async function makeArtistFiles(env, ctx) {
             for (const k of Object.keys(PLACEMENT_IN)) {
               if (placeKey.includes(k) && PLACEMENT_IN[k] > inches) inches = PLACEMENT_IN[k];
             }
+            // ══ HER SIZE FIRST (2026-10-01, Aaron) ═══════════════════════════════════════════
+            // MEASURED: a small hip bouquet printed at the 8in default ("hip" is not in the list) on 4
+            // sheets, and a full back asked for 20in. A placement word is not a size. She saw the photo -
+            // how much of the body it covers - and her brief's `size` carries her estimate of the
+            // finished height in inches. The list is only the fallback.
+            {
+              const _szTxt = String((intent && intent.size) || "");
+              const _szM = _szTxt.match(/(\d+(?:\.\d+)?)\s*(cm|centimet\w*|inches|inch|in\b|")/i);
+              if (_szM) {
+                let _v = parseFloat(_szM[1]);
+                if (/^c/i.test(_szM[2])) _v = _v / 2.54;
+                if (_v >= 1 && _v <= 40) inches = Math.round(_v * 10) / 10;
+              }
+              try { console.log("[PRINT-SIZE] her size=" + JSON.stringify(_szTxt) + " placement=" + JSON.stringify(placeKey) + " -> " + (inches || 8) + "in"); } catch {}
+            }
             if (!inches) inches = 8;   // a hand-sized default, and PRINT reports the real figure
             // ══ A PDF PER PANEL, AND THE COUNT HAS TO ADD UP (2026-09-15) ═════════════
             // MEASURED: `panel_count: 3` and `print_sheets: 1` in the same object, because PRINT
@@ -66370,7 +66385,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // opening's job, never the blank's.
               const _end = _herAsk.replace(/^\s*this is my (existing |current |original )?tattoo\.?\s*/i, "")
                 .replace(/^\s*show me what it (would|will) look like if i\s+/i, "")
-                .replace(/^\s*show me\s+/i, "")
+                .replace(/^\s*show (me|it|us|them)\s+/i, "")
                 .replace(/^\s*if i\s+/i, "").replace(/[.\s]+$/, "");
               _sentNow = _open.replace("____", _end);
             } else if (_sentNow) {

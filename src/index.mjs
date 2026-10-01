@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.490.0-2026-10-01-go-ahead-honest-words";
+const BUILD = "aura-core-v9.491.0-2026-10-01-addon-from-photo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65877,7 +65877,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // design on screen - the words sent carried the lift-off sentence a second time. The streak
           // below had reached two because the body check (next) marks every flat picture WRONG.
           const _resetToPhoto = badStreak >= 2 && !!refDesign && !(opts && opts.inspire);
-          const parentId = (_drewNow() && !_resetToPhoto) ? lastDrawn.design : (refDesign || lastDrawn.design);
+          // ══ AN ADD-ON ALWAYS STARTS FROM THEIR PHOTO (2026-10-01, Aaron) ═══════════════════════
+          // "If we keep working on revisions we'll never know what was done." Stacking edits carried
+          // every drift forward - a garment, a wrong size, a touched original - and "make it that big"
+          // reached the model with no where or what. Every add-on picture now starts from the photo
+          // they sent, and the words are her ONE description of everything they want now (the change
+          // folded in). This was tried before (v9.271 reversed it) when a change sent only the delta;
+          // the difference now is the whole description rides every time.
+          const _addOnPhoto = String(jobNow || "") === "add" && _bodyPhoto && !!refDesign && !(opts && opts.inspire);
+          const parentId = _addOnPhoto ? refDesign
+            : ((_drewNow() && !_resetToPhoto) ? lastDrawn.design : (refDesign || lastDrawn.design));
           const alsoRefs = [];
           // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════
           // Added this morning to give an artist one file per element. Every run produced
@@ -66143,7 +66152,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             const _atMs = _refAt ? Date.parse(_refAt) : NaN;
             let _lastPicI = -1;
             for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "picture") { _lastPicI = i; break; } }
-            const _picAfterPhoto = _lastPicI >= 0 &&
+            // Every add-on picture starts from the photo (above), so when her description is missing
+            // the words are ALL their lines since the photo - never only the latest change.
+            const _picAfterPhoto = false && _lastPicI >= 0 &&
               (!isFinite(_atMs) || Date.parse(String(tline[_lastPicI].ts || "")) >= _atMs);
             const _theirs = [];
             tline.forEach((e, i) => {
@@ -66280,7 +66291,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               !_gridPick && !(opts && opts.inspire)) {
             const _a = String(acted.ask || "").trim();
             const _aWords = _a.split(/\s+/).filter(Boolean).length;
-            if (_a && _aWords >= 4 && _aWords <= 60 && !/\?\s*$/.test(_a) && !/\b2\s*(?:by|x)\s*2\b|\b1:\s/i.test(_a)) {
+            if (_a && _aWords >= 4 && _aWords <= 120 && !/\?\s*$/.test(_a) && !/\b2\s*(?:by|x)\s*2\b|\b1:\s/i.test(_a)) {
               _sentNow = _a;
               _herAsk = _a;
               _wordsFrom = "her_ask";

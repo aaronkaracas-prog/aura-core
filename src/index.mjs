@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.491.0-2026-10-01-addon-from-photo";
+const BUILD = "aura-core-v9.492.0-2026-10-01-addon-tattoo-opening";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66008,7 +66008,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // that copy, "touch" 2 of 3. "Cover" still allows placing new work in the old ink's
             // place; "touch" rules that out. General, not tied to any photo - and a setting
             // (config:frame:add) if another tattoo shows a better word.
-            add: "This is my existing tattoo. Show me what it would look like if I ____, flowing with the current tattoo, matching its line weight, framing it so it reads as one piece. All new artwork should not touch any of the current tattoo.",
+            add: "This is my tattoo. Show me what it would look like if I ____.",
             change: "This is my tattoo. Show me what it would look like if I ____. Don't change anything else.",
             cover: "This is my existing tattoo. Show me what it would look like if I cover it with ____.",
             rework: "This is my existing tattoo. Show me what it would look like if I ____.",
@@ -66291,10 +66291,28 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               !_gridPick && !(opts && opts.inspire)) {
             const _a = String(acted.ask || "").trim();
             const _aWords = _a.split(/\s+/).filter(Boolean).length;
-            if (_a && _aWords >= 4 && _aWords <= 120 && !/\?\s*$/.test(_a) && !/\b2\s*(?:by|x)\s*2\b|\b1:\s/i.test(_a)) {
+            if (_a && _aWords >= 3 && _aWords <= 120 && !/\?\s*$/.test(_a) && !/\b2\s*(?:by|x)\s*2\b|\b1:\s/i.test(_a)) {
               _sentNow = _a;
               _herAsk = _a;
               _wordsFrom = "her_ask";
+            }
+            // ══ THE IMAGE MODEL IS ALWAYS TOLD IT IS A TATTOO (2026-10-01, Aaron) ══════════════════
+            // MEASURED the same morning: the same photo with "this is my tattoo ... extend it all the way
+            // across my back ... show me that" came back right; her third-person description ("extend the
+            // existing flowing line-work tattoo across the back") did not. The opening is fixed and the
+            // same every time - she writes only the end, everything decided so far, said as them. With
+            // no sentence from her, their own lines since the photo follow the opening as they said them.
+            // A setting (config:frame:addon, "____" is the blank) so the wording can move without a deploy.
+            let _open = "This is my tattoo. Show me what it would look like if I ____.";
+            try { const _k = String((await env.AURA_KV.get("config:frame:addon")) || "").trim(); if (_k.includes("____")) _open = _k; } catch {}
+            if (_herAsk) {
+              const _end = _herAsk.replace(/^\s*this is my (existing |current |original )?tattoo\.?\s*/i, "")
+                .replace(/^\s*show me what it (would|will) look like if i\s+/i, "")
+                .replace(/^\s*if i\s+/i, "").replace(/[.\s]+$/, "");
+              _sentNow = _open.replace("____", _end);
+            } else if (_sentNow) {
+              _sentNow = _open.split("____")[0].replace(/\s*show me[\s\S]*$/i, "").trim() + " " +
+                String(_sentNow).replace(/^\s*this is my (existing |current |original )?tattoo\.?\s*/i, "");
             }
           }
           const _asks = [_sentNow];

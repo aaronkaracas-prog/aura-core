@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.486.0-2026-09-30-addon-ask-changes";
+const BUILD = "aura-core-v9.487.0-2026-09-30-their-language";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64237,7 +64237,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const _convNote = "\n\nTHE CONVERSATION, NUMBERED (\"you\" is you):\n" +
         _convLines.slice(-20).map((l) => "  " + l.n + ". " + l.who + ": " + l.said.slice(0, 500) +
           (l.now ? "   <- what they just said" : "")).join("\n");
-      const stateNote = _projNote + _convNote + (_drewNow()
+      // THEIR LANGUAGE (2026-09-30): a fact, like the time zone Claude is given - no spelling rules.
+      // From the browser through aura-host; a turn with no browser (PowerShell) is en-US.
+      const _langNote = "\n\nTheir language: " + String((opts && opts.lang) || "en-US") + ".";
+      const stateNote = _langNote + _projNote + _convNote + (_drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
         : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story +
@@ -67397,10 +67400,17 @@ export class PublicEntry extends WorkerEntrypoint {
   // The hostname is known by aura-host, which is the only thing that cannot be lied to about it, so
   // it crosses the binding as its own argument. Optional: an older caller passing two arguments
   // resolves to null and falls back exactly as before.
-  async design(action, body, host) {
+  async design(action, body, host, from) {
     const b = body || {};
     const env = this.env;
     const world = worldFor(host);
+    // ══ THEIR LANGUAGE COMES FROM THE DOORWAY (2026-09-30, Aaron) ══════════════════════════════
+    // She wrote "colour" back to a person who typed "color" - she was never told who she was
+    // talking to, and the guidance she reads is written in British spelling. Agents are handed the
+    // person's locale as a FACT (the browser's own language tag), never spelling rules. aura-host
+    // reads it off the request and passes it beside `host`, outside `body`, like the world.
+    const lang = (from && typeof from.lang === "string" && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(from.lang.trim()))
+      ? from.lang.trim() : null;
     try {
       // ══ WHO IS THIS (2026-08-24) ═══════════════════════════════════════════════════════════
       // Every action except `hello` needs a person, because everything they do belongs to somebody:
@@ -67539,7 +67549,7 @@ export class PublicEntry extends WorkerEntrypoint {
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -67558,7 +67568,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },

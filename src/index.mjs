@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.495.0-2026-10-01-no-double-show-me";
+const BUILD = "aura-core-v9.496.0-2026-10-01-bigger-edits";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60056,6 +60056,14 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // A pin still wins for its own lane. It does not win a lane it cannot serve.
   const rawModel = (await env.AURA_KV.get(isEdit ? "config:edit:model" : "config:image:model").catch(() => null));
   const rawQuality = (await env.AURA_KV.get(isEdit ? "config:edit:quality" : "config:image:quality").catch(() => null));
+  // ══ HOW BIG AN EDIT COMES BACK - A DIAL (2026-10-01, Aaron) ══════════════════════════════════
+  // MEASURED: every edit sent `size: "auto"` and every one came back 1254x1254 - medium and low alike,
+  // and the artist files too. Aaron: "it just needs to be bigger, you can't see it." gpt-image-2 takes
+  // an explicit size (multiples of 16, up to ~8.3MP). `config:edit:size` = the long edge in pixels
+  // (default 2048), capped by `config:edit:maxpx` total pixels (default 3686400 = 2560x1440, the
+  // largest size reported as stable); "auto" goes back to the old behaviour.
+  const _editSizeRaw = isEdit ? String((await env.AURA_KV.get("config:edit:size").catch(() => null)) || "2048").trim() : "";
+  const _editMaxPxRaw = isEdit ? String((await env.AURA_KV.get("config:edit:maxpx").catch(() => null)) || "3686400").trim() : "";
   // ══ A CALLER MAY NAME THE MODEL FOR ONE CALL ═════════════════════════════════════════════
   // Above the pin, because it is narrower than the pin: this is one job saying "the configured
   // model just refused this, try the other one", not an operator changing the lane. It is used by
@@ -60128,7 +60136,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     // same picture twenty times, reported as twenty successes.
     const sig = model + "|" + quality + "|" +
                 (opts.width || 1024) + "x" + (opts.height || 1024) + "|" +
-                (opts.aspect || "") + (opts.res || "") + "|" + refs.join("|") + "|" +
+                (opts.aspect || "") + (opts.res || "") + "|" + (isEdit ? "es" + _editSizeRaw + "/" + _editMaxPxRaw + "|" : "") + refs.join("|") + "|" +
                 (opts.seed != null ? "seed" + opts.seed + "|" : "") + p;
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
     cacheKey = "imgcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -60474,7 +60482,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         // THE PHOTO'S OWN SHAPE (2026-09-24). MEASURED: every GPT edit was forced to 1024x1024, so a
         // portrait arm photo came back square - reshaped, and impossible to line up with the
         // original for the ink lock. "auto" keeps the shape of what it is editing.
-        fd.append("size", "auto");
+        // The size is set below, once the first image is read - it keeps that image's shape.
+        let _sizeSent = "auto";
         // THE INK LOCK MASK (2026-09-24): a PNG the size of the first image; see-through where the
         // model may paint (bare skin), solid where it may not (their existing ink, everything else).
         if (opts.mask) {
@@ -60525,7 +60534,22 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           fd.append(oRefs.length > 1 ? "image[]" : "image",
             new Blob([bytes], { type: "image/png" }), "parent" + i + ".png");
           attached++;
+          if (attached === 1) {
+            try {
+              const _d = imageDimsOf(bytes);
+              const _long = parseInt(_editSizeRaw, 10), _maxPx = parseInt(_editMaxPxRaw, 10) || 3686400;
+              if (_d && _d.w > 0 && _d.h > 0 && Number.isFinite(_long) && _long >= 512) {
+                const _ratio = Math.max(_d.w, _d.h) / Math.min(_d.w, _d.h);
+                let _sc = Math.min(_long, 3840) / Math.max(_d.w, _d.h);
+                if (_d.w * _sc * _d.h * _sc > Math.min(_maxPx, 8294400)) _sc = Math.sqrt(Math.min(_maxPx, 8294400) / (_d.w * _d.h));
+                const _W = Math.floor((_d.w * _sc) / 16) * 16, _H = Math.floor((_d.h * _sc) / 16) * 16;
+                if (_ratio <= 3 && _W * _H >= 655360) _sizeSent = _W + "x" + _H;
+              }
+            } catch {}
+          }
         }
+        fd.append("size", _sizeSent);
+        console.log("[IMG-SIZE] edit size=" + _sizeSent);
         // AN EDIT WITH NO PARENT IS NOT AN EDIT. Silently sending the request anyway is how a
         // "mouse beside the cat" came back as a different cat - the failure has to be the failure.
         if (!attached) throw new Error("could not read the parent image to edit: " + oRefs[0]);
@@ -63313,6 +63337,30 @@ function talkShuffle(list, seedText) {
   const a = list.slice();
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
+}
+
+// Width and height from a PNG or JPEG header - no decode. null for anything else.
+function imageDimsOf(buf) {
+  try {
+    const u = new Uint8Array(buf);
+    if (u.length > 24 && u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4E && u[3] === 0x47) {
+      const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+      return { w: dv.getUint32(16), h: dv.getUint32(20) };
+    }
+    if (u.length > 4 && u[0] === 0xFF && u[1] === 0xD8) {
+      let i = 2;
+      while (i + 9 < u.length) {
+        if (u[i] !== 0xFF) { i++; continue; }
+        const m = u[i + 1];
+        if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) {
+          return { h: (u[i + 5] << 8) | u[i + 6], w: (u[i + 7] << 8) | u[i + 8] };
+        }
+        if (m === 0xD8 || m === 0x01 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }
+        i += 2 + ((u[i + 2] << 8) | u[i + 3]);
+      }
+    }
+  } catch {}
+  return null;
 }
 
 async function startArtistFilesJob(env, data) {

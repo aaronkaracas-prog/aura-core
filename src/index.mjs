@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.493.0-2026-10-01-any-picture-four-options";
+const BUILD = "aura-core-v9.494.0-2026-10-01-photo-pictures-her-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64240,7 +64240,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // THEIR LANGUAGE (2026-09-30): a fact, like the time zone Claude is given - no spelling rules.
       // From the browser through aura-host; a turn with no browser (PowerShell) is en-US.
       const _langNote = "\n\nTheir language: " + String((opts && opts.lang) || "en-US") + ".";
-      const stateNote = _langNote + _projNote + _convNote + (_drewNow()
+      // ══ EVERY PICTURE STARTS FROM THEIR PHOTO - SAID AS A FACT (2026-10-01, Aaron) ═══════════════
+      // MEASURED (pta_c2a1cf5410f71540, pta_40c895e602b5e608): on every change she wrote only the change
+      // ("add colour to the sun", "replace the butterflies with bees") - because this told her a piece
+      // she drew was on screen and the roster said changes start from it. On an add-on on their photo
+      // that is false: every picture starts from the photo, and the picture model has never seen one
+      // she made. So that is what she is told. The job is the one they chose (her brief on record).
+      const _photoChain = _bodyPhoto && !!refDesign && !(opts && opts.inspire) &&
+        String((carriedObj && carriedObj.job) || "").toLowerCase() === "add";
+      const stateNote = _langNote + _projNote + _convNote + (_photoChain
+        ? "\n\nEVERY PICTURE STARTS FROM THEIR PHOTO. The picture model sees only their photo and your " +
+          "`ask` - it has never seen any picture you made."
+        : _drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
         : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story +
@@ -64248,7 +64259,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // She kept offering "four takes" / "a few directions" on add-ons, where it is always one
         // picture. The v9.479 note that tried to fix this told her what to OFFER ("show it on them")
         // and steered her into the wrong action. This states only what is true of this tattoo.
-        (_bodyPhoto ? "\n\nTHIS IS AN ADD-ON ON THEIR OWN PHOTO: it is shown as one picture, never four." : "");
+        (_photoChain ? "\n\nTHIS IS AN ADD-ON ON THEIR OWN PHOTO: it is shown as one picture, never four." : "");
       const resetNote = (badStreak >= 2 && refDesign)
         ? "\n\nTHE LAST TWO PICTURES WERE WRONG. The next change starts again from their original " +
           "photograph: put EVERYTHING they still want into the one sentence in `prompt`."
@@ -64259,11 +64270,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // image and evolve that one rather than always the newest.
       const picNames = [];
       if (refUrl) picNames.push('  "photo" - the photograph they sent you');
-      if (_drewNow()) picNames.push('  "piece" - the last picture you drew for them');
+      // On an add-on on their photo there is nothing to choose: every picture starts from the photo.
+      if (_drewNow() && !_photoChain) picNames.push('  "piece" - the last picture you drew for them');
       const picNote = picNames.length
-        ? "\n\nTHE PICTURES ON FILE, AND WHAT TO CALL THEM IN `use`:\n" + picNames.join("\n") +
+        ? (_photoChain ? "" :
+          "\n\nTHE PICTURES ON FILE, AND WHAT TO CALL THEM IN `use`:\n" + picNames.join("\n") +
           "\nName them in the order the job needs. Leave `use` out and it starts from the last " +
-          "picture you drew." +
+          "picture you drew.") +
           // ══ NOBODY ASKS FOR A FLATTENED FILE (2026-09-10) ══════════════════════════════
           // Aaron: "no human's gonna say give it to me flattened so someone can print it out.
           // It's just going to be conversation - is this what you want for your tattoo art -
@@ -65203,6 +65216,29 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = _after.slice(0, 600); break; } }
           if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
         }
+      }
+
+      // ══ A PICTURE ON THEIR PHOTO NEEDS HER WORDS (2026-10-01, Aaron) ═══════════════════════════
+      // MEASURED (pta_40c895e602b5e608, turns 4 and 5): she left `ask` empty on a change, so their raw
+      // lines went instead - the whole history, "maybe" and "instead of butterflies" and "bees and
+      // butterflies" together, with no request in it - and the butterflies were lost. Only she knows
+      // where the conversation stands. When she leaves it empty she is asked once to write it; their
+      // lines go only if she still does not.
+      if ((act === "draw" || act === "change") && _bodyPhoto && refDesign && !(opts && opts.inspire) &&
+          String((intent && intent.job) || "").toLowerCase() === "add" &&
+          !String(acted.ask || "").trim() && typeof agentLine === "string" && agentLine) {
+        try {
+          const _shape = "\n\n(Reply with the JSON object. No prose.)";
+          const _base = agentLine.endsWith(_shape) ? agentLine.slice(0, -_shape.length) : agentLine;
+          const _redo = await proxyToAgent(env, _base + "\n\nYou are making a picture on their photo and `ask` " +
+            "is empty. The picture model sees only their photo and your `ask` - write it: everything " +
+            "decided so far, folded into one." + _shape,
+            false, me, null, world, null);
+          const _ra = (_redo && _redo.reply && !_redo.failed) ? readAct(_redo.reply) : null;
+          const _rask = _ra ? String(_ra.ask || "").trim() : "";
+          console.log("[ASK] redo: " + (_rask ? _rask.slice(0, 200) : ("still empty" + (_redo && _redo.failed ? " - " + String(_redo.failed).slice(0, 120) : ""))));
+          if (_rask) acted.ask = _rask;
+        } catch (e) { console.log("[ASK] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
       }
 
       // ══ A GO-AHEAD IS NOT A SECOND REQUEST (2026-09-16) ══════════════════════════════════

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.497.0-2026-10-01-her-print-size";
+const BUILD = "aura-core-v9.498.0-2026-10-01-photo-stays-on-body";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64309,8 +64309,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // she drew was on screen and the roster said changes start from it. On an add-on on their photo
       // that is false: every picture starts from the photo, and the picture model has never seen one
       // she made. So that is what she is told. The job is the one they chose (her brief on record).
-      const _photoChain = _bodyPhoto && !!refDesign && !(opts && opts.inspire) &&
-        String((carriedObj && carriedObj.job) || "").toLowerCase() === "add";
+      // Not on the turn the photo arrives - then she only says what she sees and asks what they want.
+      const _photoChain = _bodyPhoto && !!refDesign && refHeld && !(opts && opts.inspire) &&
+        !["cover", "rework"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase());
       const stateNote = _langNote + _projNote + _convNote + (_photoChain
         ? "\n\nEVERY PICTURE STARTS FROM THEIR PHOTO. The picture model sees only their photo and your " +
           "`ask` - it has never seen any picture you made."
@@ -65288,7 +65289,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // where the conversation stands. When she leaves it empty she is asked once to write it; their
       // lines go only if she still does not.
       if ((act === "draw" || act === "change") && _bodyPhoto && refDesign && !(opts && opts.inspire) &&
-          String((intent && intent.job) || "").toLowerCase() === "add" &&
+          !["cover", "rework"].includes(String((intent && intent.job) || "").toLowerCase()) &&
           !String(acted.ask || "").trim() && typeof agentLine === "string" && agentLine) {
         try {
           const _shape = "\n\n(Reply with the JSON object. No prose.)";
@@ -65395,10 +65396,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // it needs to come back on the body." When the photo in this tattoo is of them (not a catalogue
       // pick, an inspiration card or a tile), it is an add-on - unless she said cover-up or rework.
       // One picture on their photo, their words, then changes, then off the body for the artist.
-      // ══ THE PERSON CHOOSES THE JOB (2026-10-01, Aaron) ══════════════════════════════════════
-      // The block above forced "add" onto every photo of them. A picture arrives, she says what she
-      // sees and offers the four - add to it, cover it up, rework it, make something new from it -
-      // and the job is the one THEY choose, as she records it. Nothing here decides it for them.
+      // ══ RESTORED (2026-10-01, v9.498, Aaron) ═════════════════════════════════════════════════
+      // v9.493 removed this so "the person chooses the job". MEASURED (pta_437d980b756d2c92): "a full
+      // sleeve on my other arm... same vibe" - she understood it perfectly and wrote job "new", and that
+      // one word sent their photo to four-on-white. A label must never move a photo of their body off
+      // the body; what they want goes in her sentence. Cover-up and rework stay as she says.
+      if (_bodyPhoto && !["cover", "add", "rework"].includes(jobNow)) {
+        jobNow = "add";
+        if (intent && typeof intent === "object") intent.job = "add";
+      }
       // ══ ONLY THE FIRST ONE STARTS FROM THE PHOTOGRAPH (2026-09-08) ════════════════════════
       // MEASURED: the T-rex cover came out right, and then "make it stepping on a police car"
       // drew a WOMAN crouching on a car - no dinosaur at all. `from` was the same entity on both

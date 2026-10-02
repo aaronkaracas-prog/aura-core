@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.505.0-2026-10-01-one-sheet-her-size";
+const BUILD = "aura-core-v9.506.0-2026-10-01-read-every-photo-size";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60483,7 +60483,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         // portrait arm photo came back square - reshaped, and impossible to line up with the
         // original for the ink lock. "auto" keeps the shape of what it is editing.
         // The size is set below, once the first image is read - it keeps that image's shape.
-        let _sizeSent = "auto";
+        let _sizeSent = "auto", _firstHead = null;
         // THE INK LOCK MASK (2026-09-24): a PNG the size of the first image; see-through where the
         // model may paint (bare skin), solid where it may not (their existing ink, everything else).
         if (opts.mask) {
@@ -60536,6 +60536,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           attached++;
           if (attached === 1) {
             try {
+              _firstHead = Array.from(new Uint8Array(bytes).slice(0, 16)).map((x) => x.toString(16).padStart(2, "0")).join("");
               const _d = imageDimsOf(bytes);
               const _long = parseInt(_editSizeRaw, 10), _maxPx = parseInt(_editMaxPxRaw, 10) || 3686400;
               if (_d && _d.w > 0 && _d.h > 0 && Number.isFinite(_long) && _long >= 512) {
@@ -60549,7 +60550,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           }
         }
         fd.append("size", _sizeSent);
-        console.log("[IMG-SIZE] edit size=" + _sizeSent);
+        console.log("[IMG-SIZE] edit size=" + _sizeSent + (_sizeSent === "auto" && _firstHead ? " unreadable header=" + _firstHead : ""));
         // AN EDIT WITH NO PARENT IS NOT AN EDIT. Silently sending the request anyway is how a
         // "mouse beside the cat" came back as a different cat - the failure has to be the failure.
         if (!attached) throw new Error("could not read the parent image to edit: " + oRefs[0]);
@@ -63410,6 +63411,29 @@ function imageDimsOf(buf) {
         }
         if (m === 0xD8 || m === 0x01 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }
         i += 2 + ((u[i + 2] << 8) | u[i + 3]);
+      }
+    }
+    // ══ WEBP, GIF, AVIF/HEIC TOO (2026-10-01, v9.506, Aaron) ═══════════════════════════════════
+    // MEASURED: the crane photo's pictures went out at `size=auto` (small) while JPEG photos went out at
+    // 1632x2048 - this only read PNG and JPEG, and websites and phones send these as well.
+    const _tag = (o) => String.fromCharCode(u[o], u[o + 1], u[o + 2], u[o + 3]);
+    if (u.length > 30 && _tag(0) === "RIFF" && _tag(8) === "WEBP") {
+      const c = _tag(12);
+      if (c === "VP8 ") return { w: (u[26] | (u[27] << 8)) & 0x3FFF, h: (u[28] | (u[29] << 8)) & 0x3FFF };
+      if (c === "VP8L") return { w: 1 + (u[21] | ((u[22] & 0x3F) << 8)),
+                                 h: 1 + ((u[22] >> 6) | (u[23] << 2) | ((u[24] & 0x0F) << 10)) };
+      if (c === "VP8X") return { w: 1 + (u[24] | (u[25] << 8) | (u[26] << 16)),
+                                 h: 1 + (u[27] | (u[28] << 8) | (u[29] << 16)) };
+    }
+    if (u.length > 10 && _tag(0) === "GIF8") return { w: u[6] | (u[7] << 8), h: u[8] | (u[9] << 8) };
+    if (u.length > 16 && _tag(4) === "ftyp") {
+      // AVIF / HEIC: the image size is in the `ispe` box near the start of the file.
+      const lim = Math.min(u.length - 16, 65536);
+      for (let j = 8; j < lim; j++) {
+        if (u[j] === 0x69 && u[j + 1] === 0x73 && u[j + 2] === 0x70 && u[j + 3] === 0x65) {
+          const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+          return { w: dv.getUint32(j + 8), h: dv.getUint32(j + 12) };
+        }
       }
     }
   } catch {}

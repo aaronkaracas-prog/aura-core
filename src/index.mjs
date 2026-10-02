@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.514.0-2026-10-02-look-at-it";
+const BUILD = "aura-core-v9.515.0-2026-10-02-read-once";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64481,8 +64481,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // ("full-back tiger", "neo-traditional") overrides her own eyes.
       const seeing = refUrl && /^https?:\/\//i.test(String(refUrl));
       // Their photo rides on her turn until the first picture is drawn (v9.512) - known here, not only at the call.
-      const _photoRides = !!(seeing && refHeld &&
-        (!lastDrawn || (lastDrawn.design && refDesign && lastDrawn.design === refDesign)));
+      // ══ READ ONCE, THEN WORK FROM WHAT SHE SAW (2026-10-02, v9.515, Aaron) ══════════════════
+      // MEASURED (pta_285e8b3ad6c294ed, "give me four different ideas"): the photo-riding turn and a
+      // blind retry with no photo gave the same kind of ideas - all lions. A second read adds nothing:
+      // she told them what it is when it arrived, and that is in the conversation. Rereading only
+      // doubled the chance of a missed read and put "attached again" against "already described".
+      // The picture model still gets the photo direct when something is drawn.
+      const _photoRides = false;
       // COVER RULES FOR COVER-UPS (2026-09-22). MEASURED: asked to colour in her healed black-and-grey
       // back piece, she said "colour can't be laid over that black shading" - the cover-up doctrine
       // ("new ink mixes with the old... warm and pale tones bleed back through dark ink") was sent on

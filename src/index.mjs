@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.509.0-2026-10-01-cover-rework-like-addon";
+const BUILD = "aura-core-v9.510.0-2026-10-01-their-go-wins";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65278,7 +65278,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // she SAYS and what her action field says disagree, what she says wins. Only a question
       // about showing or drawing counts; "want to lock it in, or change something?" is her
       // close-out and never stops anything.
-      if (act === "draw" || act === "change") {
+      // ══ THEIR GO WINS (2026-10-01, v9.510, Aaron) ═════════════════════════════════════════════
+      // MEASURED (pta_7aa422680cc9169d): "Let's see your Japanese idea" - a go - and she wrote "Here it
+      // is ... Want to see it on you, or change something first?" Her close-out had the word "see", so
+      // this read it as her asking first and drew nothing, while she said "here it is" over nothing.
+      // When THEIR words this turn are a go, her wording never stops the picture.
+      const _theirGo = /\b(show me|show us|let'?s see|let me see|go for it|go ahead|do it|try it|try that|draw it|draw that|see (it|what|that|how)|looks? like)\b/i.test(String(said || ""));
+      if ((act === "draw" || act === "change") && !_theirGo) {
         const _sayNow = String(acted.say || said || "").trim();
         const _lastQ = (_sayNow.match(/[^.!?]*\?\s*$/) || [""])[0];
         if (_lastQ && /\b(show|draw|sketch|see|mock it up|picture it)\b/i.test(_lastQ)) {
@@ -65305,7 +65311,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         let _prevAura = "";
         for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _prevAura = String(tnow[i].said || ""); break; } }
         const _offered = /\b(show|draw|sketch|see|picture|mock)\b[^?]*\?\s*$/i.test(_prevAura.trim());
-        const _goWords = /\b(show me|show us|let'?s see|let me see|go for it|go ahead|do it|try it|try that|draw it|draw that|see (it|what|that|how)|looks? like)\b/i.test(_them);
+        const _goWords = _theirGo;
         const _yes = /^\s*(yes|yeah|yep|yup|sure|ok|okay|please|absolutely|definitely|of course|go)\b/i.test(_them);
         if (!(_goWords || (_offered && _yes))) {
           act = "none"; _goBlocked = true;

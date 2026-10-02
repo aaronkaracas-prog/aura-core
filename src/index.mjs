@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.511.0-2026-10-02-locked-means-finished";
+const BUILD = "aura-core-v9.512.0-2026-10-02-she-sees-their-photo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64820,8 +64820,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // everything that WRITES a person's chain - a lead has no chain until they say who they are.
       if (me) {
         try {
+          // ══ SHE LOOKS AT THEIR PHOTO UNTIL THE FIRST PICTURE IS MADE (2026-10-02, Aaron) ══════════
+          // MEASURED (pta_74d9cfa0e939be8f, pta_7f46ce6197fe124a): the photo was attached only on the
+          // turn it arrived, and aura-think sends only the current turn - so when they said "yeah it's
+          // mine, i wanna add to it" she was pitching ideas from her one-line note, not the tattoo, and
+          // they came out generic twice. While it is their photo on the table and nothing has been
+          // drawn from it yet, she sees it every turn. After the first picture the look turn shows her
+          // what she made, unchanged.
+          const _photoStill = !!(seeing && refHeld &&
+            (!lastDrawn || (lastDrawn.design && refDesign && lastDrawn.design === refDesign)));
           let proxied = await proxyToAgent(env, agentLine,
-            false, me, (seeing && !refHeld) ? refUrl : (_ownLook || null), world, _fwdDelta);
+            false, me, ((seeing && !refHeld) || _photoStill) ? refUrl : (_ownLook || null), world, _fwdDelta);
           // ══ HER BRAIN DROPPED THE TURN - ASK HER AGAIN, ONCE (2026-09-28) ══════════════════════
           // MEASURED twice on one test (pta_aeac9123b5e593b0, pta_c4fc584f7dba63cb), both on the photo
           // turn: aura-think answered 502 - "The brain returned an empty answer at rung L3" and "The
@@ -64832,7 +64841,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               /empty answer|interrupted|reset|isolate|http 50[0-9]/i.test(String((proxied && proxied.failed) || ""))) {
             try {
               const _again = await proxyToAgent(env, agentLine,
-                false, me, (seeing && !refHeld) ? refUrl : (_ownLook || null), world, _fwdDelta);
+                false, me, ((seeing && !refHeld) || _photoStill) ? refUrl : (_ownLook || null), world, _fwdDelta);
               if (_again && _again.reply && !_again.failed) proxied = _again;
             } catch {}
           }

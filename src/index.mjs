@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.515.0-2026-10-02-read-once";
+const BUILD = "aura-core-v9.516.0-2026-10-02-look-copy";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59293,6 +59293,43 @@ async function splitCardLeft(env, url, onlyWide) {
   return out;
 }
 
+// ══ A COPY SMALL ENOUGH FOR HER TO LOOK AT (2026-10-02, v9.516, Aaron) ══════════════════════════
+// MEASURED (pta_836d43e48cdff123): the lioness came back 2.8 MB. aura-think reads a picture from
+// KV and keeps it with her conversation, where Cloudflare caps one stored item at 2 MB - so it fell
+// back to the link, the look missed twice, and she praised shading she never saw. Her look gets a
+// copy at most 1024 px on the long side, as JPEG. The drawing itself is untouched - the person, the
+// artist files and everything else keep the full size. Anything that fails returns the original.
+async function lookCopy(env, url) {
+  try {
+    const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
+    if (!id) return url;
+    const was = await env.AURA_KV.get("lookcopy:" + id).catch(() => null);
+    if (was) return was;
+    const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+    if (!b64 || b64.length * 0.75 <= 1200 * 1024) return url;   // small enough as it is
+    const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    const W = im.get_width(), H = im.get_height();
+    const s = 1024 / Math.max(W, H);
+    let small = im;
+    if (s < 1) small = photonResize(im, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)), PhotonSampling.Lanczos3);
+    const bts = small.get_bytes_jpeg(85);
+    try { if (small !== im) small.free(); } catch {}
+    try { im.free(); } catch {}
+    let t = "";
+    for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+    const nid = "img_l" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
+      .map((x) => x.toString(16).padStart(2, "0")).join("");
+    await env.AURA_KV.put("image:" + nid, btoa(t), { expirationTtl: 7 * 24 * 3600 });
+    const out = "https://" + (await imageHost(env)) + "/image/" + nid;
+    await env.AURA_KV.put("lookcopy:" + id, out, { expirationTtl: 7 * 24 * 3600 }).catch(() => {});
+    console.log("[LOOKCOPY] " + id + " " + Math.round(b64.length * 0.75 / 1024) + " KB -> " + nid + " " + Math.round(bts.length / 1024) + " KB");
+    return out;
+  } catch (e) {
+    console.log("[LOOKCOPY] failed, original used: " + String(e?.message ?? e).slice(0, 160));
+    return url;
+  }
+}
+
 async function tatOwnerOf(env, leaf) {
   try {
     const t = await env.AURA_KV.get("card:tree", "json");
@@ -65948,6 +65985,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // WHAT IS NEW). Her check and her reaction are told it is a marker, not ink.
       const _lookAtResult = async (url, onBody, where, isGrid) => {
         if (!url || !me) return null;
+        url = await lookCopy(env, url);   // v9.516: a copy she can be handed; the drawing stays full size
         const body = !!(onBody && seeing && (await _checkOn("mockup")));
         const talk = await _checkOn("react");
         if (!body && !talk) return null;

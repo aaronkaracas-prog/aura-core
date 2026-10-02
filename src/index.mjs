@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.504.0-2026-10-01-made-from-the-picture";
+const BUILD = "aura-core-v9.505.0-2026-10-01-one-sheet-her-size";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62956,7 +62956,10 @@ async function makeArtistFiles(env, ctx) {
               // Sized per section, not once for the whole job - a forearm and a set of ribs do not
               // print at the same width, and PRINT caps to what the pixels and the paper allow.
               let shIn = 0;
-              const shKey = String(sh.panel || placeKey).toLowerCase();
+              // A sheet with no name is the whole job: it prints at the size already worked out above -
+              // her size first, the placement list only as the fallback (2026-10-01, v9.505). MEASURED
+              // (pta_4432bf7fbaf420ec): "about 3-4 inches" printed at 7in because "forearm" was looked up again.
+              const shKey = String(sh.panel || "").toLowerCase();
               for (const k of Object.keys(PLACEMENT_IN)) {
                 if (shKey.includes(k) && PLACEMENT_IN[k] > shIn) shIn = PLACEMENT_IN[k];
               }

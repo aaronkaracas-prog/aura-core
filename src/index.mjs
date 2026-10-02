@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.510.0-2026-10-01-their-go-wins";
+const BUILD = "aura-core-v9.511.0-2026-10-02-locked-means-finished";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63483,6 +63483,30 @@ async function recordArtistFiles(env, d, drew) {
   }
   if (d.project) await projectAppend(env, me, d.project, ok ? { files: artistFilesOf(drew), locked: true }
     : { files_failed: String((drew && (drew.failed || drew.error)) || "no files came back").slice(0, 200) });
+  // ══ LOCKED MEANS FINISHED (2026-10-02, Aaron) ══════════════════════════════════════════════
+  // MEASURED: after lock-in the locked tattoo stayed "the tattoo you are on now" - its photo, brief
+  // and last lines rode every later turn, so a new photo next visit was read as more of the old one
+  // and she suggested its flowers. Aaron: "welcome back, your last tattoo was amazing, what do you
+  // wanna do next". The files are made, so this is the same clear a fresh start already does; the
+  // locked piece then sits in THEIR EARLIER TATTOOS ("bring one up only if they do").
+  // Only if they are still on this tattoo - if they started a new one while the files were being
+  // made, that new start is theirs and is left alone.
+  if (ok && d.project) {
+    try {
+      const _cur = String((await talkStateGet(env, me, ["project"])).project || "").replace(/^"|"$/g, "");
+      if (!_cur || _cur === String(d.project)) {
+        // One direct write, the way TALK_RESET does it: the timeline's own save MERGES, so it can
+        // never empty it. Projects (My Tattoos) are NOT touched - the locked piece stays there.
+        await talkDo(env, me, "talkPut", [{
+          "talk-state:timeline": "[]", "talk-state:brief": "", "talk-state:last": "", "talk-state:ref": "",
+          "talk-state:design": "", "talk-state:onme": "", "talk-state:bad": "", "talk-state:split": "",
+          "talk-state:added": "", "talk-state:project": "" }]);
+        try { console.log("[FILES] locked in - " + d.project + " is finished; the next turn starts clean"); } catch {}
+      }
+    } catch (e) {
+      try { console.log("[FILES] clear after lock-in skipped: " + String(e?.message ?? e).slice(0, 160)); } catch {}
+    }
+  }
   if (d.stage === "pta") {
     try {
       await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({

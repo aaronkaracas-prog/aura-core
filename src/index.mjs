@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.513.0-2026-10-02-clean-turn-text";
+const BUILD = "aura-core-v9.514.0-2026-10-02-look-at-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64398,7 +64398,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // Not on the turn the photo arrives - then she only says what she sees and asks what they want.
       // Cover-up and rework are on the photo chain too (2026-10-01, v9.509, Aaron) - one path for every job.
       const _photoChain = _bodyPhoto && !!refDesign && refHeld && !(opts && opts.inspire);
-      const stateNote = _langNote + _projNote + _convNote + (_photoChain
+      // ONE LIST OF GO WORDS (2026-10-02, v9.514) - the draw guard below and the drawing notes read the same one.
+      const _GO_WORDS = /\b(show me|show us|let'?s see|let me see|go for it|go ahead|do it|try it|try that|draw it|draw that|see (it|what|that|how)|looks? like)\b/i;
+      const _goSaid = _GO_WORDS.test(String(said || ""));
+      // DRAWING NOTES ONLY WHEN THEY SAID GO (2026-10-02, v9.514, Aaron): on a talking turn these sat
+      // where her ideas should be - "every picture starts from their photo", "one picture, never four" -
+      // while nothing was being drawn. The draw guard already uses these words; so do the notes.
+      const _drawNotes = _photoChain && _goSaid;
+      const stateNote = _langNote + _projNote + _convNote + (_drawNotes
         ? "\n\nEVERY PICTURE STARTS FROM THEIR PHOTO. The picture model sees only their photo and the " +
           "paragraph in your brief - it has never seen any picture you made."
         : _drewNow()
@@ -64409,7 +64416,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // She kept offering "four takes" / "a few directions" on add-ons, where it is always one
         // picture. The v9.479 note that tried to fix this told her what to OFFER ("show it on them")
         // and steered her into the wrong action. This states only what is true of this tattoo.
-        (_photoChain ? "\n\nTHIS IS MADE FROM THEIR OWN PHOTO: it is shown as one picture, never four." : "");
+        (_drawNotes ? "\n\nTHIS IS MADE FROM THEIR OWN PHOTO: it is shown as one picture, never four." : "");
       const resetNote = (badStreak >= 2 && refDesign)
         ? "\n\nTHE LAST TWO PICTURES WERE WRONG. The next change starts again from their original " +
           "photograph: put EVERYTHING they still want into the one sentence in `prompt`."
@@ -64473,6 +64480,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // told what a 9B model thought is worse than nothing, because a confident wrong caption
       // ("full-back tiger", "neo-traditional") overrides her own eyes.
       const seeing = refUrl && /^https?:\/\//i.test(String(refUrl));
+      // Their photo rides on her turn until the first picture is drawn (v9.512) - known here, not only at the call.
+      const _photoRides = !!(seeing && refHeld &&
+        (!lastDrawn || (lastDrawn.design && refDesign && lastDrawn.design === refDesign)));
       // COVER RULES FOR COVER-UPS (2026-09-22). MEASURED: asked to colour in her healed black-and-grey
       // back piece, she said "colour can't be laid over that black shading" - the cover-up doctrine
       // ("new ink mixes with the old... warm and pale tones bleed back through dark ink") was sent on
@@ -64491,8 +64501,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // play, so she re-read the whole photograph to answer "put Nikki's name in it" - and this
             // line pointed her at `look_at_image`, which a customer conversation does not have. What
             // she saw is in the conversation, in her own words; the picture model gets the photo direct.
-            ? (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER is what you are working on. You described it " +
-                         "when it arrived - work from that."
+            ? (refHeld ? (_photoRides
+                         // LOOK, DON'T WORK FROM MEMORY (2026-10-02, v9.514, Aaron): the photo is attached again,
+                         // and this told her to work from her old one-line description of it instead.
+                         ? "THEIR PHOTOGRAPH IS ATTACHED TO THIS TURN AGAIN - it is what you are working on. Look at it."
+                         : "THE PHOTOGRAPH THEY SENT EARLIER is what you are working on. You described it " +
+                           "when it arrived - work from that.")
                        // ══ A FACT, NOT A JOB (2026-10-01, Aaron) ═══════════════════════════════════
                        // This told her, before anyone had chosen anything, to judge how well it was
                        // done and whether it was badly healed (the source of "healed well"), and gave
@@ -64836,8 +64850,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // they came out generic twice. While it is their photo on the table and nothing has been
           // drawn from it yet, she sees it every turn. After the first picture the look turn shows her
           // what she made, unchanged.
-          const _photoStill = !!(seeing && refHeld &&
-            (!lastDrawn || (lastDrawn.design && refDesign && lastDrawn.design === refDesign)));
+          const _photoStill = _photoRides;
           let proxied = await proxyToAgent(env, agentLine,
             false, me, ((seeing && !refHeld) || _photoStill) ? refUrl : (_ownLook || null), world, _fwdDelta);
           // ══ HER BRAIN DROPPED THE TURN - ASK HER AGAIN, ONCE (2026-09-28) ══════════════════════
@@ -65325,7 +65338,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // is ... Want to see it on you, or change something first?" Her close-out had the word "see", so
       // this read it as her asking first and drew nothing, while she said "here it is" over nothing.
       // When THEIR words this turn are a go, her wording never stops the picture.
-      const _theirGo = /\b(show me|show us|let'?s see|let me see|go for it|go ahead|do it|try it|try that|draw it|draw that|see (it|what|that|how)|looks? like)\b/i.test(String(said || ""));
+      const _theirGo = _goSaid;
       if ((act === "draw" || act === "change") && !_theirGo) {
         const _sayNow = String(acted.say || said || "").trim();
         const _lastQ = (_sayNow.match(/[^.!?]*\?\s*$/) || [""])[0];

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.507.0-2026-10-01-her-turn-cost";
+const BUILD = "aura-core-v9.508.0-2026-10-01-floor-contract-matches-think";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64208,7 +64208,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // suggested that they did not take up is not a fact.
         '  "brief": {\n' +
         '    "subject": "what the tattoo is OF, in their words",\n' +
-        '    "job": "new | cover | add | rework",\n' +
+        '    "job": "new | cover | add | rework | from",\n' +
         '    "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
         '    "colour": "full_colour | black_and_grey | muted",\n' +
         '    "composition": "what the picture is OF - head portrait, coiled, flying, a bouquet",\n' +
@@ -64218,7 +64218,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         '    "size": "how big, only if they said",\n' +
         '    "elements": ["cherry blossoms","waves"],\n' +
         '    "meaning": "why they are getting it - who it is for, what happened",\n' +
-        '    "brief": "one paragraph, at most 60 words, for a tattoo artist to read"\n' +
+        '    "brief": "one paragraph, at most 60 words: everything decided so far - where it goes, what it is, colour - this is what the picture is drawn from. Do not describe what is already in their photo; the picture model can see it"\n' +
         "  }\n" +
         "}\n\n" +
         // ══ THE DISCUSSION DECIDES WHEN, NOT YOU (2026-09-08) ════════════════════════════════
@@ -64893,7 +64893,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             "Return ONLY the JSON object. No preamble, no markdown fence.\n\n" +
             "{\n" +
             '  "subject": "what the tattoo is OF, in their words",\n' +
-            '  "job": "new | cover | add | rework",\n' +
+            '  "job": "new | cover | add | rework | from",\n' +
             '  "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
             '  "colour": "full_colour | black_and_grey | muted",\n' +
             '  "composition": "what the picture is OF - head portrait, coiled, flying, a bouquet",\n' +
@@ -64903,7 +64903,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             '  "size": "how big, only if they said",\n' +
             '  "elements": ["cherry blossoms","waves"],\n' +
             '  "meaning": "why they are getting it - who it is for, what happened",\n' +
-            '  "brief": "one paragraph, at most 60 words, for a tattoo artist to read"\n' +
+            '  "brief": "one paragraph, at most 60 words: everything decided so far - where it goes, what it is, colour - this is what the picture is drawn from. Do not describe what is already in their photo; the picture model can see it"\n' +
             "}\n\n" +
             (carried ? "WHAT IS ALREADY SETTLED - carry every one of these forward unless this " +
               "message CHANGES it:\n" + carried + "\n\n" : "") +

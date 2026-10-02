@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.512.0-2026-10-02-she-sees-their-photo";
+const BUILD = "aura-core-v9.513.0-2026-10-02-clean-turn-text";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63750,7 +63750,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       }
       const _projNote = me
         ? "\n\nTHE TATTOO YOU ARE ON NOW: " +
-          (_workPj && _workPj.title ? "\"" + _workPj.title + "\"" : "a new tattoo - nothing made for it yet") +
+          (_workPj && _workPj.title ? "\"" + _workPj.title + "\"" : "nothing made yet") +
           (_workPj && _workPj.started ? " (started " + String(_workPj.started).slice(0, 10) + ")" : "") +
           (_workPj && _workPj.locked ? ", locked in - their artist's files are made" : "") + "." +
           (_earlierPjs.length
@@ -64427,6 +64427,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           "\n\nTHE PICTURES ON FILE, AND WHAT TO CALL THEM IN `use`:\n" + picNames.join("\n") +
           "\nName them in the order the job needs. Leave `use` out and it starts from the last " +
           "picture you drew.") +
+          // ONLY ONCE THERE IS SOMETHING TO LOCK IN (2026-10-02, v9.513, Aaron): this paragraph rode on
+          // the very first turn - lock-in instructions while somebody was showing her a photo.
+          (!_drewNow() ? "" :
           // ══ NOBODY ASKS FOR A FLATTENED FILE (2026-09-10) ══════════════════════════════
           // Aaron: "no human's gonna say give it to me flattened so someone can print it out.
           // It's just going to be conversation - is this what you want for your tattoo art -
@@ -64439,7 +64442,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           "artwork alone with no body and no paper. `pieces` names the parts - \"the shoulder " +
           "cap\", \"the band above the elbow\", \"the forearm panel\" - one image each, because " +
           "an artist prints each one and places it on the curve of the limb. Never one sheet " +
-          "with several parts arranged on it, and never draw cut lines: the cutting is theirs."
+          "with several parts arranged on it, and never draw cut lines: the cutting is theirs.")
         : "";
 
       // ══ SAY WHAT YOU SEE BEFORE YOU ASK ANYTHING (2026-09-07) ═════════════════════════════
@@ -64453,7 +64456,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // what makes the next sentence worth trusting.
       // A photograph arrived and the eyes could not read it. Silence made her behave as though
       // nothing had been sent, which is worse than admitting it - they can see they sent it.
-      const refBlind = (refUrl && !refSaw)
+      // ══ NOT WHEN THE PHOTO IS ON HER TURN (2026-10-02, v9.513, Aaron) ══════════════════════════
+      // MEASURED with [SENT-TEXT]: "THE PHOTOGRAPH THEY JUST SENT IS ATTACHED TO THIS TURN." followed by
+      // "THEY SENT YOU A PHOTOGRAPH AND YOU COULD NOT SEE IT." `refSaw` is core's own caption reader,
+      // a different model - when it came back empty she was told she was blind while holding the photo.
+      // When the photo is a link she is handed, her own eyes decide; this is only for a photo that
+      // cannot reach her at all.
+      const refBlind = (refUrl && !refSaw && !/^https?:\/\//i.test(String(refUrl)))
         ? "\n\nTHEY SENT YOU A PHOTOGRAPH AND YOU COULD NOT SEE IT. Say so plainly and ask them " +
           "to tell you what is in it. Never pretend no picture arrived."
         : "";

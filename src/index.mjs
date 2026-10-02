@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.503.0-2026-10-01-read-what-she-wrote";
+const BUILD = "aura-core-v9.504.0-2026-10-01-made-from-the-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65058,7 +65058,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             intent = {
               // WHAT THEY ARE HERE FOR. Cover-up and add-to start from their own photo, which
               // is a different opening move, so this is worth knowing early.
-              job:         one(parsed.job, ["new", "cover", "add", "rework"]),
+              job:         one(parsed.job, ["new", "cover", "add", "rework", "from"]),
               // THE ONLY REQUIRED FIELD. Everything else is optional and she only stops for
               // what she does not already have.
               subject:     str(parsed.subject, 200),
@@ -65413,10 +65413,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // sleeve on my other arm... same vibe" - she understood it perfectly and wrote job "new", and that
       // one word sent their photo to four-on-white. A label must never move a photo of their body off
       // the body; what they want goes in her sentence. Cover-up and rework stay as she says.
-      if (_bodyPhoto && !["cover", "add", "rework"].includes(jobNow)) {
+      if (_bodyPhoto && !["cover", "add", "rework", "from"].includes(jobNow)) {
         jobNow = "add";
         if (intent && typeof intent === "object") intent.job = "add";
       }
+      // ══ THE PICTURE IS WHAT IT IS MADE FROM (2026-10-01, v9.504, Aaron) ═════════════════════════
+      // MEASURED (pta_3f0500a0ac85e2f7): a photo of a park arrived and was labelled `add` - every
+      // picture is treated as their body, so "turn it into a tattoo" would have been drawn ON the park.
+      // Aaron: whatever they send - a golf ball, a freeway, a child - she says what she sees and asks
+      // what they want to turn it into. Only she can tell a canvas from a subject, so she says so with
+      // job `from`: the picture is what the tattoo is made from, not where it goes. Then every picture
+      // starts from that original photo with one fixed opening and her brief, and comes back flat on
+      // white - off the body. Add, cover-up and rework on their photo are unchanged.
+      const _fromPic = jobNow === "from" && !!refDesign && !(opts && opts.inspire);
       // ══ ONLY THE FIRST ONE STARTS FROM THE PHOTOGRAPH (2026-09-08) ════════════════════════
       // MEASURED: the T-rex cover came out right, and then "make it stepping on a police car"
       // drew a WOMAN crouching on a car - no dinosaur at all. `from` was the same entity on both
@@ -65446,6 +65455,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (act === "draw" && refDesign && _bodyPhoto && jobNow === "add" && !(opts && opts.inspire)) {
         act = "change";
       }
+      // A picture made FROM their photo is also a change on that photo, every time (v9.504).
+      if (act === "draw" && _fromPic) act = "change";
 
       // ══ THE ARTIST'S SHEET - THE OPERATION, NOT A DESCRIPTION (2026-09-10) ═══════════════
       // Everything that failed at this job failed the same way: a model was asked to AUTHOR the
@@ -65935,7 +65946,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // hand a customer is worse than untidy - it is another shop's name on our work.
           const fromRef = !!(refDesign && lastDrawn.design === refDesign);
           const onTheirSkin = fromRef && ["cover", "add", "rework"].includes(jobNow);
-          const cleanUp = (!fromRef || (opts && opts.pick)) ? ""
+          const cleanUp = (!fromRef || (opts && opts.pick) || _fromPic) ? ""
             : onTheirSkin
               // Their own arm. The body stays exactly as it is - same limb, same skin, same
               // surrounding ink - and only the piece changes. For an add-on especially: the
@@ -65991,7 +66002,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // MEASURED: "without the mask" was drawn from the original photo again, not from the flat
           // design on screen - the words sent carried the lift-off sentence a second time. The streak
           // below had reached two because the body check (next) marks every flat picture WRONG.
-          const _resetToPhoto = badStreak >= 2 && !!refDesign && !(opts && opts.inspire);
+          const _resetToPhoto = badStreak >= 2 && !!refDesign && !(opts && opts.inspire) && !_fromPic;
           // ══ AN ADD-ON ALWAYS STARTS FROM THEIR PHOTO (2026-10-01, Aaron) ═══════════════════════
           // "If we keep working on revisions we'll never know what was done." Stacking edits carried
           // every drift forward - a garment, a wrong size, a touched original - and "make it that big"
@@ -66000,7 +66011,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // folded in). This was tried before (v9.271 reversed it) when a change sent only the delta;
           // the difference now is the whole description rides every time.
           const _addOnPhoto = String(jobNow || "") === "add" && _bodyPhoto && !!refDesign && !(opts && opts.inspire);
-          const parentId = _addOnPhoto ? refDesign
+          const parentId = (_addOnPhoto || _fromPic) ? refDesign
             : ((_drewNow() && !_resetToPhoto) ? lastDrawn.design : (refDesign || lastDrawn.design));
           const alsoRefs = [];
           // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════
@@ -66424,6 +66435,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               _wordsFrom = _b ? "her_brief" : (acted.ask ? "her_ask" : "her_prompt");
             }
           }
+          // ══ MADE FROM THE PICTURE: THE PHOTO, ONE OPENING, HER BRIEF (2026-10-01, v9.504, Aaron) ═══
+          // The opening is a setting (`config:frame:from`, "____" is her brief). Their lines never go.
+          if (_fromPic && parentId === refDesign && !_gridPick) {
+            let _openF = "Make this into tattoo artwork on its own, on a plain white background: ____";
+            try { const _k = String((await env.AURA_KV.get("config:frame:from")) || "").trim(); if (_k.includes("____")) _openF = _k; } catch {}
+            const _herF = String(brief || "").trim() || String(acted.ask || "").trim() || String(acted.prompt || "").trim();
+            if (_herF) {
+              _sentNow = _openF.replace("____", _herF.replace(/[\s]+$/, ""));
+              _herAsk = _herF;
+              _wordsFrom = String(brief || "").trim() ? "her_brief" : (acted.ask ? "her_ask" : "her_prompt");
+            }
+          }
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {
             try {
@@ -66518,7 +66541,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           if (me && cp && cp.ok && cp.image_url) {
             // A picture made from an inspiration photo is flat artwork, not their body - the check
             // "is every bit of the new ink on their skin" can only answer WRONG there (2026-09-26).
-            const _lkC = await _lookAtResult(cp.image_url, !(opts && opts.inspire));
+            const _lkC = await _lookAtResult(cp.image_url, !(opts && opts.inspire) && !_fromPic);
             if (_lkC && _lkC.verdict) _mockNote = _lkC.verdict;
             if (_lkC && _lkC.say) _reaction = _lkC.say;
           }

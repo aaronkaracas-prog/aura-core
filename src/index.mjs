@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.502.0-2026-10-01-new-work-sheet-never-silent";
+const BUILD = "aura-core-v9.503.0-2026-10-01-read-what-she-wrote";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63094,7 +63094,12 @@ function talkReadAct(txt) {
     catch { try { o = repairJson(String(txt || "")); } catch {} }
     if (o) o = unwrapSchema(o);
     if (!o || typeof o !== "object") return null;
-    const say = typeof o.say === "string" ? o.say.trim() : "";
+    // ══ READ WHAT SHE WROTE (2026-10-01, v9.503) ═════════════════════════════════════════════
+    // MEASURED (pta_68bfa0feb3429408): twice her answer was thrown away whole - once her words came
+    // under `reply`, once she wrote no `say` at all - and the turn became "I lost my train of
+    // thought" with nothing drawn. Her words under `reply` or `message` are her words.
+    const _sayRaw = [o.say, o.reply, o.message].find((v) => typeof v === "string" && v.trim());
+    const say = _sayRaw ? String(_sayRaw).trim() : "";
     if (!say) return null;
     const act = String(o.do || "none").trim().toLowerCase();
     // ══ A FIELD SHE CAN FILL AND NOBODY READS (2026-09-10) ═════════════════════════════
@@ -63129,8 +63134,10 @@ function talkReadAct(txt) {
              panels: strList(o.panels, 6, 200),
              // The world she is drawing in, by its exact name (2026-09-29).
              world: typeof o.world === "string" ? o.world.trim().slice(0, 80) : "",
+             // A brief written as one sentence instead of the block is kept as its paragraph.
              brief: (o.brief && typeof o.brief === "object" && !Array.isArray(o.brief))
-               ? o.brief : null };
+               ? o.brief
+               : (typeof o.brief === "string" && o.brief.trim() ? { brief: o.brief.trim().slice(0, 600) } : null) };
   }
 
 function talkUseOne(n, want, refDesign, refUrl, lastDrawn) {
@@ -64341,8 +64348,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const _photoChain = _bodyPhoto && !!refDesign && refHeld && !(opts && opts.inspire) &&
         !["cover", "rework"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase());
       const stateNote = _langNote + _projNote + _convNote + (_photoChain
-        ? "\n\nEVERY PICTURE STARTS FROM THEIR PHOTO. The picture model sees only their photo and your " +
-          "`brief` - it has never seen any picture you made."
+        ? "\n\nEVERY PICTURE STARTS FROM THEIR PHOTO. The picture model sees only their photo and the " +
+          "paragraph in your brief - it has never seen any picture you made."
         : _drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
@@ -66407,7 +66414,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // fixed opening (`config:frame:addon:brief`, "____" is her brief) and her brief. Nothing else.
             let _open = "This is my tattoo. Show me: ____";
             try { const _k = String((await env.AURA_KV.get("config:frame:addon:brief")) || "").trim(); if (_k.includes("____")) _open = _k; } catch {}
-            const _b = String(brief || "").trim();
+            // She sometimes copies the opening into her paragraph ("This is my tattoo. Show me: ...").
+            const _b = String(brief || "").trim()
+              .replace(/^\s*this is my (existing |current |original )?tattoo\.?\s*(show me:?\s*)?/i, "").trim();
             const _her = _b || String(acted.ask || "").trim() || String(acted.prompt || "").trim();
             if (_her) {
               _sentNow = _open.replace("____", _her.replace(/[\s]+$/, ""));

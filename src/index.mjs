@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.508.0-2026-10-01-floor-contract-matches-think";
+const BUILD = "aura-core-v9.509.0-2026-10-01-cover-rework-like-addon";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64372,8 +64372,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // that is false: every picture starts from the photo, and the picture model has never seen one
       // she made. So that is what she is told. The job is the one they chose (her brief on record).
       // Not on the turn the photo arrives - then she only says what she sees and asks what they want.
-      const _photoChain = _bodyPhoto && !!refDesign && refHeld && !(opts && opts.inspire) &&
-        !["cover", "rework"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase());
+      // Cover-up and rework are on the photo chain too (2026-10-01, v9.509, Aaron) - one path for every job.
+      const _photoChain = _bodyPhoto && !!refDesign && refHeld && !(opts && opts.inspire);
       const stateNote = _langNote + _projNote + _convNote + (_photoChain
         ? "\n\nEVERY PICTURE STARTS FROM THEIR PHOTO. The picture model sees only their photo and the " +
           "paragraph in your brief - it has never seen any picture you made."
@@ -64385,7 +64385,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // She kept offering "four takes" / "a few directions" on add-ons, where it is always one
         // picture. The v9.479 note that tried to fix this told her what to OFFER ("show it on them")
         // and steered her into the wrong action. This states only what is true of this tattoo.
-        (_photoChain ? "\n\nTHIS IS AN ADD-ON ON THEIR OWN PHOTO: it is shown as one picture, never four." : "");
+        (_photoChain ? "\n\nTHIS IS MADE FROM THEIR OWN PHOTO: it is shown as one picture, never four." : "");
       const resetNote = (badStreak >= 2 && refDesign)
         ? "\n\nTHE LAST TWO PICTURES WERE WRONG. The next change starts again from their original " +
           "photograph: put EVERYTHING they still want into the one sentence in `prompt`."
@@ -65481,7 +65481,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // more bouquets; the subject had changed, so the rule above did not apply and it went to a fresh
       // drawing off their body, with the new-design frame added. On an add-on on their photo every
       // picture is a change on their original photo (the parent is forced to it further down).
-      if (act === "draw" && refDesign && _bodyPhoto && jobNow === "add" && !(opts && opts.inspire)) {
+      if (act === "draw" && refDesign && _bodyPhoto && ["add", "cover", "rework"].includes(jobNow) && !(opts && opts.inspire)) {
         act = "change";
       }
       // A picture made FROM their photo is also a change on that photo, every time (v9.504).
@@ -66039,7 +66039,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // they sent, and the words are her ONE description of everything they want now (the change
           // folded in). This was tried before (v9.271 reversed it) when a change sent only the delta;
           // the difference now is the whole description rides every time.
-          const _addOnPhoto = String(jobNow || "") === "add" && _bodyPhoto && !!refDesign && !(opts && opts.inspire);
+          // Cover-up and rework start from their photo every time too (2026-10-01, v9.509, Aaron).
+          const _addOnPhoto = ["add", "cover", "rework"].includes(String(jobNow || "")) && _bodyPhoto && !!refDesign && !(opts && opts.inspire);
           const parentId = (_addOnPhoto || _fromPic) ? refDesign
             : ((_drewNow() && !_resetToPhoto) ? lastDrawn.design : (refDesign || lastDrawn.design));
           const alsoRefs = [];
@@ -66442,7 +66443,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // tattoo" went as typed and the model coloured the original forearm piece as well - one picture
           // of a tattooed arm does not say which part is new. She knew ("while the original forearm tattoo
           // stays black and grey"), so every add-on picture takes her sentence, not only the first.
-          if (String(jobNow || "") === "add" && _bodyPhoto && refDesign &&
+          if (["add", "cover", "rework"].includes(String(jobNow || "")) && _bodyPhoto && refDesign &&
               !_gridPick && !(opts && opts.inspire)) {
             // ══ HER BRIEF, ALWAYS (2026-10-01, v9.499, Aaron) ═════════════════════════════════════
             // MEASURED (pta_cecb3d1218d48755): on a change she left `ask` empty, was asked again, and left
@@ -66452,8 +66453,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // what they want does, and she already understands it - the brief is that understanding,
             // rewritten every turn with everything decided so far. So the picture is their photo, the
             // fixed opening (`config:frame:addon:brief`, "____" is her brief) and her brief. Nothing else.
-            let _open = "This is my tattoo. Show me: ____";
-            try { const _k = String((await env.AURA_KV.get("config:frame:addon:brief")) || "").trim(); if (_k.includes("____")) _open = _k; } catch {}
+            // ══ ONE OPENING PER JOB, EACH ITS OWN SETTING (2026-10-01, v9.509, Aaron) ══════════════════
+            // Cover-up and rework now go the add-on way: their photo, the job's opening, her brief.
+            const _jobK = String(jobNow || "");
+            const _openDefault = _jobK === "cover" ? "This is my tattoo. Show me it covered up with: ____"
+                               : _jobK === "rework" ? "This is my tattoo. Show me it reworked: ____"
+                               : "This is my tattoo. Show me: ____";
+            const _openKey = _jobK === "cover" ? "config:frame:cover:brief"
+                           : _jobK === "rework" ? "config:frame:rework:brief" : "config:frame:addon:brief";
+            let _open = _openDefault;
+            try { const _k = String((await env.AURA_KV.get(_openKey)) || "").trim(); if (_k.includes("____")) _open = _k; } catch {}
             // She sometimes copies the opening into her paragraph ("This is my tattoo. Show me: ...").
             const _b = String(brief || "").trim()
               .replace(/^\s*this is my (existing |current |original )?tattoo\.?\s*(show me:?\s*)?/i, "").trim();

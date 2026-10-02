@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.506.0-2026-10-01-read-every-photo-size";
+const BUILD = "aura-core-v9.507.0-2026-10-01-her-turn-cost";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64820,7 +64820,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             _herTurn = { handed_chars: String(agentLine || "").length, steps: _dr.steps ?? null,
               tokens_in: _dr.turn_tokens_in ?? null, cached_in: _dr.turn_cached_in ?? null,
               tokens_out: _dr.turn_tokens_out ?? null, calls: _dr.turn_provider_calls ?? null,
-              think_ms: proxied.think_ms ?? null, rung: proxied.rung || null };
+              think_ms: proxied.think_ms ?? null, rung: proxied.rung || null,
+              // What her turn cost, as aura-think priced it (2026-10-01, v9.507).
+              cost: _dr.turn_cost_at_door ?? null };
             acted = readAct(proxied.reply);
             // ══ THE CHEAPEST RUNG DOES NOT SPEAK JSON ══════════════════════════════════════
             // L0 is a fixed table and L1 is a cached answer - both return the sentence itself,

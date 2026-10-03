@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.521.0-2026-10-03-told-first-again";
+const BUILD = "aura-core-v9.522.0-2026-10-03-think-with-them";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64892,7 +64892,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const agentLine = hasLive
         ? "[A person is designing a tattoo with you on " + world + ".world. Answer as yourself, " +
           "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said +
-          (_notYet ? "\n\nThey have not asked to see anything yet, so nothing is drawn this turn - talk with them." : "") + SHAPE
+          (_notYet ? "\n\nThey have not asked to see anything yet, so nothing is drawn this turn - think with them." : "") + SHAPE
         : said;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.

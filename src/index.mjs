@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.527.0-2026-10-03-read-her-measure";
+const BUILD = "aura-core-v9.528.0-2026-10-03-whole-before-new";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62894,7 +62894,10 @@ async function makeArtistFiles(env, ctx) {
                 const _rawQ = String(q.reply || "");
                 _seeRaw = _rawQ.slice(0, 600);
                 const _meas = _ans + "\n" + _rawQ;
-                const _wm = _meas.match(/\bwhole\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i);
+                // MEASURED (pta_7ae5a467bd6d70d2): she wrote "28 in / new: 12 in" - the word "whole" left out.
+                // The number in front of "/ new" is the whole piece, however she labels it.
+                const _wm = _meas.match(/\bwhole\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i) ||
+                            _meas.match(/(\d+(?:\.\d+)?)\s*(?:in\b|inch\w*|")?[^0-9\n\/]{0,12}\/\s*new\b/i);
                 const _nm = _meas.match(/\bnew\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i);
                 if (_wm) _seeWhole = _ok(parseFloat(_wm[1]));
                 if (_nm) _seeNew = _ok(parseFloat(_nm[1]));

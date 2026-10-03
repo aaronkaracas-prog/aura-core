@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.523.0-2026-10-03-one-closing";
+const BUILD = "aura-core-v9.524.0-2026-10-03-she-measures";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62789,7 +62789,7 @@ async function makeArtistFiles(env, ctx) {
           // seam; told WHAT is new by name, it lifts it out. The name comes from what they asked to
           // add (saved at the first picture), put into a few words by her - the one question below.
           // Both sheets go to the artist: the whole piece always works, the new work is the stencil.
-          let _addSheets = null, _newWorkFail = null;
+          let _addSheets = null, _newWorkFail = null, _seeWhole = 0, _seeNew = 0;
           if (jobNow === "add" && refUrl && !alreadyFlat) {
             const _src = /^ent_/.test(String(shopParent || "")) ? shopParent
               : ((String(mockUrl).match(/\/image\/(img_[a-z0-9]+)/i) || [])[1] || shopParent);
@@ -62817,10 +62817,26 @@ async function makeArtistFiles(env, ctx) {
                 "[FOR YOU, NOT THEM. The artist sheet of only the NEW tattoo work is being drawn now." +
                 (_saved ? " What they asked for, in their words, in order:\n" + _saved.slice(-1200) + "\n" : "") +
                 " In a few words, name only the new tattoo work that was added to the tattoo they already" +
-                " had - for example \"the dragon with storm clouds\". Reply with only those words.]",
+                " had - for example \"the dragon with storm clouds\"." +
+                // ══ SHE MEASURES WHAT SHE SEES (2026-10-03, v9.524, Aaron) ═══════════════════════════
+                // MEASURED (pta_126bc8310a8397de): a hip-to-calf piece printed at 8in on 2 sheets - her notes
+                // had no size, so it fell to the default, and the new-work sheet printed at the same number
+                // as the whole piece. This is the one moment she is looking at the finished tattoo on their
+                // body; how much of the body it covers is right in front of her.
+                " Then, on a second line, from what you see on their body in this picture, the finished" +
+                " height in inches of the whole tattoo and of only the new work, written as" +
+                " whole: N in / new: N in. Reply with only those two lines.]",
                 false, me, mockUrl, world);
               if (q && q.reply && !q.failed) {
-                _name = String(_verdict(q.reply, readAct(q.reply)) || "").trim()
+                const _ans = String(_verdict(q.reply, readAct(q.reply)) || "");
+                const _wm = _ans.match(/whole\D{0,12}?(\d+(?:\.\d+)?)/i);
+                const _nm = _ans.match(/new\D{0,12}?(\d+(?:\.\d+)?)/i);
+                const _ok = (v) => (v >= 1 && v <= 48) ? Math.round(v * 10) / 10 : 0;
+                if (_wm) _seeWhole = _ok(parseFloat(_wm[1]));
+                if (_nm) _seeNew = _ok(parseFloat(_nm[1]));
+                try { console.log("[PRINT-SIZE] she measured on their body: whole=" + (_seeWhole || "?") + "in new=" + (_seeNew || "?") + "in"); } catch {}
+                _name = (_ans.split(/\r?\n/).map((x) => x.trim()).find((x) => x && !/^whole\b/i.test(x)) || "").trim()
+                  .replace(/\s*[-,;:(]?\s*whole\b.*$/i, "")
                   .replace(/^["'\s]+|["'.\s]+$/g, "").slice(0, 120) || null;
                 // "Draw only the dragon..." is the proven sentence; her answer arrives capitalised
                 // ("The coloured dragon..."). Only a leading The / A / An goes lower-case - a name
@@ -62860,6 +62876,10 @@ async function makeArtistFiles(env, ctx) {
               try { console.log("[FILES] " + _newWorkFail); } catch {}
             }
             if (!_addSheets.length) _addSheets = null;
+          }
+          if (_addSheets) for (const sh of _addSheets) {
+            if (sh.panel === "Whole piece" && _seeWhole) sh.seeIn = _seeWhole;
+            if (sh.panel === "New work" && _seeNew) sh.seeIn = _seeNew;
           }
           const sheets = _addSheets || [];
           const _checkSheets = await _checkOn("sheets");
@@ -62985,6 +63005,7 @@ async function makeArtistFiles(env, ctx) {
               }
               try { console.log("[PRINT-SIZE] her size=" + JSON.stringify(_szTxt) + " placement=" + JSON.stringify(placeKey) + " -> " + (inches || 8) + "in"); } catch {}
             }
+            if (_seeWhole) inches = _seeWhole;   // what she measured on the finished picture beats any guess
             if (!inches) inches = 8;   // a hand-sized default, and PRINT reports the real figure
             // ══ A PDF PER PANEL, AND THE COUNT HAS TO ADD UP (2026-09-15) ═════════════
             // MEASURED: `panel_count: 3` and `print_sheets: 1` in the same object, because PRINT
@@ -62999,12 +63020,12 @@ async function makeArtistFiles(env, ctx) {
               if (!sid) continue;
               // Sized per section, not once for the whole job - a forearm and a set of ribs do not
               // print at the same width, and PRINT caps to what the pixels and the paper allow.
-              let shIn = 0;
+              let shIn = sh.seeIn || 0;
               // A sheet with no name is the whole job: it prints at the size already worked out above -
               // her size first, the placement list only as the fallback (2026-10-01, v9.505). MEASURED
               // (pta_4432bf7fbaf420ec): "about 3-4 inches" printed at 7in because "forearm" was looked up again.
               const shKey = String(sh.panel || "").toLowerCase();
-              for (const k of Object.keys(PLACEMENT_IN)) {
+              if (!sh.seeIn) for (const k of Object.keys(PLACEMENT_IN)) {
                 if (shKey.includes(k) && PLACEMENT_IN[k] > shIn) shIn = PLACEMENT_IN[k];
               }
               if (!shIn) shIn = inches;
@@ -63049,6 +63070,8 @@ async function makeArtistFiles(env, ctx) {
               // single-panel job reads exactly as it did before this existed.
               ...(sheets.length > 1
                 ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
+                                                  inches: sh.inches || null, sheets: sh.sheets || null,
+                                                  measured: sh.seeIn || null,
                                                   line: sh.line || null,
                                                   pdf: sh.pdf || null,
                                                   ok: sh.ok === true,

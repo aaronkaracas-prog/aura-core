@@ -58,6 +58,18 @@ import { PhotonImage, crop as photonCrop, grayscale, gaussian_blur, threshold as
          resize as photonResize, SamplingFilter as PhotonSampling }
   from "@cf-wasm/photon";
 
+// ══ THE STENCIL TRACER (2026-10-03, v9.526, Aaron) ════════════════════════════════════════════════
+// potrace (GPL-2.0, Peter Selinger's algorithm, JS port by Iwasaki - npm `potrace` 2.1.8), bundled
+// with its image loader replaced: it takes raw RGBA from Photon, nothing else. 21KB, no node APIs.
+// WHY: one drawing is ~2,048px tall and PRINT will not print pixels under 150 DPI, so no sheet could
+// pass 13.6in - a full leg came out at 13.65in. Traced to vector, the line art is crisp at any size,
+// which is how stencil shops print large work. MEASURED on the sunflower sheet: 355ms to trace.
+// Server-side use only - nothing here is distributed.
+var __auraTracer=(()=>{var Ot=Object.defineProperty;var yr=Object.getOwnPropertyDescriptor;var dr=Object.getOwnPropertyNames;var cr=Object.prototype.hasOwnProperty;var it=(t,r)=>()=>{try{return r||t((r={exports:{}}).exports,r),r.exports}catch(a){throw r=0,a}},xr=(t,r)=>{for(var a in r)Ot(t,a,{get:r[a],enumerable:!0})},lr=(t,r,a,n)=>{if(r&&typeof r=="object"||typeof r=="function")for(let s of dr(r))!cr.call(t,s)&&s!==a&&Ot(t,s,{get:()=>r[s],enumerable:!(n=yr(r,s))||n.enumerable});return t};var mr=t=>lr(Ot({},"__esModule",{value:!0}),t);var pt=it((zr,Nt)=>{function Dt(t,r,a){this.bitmap={width:t,height:r,data:a}}Dt.prototype.scan=function(t,r,a,n,s){for(var d=r;d<r+n;d++)for(var h=t;h<t+a;h++)s.call(this,h,d,(d*this.bitmap.width+h)*4)};Nt.exports=Dt});var xt=it((Gr,Ht)=>{"use strict";function Pt(t,r){this.x=t||0,this.y=r||0}Pt.prototype={copy:function(){return new Pt(this.x,this.y)}};Ht.exports=Pt});var _t=it((Jr,St)=>{"use strict";var It=xt(),vt={};function pr(t){return vt[t]||(vt[t]=new RegExp(" "+t+'="((?:\\\\(?=")"|[^"])+)"',"i")),vt[t]}function vr(t,r,a){var n=" "+r+'="'+a+'"';return t.indexOf(" "+r+'="')===-1?t=t.replace(/<[a-z]+/i,function(s){return s+n}):t=t.replace(pr(r),n),t}function at(t){return t.toFixed(3).replace(".000","")}function wr(t,r){return t>=r?t%r:t>=0?t:r-1-(-1-t)%r}function _r(t,r){return t.x*r.y-t.y*r.x}function gr(t,r,a){return t<=a?t<=r&&r<a:t<=r||r<a}function Rt(t){return t>0?1:t<0?-1:0}function Ar(t,r){var a=new Array(3),n,s,d;for(a[0]=r.x,a[1]=r.y,a[2]=1,d=0,n=0;n<3;n++)for(s=0;s<3;s++)d+=a[n]*t.at(n,s)*a[s];return d}function br(t,r,a){var n=new It;return n.x=r.x+t*(a.x-r.x),n.y=r.y+t*(a.y-r.y),n}function Bt(t,r){var a=new It;return a.y=Rt(r.x-t.x),a.x=-Rt(r.y-t.y),a}function Tr(t,r){var a=Bt(t,r);return a.y*(r.x-t.x)-a.x*(r.y-t.y)}function Or(t,r,a){var n,s,d,h;return n=r.x-t.x,s=r.y-t.y,d=a.x-t.x,h=a.y-t.y,n*h-d*s}function wt(t,r,a,n){var s,d,h,g;return s=r.x-t.x,d=r.y-t.y,h=n.x-a.x,g=n.y-a.y,s*g-h*d}function Pr(t,r,a){var n,s,d,h;return n=r.x-t.x,s=r.y-t.y,d=a.x-t.x,h=a.y-t.y,n*d+s*h}function Rr(t,r,a,n){var s,d,h,g;return s=r.x-t.x,d=r.y-t.y,h=n.x-a.x,g=n.y-a.y,s*h+d*g}function Ir(t,r){return Math.sqrt((t.x-r.x)*(t.x-r.x)+(t.y-r.y)*(t.y-r.y))}St.exports={luminance:function(t,r,a){return Math.round(.2126*t+.7153*r+.0721*a)},between:function(t,r,a){return t>=r&&t<=a},clamp:function(t,r,a){return Math.min(a,Math.max(r,t))},isNumber:function(t){return typeof t=="number"},setHtmlAttr:vr,renderCurve:function(t,r){r=r||{x:1,y:1};var a=t.c[(t.n-1)*3+2],n=["M "+at(a.x*r.x)+" "+at(a.y*r.y)];return t.tag.forEach(function(s,d){var h=d*3,g=t.c[h],q=t.c[h+1],U=t.c[h+2];s==="CURVE"?n.push("C "+at(g.x*r.x)+" "+at(g.y*r.y)+", "+at(q.x*r.x)+" "+at(q.y*r.y)+", "+at(U.x*r.x)+" "+at(U.y*r.y)):s==="CORNER"&&n.push("L "+at(q.x*r.x)+" "+at(q.y*r.y)+" "+at(U.x*r.x)+" "+at(U.y*r.y))}),n.join(" ")},bezier:function(r,a,n,s,d){var h=1-r,g=new It;return g.x=h*h*h*a.x+3*(h*h*r)*n.x+3*(r*r*h)*s.x+r*r*r*d.x,g.y=h*h*h*a.y+3*(h*h*r)*n.y+3*(r*r*h)*s.y+r*r*r*d.y,g},tangent:function(r,a,n,s,d,h){var g,q,U,f,y,e,i,o,v,m;return g=wt(r,a,d,h),q=wt(a,n,d,h),U=wt(n,s,d,h),f=g-2*q+U,y=-2*g+2*q,e=g,i=y*y-4*f*e,f===0||i<0?-1:(o=Math.sqrt(i),v=(-y+o)/(2*f),m=(-y-o)/(2*f),v>=0&&v<=1?v:m>=0&&m<=1?m:-1)},mod:wr,xprod:_r,cyclic:gr,sign:Rt,quadform:Ar,interval:br,dorth_infty:Bt,ddenom:Tr,dpara:Or,cprod:wt,iprod:Pr,iprod1:Rr,ddist:Ir}});var Et=it((Wr,zt)=>{"use strict";var At=_t(),Ct=null;try{Ct=pt()}catch{}var Lr=kt(),X=256,gt=X-1;function nt(t,r){return X*t+r}function Lt(t,r){if(t=typeof t=="number"?At.clamp(Math.round(t),0,gt):0,r=typeof r=="number"?At.clamp(Math.round(r),0,gt):gt,t>r)throw new Error('Invalid range "'+t+"..."+r+'"');return[t,r]}function st(t,r){if(this.data=null,this.pixels=0,this._sortedIndexes=null,this._cachedStats={},this._lookupTableH=null,typeof t=="number")this._createArray(t);else if(t instanceof Lr)this._collectValuesBitmap(t);else if(Ct&&t instanceof Ct)this._collectValuesJimp(t,r);else throw new Error("Unsupported image source")}st.MODE_LUMINANCE="luminance";st.MODE_R="r";st.MODE_G="g";st.MODE_B="b";st.prototype={_createArray:function(t){var r=t<=Math.pow(2,8)?Uint8Array:t<=Math.pow(2,16)?Uint16Array:Uint32Array;return this.pixels=t,this.data=new r(X)},_collectValuesJimp:function(t,r){var a=t.bitmap.data,n=this._createArray(t.bitmap.width*t.bitmap.height);t.scan(0,0,t.bitmap.width,t.bitmap.height,function(s,d,h){var g=r===st.MODE_R?a[h]:r===st.MODE_G?a[h+1]:r===st.MODE_B?a[h+2]:At.luminance(a[h],a[h+1],a[h+2]);n[g]++})},_collectValuesBitmap:function(t){for(var r=this._createArray(t.size),a=t.data.length,n,s=0;s<a;s++)n=t.data[s],r[n]++},_getSortedIndexes:function(t){if(!t&&this._sortedIndexes)return this._sortedIndexes;var r=this.data,a=new Array(X),n=0;for(n;n<X;n++)a[n]=n;return a.sort(function(s,d){return r[s]>r[d]?1:r[s]<r[d]?-1:0}),this._sortedIndexes=a,a},_thresholdingBuildLookupTable:function(){var t=new Float64Array(X*X),r=new Float64Array(X*X),a=new Float64Array(X*X),n=this.pixels,s,d,h,g;for(s=1;s<X;++s)h=nt(s,s),g=this.data[s]/n,t[h]=g,r[h]=s*g;for(s=1;s<X-1;++s)g=this.data[s+1]/n,h=nt(1,s),t[h+1]=t[h]+g,r[h+1]=r[h]+(s+1)*g;for(s=2;s<X;s++)for(d=s+1;d<X;d++)t[nt(s,d)]=t[nt(1,d)]-t[nt(1,s-1)],r[nt(s,d)]=r[nt(1,d)]-r[nt(1,s-1)];for(s=1;s<X;++s)for(d=s+1;d<X;d++)h=nt(s,d),a[h]=t[h]!==0?r[h]*r[h]/t[h]:0;return this._lookupTableH=a},multilevelThresholding:function(t,r,a){if(r=Lt(r,a),a=r[1],r=r[0],t=Math.min(a-r-2,~~t),t<1)return[];this._lookupTableH||this._thresholdingBuildLookupTable();var n=this._lookupTableH,s=null,d=0;t>4&&console.log("[Warning]: Threshold computation for more than 5 levels may take a long time");function h(g,q,U,f){g=(g||0)+1,q=q||0,U=U||new Array(t),f=f||0;for(var y=f+1,e,i=g;i<a-t+f;i++)e=q+n[nt(g,i)],U[y-1]=i,y+1<t+1?h(i,e,U,y):(e+=n[nt(i+1,a)],d<e&&(d=e,s=U.slice()))}return h(r||0),s||[]},autoThreshold:function(t,r){var a=this.multilevelThresholding(1,t,r);return a.length?a[0]:null},getDominantColor:function(t,r,a){t=Lt(t,r),r=t[1],t=t[0],a=a||1;var n=this.data,s=-1,d=-1,h,g,q;if(t===r)return n[t]?t:-1;for(h=t;h<=r;h++){for(q=0,g=~~(a/-2);g<a;g++)q+=At.between(h+g,0,gt)?n[h+g]:0;var U=q>d,f=d===q&&(s<0||n[h]>n[s]);(U||f)&&(s=h,d=q)}return d<=0?-1:s},getStats:function(t,r,a){if(t=Lt(t,r),r=t[1],t=t[0],!a&&this._cachedStats[t+"-"+r])return this._cachedStats[t+"-"+r];var n=this.data,s=this._getSortedIndexes(),d=0,h=null,g,q,U,f,y=0,e=0,i=0,o,v,m,A=0,p=0;for(o=t;o<=r;o++)d+=n[o],i+=n[o]*o,A+=n[o]===0?0:1,p<n[o]&&(p=n[o]);for(g=i/d,U=d/(r-t),f=d/A,q=Math.floor(d/2),o=0;o<X;o++)m=s[o],v=n[m],!(m<t||m>r)&&(e+=v,y+=Math.pow(m-g,2)*v,h===null&&e>=q&&(h=m));return this._cachedStats[t+"-"+r]={levels:{mean:g,median:h,stdDev:Math.sqrt(y/d),unique:A},pixelsPerLevel:{mean:U,median:f,peak:p},pixels:d}}};zt.exports=st});var kt=it((Fr,Jt)=>{"use strict";var Gt=xt(),Ut=_t(),Cr;function qt(t,r){this._histogram=null,this.width=t,this.height=r,this.size=t*r,this.arrayBuffer=new ArrayBuffer(this.size),this.data=new Uint8Array(this.arrayBuffer)}Jt.exports=qt;Cr=Et();qt.prototype={getValueAt:function(t,r){var a=typeof t=="number"&&typeof r!="number"?t:this.pointToIndex(t,r);return this.data[a]},indexToPoint:function(t){var r=new Gt;return Ut.between(t,0,this.size)?(r.y=Math.floor(t/this.width),r.x=t-r.y*this.width):(r.x=-1,r.y=-1),r},pointToIndex:function(t,r){var a=t,n=r;return t instanceof Gt&&(a=t.x,n=t.y),!Ut.between(a,0,this.width)||!Ut.between(n,0,this.height)?-1:this.width*n+a},copy:function(t){var r=new qt(this.width,this.height),a=typeof t=="function",n;for(n=0;n<this.size;n++)r.data[n]=a?t(this.data[n],n):this.data[n];return r},histogram:function(){var t=Et();return this._histogram?this._histogram:(this._histogram=new t(this),this._histogram)}}});var Ft=it((Mr,Wt)=>{"use strict";function Er(t){this.n=t,this.tag=new Array(t),this.c=new Array(t*3),this.alphaCurve=0,this.vertex=new Array(t),this.alpha=new Array(t),this.alpha0=new Array(t),this.beta=new Array(t)}Wt.exports=Er});var Xt=it((Xr,Mt)=>{"use strict";function kr(){this.area=0,this.len=0,this.curve={},this.pt=[],this.minX=1e5,this.minY=1e5,this.maxX=-1,this.maxY=-1}Mt.exports=kr});var Zt=it((Qr,Kt)=>{"use strict";function Qt(){this.data=[0,0,0,0,0,0,0,0,0]}Qt.prototype.at=function(t,r){return this.data[t*3+r]};Kt.exports=Qt});var jt=it((Kr,$t)=>{"use strict";function Ur(t,r,a,n,s){this.x=t,this.y=r,this.xy=a,this.x2=n,this.y2=s}$t.exports=Ur});var er=it((Zr,rr)=>{"use strict";var tr=xt();function qr(){this.pen=0,this.c=[new tr,new tr],this.t=0,this.s=0,this.alpha=0}rr.exports=qr});var fr=it(($r,hr)=>{"use strict";var ar=pt(),Vr=kt(),ir=Ft(),et=xt(),Yr=Xt(),nr=Zt(),or=jt(),sr=er(),u=_t();function D(t){this._luminanceData=null,this._pathlist=[],this._imageLoadingIdentifier=null,this._imageLoaded=!1,this._processed=!1,this._params={turnPolicy:D.TURNPOLICY_MINORITY,turdSize:2,alphaMax:1,optCurve:!0,optTolerance:.2,threshold:D.THRESHOLD_AUTO,blackOnWhite:!0,color:D.COLOR_AUTO,background:D.COLOR_TRANSPARENT,width:null,height:null},t&&this.setParameters(t)}D.COLOR_AUTO="auto";D.COLOR_TRANSPARENT="transparent";D.THRESHOLD_AUTO=-1;D.TURNPOLICY_BLACK="black";D.TURNPOLICY_WHITE="white";D.TURNPOLICY_LEFT="left";D.TURNPOLICY_RIGHT="right";D.TURNPOLICY_MINORITY="minority";D.TURNPOLICY_MAJORITY="majority";var ur=[D.TURNPOLICY_BLACK,D.TURNPOLICY_WHITE,D.TURNPOLICY_LEFT,D.TURNPOLICY_RIGHT,D.TURNPOLICY_MINORITY,D.TURNPOLICY_MAJORITY];D.prototype={_bmToPathlist:function(){var t=this,r=this._params.threshold,a=this._params.blackOnWhite,n,s=new et(0,0),d;r===D.THRESHOLD_AUTO&&(r=this._luminanceData.histogram().autoThreshold()||128),n=this._luminanceData.copy(function(f){var y=a?f>r:f<r;return y?0:1});function h(f){for(var y=n.pointToIndex(f);y<n.size&&n.data[y]!==1;)y++;return y<n.size&&n.indexToPoint(y)}function g(f,y){var e,i,o;for(e=2;e<5;e++){for(o=0,i=-e+1;i<=e-1;i++)o+=n.getValueAt(f+i,y+e-1)?1:-1,o+=n.getValueAt(f+e-1,y+i-1)?1:-1,o+=n.getValueAt(f+i-1,y-e)?1:-1,o+=n.getValueAt(f-e,y+i)?1:-1;if(o>0)return 1;if(o<0)return 0}return 0}function q(f){var y=new Yr,e=f.x,i=f.y,o=0,v=1,m;for(y.sign=n.getValueAt(f.x,f.y)?"+":"-";y.pt.push(new et(e,i)),e>y.maxX&&(y.maxX=e),e<y.minX&&(y.minX=e),i>y.maxY&&(y.maxY=i),i<y.minY&&(y.minY=i),y.len++,e+=o,i+=v,y.area-=e*v,!(e===f.x&&i===f.y);){var A=n.getValueAt(e+(o+v-1)/2,i+(v-o-1)/2),p=n.getValueAt(e+(o-v-1)/2,i+(v+o-1)/2);p&&!A?t._params.turnPolicy==="right"||t._params.turnPolicy==="black"&&y.sign==="+"||t._params.turnPolicy==="white"&&y.sign==="-"||t._params.turnPolicy==="majority"&&g(e,i)||t._params.turnPolicy==="minority"&&!g(e,i)?(m=o,o=-v,v=m):(m=o,o=v,v=-m):p?(m=o,o=-v,v=m):A||(m=o,o=v,v=-m)}return y}function U(f){var y=f.pt[0].y,e=f.len,i,o,v,m,A,p,I;for(A=1;A<e;A++)if(i=f.pt[A].x,o=f.pt[A].y,o!==y){for(m=y<o?y:o,v=f.maxX,p=i;p<v;p++)I=n.pointToIndex(p,m),n.data[I]=n.data[I]?0:1;y=o}}for(this._pathlist=[];s=h(s);)d=q(s),U(d),d.area>t._params.turdSize&&this._pathlist.push(d)},_processPath:function(){var t=this;function r(f){var y,e,i;f.x0=f.pt[0].x,f.y0=f.pt[0].y,f.sums=[];var o=f.sums;for(o.push(new or(0,0,0,0,0)),y=0;y<f.len;y++)e=f.pt[y].x-f.x0,i=f.pt[y].y-f.y0,o.push(new or(o[y].x+e,o[y].y+i,o[y].xy+e*i,o[y].x2+e*e,o[y].y2+i*i))}function a(f){var y=f.len,e=f.pt,i,o=new Array(y),v=new Array(y),m=new Array(4);f.lon=new Array(y);var A=[new et,new et],p=new et,I=new et,l=new et,c,b,w,k,P,E,L,x,_=0;for(b=y-1;b>=0;b--)e[b].x!=e[_].x&&e[b].y!=e[_].y&&(_=b+1),v[b]=_;for(b=y-1;b>=0;b--){for(m[0]=m[1]=m[2]=m[3]=0,i=(3+3*(e[u.mod(b+1,y)].x-e[b].x)+(e[u.mod(b+1,y)].y-e[b].y))/2,m[i]++,A[0].x=0,A[0].y=0,A[1].x=0,A[1].y=0,_=v[b],k=b;;){if(c=0,i=(3+3*u.sign(e[_].x-e[k].x)+u.sign(e[_].y-e[k].y))/2,m[i]++,m[0]&&m[1]&&m[2]&&m[3]){o[b]=k,c=1;break}if(p.x=e[_].x-e[b].x,p.y=e[_].y-e[b].y,u.xprod(A[0],p)<0||u.xprod(A[1],p)>0||(Math.abs(p.x)<=1&&Math.abs(p.y)<=1||(I.x=p.x+(p.y>=0&&(p.y>0||p.x<0)?1:-1),I.y=p.y+(p.x<=0&&(p.x<0||p.y<0)?1:-1),u.xprod(A[0],I)>=0&&(A[0].x=I.x,A[0].y=I.y),I.x=p.x+(p.y<=0&&(p.y<0||p.x<0)?1:-1),I.y=p.y+(p.x>=0&&(p.x>0||p.y<0)?1:-1),u.xprod(A[1],I)<=0&&(A[1].x=I.x,A[1].y=I.y)),k=_,_=v[k],!u.cyclic(_,b,k)))break}c===0&&(l.x=u.sign(e[_].x-e[k].x),l.y=u.sign(e[_].y-e[k].y),p.x=e[k].x-e[b].x,p.y=e[k].y-e[b].y,P=u.xprod(A[0],p),E=u.xprod(A[0],l),L=u.xprod(A[1],p),x=u.xprod(A[1],l),w=1e7,E<0&&(w=Math.floor(P/-E)),x>0&&(w=Math.min(w,Math.floor(-L/x))),o[b]=u.mod(k+w,y))}for(w=o[y-1],f.lon[y-1]=w,b=y-2;b>=0;b--)u.cyclic(b+1,o[b],w)&&(w=o[b]),f.lon[b]=w;for(b=y-1;u.cyclic(u.mod(b+1,y),w,f.lon[b]);b--)f.lon[b]=w}function n(f){function y(E,L,x){var _=E.len,H=E.pt,C=E.sums,j,Z,V,z,B,Q,ut,K,Y,S,R,O,T,$,tt=0;return x>=_&&(x-=_,tt=1),tt===0?(j=C[x+1].x-C[L].x,Z=C[x+1].y-C[L].y,z=C[x+1].x2-C[L].x2,V=C[x+1].xy-C[L].xy,B=C[x+1].y2-C[L].y2,Q=x+1-L):(j=C[x+1].x-C[L].x+C[_].x,Z=C[x+1].y-C[L].y+C[_].y,z=C[x+1].x2-C[L].x2+C[_].x2,V=C[x+1].xy-C[L].xy+C[_].xy,B=C[x+1].y2-C[L].y2+C[_].y2,Q=x+1-L+_),R=(H[L].x+H[x].x)/2-H[0].x,O=(H[L].y+H[x].y)/2-H[0].y,$=H[x].x-H[L].x,T=-(H[x].y-H[L].y),ut=(z-2*j*R)/Q+R*R,K=(V-j*O-Z*R)/Q+R*O,Y=(B-2*Z*O)/Q+O*O,S=T*T*ut+2*T*$*K+$*$*Y,Math.sqrt(S)}var e,i,o,v,m=f.len,A=new Array(m+1),p=new Array(m+1),I=new Array(m),l=new Array(m+1),c=new Array(m+1),b=new Array(m+1),w,k,P;for(e=0;e<m;e++)P=u.mod(f.lon[u.mod(e-1,m)]-1,m),P==e&&(P=u.mod(e+1,m)),P<e?I[e]=m:I[e]=P;for(i=1,e=0;e<m;e++)for(;i<=I[e];)l[i]=e,i++;for(e=0,i=0;e<m;i++)c[i]=e,e=I[e];for(c[i]=m,o=i,e=m,i=o;i>0;i--)b[i]=e,e=l[e];for(b[0]=0,A[0]=0,i=1;i<=o;i++)for(e=b[i];e<=c[i];e++){for(k=-1,v=c[i-1];v>=l[e];v--)w=y(f,v,e)+A[v],(k<0||w<k)&&(p[e]=v,k=w);A[e]=k}for(f.m=o,f.po=new Array(o),e=m,i=o-1;e>0;i--)e=p[e],f.po[i]=e}function s(f){function y(ut,K,Y,S,R){for(var O=ut.len,T=ut.sums,$,tt,ht,ft,yt,G,N,J,W,rt,F,M=0;Y>=O;)Y-=O,M+=1;for(;K>=O;)K-=O,M-=1;for(;Y<0;)Y+=O,M-=1;for(;K<0;)K+=O,M+=1;$=T[Y+1].x-T[K].x+M*T[O].x,tt=T[Y+1].y-T[K].y+M*T[O].y,ht=T[Y+1].x2-T[K].x2+M*T[O].x2,ft=T[Y+1].xy-T[K].xy+M*T[O].xy,yt=T[Y+1].y2-T[K].y2+M*T[O].y2,G=Y+1-K+M*O,S.x=$/G,S.y=tt/G,N=(ht-$*$/G)/G,J=(ft-$*tt/G)/G,W=(yt-tt*tt/G)/G,rt=(N+W+Math.sqrt((N-W)*(N-W)+4*J*J))/2,N-=rt,W-=rt,Math.abs(N)>=Math.abs(W)?(F=Math.sqrt(N*N+J*J),F!==0&&(R.x=-J/F,R.y=N/F)):(F=Math.sqrt(W*W+J*J),F!==0&&(R.x=-W/F,R.y=J/F)),F===0&&(R.x=R.y=0)}var e=f.m,i=f.po,o=f.len,v=f.pt,m=f.x0,A=f.y0,p=new Array(e),I=new Array(e),l=new Array(e),c=new Array(3),b,w,k,P,E,L=new et;for(f.curve=new ir(e),w=0;w<e;w++)k=i[u.mod(w+1,e)],k=u.mod(k-i[w],o)+i[w],p[w]=new et,I[w]=new et,y(f,i[w],k,p[w],I[w]);for(w=0;w<e;w++)if(l[w]=new nr,b=I[w].x*I[w].x+I[w].y*I[w].y,b===0)for(k=0;k<3;k++)for(P=0;P<3;P++)l[w].data[k*3+P]=0;else for(c[0]=I[w].y,c[1]=-I[w].x,c[2]=-c[1]*p[w].y-c[0]*p[w].x,E=0;E<3;E++)for(P=0;P<3;P++)l[w].data[E*3+P]=c[E]*c[P]/b;var x,_,H,C,j,Z,V,z,B,Q;for(w=0;w<e;w++){for(x=new nr,_=new et,L.x=v[i[w]].x-m,L.y=v[i[w]].y-A,k=u.mod(w-1,e),E=0;E<3;E++)for(P=0;P<3;P++)x.data[E*3+P]=l[k].at(E,P)+l[w].at(E,P);for(;;){if(j=x.at(0,0)*x.at(1,1)-x.at(0,1)*x.at(1,0),j!==0){_.x=(-x.at(0,2)*x.at(1,1)+x.at(1,2)*x.at(0,1))/j,_.y=(x.at(0,2)*x.at(1,0)-x.at(1,2)*x.at(0,0))/j;break}for(x.at(0,0)>x.at(1,1)?(c[0]=-x.at(0,1),c[1]=x.at(0,0)):x.at(1,1)?(c[0]=-x.at(1,1),c[1]=x.at(1,0)):(c[0]=1,c[1]=0),b=c[0]*c[0]+c[1]*c[1],c[2]=-c[1]*L.y-c[0]*L.x,E=0;E<3;E++)for(P=0;P<3;P++)x.data[E*3+P]+=c[E]*c[P]/b}if(H=Math.abs(_.x-L.x),C=Math.abs(_.y-L.y),H<=.5&&C<=.5){f.curve.vertex[w]=new et(_.x+m,_.y+A);continue}if(Z=u.quadform(x,L),z=L.x,B=L.y,x.at(0,0)!==0)for(Q=0;Q<2;Q++)_.y=L.y-.5+Q,_.x=-(x.at(0,1)*_.y+x.at(0,2))/x.at(0,0),H=Math.abs(_.x-L.x),V=u.quadform(x,_),H<=.5&&V<Z&&(Z=V,z=_.x,B=_.y);if(x.at(1,1)!==0)for(Q=0;Q<2;Q++)_.x=L.x-.5+Q,_.y=-(x.at(1,0)*_.x+x.at(1,2))/x.at(1,1),C=Math.abs(_.y-L.y),V=u.quadform(x,_),C<=.5&&V<Z&&(Z=V,z=_.x,B=_.y);for(E=0;E<2;E++)for(P=0;P<2;P++)_.x=L.x-.5+E,_.y=L.y-.5+P,V=u.quadform(x,_),V<Z&&(Z=V,z=_.x,B=_.y);f.curve.vertex[w]=new et(z+m,B+A)}}function d(f){var y=f.curve,e=y.n,i=y.vertex,o,v,m;for(o=0,v=e-1;o<v;o++,v--)m=i[o],i[o]=i[v],i[v]=m}function h(f){var y=f.curve.n,e=f.curve,i,o,v,m,A,p,I,l,c;for(i=0;i<y;i++)o=u.mod(i+1,y),v=u.mod(i+2,y),c=u.interval(1/2,e.vertex[v],e.vertex[o]),A=u.ddenom(e.vertex[i],e.vertex[v]),A!==0?(m=u.dpara(e.vertex[i],e.vertex[o],e.vertex[v])/A,m=Math.abs(m),p=m>1?1-1/m:0,p=p/.75):p=4/3,e.alpha0[o]=p,p>=t._params.alphaMax?(e.tag[o]="CORNER",e.c[3*o+1]=e.vertex[o],e.c[3*o+2]=c):(p<.55?p=.55:p>1&&(p=1),I=u.interval(.5+.5*p,e.vertex[i],e.vertex[o]),l=u.interval(.5+.5*p,e.vertex[v],e.vertex[o]),e.tag[o]="CURVE",e.c[3*o+0]=I,e.c[3*o+1]=l,e.c[3*o+2]=c),e.alpha[o]=p,e.beta[o]=.5;e.alphaCurve=1}function g(f){function y(Z,V,z,B,Q,ut,K){var Y=Z.curve.n,S=Z.curve,R=S.vertex,O,T,$,tt,ht,ft,yt,G,N,J,W,rt,F,M,dt,bt,Vt,lt,ct,mt,Yt,Tt,ot;if(V==z||(O=V,ht=u.mod(V+1,Y),T=u.mod(O+1,Y),tt=ut[T],tt===0))return 1;for(G=u.ddist(R[V],R[ht]),O=T;O!=z;O=T)if(T=u.mod(O+1,Y),$=u.mod(O+2,Y),ut[T]!=tt||u.sign(u.cprod(R[V],R[ht],R[T],R[$]))!=tt||u.iprod1(R[V],R[ht],R[T],R[$])<G*u.ddist(R[T],R[$])*-.999847695156)return 1;if(W=S.c[u.mod(V,Y)*3+2].copy(),rt=R[u.mod(V+1,Y)].copy(),F=R[u.mod(z,Y)].copy(),M=S.c[u.mod(z,Y)*3+2].copy(),ft=K[z]-K[V],ft-=u.dpara(R[0],S.c[V*3+2],S.c[z*3+2])/2,V>=z&&(ft+=K[Y]),lt=u.dpara(W,rt,F),ct=u.dpara(W,rt,M),mt=u.dpara(W,F,M),Yt=lt+mt-ct,ct==lt||(ot=mt/(mt-Yt),Tt=ct/(ct-lt),bt=ct*ot/2,bt===0))return 1;for(Vt=ft/bt,yt=2-Math.sqrt(4-Vt/.3),B.c[0]=u.interval(ot*yt,W,rt),B.c[1]=u.interval(Tt*yt,M,F),B.alpha=yt,B.t=ot,B.s=Tt,rt=B.c[0].copy(),F=B.c[1].copy(),B.pen=0,O=u.mod(V+1,Y);O!=z;O=T){if(T=u.mod(O+1,Y),ot=u.tangent(W,rt,F,M,R[O],R[T]),ot<-.5||(dt=u.bezier(ot,W,rt,F,M),G=u.ddist(R[O],R[T]),G===0)||(N=u.dpara(R[O],R[T],dt)/G,Math.abs(N)>Q)||u.iprod(R[O],R[T],dt)<0||u.iprod(R[T],R[O],dt)<0)return 1;B.pen+=N*N}for(O=V;O!=z;O=T){if(T=u.mod(O+1,Y),ot=u.tangent(W,rt,F,M,S.c[O*3+2],S.c[T*3+2]),ot<-.5||(dt=u.bezier(ot,W,rt,F,M),G=u.ddist(S.c[O*3+2],S.c[T*3+2]),G===0)||(N=u.dpara(S.c[O*3+2],S.c[T*3+2],dt)/G,J=u.dpara(S.c[O*3+2],S.c[T*3+2],R[T])/G,J*=.75*S.alpha[T],J<0&&(N=-N,J=-J),N<J-Q))return 1;N<J&&(B.pen+=(N-J)*(N-J))}return 0}var e=f.curve,i=e.n,o=e.vertex,v=new Array(i+1),m=new Array(i+1),A=new Array(i+1),p=new Array(i+1),I,l,c,b,w=new sr,k,P,E,L,x,_,H,C=new Array(i),j=new Array(i+1);for(l=0;l<i;l++)e.tag[l]=="CURVE"?C[l]=u.sign(u.dpara(o[u.mod(l-1,i)],o[l],o[u.mod(l+1,i)])):C[l]=0;for(E=0,j[0]=0,k=e.vertex[0],l=0;l<i;l++)P=u.mod(l+1,i),e.tag[P]=="CURVE"&&(L=e.alpha[P],E+=.3*L*(4-L)*u.dpara(e.c[l*3+2],o[P],e.c[P*3+2])/2,E+=u.dpara(k,e.c[l*3+2],e.c[P*3+2])/2),j[l+1]=E;for(v[0]=-1,m[0]=0,A[0]=0,c=1;c<=i;c++)for(v[c]=c-1,m[c]=m[c-1],A[c]=A[c-1]+1,l=c-2;l>=0&&(b=y(f,l,u.mod(c,i),w,t._params.optTolerance,C,j),!b);l--)(A[c]>A[l]+1||A[c]==A[l]+1&&m[c]>m[l]+w.pen)&&(v[c]=l,m[c]=m[l]+w.pen,A[c]=A[l]+1,p[c]=w,w=new sr);for(I=A[i],x=new ir(I),_=new Array(I),H=new Array(I),c=i,l=I-1;l>=0;l--)v[c]==c-1?(x.tag[l]=e.tag[u.mod(c,i)],x.c[l*3+0]=e.c[u.mod(c,i)*3+0],x.c[l*3+1]=e.c[u.mod(c,i)*3+1],x.c[l*3+2]=e.c[u.mod(c,i)*3+2],x.vertex[l]=e.vertex[u.mod(c,i)],x.alpha[l]=e.alpha[u.mod(c,i)],x.alpha0[l]=e.alpha0[u.mod(c,i)],x.beta[l]=e.beta[u.mod(c,i)],_[l]=H[l]=1):(x.tag[l]="CURVE",x.c[l*3+0]=p[c].c[0],x.c[l*3+1]=p[c].c[1],x.c[l*3+2]=e.c[u.mod(c,i)*3+2],x.vertex[l]=u.interval(p[c].s,e.c[u.mod(c,i)*3+2],o[u.mod(c,i)]),x.alpha[l]=p[c].alpha,x.alpha0[l]=p[c].alpha,_[l]=p[c].s,H[l]=p[c].t),c=v[c];for(l=0;l<I;l++)P=u.mod(l+1,I),x.beta[l]=_[l]/(_[l]+H[P]);x.alphaCurve=1,f.curve=x}for(var q=0;q<this._pathlist.length;q++){var U=this._pathlist[q];r(U),a(U),n(U),s(U),U.sign==="-"&&d(U),h(U),t._params.optCurve&&g(U)}},_validateParameters:function(t){if(t&&t.turnPolicy&&ur.indexOf(t.turnPolicy)===-1){var r="'"+ur.join("', '")+"'";throw new Error("Bad turnPolicy value. Allowed values are: "+r)}if(t&&t.threshold!=null&&t.threshold!==D.THRESHOLD_AUTO&&(typeof t.threshold!="number"||!u.between(t.threshold,0,255)))throw new Error("Bad threshold value. Expected to be an integer in range 0..255");if(t&&t.optCurve!=null&&typeof t.optCurve!="boolean")throw new Error("'optCurve' must be Boolean")},_processLoadedImage:function(t){var r=new Vr(t.bitmap.width,t.bitmap.height),a=t.bitmap.data;t.scan(0,0,t.bitmap.width,t.bitmap.height,function(n,s,d){var h=a[d+3]/255,g=255+(a[d+0]-255)*h,q=255+(a[d+1]-255)*h,U=255+(a[d+2]-255)*h;r.data[d/4]=u.luminance(g,q,U)}),this._luminanceData=r,this._imageLoaded=!0},loadImage:function(t,r){var a=this,n={};this._imageLoadingIdentifier=n,this._imageLoaded=!1,t instanceof ar?(this._imageLoadingIdentifier=null,this._imageLoaded=!0,a._processLoadedImage(t),r.call(a,null)):ar.read(t,function(s,d){var h=a._imageLoadingIdentifier!==n;if(h){var g=s||new Error("Another image was loaded instead");return r.call(a,g)}a._imageLoadingIdentifier=null,a._processLoadedImage(d),r.call(a,null)})},setParameters:function(t){var r,a;this._validateParameters(t);for(r in this._params)this._params.hasOwnProperty(r)&&t.hasOwnProperty(r)&&(a=this._params[r],this._params[r]=t[r],a!==this._params[r]&&["color","background"].indexOf(r)===-1&&(this._processed=!1))},getPathTag:function(t,r){if(t=arguments.length===0?this._params.color:t,t===D.COLOR_AUTO&&(t=this._params.blackOnWhite?"black":"white"),!this._imageLoaded)throw new Error("Image should be loaded first");this._processed||(this._bmToPathlist(),this._processPath(),this._processed=!0);var a='<path d="';return a+=this._pathlist.map(function(n){return u.renderCurve(n.curve,r)}).join(" "),a+='" stroke="none" fill="'+t+'" fill-rule="evenodd"/>',a},getSymbol:function(t){return'<symbol viewBox="0 0 '+this._luminanceData.width+" "+this._luminanceData.height+'" id="'+t+'">'+this.getPathTag("")+"</symbol>"},getSVG:function(){var t=this._params.width||this._luminanceData.width,r=this._params.height||this._luminanceData.height,a={x:this._params.width?this._params.width/this._luminanceData.width:1,y:this._params.height?this._params.height/this._luminanceData.height:1};return'<svg xmlns="http://www.w3.org/2000/svg" width="'+t+'" height="'+r+'" viewBox="0 0 '+t+" "+r+`" version="1.1">
+`+(this._params.background!==D.COLOR_TRANSPARENT?'	<rect x="0" y="0" width="100%" height="100%" fill="'+this._params.background+`" />
+`:"")+"	"+this.getPathTag(this._params.color,a)+`
+</svg>`}};hr.exports=D});var Br={};xr(Br,{traceRGBA:()=>Hr});var Dr=fr(),Nr=pt();function Hr(t,r,a,n){let s=new Dr(n||{}),d=null,h=null;if(s.loadImage(new Nr(t,r,a),g=>{h=g}),h)throw h;return d=s.getSVG(),d}return mr(Br);})();
+
 // The relying party ID is the DOMAIN a passkey is bound to, and it is why passkeys are phishing-proof:
 // a credential created for homescreen.world cannot be used on homescreen-login.com, no matter how
 // convincing the copy. It must be the registrable domain, and it must match the origin the ceremony
@@ -87,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.525.0-2026-10-03-sheet-per-section";
+const BUILD = "aura-core-v9.526.0-2026-10-03-vector-stencil";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -9905,7 +9917,7 @@ async function processCommand(line, env, isOp) {
       const OVERLAP_IN = 0.5;
       let STEP_IN = PAGE_IN - OVERLAP_IN;
 
-      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null, pDpi = 0, pOrient = "portrait";
+      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null, pDpi = 0, pOrient = "portrait", pVec = null, pVecW = 0, pVecPx = null;
       try {
         const srcArr = Uint8Array.from(atob(pB64), (c) => c.charCodeAt(0));
         const im0 = PhotonImage.new_from_byteslice(srcArr);
@@ -9930,6 +9942,15 @@ async function processCommand(line, env, isOp) {
         const inked = photonCrop(im0, x1, y1, x2 + 1, y2 + 1);
         try { im0.free(); } catch {}
         const W = inked.get_width(), H = inked.get_height();
+        // VECTOR FIRST: the line art traced to outlines prints sharp at any height, so the pixel
+        // ceiling below no longer applies. If tracing fails, everything below runs as it always has.
+        try {
+          pVecW = W;
+          const _svg = __auraTracer.traceRGBA(W, H, inked.get_raw_pixels(), { threshold: 128, turdSize: 2, optTolerance: 0.2 });
+          const _inner = String(_svg || "").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
+          if (_inner && /<path/.test(_inner)) pVec = _inner;
+          console.log("[PRINT] traced to vector: " + (pVec ? pVec.length + " chars" : "nothing usable"));
+        } catch (e) { console.log("[PRINT] trace failed, printing pixels: " + String(e && e.message || e).slice(0, 160)); }
 
         const MIN_DPI = 150;   // the floor below which linework stops burning cleanly
         // THE PAGE TURNS IF THE PIECE PRINTS BIGGER THAT WAY. Portrait gives 7.5 x 10, landscape
@@ -9937,7 +9958,8 @@ async function processCommand(line, env, isOp) {
         // and the bigger of the two wins. A tall sleeve keeps portrait; a near-square back piece
         // gets landscape and three inches it was losing to the margin.
         const fitFor = (wIn, hIn) => {
-          const byDpi = H / MIN_DPI;                 // as tall as the pixels allow
+          if (pVec) return pIn;   // traced: neither the pixels nor the paper width limit it - wide pieces tile across too
+          const byDpi = pVec ? Infinity : H / MIN_DPI;   // as tall as the pixels allow - no limit once traced
           const byWide = (wIn * H) / W;              // as tall as the paper allows
           return Math.min(pIn, byDpi, byWide);
         };
@@ -9964,7 +9986,7 @@ async function processCommand(line, env, isOp) {
         // Lost when the cap block was rewritten for orientation: the reply and the job sheet both
         // printed "0 DPI". A number nobody set is worse than no number, and this file has spent a
         // day on fields that reported something other than the fact.
-        pDpi = Math.round(pxPerIn);
+        pDpi = pVec ? 0 : Math.round(pxPerIn);
         const winPx = Math.max(1, Math.round(PAGE_IN * pxPerIn));
         const stepPx = Math.max(1, Math.round(STEP_IN * pxPerIn));
         const nPages = H <= winPx ? 1 : Math.ceil((H - winPx) / stepPx) + 1;
@@ -9980,6 +10002,33 @@ async function processCommand(line, env, isOp) {
           // repeated on the sheet before it.
           if ((bot - top) / pxPerIn < OVERLAP_IN + 0.05) break;
           if (bot - top < 2) break;
+          if (pVec) {
+            // A piece wider than the paper tiles across as well as down, with the same overlap.
+            const _wWin = Math.max(1, Math.round(WIDE_IN * pxPerIn));
+            const _wStep = Math.max(1, Math.round((WIDE_IN - OVERLAP_IN) * pxPerIn));
+            const _nCols = W <= _wWin ? 1 : Math.ceil((W - _wWin) / _wStep) + 1;
+            if (!pVecPx) pVecPx = inked.get_raw_pixels();
+            // A tile with no ink is a sheet of blank paper - left out. Its neighbours still overlap it.
+            const _inked = (x0, y0, x1, y1) => {
+              for (let y = y0; y < Math.min(y1, H); y += 2)
+                for (let x = x0; x < Math.min(x1, W); x += 2) {
+                  const o = (y * W + x) * 4;
+                  if (pVecPx[o] < 128 || pVecPx[o + 1] < 128 || pVecPx[o + 2] < 128) return true;
+                }
+              return false;
+            };
+            for (let c = 0; c < _nCols; c++) {
+              const _l = Math.min(c * _wStep, Math.max(0, W - 1));
+              const _r = Math.min(_l + _wWin, W);
+              if (c > 0 && (_r - _l) / pxPerIn < OVERLAP_IN + 0.05) break;
+              if (!_inked(_l, top, _r, bot)) continue;
+              // Every tile is the full page window, blank past the edge of the art, so the sheets line
+              // up when laid edge to edge - a narrower tile would be centred and break the overlap.
+              pSlices.push({ vec: { x: _l, y: top, w: _wWin, h: winPx }, inches: Math.min(winPx / pxPerIn, PAGE_IN - 0.02),   // a hair under the page, or rounding spills a blank sheet
+                             row: i + 1, col: c + 1, cols: _nCols });
+            }
+            continue;
+          }
           const sl = photonCrop(inked, 0, top, W, bot);
           const bts = sl.get_bytes();
           let t = "";
@@ -10012,11 +10061,14 @@ async function processCommand(line, env, isOp) {
         // what was asked for.
         row("Finished height", pTallIn.toFixed(1) + " in" +
             (pFitted ? "  (asked for " + pIn + " in - see below)" : "")) +
-        row("Resolution", pDpi + " DPI") +
+        row("Resolution", pVec ? "vector - sharp at any size" : pDpi + " DPI") +
         row("Paper", pOrient === "landscape" ? "letter, LANDSCAPE" : "letter, portrait") +
         row("Sheets", pPages > 1
-              ? pPages + ", in order after this page - overlap " + OVERLAP_IN +
-                " in, trim on the repeat and butt them together"
+              ? pPages + ", in order after this page" +
+                ((pSlices[0] && pSlices[0].cols > 1)
+                  ? " - " + pSlices[0].cols + " across each row, left to right, rows top to bottom"
+                  : "") +
+                " - overlap " + OVERLAP_IN + " in, trim on the repeat and butt them together"
               : "1") +
         (pFitted ? row("Why not " + pIn + " in", pFitted.why || pFitted.also || "") : "") +
         row("Design", pId) +
@@ -10034,8 +10086,12 @@ async function processCommand(line, env, isOp) {
         // It comes off entirely rather than moving. The artwork page carries NOTHING but artwork -
         // that is the rule this file already states, because that page goes onto transfer paper -
         // and the job sheet on page 1 already says how many sheets there are and in what order.
-        pArt += '<div class=art><img style="height:' + pSlices[i].inches.toFixed(3) +
-                'in" src="data:image/png;base64,' + pSlices[i].b64 + '"></div>';
+        pArt += pSlices[i].vec
+          ? '<div class=art><svg xmlns="http://www.w3.org/2000/svg" viewBox="' + pSlices[i].vec.x + ' ' + pSlices[i].vec.y + ' ' +
+            pSlices[i].vec.w + ' ' + pSlices[i].vec.h + '" style="height:' + pSlices[i].inches.toFixed(3) + 'in;width:' +
+            (pSlices[i].vec.w / pSlices[i].vec.h * pSlices[i].inches).toFixed(3) + 'in"><use href="#aura-art"/></svg></div>'
+          : '<div class=art><img style="height:' + pSlices[i].inches.toFixed(3) +
+            'in" src="data:image/png;base64,' + pSlices[i].b64 + '"></div>';
       }
 
       const html =
@@ -10065,7 +10121,7 @@ async function processCommand(line, env, isOp) {
         ".art { break-before:page; page-break-before:always; break-inside:avoid; " +
           "page-break-inside:avoid; height:" + PAGE_IN + "in; display:flex; " +
           "align-items:center; justify-content:center; line-height:0; }" +
-        ".art img { display:block; width:auto; margin:0; }" +
+        ".art img, .art svg { display:block; margin:0; } .art img { width:auto; }" +
         ".tag { text-align:right; font:8pt sans-serif; color:#999; }" +
         "</style></head><body>" +
         "<h1>" + esc((pB && pB.subject) || pSubject || "Tattoo design") + "</h1>" +
@@ -10073,6 +10129,9 @@ async function processCommand(line, env, isOp) {
         (pPages > 1 ? " " + pPages + " sheets, " + OVERLAP_IN +
           "in of overlap - trim on the overlap and butt them together." : "") + "</p>" +
         "<table>" + facts + "</table>" +
+        // The traced outline is written ONCE and every sheet shows its own window of it.
+        (pVec ? '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute">' +
+                '<defs><g id="aura-art">' + pVec + '</g></defs></svg>' : "") +
         pArt +
         "</body></html>";
 
@@ -10096,7 +10155,7 @@ async function processCommand(line, env, isOp) {
       const pHost = await imageHost(env);
       return { cmd: "PRINT", payload: { ok: true, doc: docId,
         pdf: "https://" + pHost + "/doc/" + docId,
-        inches: Number(pTallIn.toFixed(2)), wide_in: Number(pWideIn.toFixed(2)), dpi: pDpi,
+        inches: Number(pTallIn.toFixed(2)), wide_in: Number(pWideIn.toFixed(2)), dpi: pDpi, vector: !!pVec,
         sheets: pPages, overlap_in: pPages > 1 ? OVERLAP_IN : 0, orientation: pOrient,
         // Named for what fired. It was called `fitted_to_page_width` while the thing that
         // tripped was the DPI ceiling - a flag that misreports which limit stopped you is only
@@ -10105,7 +10164,7 @@ async function processCommand(line, env, isOp) {
         from: pId, artwork: pUrl, bytes: pdfArr.length,
         cost_usd: 0,
         note: "Page 1 is the job sheet. The artwork is on its own pages at " +
-              pTallIn.toFixed(1) + " inches at " + pDpi + " DPI - nothing else is on them, " +
+              pTallIn.toFixed(1) + " inches " + (pVec ? "as vector lines" : "at " + pDpi + " DPI") + " - nothing else is on them, " +
               "because that is what gets burned." } };
     }
 
@@ -62807,32 +62866,23 @@ async function makeArtistFiles(env, ctx) {
               return null;
             };
             _addSheets = [];
-            // ══ SHE LOOKS FIRST, THEN THE SHEETS ARE DRAWN (2026-10-03, v9.525, Aaron) ═══════════════
-            // MEASURED (pta_6b0c9929696423ae): a thigh-to-ankle piece printed at 13.65in on 2 sheets. One
-            // drawing is ~2,048px tall and PRINT will not go under 150 DPI, so no single sheet can print
-            // taller than ~13.6in - however well she measures. A full leg is drawn the way an artist works
-            // one: a sheet per part of the body, each at full resolution and its own height. She names
-            // the parts from the finished picture on their body, so the look comes before any drawing.
-            const SHEET_MAX_IN = 13;
-            let _saved = null, _name = null, _secW = [], _secN = [];
+            // ══ SHE LOOKS FIRST, THEN THE SHEETS ARE DRAWN (2026-10-03, v9.526, Aaron) ═══════════════
+            // v9.525 drew a sheet per body section. MEASURED (pta_3b55a5ea041ac602): the picture model
+            // ignored "only the part on the knee" every time - four of five sheets were the same whole
+            // sunflower. One drawing per sheet again; PRINT now traces it to vector, so her measured
+            // height prints sharp at any size (see THE STENCIL TRACER).
+            let _saved = null, _name = null;
             try { _saved = String((await talkStateGet(env, me, ["added"])).added || "").trim() || null; } catch {}
             const _ok = (v) => (v >= 1 && v <= 48) ? Math.round(v * 10) / 10 : 0;
-            const _secs = (line) => String(line || "").split("/").map((x) => {
-              const m = x.trim().match(/^(.*?)[\s:-]*(\d+(?:\.\d+)?)\s*(?:in\b|inch\w*|")?\s*$/i);
-              return m ? { part: m[1].replace(/^(the|their|on the)\s+/i, "").trim().slice(0, 40), in: _ok(parseFloat(m[2])) } : null;
-            }).filter((x) => x && x.part && x.in).slice(0, 5);
             try {
               const q = await proxyToAgent(env,
                 "[FOR YOU, NOT THEM. Their artist's sheets are being drawn now." +
                 (_saved ? " What they asked for, in their words, in order:\n" + _saved.slice(-1200) + "\n" : "") +
                 " In a few words, name only the new tattoo work that was added to the tattoo they already" +
                 " had - for example \"the dragon with storm clouds\"." +
-                " Then, from what you see on their body in this picture, answer on separate lines:\n" +
-                "whole: N in / new: N in - the finished height of the whole tattoo and of only the new work.\n" +
-                "whole sections: - only if the whole tattoo is taller than " + SHEET_MAX_IN + " inches: each part of" +
-                " the body it runs across, top to bottom, with how tall it is there, as part N in / part N in.\n" +
-                "new sections: - the same for only the new work, only if it is taller than " + SHEET_MAX_IN + " inches.\n" +
-                "Reply with only those lines.]",
+                " Then, on a second line, from what you see on their body in this picture, the finished" +
+                " height in inches of the whole tattoo and of only the new work, written as" +
+                " whole: N in / new: N in. Reply with only those two lines.]",
                 false, me, mockUrl, world);
               if (q && q.reply && !q.failed) {
                 const _ans = String(_verdict(q.reply, readAct(q.reply)) || "");
@@ -62841,12 +62891,7 @@ async function makeArtistFiles(env, ctx) {
                 const _nm = _ans.match(/\bnew\s*:\s*\D{0,8}?(\d+(?:\.\d+)?)/i);
                 if (_wm) _seeWhole = _ok(parseFloat(_wm[1]));
                 if (_nm) _seeNew = _ok(parseFloat(_nm[1]));
-                const _ws = _ans.match(/whole\s+sections?\s*:\s*(.+)/i);
-                const _ns = _ans.match(/new\s+sections?\s*:\s*(.+)/i);
-                if (_ws) _secW = _secs(_ws[1]);
-                if (_ns) _secN = _secs(_ns[1]);
-                try { console.log("[PRINT-SIZE] she measured on their body: whole=" + (_seeWhole || "?") + "in new=" + (_seeNew || "?") + "in" +
-                  " | whole sections=" + JSON.stringify(_secW) + " | new sections=" + JSON.stringify(_secN) + " | she said: " + JSON.stringify(_seeRaw)); } catch {}
+                try { console.log("[PRINT-SIZE] she measured on their body: whole=" + (_seeWhole || "?") + "in new=" + (_seeNew || "?") + "in | she said: " + JSON.stringify(_seeRaw)); } catch {}
                 _name = (_ans.split(/\r?\n/).map((x) => x.trim()).find((x) => x && !/^(whole|new)\b/i.test(x)) || "").trim()
                   .replace(/\s*[-,;:(]?\s*whole\b.*$/i, "")
                   .replace(/^["'\s]+|["'.\s]+$/g, "").slice(0, 120) || null;
@@ -62856,21 +62901,9 @@ async function makeArtistFiles(env, ctx) {
                 if (_name) _name = _name.replace(/^(The|A|An)\b/, (w) => w.toLowerCase());
               }
             } catch {}
-            // THE WHOLE PIECE - one sheet, or a sheet per part of the body when it is too tall for one.
-            let _wholeDone = false;
-            if (_seeWhole > SHEET_MAX_IN && _secW.length >= 2) {
-              for (const sc of _secW) {
-                const r = await _flat("Draw only the part of this whole tattoo that sits on the " + sc.part +
-                                      ", flat on plain white paper, with no body and no skin.");
-                if (r) { _addSheets.push({ panel: "Whole piece - " + sc.part, asked: "the whole tattoo on the " + sc.part,
-                                           flat: r.flat, id: r.id, seeIn: sc.in, checked: null, ok: true }); _wholeDone = true; }
-              }
-            }
-            if (!_wholeDone) {
-              const _whole = await _flat("Draw this whole tattoo flat on plain white paper, with no body and no skin.");
-              if (_whole) _addSheets.push({ panel: "Whole piece", asked: "the whole tattoo", flat: _whole.flat,
-                                            id: _whole.id, seeIn: _seeWhole || 0, checked: null, ok: true });
-            }
+            const _whole = await _flat("Draw this whole tattoo flat on plain white paper, with no body and no skin.");
+            if (_whole) _addSheets.push({ panel: "Whole piece", asked: "the whole tattoo", flat: _whole.flat,
+                                          id: _whole.id, seeIn: _seeWhole || 0, checked: null, ok: true });
             // ══ THE NEW-WORK SHEET NEVER DISAPPEARS SILENTLY (2026-10-01, v9.502, Aaron) ══════════════
             // MEASURED: on the Japanese sleeve the new-work sheet was missing three runs out of three
             // (pta_833a8453ed00cdcb, pta_a6b5b5a0dfbebe59, pta_d17a7ead05b96ec1) and nothing said why.
@@ -62888,23 +62921,12 @@ async function makeArtistFiles(env, ctx) {
               }
             }
             if (_name) {
-              let _newDone = false;
-              if (_seeNew > SHEET_MAX_IN && _secN.length >= 2) {
-                for (const sc of _secN) {
-                  const r = await _flat("Draw only " + _name + " where it sits on the " + sc.part +
-                                        ", from this picture, flat on plain white paper, with no body and no skin.");
-                  if (r) { _addSheets.push({ panel: "New work - " + sc.part, asked: _name + " on the " + sc.part,
-                                             flat: r.flat, id: r.id, seeIn: sc.in, checked: null, ok: true }); _newDone = true; }
-                }
-              }
-              const _new = _newDone ? null : await _flat("Draw only " + _name + " from this picture, flat on plain white paper, " +
+              const _new = await _flat("Draw only " + _name + " from this picture, flat on plain white paper, " +
                                        "with no body and no skin.");
               if (_new) {
                 _addSheets.push({ panel: "New work", asked: _name, flat: _new.flat, id: _new.id,
                                   seeIn: _seeNew || 0, checked: null, ok: true });
                 try { console.log("[FILES] new work sheet -> ok"); } catch {}
-              } else if (_newDone) {
-                try { console.log("[FILES] new work sheets by section -> ok"); } catch {}
               } else {
                 _newWorkFail = "new work sheet failed: " + (_flatErr || "no image came back");
                 try { console.log("[FILES] " + _newWorkFail); } catch {}
@@ -63037,7 +63059,7 @@ async function makeArtistFiles(env, ctx) {
                 if (/^c/i.test(_szM[2])) _v = _v / 2.54;
                 if (_v >= 1 && _v <= 40) inches = Math.round(_v * 10) / 10;
               }
-              try { console.log("[PRINT-SIZE] her size=" + JSON.stringify(_szTxt) + " placement=" + JSON.stringify(placeKey) + " -> " + (inches || 8) + "in"); } catch {}
+              if (!_seeWhole) try { console.log("[PRINT-SIZE] her size=" + JSON.stringify(_szTxt) + " placement=" + JSON.stringify(placeKey) + " -> " + (inches || 8) + "in"); } catch {}
             }
             if (_seeWhole) inches = _seeWhole;   // what she measured on the finished picture beats any guess
             if (!inches) inches = 8;   // a hand-sized default, and PRINT reports the real figure

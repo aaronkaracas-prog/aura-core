@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.519.0-2026-10-03-see-probe-glm";
+const BUILD = "aura-core-v9.520.0-2026-10-03-brief-carries";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64810,7 +64810,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           (opts.use ? "They are taking it as it is." :
            "Their words say what to change on it; change only that, on this design. Do not describe it back to them.")
         : "";
-      const agentSys = shelf + found + stateNote + resetNote + picNote + (_catPick ? _pickNote : refNote) + refBlind +
+      // ══ SHE SEES WHAT SHE ALREADY SETTLED (2026-10-03, v9.520, Aaron) ═══════════════════════
+      // MEASURED (pta_f5efe21c422b830d): she rewrote her brief from cold every turn because she was
+      // never shown it - size went none -> 12in -> 10in -> 12in, style "black and grey" -> "soft
+      // realism" -> "fine line", with nobody asking for any change. Her values win the merge, so the
+      // artist's print size was whatever the last turn happened to guess. The extractor floor has
+      // always been handed this list; she never was. Read from `carriedObj` here, not the earlier
+      // rendered string, so a tapped picture that cleared the brief above shows nothing stale.
+      const _settled = (carriedObj && typeof carriedObj === "object")
+        ? Object.keys(carriedObj).filter((k) => !["resolved", "missing"].includes(k) &&
+            carriedObj[k] != null && carriedObj[k] !== "" && !(Array.isArray(carriedObj[k]) && !carriedObj[k].length))
+            .map((k) => "  " + k + ": " + JSON.stringify(carriedObj[k])).join("\n")
+        : "";
+      const _settledNote = _settled
+        ? "\n\nYOUR BRIEF SO FAR - carry every one of these forward in your brief unless this message changes it:\n" + _settled
+        : "";
+      const agentSys = shelf + found + stateNote + _settledNote + resetNote + picNote + (_catPick ? _pickNote : refNote) + refBlind +
                        (_catPick ? "" : tileNote) + worldNote + trendNote;
 
       // ══ A GREETING HAS TO LOOK LIKE A GREETING (2026-09-14) ════════════════════

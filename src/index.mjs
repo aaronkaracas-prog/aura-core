@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.516.0-2026-10-02-look-copy";
+const BUILD = "aura-core-v9.518.0-2026-10-03-every-picture-from-photo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64441,7 +64441,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // DRAWING NOTES ONLY WHEN THEY SAID GO (2026-10-02, v9.514, Aaron): on a talking turn these sat
       // where her ideas should be - "every picture starts from their photo", "one picture, never four" -
       // while nothing was being drawn. The draw guard already uses these words; so do the notes.
-      const _drawNotes = _photoChain && _goSaid;
+      // AFTER THE FIRST PICTURE, ALWAYS (2026-10-03, v9.518, Aaron). MEASURED (pta_51edcc6f272a5a85):
+      // "let's color everything in but the skull" is not a go-word, so she was told "a piece on screen
+      // you drew" and wrote only the change - but the picture is redrawn from their ORIGINAL photo, and
+      // the skull landed on the lion sleeve. Once a picture exists every change is drawn, go-word or not.
+      const _drawNotes = _photoChain && (_goSaid || _drewNow());
       const stateNote = _langNote + _projNote + _convNote + (_drawNotes
         ? "\n\nEVERY PICTURE STARTS FROM THEIR PHOTO. The picture model sees only their photo and the " +
           "paragraph in your brief - it has never seen any picture you made."

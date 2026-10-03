@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.528.0-2026-10-03-whole-before-new";
+const BUILD = "aura-core-v9.529.0-2026-10-03-design-is-the-artwork";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62767,7 +62767,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
 // person straight away.
 async function makeArtistFiles(env, ctx) {
   const { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw, acted, intent,
-          useOne, _checkOn, _verdict, readAct, alreadyFlat } = ctx;
+          useOne, _checkOn, _verdict, readAct, alreadyFlat, bodyLook } = ctx;
   let drew = null;
 
         try {
@@ -62946,6 +62946,25 @@ async function makeArtistFiles(env, ctx) {
               try { console.log("[FILES] " + _newWorkFail); } catch {}
             }
             if (!_addSheets.length) _addSheets = null;
+          }
+          // A design put on them (v9.529): the artwork is the design itself; how big it is comes from her
+          // look at it on their body - the same measuring an add-on gets.
+          if (bodyLook && !_seeWhole) {
+            try {
+              const q = await proxyToAgent(env,
+                "[FOR YOU, NOT THEM. Their artist's sheets are being made now from the design they chose." +
+                " From what you see on their body in this picture, the finished height in inches of the tattoo," +
+                " written as whole: N in. Reply with only that line.]",
+                false, me, bodyLook, world);
+              if (q && q.reply && !q.failed) {
+                const _a = String(_verdict(q.reply, readAct(q.reply)) || "") + "\n" + String(q.reply || "");
+                _seeRaw = String(q.reply || "").slice(0, 600);
+                const _m = _a.match(/\bwhole\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i) || _a.match(/(\d+(?:\.\d+)?)\s*(?:in\b|inch\w*|")/i);
+                const _v = _m ? parseFloat(_m[1]) : 0;
+                if (_v >= 1 && _v <= 60) _seeWhole = Math.round(_v * 10) / 10;
+              }
+              try { console.log("[PRINT-SIZE] she measured the design on their body: whole=" + (_seeWhole || "?") + "in | she said: " + JSON.stringify(_seeRaw)); } catch {}
+            } catch {}
           }
           const sheets = _addSheets || [];
           const _checkSheets = await _checkOn("sheets");
@@ -63332,7 +63351,7 @@ function artistFilesOf(drew) {
 const ONME_SENTENCE = "Place the tattoo design from the second image onto the skin in the first image. " +
   "Follow the contour of the body, match the lighting and perspective of the photograph, " +
   "and make the ink sit UNDER the skin like a real healed tattoo - not a sticker, not a " +
-  "flat overlay. Keep the person, the pose and the background exactly as they are.";
+  "flat overlay. Keep the design's own colors. Keep the person, the pose and the background exactly as they are.";
 
 // ══ THE IMAGES AND EXACTLY WHAT THEY ASKED FOR (2026-09-23, Aaron) ═══════════════════════════
 // "The only thing that I'm certain is going to work is if the model has the images and exactly
@@ -63366,7 +63385,7 @@ function onmeAsk(words) {
     "",
     "PRESERVATION RULE: Preserve IMAGE 2 as closely as possible. Do NOT recreate the person, replace the person, change the pose, change the body, change the camera angle, change the crop, change the background, change the environment, change the lighting, remove or redesign existing tattoos, invent additional tattoos, reinterpret IMAGE 2 as inspiration, or generate a new photograph resembling IMAGE 2. The only intended visual change is the addition of the tattoo design from IMAGE 1.",
     "",
-    "TATTOO APPLICATION: Extract the tattoo artwork from IMAGE 1 and apply it to " + where + " in IMAGE 2. Adapt only what is physically necessary to make the tattoo believable on that body: scale, rotation, perspective, curvature, anatomical wrapping, skin contour, natural occlusion, local lighting, skin texture. Preserve the recognizable design, structure, subject and visual character of IMAGE 1. The tattoo must appear IN the skin rather than pasted on top of the photograph. Preserve pores, skin texture, highlights, shadows and body curvature through the tattoo.",
+    "TATTOO APPLICATION: Extract the tattoo artwork from IMAGE 1 and apply it to " + where + " in IMAGE 2. Adapt only what is physically necessary to make the tattoo believable on that body: scale, rotation, perspective, curvature, anatomical wrapping, skin contour, natural occlusion, local lighting, skin texture. Preserve the recognizable design, structure, subject, colors and visual character of IMAGE 1. The tattoo must appear IN the skin rather than pasted on top of the photograph. Preserve pores, skin texture, highlights, shadows and body curvature through the tattoo.",
     "",
     // "must not touch or cover" (2026-09-24): MEASURED - without it, both tries covered the flowers
     // around the empty space; with it, Grok and GPT both put the bike in the gap and kept every flower.
@@ -63589,7 +63608,7 @@ async function runArtistFilesJob(env, d) {
   return await makeArtistFiles(env, {
     me: d.me, world: d.world, seeing: !!d.seeing, jobNow: d.jobNow || null, refUrl, lastDrawn,
     useRaw: Array.isArray(d.useRaw) ? d.useRaw : [], acted: d.acted || {}, intent: d.intent || null,
-    alreadyFlat: !!d.alreadyFlat,
+    alreadyFlat: !!d.alreadyFlat, bodyLook: d.bodyLook || null,
     useOne: (n, want) => talkUseOne(n, want, refDesign, refUrl, lastDrawn),
     _checkOn: (k) => talkCheckOn(env, k), _verdict: talkVerdict, readAct: talkReadAct,
   });
@@ -65998,7 +66017,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // piece on screen", and the files were made from that. The files now start from the design
       // she drew - or, when she has put that design on them since, from that look, which is the
       // mockup the files have always been made from. A photo never.
-      let _filesFlat = false;
+      let _filesFlat = false, _bodyLook = null;
       if (act === "artist" && me && !_usedPick) {
         let _dRec = null, _oRec = null;
         try { _dRec = await _pre.design; } catch {}
@@ -66038,6 +66057,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // the artist files at the end". When this tattoo came from a split card and the approved
         // picture is still split-shaped, the same pixel cut runs here; the files are made from the
         // design half. The pictures in the conversation are left as they are.
+        // ══ A DESIGN PUT ON THEM: THE FILES ARE THE DESIGN (2026-10-03, v9.529, Aaron) ═════════════════
+        // MEASURED (pta_57a6dd5b0285bea0): number 3 - teal, gold, a yellow cab - was put on a bare back and
+        // came back sepia; the files were redrawn from that preview (sepia again) and, because a body
+        // photo makes the job "add", a "new work" sheet invented a different cab. Aaron: "see it on me
+        // is once they've already chosen the image - it's got to work off of that final version."
+        // The picture they chose IS the artwork, used as it is; the look on their body only tells her
+        // how big it is. Only when the look on them was made from this same design - an add-on on their
+        // own tattoo never makes one, so nothing about add-ons changes here.
+        if (_oRec && _oRec.image && _dRec && _dRec.image && _dRec.design && _oRec.from === _dRec.design && !_keepPicked) {
+          lastDrawn = { design: _dRec.design, image: _dRec.image, subject: (lastDrawn && lastDrawn.subject) || null };
+          _filesFlat = true;
+          _bodyLook = _oRec.image;
+          try { console.log("[FILES] a design put on them - files from the design " + _dRec.design + ", size from the look on them"); } catch {}
+        }
         if (_filesFlat) {
           let _wasSplit = null;
           try { _wasSplit = await _pre.split; } catch {}
@@ -66067,15 +66100,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         intent = (intent || carriedObj) ? _intentFull : intent;
         const _job = await startArtistFilesJob(env, {
           project: _pid,
-          me, world, stage, seeing: !!seeing, jobNow: jobNow || null, refUrl: refUrl || null,
+          me, world, stage, seeing: !!seeing, jobNow: _bodyLook ? "new" : (jobNow || null), refUrl: _bodyLook ? null : (refUrl || null),
           refDesign: refDesign || null, lastDrawn: lastDrawn || null,
           useRaw: Array.isArray(useRaw) ? useRaw : [], acted, intent: intent || null,
-          alreadyFlat: _filesFlat });
+          alreadyFlat: _filesFlat, bodyLook: _bodyLook });
         drew = _job
           ? { for_the_artist: true, pending: true, job: _job, from: (lastDrawn && lastDrawn.design) || null }
-          : await makeArtistFiles(env, { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw,
+          : await makeArtistFiles(env, { me, world, seeing, jobNow: _bodyLook ? "new" : jobNow,
+                                         refUrl: _bodyLook ? null : refUrl, lastDrawn, useRaw,
                                          acted, intent, useOne, _checkOn, _verdict, readAct,
-                                         alreadyFlat: _filesFlat });
+                                         alreadyFlat: _filesFlat, bodyLook: _bodyLook });
       }
       if (_usedPick && drew && !drew.failed) {
         drew.used = true;

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.524.0-2026-10-03-she-measures";
+const BUILD = "aura-core-v9.525.0-2026-10-03-sheet-per-section";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62789,7 +62789,7 @@ async function makeArtistFiles(env, ctx) {
           // seam; told WHAT is new by name, it lifts it out. The name comes from what they asked to
           // add (saved at the first picture), put into a few words by her - the one question below.
           // Both sheets go to the artist: the whole piece always works, the new work is the stencil.
-          let _addSheets = null, _newWorkFail = null, _seeWhole = 0, _seeNew = 0;
+          let _addSheets = null, _newWorkFail = null, _seeWhole = 0, _seeNew = 0, _seeRaw = null;
           if (jobNow === "add" && refUrl && !alreadyFlat) {
             const _src = /^ent_/.test(String(shopParent || "")) ? shopParent
               : ((String(mockUrl).match(/\/image\/(img_[a-z0-9]+)/i) || [])[1] || shopParent);
@@ -62807,35 +62807,47 @@ async function makeArtistFiles(env, ctx) {
               return null;
             };
             _addSheets = [];
-            const _whole = await _flat("Draw this whole tattoo flat on plain white paper, with no body and no skin.");
-            if (_whole) _addSheets.push({ panel: "Whole piece", asked: "the whole tattoo", flat: _whole.flat,
-                                          id: _whole.id, checked: null, ok: true });
-            let _saved = null, _name = null;
+            // ══ SHE LOOKS FIRST, THEN THE SHEETS ARE DRAWN (2026-10-03, v9.525, Aaron) ═══════════════
+            // MEASURED (pta_6b0c9929696423ae): a thigh-to-ankle piece printed at 13.65in on 2 sheets. One
+            // drawing is ~2,048px tall and PRINT will not go under 150 DPI, so no single sheet can print
+            // taller than ~13.6in - however well she measures. A full leg is drawn the way an artist works
+            // one: a sheet per part of the body, each at full resolution and its own height. She names
+            // the parts from the finished picture on their body, so the look comes before any drawing.
+            const SHEET_MAX_IN = 13;
+            let _saved = null, _name = null, _secW = [], _secN = [];
             try { _saved = String((await talkStateGet(env, me, ["added"])).added || "").trim() || null; } catch {}
+            const _ok = (v) => (v >= 1 && v <= 48) ? Math.round(v * 10) / 10 : 0;
+            const _secs = (line) => String(line || "").split("/").map((x) => {
+              const m = x.trim().match(/^(.*?)[\s:-]*(\d+(?:\.\d+)?)\s*(?:in\b|inch\w*|")?\s*$/i);
+              return m ? { part: m[1].replace(/^(the|their|on the)\s+/i, "").trim().slice(0, 40), in: _ok(parseFloat(m[2])) } : null;
+            }).filter((x) => x && x.part && x.in).slice(0, 5);
             try {
               const q = await proxyToAgent(env,
-                "[FOR YOU, NOT THEM. The artist sheet of only the NEW tattoo work is being drawn now." +
+                "[FOR YOU, NOT THEM. Their artist's sheets are being drawn now." +
                 (_saved ? " What they asked for, in their words, in order:\n" + _saved.slice(-1200) + "\n" : "") +
                 " In a few words, name only the new tattoo work that was added to the tattoo they already" +
                 " had - for example \"the dragon with storm clouds\"." +
-                // ══ SHE MEASURES WHAT SHE SEES (2026-10-03, v9.524, Aaron) ═══════════════════════════
-                // MEASURED (pta_126bc8310a8397de): a hip-to-calf piece printed at 8in on 2 sheets - her notes
-                // had no size, so it fell to the default, and the new-work sheet printed at the same number
-                // as the whole piece. This is the one moment she is looking at the finished tattoo on their
-                // body; how much of the body it covers is right in front of her.
-                " Then, on a second line, from what you see on their body in this picture, the finished" +
-                " height in inches of the whole tattoo and of only the new work, written as" +
-                " whole: N in / new: N in. Reply with only those two lines.]",
+                " Then, from what you see on their body in this picture, answer on separate lines:\n" +
+                "whole: N in / new: N in - the finished height of the whole tattoo and of only the new work.\n" +
+                "whole sections: - only if the whole tattoo is taller than " + SHEET_MAX_IN + " inches: each part of" +
+                " the body it runs across, top to bottom, with how tall it is there, as part N in / part N in.\n" +
+                "new sections: - the same for only the new work, only if it is taller than " + SHEET_MAX_IN + " inches.\n" +
+                "Reply with only those lines.]",
                 false, me, mockUrl, world);
               if (q && q.reply && !q.failed) {
                 const _ans = String(_verdict(q.reply, readAct(q.reply)) || "");
-                const _wm = _ans.match(/whole\D{0,12}?(\d+(?:\.\d+)?)/i);
-                const _nm = _ans.match(/new\D{0,12}?(\d+(?:\.\d+)?)/i);
-                const _ok = (v) => (v >= 1 && v <= 48) ? Math.round(v * 10) / 10 : 0;
+                _seeRaw = _ans.slice(0, 400);
+                const _wm = _ans.match(/\bwhole\s*:\s*\D{0,8}?(\d+(?:\.\d+)?)/i);
+                const _nm = _ans.match(/\bnew\s*:\s*\D{0,8}?(\d+(?:\.\d+)?)/i);
                 if (_wm) _seeWhole = _ok(parseFloat(_wm[1]));
                 if (_nm) _seeNew = _ok(parseFloat(_nm[1]));
-                try { console.log("[PRINT-SIZE] she measured on their body: whole=" + (_seeWhole || "?") + "in new=" + (_seeNew || "?") + "in"); } catch {}
-                _name = (_ans.split(/\r?\n/).map((x) => x.trim()).find((x) => x && !/^whole\b/i.test(x)) || "").trim()
+                const _ws = _ans.match(/whole\s+sections?\s*:\s*(.+)/i);
+                const _ns = _ans.match(/new\s+sections?\s*:\s*(.+)/i);
+                if (_ws) _secW = _secs(_ws[1]);
+                if (_ns) _secN = _secs(_ns[1]);
+                try { console.log("[PRINT-SIZE] she measured on their body: whole=" + (_seeWhole || "?") + "in new=" + (_seeNew || "?") + "in" +
+                  " | whole sections=" + JSON.stringify(_secW) + " | new sections=" + JSON.stringify(_secN) + " | she said: " + JSON.stringify(_seeRaw)); } catch {}
+                _name = (_ans.split(/\r?\n/).map((x) => x.trim()).find((x) => x && !/^(whole|new)\b/i.test(x)) || "").trim()
                   .replace(/\s*[-,;:(]?\s*whole\b.*$/i, "")
                   .replace(/^["'\s]+|["'.\s]+$/g, "").slice(0, 120) || null;
                 // "Draw only the dragon..." is the proven sentence; her answer arrives capitalised
@@ -62844,6 +62856,21 @@ async function makeArtistFiles(env, ctx) {
                 if (_name) _name = _name.replace(/^(The|A|An)\b/, (w) => w.toLowerCase());
               }
             } catch {}
+            // THE WHOLE PIECE - one sheet, or a sheet per part of the body when it is too tall for one.
+            let _wholeDone = false;
+            if (_seeWhole > SHEET_MAX_IN && _secW.length >= 2) {
+              for (const sc of _secW) {
+                const r = await _flat("Draw only the part of this whole tattoo that sits on the " + sc.part +
+                                      ", flat on plain white paper, with no body and no skin.");
+                if (r) { _addSheets.push({ panel: "Whole piece - " + sc.part, asked: "the whole tattoo on the " + sc.part,
+                                           flat: r.flat, id: r.id, seeIn: sc.in, checked: null, ok: true }); _wholeDone = true; }
+              }
+            }
+            if (!_wholeDone) {
+              const _whole = await _flat("Draw this whole tattoo flat on plain white paper, with no body and no skin.");
+              if (_whole) _addSheets.push({ panel: "Whole piece", asked: "the whole tattoo", flat: _whole.flat,
+                                            id: _whole.id, seeIn: _seeWhole || 0, checked: null, ok: true });
+            }
             // ══ THE NEW-WORK SHEET NEVER DISAPPEARS SILENTLY (2026-10-01, v9.502, Aaron) ══════════════
             // MEASURED: on the Japanese sleeve the new-work sheet was missing three runs out of three
             // (pta_833a8453ed00cdcb, pta_a6b5b5a0dfbebe59, pta_d17a7ead05b96ec1) and nothing said why.
@@ -62861,12 +62888,23 @@ async function makeArtistFiles(env, ctx) {
               }
             }
             if (_name) {
-              const _new = await _flat("Draw only " + _name + " from this picture, flat on plain white paper, " +
+              let _newDone = false;
+              if (_seeNew > SHEET_MAX_IN && _secN.length >= 2) {
+                for (const sc of _secN) {
+                  const r = await _flat("Draw only " + _name + " where it sits on the " + sc.part +
+                                        ", from this picture, flat on plain white paper, with no body and no skin.");
+                  if (r) { _addSheets.push({ panel: "New work - " + sc.part, asked: _name + " on the " + sc.part,
+                                             flat: r.flat, id: r.id, seeIn: sc.in, checked: null, ok: true }); _newDone = true; }
+                }
+              }
+              const _new = _newDone ? null : await _flat("Draw only " + _name + " from this picture, flat on plain white paper, " +
                                        "with no body and no skin.");
               if (_new) {
                 _addSheets.push({ panel: "New work", asked: _name, flat: _new.flat, id: _new.id,
-                                  checked: null, ok: true });
+                                  seeIn: _seeNew || 0, checked: null, ok: true });
                 try { console.log("[FILES] new work sheet -> ok"); } catch {}
+              } else if (_newDone) {
+                try { console.log("[FILES] new work sheets by section -> ok"); } catch {}
               } else {
                 _newWorkFail = "new work sheet failed: " + (_flatErr || "no image came back");
                 try { console.log("[FILES] " + _newWorkFail); } catch {}
@@ -62876,10 +62914,6 @@ async function makeArtistFiles(env, ctx) {
               try { console.log("[FILES] " + _newWorkFail); } catch {}
             }
             if (!_addSheets.length) _addSheets = null;
-          }
-          if (_addSheets) for (const sh of _addSheets) {
-            if (sh.panel === "Whole piece" && _seeWhole) sh.seeIn = _seeWhole;
-            if (sh.panel === "New work" && _seeNew) sh.seeIn = _seeNew;
           }
           const sheets = _addSheets || [];
           const _checkSheets = await _checkOn("sheets");
@@ -63068,6 +63102,7 @@ async function makeArtistFiles(env, ctx) {
               // ONE ENTRY PER PANEL, each with the section it covers, its flat artwork and the
               // line art the needle follows. `flat_artwork` above stays the first sheet so a
               // single-panel job reads exactly as it did before this existed.
+              ...(_seeRaw ? { she_measured: _seeRaw } : {}),
               ...(sheets.length > 1
                 ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
                                                   inches: sh.inches || null, sheets: sh.sheets || null,

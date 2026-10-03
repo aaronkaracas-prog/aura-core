@@ -21,3 +21,5 @@ src/index (*).mjs
 node_modules/
 .wrangler/
 *.crdownload
+
+src/indexold.mjs

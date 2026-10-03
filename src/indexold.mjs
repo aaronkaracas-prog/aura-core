@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.516.0-2026-10-02-look-copy";
+const BUILD = "aura-core-v9.517.0-2026-10-02-told-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64844,9 +64844,27 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // rung that never calls a model. The L0/L1 acceptance below is what catches her answer, so
       // an unparseable reply on this path is expected rather than a failure.
       const SHAPE = "\n\n(Reply with the JSON object. No prose.)";
+      // ══ TOLD BEFORE SHE ANSWERS, NOT AFTER (2026-10-02, v9.517, Aaron) ══════════════════════════
+      // MEASURED (pta_003a11d37d948c14, "give me four different ideas"): she answered with a draw, the
+      // go gate below blocked it and asked her again - and the reply they saw was "Four directions...
+      // which number grabs you?" with no directions in it, while the four ideas sat only in the stored
+      // prompt from the answer that was thrown away. Same rule, same gate as a net, but she hears it
+      // first: before the first picture, when their words are not a go, nothing is drawn this turn.
+      let _notYet = false;
+      try {
+        if (hasLive && !_drewNow() && !_goSaid &&
+            !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
+          let _pa = "";
+          for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _pa = String(tnow[i].said || ""); break; } }
+          const _off = /\b(show|draw|sketch|see|picture|mock)\b[^?]*\?\s*$/i.test(_pa.trim());
+          const _y = /^\s*(yes|yeah|yep|yup|sure|ok|okay|please|absolutely|definitely|of course|go)\b/i.test(String(said || "").trim());
+          _notYet = !(_off && _y);
+        }
+      } catch {}
       const agentLine = hasLive
         ? "[A person is designing a tattoo with you on " + world + ".world. Answer as yourself, " +
-          "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said + SHAPE
+          "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said +
+          (_notYet ? "\n\nThey have not asked to see anything yet, so nothing is drawn this turn - talk with them." : "") + SHAPE
         : said;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.

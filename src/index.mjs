@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.529.0-2026-10-03-design-is-the-artwork";
+const BUILD = "aura-core-v9.530.0-2026-10-03-finished-on-the-body";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62772,7 +62772,10 @@ async function makeArtistFiles(env, ctx) {
 
         try {
           const shopParent = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
-          const mockUrl = (lastDrawn && lastDrawn.image) ||
+          // THE FINISHED LOOK IS THE ONE ON THEIR BODY (2026-10-03, v9.530, Aaron). v9.529 pointed
+          // lastDrawn at the design so the files come from it - and this read the same slot, so
+          // shows_finished named the design (img_mut0o2y49cel), not the back (img_mut0ptqew5fb).
+          const mockUrl = bodyLook || (lastDrawn && lastDrawn.image) ||
             ("https://" + (await imageHost(env)) + "/image/" + shopParent);
           // Subtract only when there IS prior ink: an add-on with their own photograph on file.
           // A new piece has none, and FINAL alone is the whole design.
@@ -64927,7 +64930,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // always been handed this list; she never was. Read from `carriedObj` here, not the earlier
       // rendered string, so a tapped picture that cleared the brief above shows nothing stale.
       const _settled = (carriedObj && typeof carriedObj === "object")
-        ? Object.keys(carriedObj).filter((k) => !["resolved", "missing"].includes(k) &&
+        // NOT THE SUMMARY SENTENCE (2026-10-03, v9.530, Aaron). MEASURED (pta_fb44983b5aafc5e3): turn
+        // 1's "No specific style, colour, placement, or size has been decided yet" was carried as
+        // `brief` and she was told to keep it - so it sat beside style "neo-traditional" to the end.
+        // The fields carry; the one-line summary goes stale the moment any field moves.
+        ? Object.keys(carriedObj).filter((k) => !["resolved", "missing", "brief"].includes(k) &&
             carriedObj[k] != null && carriedObj[k] !== "" && !(Array.isArray(carriedObj[k]) && !carriedObj[k].length))
             .map((k) => "  " + k + ": " + JSON.stringify(carriedObj[k])).join("\n")
         : "";
@@ -67157,6 +67164,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             merged[k] = v;
           }
           delete merged.resolved; delete merged.missing;
+          // HER BRIEF THIS TURN IS THE SUMMARY ON FILE (2026-10-03, v9.530, Aaron). MEASURED
+          // (pta_fb44983b5aafc5e3): turn 1's summary "No specific style ... decided yet" was never
+          // replaced - she writes her summary as `brief`, not inside `intent` - so it stayed on the
+          // record beside style "neo-traditional" to the lock-in. When she wrote one, it is the one.
+          if (typeof brief === "string" && brief.trim()) merged.brief = brief.trim();
           await talkStatePut(env, me, "brief", JSON.stringify(merged));
           // ══ A PTA KEEPS THINGS. A CACHE DOES NOT (2026-09-10) ══════════════════════════
           // Aaron: "everything's within a PTA, and if we're using a PTA to manage everything

@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.526.0-2026-10-03-vector-stencil";
+const BUILD = "aura-core-v9.527.0-2026-10-03-read-her-measure";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62873,7 +62873,7 @@ async function makeArtistFiles(env, ctx) {
             // height prints sharp at any size (see THE STENCIL TRACER).
             let _saved = null, _name = null;
             try { _saved = String((await talkStateGet(env, me, ["added"])).added || "").trim() || null; } catch {}
-            const _ok = (v) => (v >= 1 && v <= 48) ? Math.round(v * 10) / 10 : 0;
+            const _ok = (v) => (v >= 1 && v <= 60) ? Math.round(v * 10) / 10 : 0;   // PRINT's own ceiling
             try {
               const q = await proxyToAgent(env,
                 "[FOR YOU, NOT THEM. Their artist's sheets are being drawn now." +
@@ -62886,9 +62886,16 @@ async function makeArtistFiles(env, ctx) {
                 false, me, mockUrl, world);
               if (q && q.reply && !q.failed) {
                 const _ans = String(_verdict(q.reply, readAct(q.reply)) || "");
-                _seeRaw = _ans.slice(0, 400);
-                const _wm = _ans.match(/\bwhole\s*:\s*\D{0,8}?(\d+(?:\.\d+)?)/i);
-                const _nm = _ans.match(/\bnew\s*:\s*\D{0,8}?(\d+(?:\.\d+)?)/i);
+                // ══ READ HER WHOLE REPLY, NOT ONLY HER SENTENCE (2026-10-03, v9.527) ══════════════════
+                // MEASURED twice (pta_6b0c9929696423ae, pta_b55b8d8399a11ce2): `new` came through and `whole`
+                // did not. Her channel answers in JSON, and only `say` was being read - a number she put
+                // anywhere else, or wrote as "whole tattoo: 30", was lost. The whole raw reply is searched,
+                // and what she actually sent rides with the files so a miss is never a guess again.
+                const _rawQ = String(q.reply || "");
+                _seeRaw = _rawQ.slice(0, 600);
+                const _meas = _ans + "\n" + _rawQ;
+                const _wm = _meas.match(/\bwhole\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i);
+                const _nm = _meas.match(/\bnew\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i);
                 if (_wm) _seeWhole = _ok(parseFloat(_wm[1]));
                 if (_nm) _seeNew = _ok(parseFloat(_nm[1]));
                 try { console.log("[PRINT-SIZE] she measured on their body: whole=" + (_seeWhole || "?") + "in new=" + (_seeNew || "?") + "in | she said: " + JSON.stringify(_seeRaw)); } catch {}
@@ -63089,7 +63096,7 @@ async function makeArtistFiles(env, ctx) {
                 const pr2 = await processCommand("PRINT " + sid + " " + shIn + " " + me, env, true);
                 const pp = (pr2 && pr2.payload) ? pr2.payload : pr2;
                 if (pp && pp.ok && pp.pdf) {
-                  sh.pdf = pp.pdf; sh.sheets = pp.sheets || 1; sh.inches = pp.inches;
+                  sh.pdf = pp.pdf; sh.sheets = pp.sheets || 1; sh.inches = pp.inches; sh.vector = !!pp.vector;
                   pdfTotal += (pp.sheets || 1);
                   if (!pdfUrl) { pdfUrl = pp.pdf; pdfInches = pp.inches; }
                 }
@@ -63127,7 +63134,7 @@ async function makeArtistFiles(env, ctx) {
               ...(_seeRaw ? { she_measured: _seeRaw } : {}),
               ...(sheets.length > 1
                 ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
-                                                  inches: sh.inches || null, sheets: sh.sheets || null,
+                                                  inches: sh.inches || null, sheets: sh.sheets || null, vector: sh.vector === true,
                                                   measured: sh.seeIn || null,
                                                   line: sh.line || null,
                                                   pdf: sh.pdf || null,
@@ -63302,7 +63309,7 @@ async function talkCheckOn(env, k) {
 function artistFilesOf(drew) {
   if (!drew) return null;
   const f = {};
-  for (const k of ["flat_artwork", "image", "shows_finished", "print_pdf", "print_inches", "print_sheets", "new_work_failed"]) {
+  for (const k of ["flat_artwork", "image", "shows_finished", "print_pdf", "print_inches", "print_sheets", "new_work_failed", "she_measured"]) {
     if (drew[k] != null) f[k] = drew[k];
   }
   if (Array.isArray(drew.panels)) f.panels = drew.panels;

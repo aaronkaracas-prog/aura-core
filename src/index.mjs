@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.518.0-2026-10-03-every-picture-from-photo";
+const BUILD = "aura-core-v9.519.0-2026-10-03-see-probe-glm";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -57477,15 +57477,21 @@ async function seeMedia(opts, env) {
     // parts in a messages array - a third shape again, and the reason this branching is here
     // rather than in every caller.
     // Needs a ONE-TIME licence acceptance on the account before it will answer at all.
-    if (/^@cf\/.*vision|llama-4|gemma|mistral-small|kimi/i.test(model)) {
+    // glm (her own model) is a messages-shape model too (2026-10-03, v9.519) - without it, SEE sent it
+    // the llava byte-array shape and always came back SAW_NOTHING. And always BYTES, as the note above
+    // says for every model: the link branch here was the one place a URL was still handed over.
+    if (/^@cf\/.*vision|llama-4|gemma|mistral-small|kimi|glm/i.test(model)) {
+      const _mt = (bytes[0] === 0x89 && bytes[1] === 0x50) ? "image/png" : (bytes[0] === 0xff && bytes[1] === 0xd8) ? "image/jpeg"
+               : (bytes[0] === 0x52 && bytes[1] === 0x49) ? "image/webp" : (o.media_type || "image/jpeg");
       const vr = await env.AI.run(model, { max_tokens: cap, messages: [{ role: "user", content: [
-        { type: "image_url", image_url: { url: o.url && /^https:\/\//i.test(String(o.url))
-            ? String(o.url)
-            : (() => { let bin = ""; for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
-                       return "data:" + (o.media_type || "image/jpeg") + ";base64," + btoa(bin); })() } },
+        { type: "image_url", image_url: { url: (() => { let bin = ""; for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+                       return "data:" + _mt + ";base64," + btoa(bin); })() } },
         { type: "text", text: prompt } ] }] });
-      const saw = String(vr?.response || vr?.description || "").trim();
-      if (!saw) return { ok: false, error: "SAW_NOTHING", model, bytes: bytes.length, ms: Date.now() - t0 };
+      const saw = String(vr?.response || vr?.description || vr?.choices?.[0]?.message?.content || "").trim();
+      const _u = vr?.usage || vr?.choices?.[0]?.usage || null;
+      if (saw) return { ok: true, saw, model, bytes: bytes.length, media: _mt,
+                        tokens_in: _u ? (_u.prompt_tokens ?? _u.input_tokens ?? null) : null, ms: Date.now() - t0 };
+      if (!saw) return { ok: false, error: "SAW_NOTHING", model, bytes: bytes.length, got_sample: JSON.stringify(vr || {}).slice(0, 300), ms: Date.now() - t0 };
       return { ok: true, saw, model, bytes: bytes.length, ms: Date.now() - t0 };
     }
 

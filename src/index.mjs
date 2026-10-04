@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.535.0-2026-10-04-category-ending";
+const BUILD = "aura-core-v9.536.0-2026-10-04-newest-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7025,6 +7025,55 @@ async function processCommand(line, env, isOp) {
               "the context and render set today - the rest are untouched and cost nothing." } };
     }
 
+    // ══ NEWEST — WHAT WAS DRAWN LATELY, BY CATEGORY AND SET (2026-10-04, v9.536, Aaron) ══════
+    // "Everything I've done in the last week… it's like 100 images, 120 images. Just help me
+    // organize it." The catalogue holds thousands of older tiles and nothing showed which sets
+    // are the recent work. Reads ONLY what WALK banks (`walk:count:<cat>`.kinds - one small read
+    // per category) - draws nothing, costs nothing. A category not walked since v9.536 has no
+    // dates yet and is named under `not_dated`; `RUN "WALK ALL"` fills them.
+    //   NEWEST          -> the last 7 days
+    //   NEWEST 14       -> the last 14 days
+    case "NEWEST": {
+      const daysN = Math.max(1, Math.min(365, parseInt(String(rest || "").trim(), 10) || 7));
+      const treeN = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeN) return { cmd: "NEWEST", payload: { ok: false, error: "NO_TREE" } };
+      const cutN = new Date(Date.now() - daysN * 86400000).toISOString().slice(0, 10);
+      const catsN = Object.keys(treeN.subjects || {});
+      const rowsN = [], undated = [];
+      await Promise.all(catsN.map(async (c) => {
+        const cnt = await env.AURA_KV.get("walk:count:" + tatSlug(c), "json").catch(() => null);
+        if (!cnt || !cnt.kinds) { undated.push(c); return; }
+        for (const k of Object.keys(cnt.kinds)) {
+          const kd = cnt.kinds[k] || {};
+          const n = Object.keys(kd.days || {}).filter((d) => d >= cutN)
+            .reduce((m, d) => m + (kd.days[d] || 0), 0);
+          if (n) rowsN.push({ category: c, set: k, new: n, of: kd.tiles || 0,
+                              newest: String(kd.newest || "").slice(0, 10),
+                              walked: String(cnt.at || "").slice(0, 10) });
+        }
+      }));
+      rowsN.sort((a, b) => (b.newest.localeCompare(a.newest)) || (b.new - a.new));
+      // Trend cards with their own list of sets (`trend:<card>`), so the list and what the cards
+      // open can be read side by side.
+      let trendsN = [];
+      try {
+        const lt = await env.AURA_KV.list({ prefix: "trend:", limit: 200 });
+        trendsN = await Promise.all((lt.keys || []).map(async (k) =>
+          k.name + " = " + String((await env.AURA_KV.get(k.name).catch(() => null)) || "")));
+      } catch {}
+      const byCat = {};
+      for (const r of rowsN) byCat[r.category] = (byCat[r.category] || 0) + r.new;
+      return { cmd: "NEWEST", payload: { ok: true, days: daysN, since: cutN,
+        tiles: rowsN.reduce((n, r) => n + r.new, 0), sets: rowsN.length,
+        by_category: Object.keys(byCat).sort((a, b) => byCat[b] - byCat[a]).map((c) => c + ": " + byCat[c]),
+        list: rowsN.map((r) => r.category + " > " + r.set + "  -  " + r.new + " new of " + r.of +
+                                 ", newest " + r.newest),
+        trend_cards: trendsN,
+        ...(undated.length ? { not_dated: undated,
+          what_to_do: 'RUN "WALK ALL" - these categories have not been walked since dates were banked' } : {}),
+        note: "Read from what WALK banked; nothing drawn. A set redrawn since its category was last walked shows after the next WALK." } };
+    }
+
     case "WALK": {
       const treeW = await env.AURA_KV.get("card:tree", "json").catch(() => null);
       if (!treeW) return { cmd: "WALK", payload: { ok: false, error: "NO_TREE" } };
@@ -7105,7 +7154,8 @@ async function processCommand(line, env, isOp) {
         const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
         if (!r) return null;
         const t = Date.parse(r.at || "");
-        return { url: tatFaceUrl(r), fresh: Number.isFinite(t) && (nowW - t) < freshMs };
+        return { url: tatFaceUrl(r), fresh: Number.isFinite(t) && (nowW - t) < freshMs,
+                 at: Number.isFinite(t) ? new Date(t).toISOString() : null };
       };
       // A leaf with a tile but no wall is a dead end on the third screen. That is the single
       // most useful thing this page reports and it cannot be read from any existing command.
@@ -7293,7 +7343,7 @@ async function processCommand(line, env, isOp) {
             }
             return { key: kn, step: bits[3] || "", path: bits.slice(4).join(":") || "bare", imgs };
           }));
-          return { name: n, url, fresh: !!(face && face.fresh), walls,
+          return { name: n, url, fresh: !!(face && face.fresh), at: (face && face.url && face.at) || null, walls,
             sets: recs.filter((x) => x.imgs.length), shots: keys.length, isKind: !sub.length };
         }));
         for (const g of got) items.push(g);
@@ -7307,7 +7357,18 @@ async function processCommand(line, env, isOp) {
             kStep[st.step] = (kStep[st.step] || 0) + st.imgs.length;
           }
         }
-        secs.push({ kind: k, leaves: sub.length, items, pics: kPics, byStep: kStep });
+        // ══ WHEN EACH SET WAS DRAWN (2026-10-04, v9.536, Aaron) ═══════════════════════════
+        // "Everything I've done in the last week I want to appear in the front." Every tile record
+        // already carries the day it was drawn; this walk reads every one of them anyway, so it
+        // banks per set the newest day and how many tiles were drawn on each day. The catalogue
+        // sorts sets by `newest` and NEWEST lists the recent days - both from this one banked read.
+        let kNew = null; const kDays = {};
+        for (const it of got) {
+          if (!it.url || !it.at) continue;
+          if (!kNew || it.at > kNew) kNew = it.at;
+          const d = it.at.slice(0, 10); kDays[d] = (kDays[d] || 0) + 1;
+        }
+        secs.push({ kind: k, leaves: sub.length, items, pics: kPics, byStep: kStep, newest: kNew, days: kDays });
       }
       const missing = secs.flatMap((s) => s.items.filter((i) => !i.url).map((i) => i.name));
       const noWall = secs.flatMap((s) => s.items.filter((i) => i.url && !i.walls.length && !i.shots).map((i) => i.name));
@@ -7476,7 +7537,8 @@ async function processCommand(line, env, isOp) {
       try {
         await env.AURA_KV.put("walk:count:" + tatSlug(catW), JSON.stringify({
           at: new Date().toISOString(), pics: picTotal, things: secs.reduce((n, x) => n + x.items.length, 0),
-          no_tile: missing.length, no_wall: noWall.length, tight: tightW }));
+          no_tile: missing.length, no_wall: noWall.length, tight: tightW,
+          kinds: Object.fromEntries(secs.map((x) => [x.kind, { newest: x.newest, days: x.days, tiles: x.items.filter((i) => i.url).length }])) }));
       } catch {}
       return { cmd: "WALK", payload: { ok: true,
         url: "https://auras.guide/walk/" + tatSlug(catW),
@@ -69031,10 +69093,22 @@ export class PublicEntry extends WorkerEntrypoint {
           const hit = Object.keys(spec).find((x) => tatSlug(x) === tatSlug(k));
           return hit ? (spec[hit] || []) : [];
         };
+        // ══ NEWEST FIRST (2026-10-04, v9.536, Aaron) ═══════════════════════════════════════
+        // "The newer stuff we've done I want to appear in the front." Every tile record carries
+        // the day it was drawn and this door already reads the record to get its picture - so the
+        // day is kept on the way past and every list below sorts by it. No extra reads. Anything
+        // without a date keeps its old place, after the dated ones.
+        const faceAt = {};
         const faceOf = async (n) => {
           const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
-          return r ? tatFaceUrl(r) : null;
+          const u = r ? tatFaceUrl(r) : null;
+          if (u && r.at) faceAt[tatSlug(n)] = String(r.at);
+          return u;
         };
+        const newestFirst = (arr, at) => arr
+          .map((x, i) => ({ x, i, t: at(x) || "" }))
+          .sort((a, b2) => (b2.t > a.t ? 1 : b2.t < a.t ? -1 : a.i - b2.i))
+          .map((o) => o.x);
 
         // ══ SHE CAN FIND THINGS NOW (2026-09-06) ══════════════════════════════════════════
         // `talk` already returns `show_me` - two to five words naming a subject somebody wants to
@@ -69189,8 +69263,71 @@ export class PublicEntry extends WorkerEntrypoint {
               value: tatSlug(lf), label: String(lf), image: await faceOf(lf), own: _own })));
             items.push(...part);
           }
-          return { ok: true, type: "row", kind: kindName, label: kindName, items, own: _own,
+          return { ok: true, type: "row", kind: kindName, label: kindName,
+                   items: newestFirst(items, (x) => faceAt[x.value]), own: _own,
                    pictures: items.filter((x) => x.image).length };
+        }
+
+        // ══ A TREND CARD OPENS THE SETS IT NAMES, WHEREVER THEY LIVE (2026-10-04, v9.536) ═══
+        // Aaron: "the trend cards need to point towards Get Inspired or all the new stuff too."
+        // A trend card used to open only the catalogue category whose NAME matched it, so "Body
+        // Jewelry Tattoos" landed on the old flat designs while 131 new body jewelry pictures sat
+        // in Get Inspired. `trend:<card>` in KV is a comma list of set names from ANY category; the
+        // card opens exactly those, newest first, each carrying the category it lives in so the
+        // page keeps a Get Inspired picture on the inspiration path. No list -> NO_TREND, and the
+        // page falls back to today's name match. Draws nothing.
+        //   { trend }            -> the sets, each with a cover
+        //   { trend, all:true }  -> every design in those sets
+        const askTrend = String(b.trend || "").trim();
+        if (askTrend) {
+          const rawT = await env.AURA_KV.get("trend:" + tatSlug(askTrend)).catch(() => null);
+          const namesT = String(rawT || "").split(",").map((x) => x.trim()).filter(Boolean);
+          if (!namesT.length) return { ok: false, error: "NO_TREND", trend: askTrend };
+          const homeOf = {};
+          for (const c of Object.keys(subj)) for (const k of (subj[c] || [])) homeOf[tatSlug(k)] = { kind: k, cat: c };
+          const setsT = [], missingT = [];
+          for (const n of namesT) {
+            const h = homeOf[tatSlug(n)];
+            if (h && !setsT.some((x) => x.kind === h.kind)) setsT.push(h); else if (!h) missingT.push(n);
+          }
+          const cntT = {};
+          for (const c of new Set(setsT.map((x) => x.cat))) {
+            cntT[c] = await env.AURA_KV.get("walk:count:" + tatSlug(c), "json").catch(() => null);
+          }
+          const newestOfT = (x) => { const kk = cntT[x.cat] && cntT[x.cat].kinds && cntT[x.cat].kinds[x.kind];
+                                     return (kk && kk.newest) || ""; };
+          if (b.all) {
+            const flatT = [];
+            for (const x of setsT) {
+              const lv = leavesOf(x.kind);
+              for (const lf of (lv.length ? lv : [x.kind])) flatT.push({ leaf: lf, kind: x.kind, cat: x.cat });
+            }
+            const ownT = {};
+            for (const x of setsT) ownT[x.kind] = String((await env.AURA_KV.get("own:" + tatSlug(x.kind)).catch(() => null)) || "").trim() === "1";
+            const itemsT = [];
+            for (let i = 0; i < flatT.length; i += 40) {
+              itemsT.push(...await Promise.all(flatT.slice(i, i + 40).map(async (x) => ({
+                value: tatSlug(x.leaf), label: String(x.leaf), kind: String(x.kind), category: x.cat,
+                image: await faceOf(x.leaf), own: !!ownT[x.kind] }))));
+            }
+            return { ok: true, type: "row", trend: true, category: askTrend, label: askTrend, all: true,
+                     items: newestFirst(itemsT, (x) => faceAt[x.value]), things: itemsT.length,
+                     pictures: itemsT.filter((x) => x.image).length,
+                     ...(missingT.length ? { missing: missingT } : {}) };
+          }
+          const itemsT = await Promise.all(setsT.map(async (x) => {
+            const lv = leavesOf(x.kind);
+            let image = null;
+            for (const lf of (lv.length ? lv : [x.kind]).slice(0, COVER_TRIES)) { image = await faceOf(lf); if (image) break; }
+            return { value: tatSlug(x.kind), label: String(x.kind), category: x.cat, image,
+                     things: lv.length || 1, self: !lv.length, _new: newestOfT(x) };
+          }));
+          const sortedT = newestFirst(itemsT, (x) => x._new).map((x) => { const { _new, ...y } = x; return y; });
+          return { ok: true, type: "row", trend: true, category: askTrend, label: askTrend,
+                   items: sortedT, kinds: sortedT.length,
+                   things: sortedT.reduce((n, x) => n + x.things, 0), banked: null,
+                   pictures: sortedT.filter((x) => x.image).length,
+                   ...(missingT.length ? { missing: missingT } : {}) };
         }
 
         // ── one category: its kinds, each with a cover ─────────────────────────────────────
@@ -69223,7 +69360,7 @@ export class PublicEntry extends WorkerEntrypoint {
               items.push(...part);
             }
             return { ok: true, type: "row", category: catName, label: catName, all: true,
-                     items, things: items.length,
+                     items: newestFirst(items, (x) => faceAt[x.value]), things: items.length,
                      pictures: items.filter((x) => x.image).length };
           }
           const kinds = subj[catName] || [];
@@ -69248,7 +69385,11 @@ export class PublicEntry extends WorkerEntrypoint {
           // slightly stale. That is the right trade - a stale number that MATCHES the walk page
           // is checkable; a live number that disagrees with it is two sources of truth.
           const cnt = await env.AURA_KV.get("walk:count:" + tatSlug(catName), "json").catch(() => null);
-          return { ok: true, type: "row", category: catName, label: catName, items,
+          // Sets with the newest tiles first, from the day WALK banked for each set. A category not
+          // walked since v9.536 has no days and keeps its old order until it is.
+          const kNew = (cnt && cnt.kinds) || {};
+          return { ok: true, type: "row", category: catName, label: catName,
+                   items: newestFirst(items, (x) => (kNew[x.label] && kNew[x.label].newest) || ""),
                    kinds: items.length,
                    things: items.reduce((n, x) => n + x.things, 0),
                    banked: cnt ? { pictures: cnt.pics, things: cnt.things,

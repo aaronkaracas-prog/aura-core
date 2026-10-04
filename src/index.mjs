@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.533.0-2026-10-03-files-are-the-design";
+const BUILD = "aura-core-v9.534.0-2026-10-04-is-this-the-one";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66219,8 +66219,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                   "Look at it. In one or two short lines, say what makes each direction different, then ask " +
                   "which number grabs them - in your own words. Do not offer to lock anything in yet."
                 : "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
-                  "in one warm line, then the two doors - lock it in, or change something - in your own " +
-                  "words, different each time.") +
+                  "in one warm line, then ask whether this is the one - their tattoo - or whether they want to " +
+                  "change something, in your own words, different each time. Never say 'lock it in'.") +
               // THE THIRD DOOR SURVIVES THE LOOK (2026-09-24). MEASURED on the site: they came in through
               // See It On You, she said so herself, and after the drawing this line - the only close-out
               // she gets after a look - offered two doors. Her guidance decides who gets the third; this

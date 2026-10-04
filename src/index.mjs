@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.531.0-2026-10-03-a-pick-is-their-go";
+const BUILD = "aura-core-v9.532.0-2026-10-03-one-plain-sentence";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63370,32 +63370,16 @@ const INSPIRE_FRAME = "Take the tattoo from this picture and make it flat tattoo
 const ONME_SIDES = /\b(right|left)\b/i;
 const ONME_SIZED = /\b(small|smaller|tiny|little|mini|big|bigger|large|larger|huge|palm|hand|half|whole|full|entire|cover|covering|inch|inches|cm|size|sized|across|down to|halfway|wide|tall)\b/i;
 function onmeAsk(words) {
-  // ══ BASE BODY PHOTO + NEW TATTOO (2026-09-24, Aaron's frame) ═══════════════════════════════
-  // The operation, stated literally - which image is which, that this is an EDIT of their photo,
-  // that ink already on them is old ink that stays - with ONLY where it goes taken from them, as
-  // they said it. Same lesson as the add-on frame: the models are literal. Image 1 is the design,
-  // image 2 is their photo, and the refs are sent in that order.
-  const w = String(words || "").replace(/\s+/g, " ").trim().slice(0, 600);
-  const where = w ? "the place they asked for: \"" + w.replace(/"/g, "'") + "\"" : "the spot that suits it";
-  return [
-    "TWO-IMAGE TATTOO VISUALIZATION",
-    "",
-    "IMAGE 1 = TATTOO DESIGN SOURCE. This image supplies ONLY the tattoo artwork/design that will be applied.",
-    "IMAGE 2 = BASE BODY PHOTO. This image is the image to EDIT. It owns the person, body, pose, camera angle, crop, background, lighting, skin, existing tattoos, clothing, environment and overall composition.",
-    "",
-    "GOAL: Return IMAGE 2 with the tattoo from IMAGE 1 realistically applied to the requested body location.",
-    "THIS IS AN IMAGE EDIT, NOT A NEW IMAGE GENERATION.",
-    "",
-    "PRESERVATION RULE: Preserve IMAGE 2 as closely as possible. Do NOT recreate the person, replace the person, change the pose, change the body, change the camera angle, change the crop, change the background, change the environment, change the lighting, remove or redesign existing tattoos, invent additional tattoos, reinterpret IMAGE 2 as inspiration, or generate a new photograph resembling IMAGE 2. The only intended visual change is the addition of the tattoo design from IMAGE 1.",
-    "",
-    "TATTOO APPLICATION: Extract the tattoo artwork from IMAGE 1 and apply it to " + where + " in IMAGE 2. Adapt only what is physically necessary to make the tattoo believable on that body: scale, rotation, perspective, curvature, anatomical wrapping, skin contour, natural occlusion, local lighting, skin texture. Preserve the recognizable design, structure, subject, colors and visual character of IMAGE 1. The tattoo must appear IN the skin rather than pasted on top of the photograph. Preserve pores, skin texture, highlights, shadows and body curvature through the tattoo.",
-    "",
-    // "must not touch or cover" (2026-09-24): MEASURED - without it, both tries covered the flowers
-    // around the empty space; with it, Grok and GPT both put the bike in the gap and kept every flower.
-    "EXISTING INK: Any tattoos already visible in IMAGE 2 are OLD/EXISTING INK. They are part of the base photograph and must remain unchanged unless the user explicitly asks to modify or cover them. The new tattoo must not touch or cover any of the existing tattoos - it goes only on bare skin. The tattoo supplied in IMAGE 1 is NEW INK. NEW INK is the only tattoo artwork being added.",
-    "",
-    "OUTPUT: Return the BASE BODY PHOTO with the NEW INK realistically visualized on the requested body location. OUTPUT = BASE BODY PHOTO + NEW TATTOO, NOT a newly generated person inspired by both images."
-  ].join("\n");
+  // ══ TWO PICTURES AND ONE PLAIN SENTENCE (2026-10-03, v9.532, Aaron) ═══════════════════════════
+  // MEASURED (pta_b5f5db1bf9210b52): a ~2,300-character page of rules went with every look-on-them -
+  // crop, camera, pores, "not a newly generated person", existing ink - most of it written for other
+  // cases and stacked one fix at a time. A brand-new design on a bare back went over the waistband
+  // and past the sides. Aaron: "that much information sent to the image model is never going to
+  // work." Now: image 1 the design, image 2 their photo, her one plain request, and the one line
+  // that keeps ink already on them safe. The add-on path is separate and unchanged.
+  const w = String(words || "").replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "").slice(0, 600);
+  return "Put the tattoo from the first image on the person in the second image" + (w ? ": " + w : "") + ". " +
+    "Keep any tattoos already on them as they are.";
 }
 
 // ══ WHAT'S HOT RIGHT NOW (2026-09-24, Aaron) ═══════════════════════════════════════════════
@@ -66035,7 +66019,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (act === "onme" && me) {
         try {
           const _om = await processCommand("SHOW_IT " + JSON.stringify({
-            subject: onmeAsk(_onmeWords), context: "seeing a tattoo on their own body", name: "on me",
+            subject: onmeAsk(String(brief || "").trim() || String(acted.ask || "").trim() || _onmeWords), context: "seeing a tattoo on their own body", name: "on me",
             raw: true, refs: [_onmeDesign.image, refUrl], source: "onme", parent: _onmeDesign.design
           }), env, true);
           const _op = (_om && _om.payload) ? _om.payload : _om;

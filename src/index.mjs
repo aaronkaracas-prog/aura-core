@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.530.0-2026-10-03-finished-on-the-body";
+const BUILD = "aura-core-v9.531.0-2026-10-03-a-pick-is-their-go";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65542,7 +65542,37 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // is ... Want to see it on you, or change something first?" Her close-out had the word "see", so
       // this read it as her asking first and drew nothing, while she said "here it is" over nothing.
       // When THEIR words this turn are a go, her wording never stops the picture.
-      const _theirGo = _goSaid;
+      // ══ PICKING A NUMBER OFF THE FOUR IS THEIR GO (2026-10-03, v9.531, Aaron) ═══════════════════
+      // MEASURED: "I love number 3" with the four-panel grid on screen. pta_fb44983b5aafc5e3 - she
+      // closed with "lock it in, or change something?" and #3 was drawn. pta_2adb554da417105a - same
+      // words, she closed with "Want to see it on its own, full detail?", [ASKFIRST] read her question
+      // as asking first, and nothing was drawn; "i love it" then locked the grid itself. Their pick
+      // is their decision, whatever her closing line says. Same test the pick sentence uses below:
+      // the picture on screen is a four-direction grid and their line names one number.
+      let _pickGo = false;
+      try {
+        if (lastDrawn && lastDrawn.design) {
+          let _gp = null;
+          for (let i = tline.length - 1; i >= 0; i--) {
+            const e = tline[i];
+            if (e && e.role === "picture" && e.design === lastDrawn.design) { _gp = e; break; }
+          }
+          if (_gp && (_gp.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_gp.words || "")))) {
+            const _l = String(said || "").toLowerCase();
+            const _wn = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
+            const _ns = new Set();
+            for (const m of _l.matchAll(/\b([1-4])(?:st|nd|rd|th)?\b|(?:(?:number|image|picture|option|pic)\s+)(one)\b|\b(first|two|second|three|third|four|fourth)\b/g)) {
+              _ns.add(m[1] ? Number(m[1]) : _wn[m[2] || m[3]]);
+            }
+            if (_ns.size === 1) {
+              _pickGo = true;
+              if (act === "none") act = "change";
+              console.log("[PICK] they picked number " + [..._ns][0] + " off the four - their go");
+            }
+          }
+        }
+      } catch {}
+      const _theirGo = _goSaid || _pickGo;
       if ((act === "draw" || act === "change") && !_theirGo) {
         const _sayNow = String(acted.say || said || "").trim();
         const _lastQ = (_sayNow.match(/[^.!?]*\?\s*$/) || [""])[0];

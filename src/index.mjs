@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.532.0-2026-10-03-one-plain-sentence";
+const BUILD = "aura-core-v9.533.0-2026-10-03-files-are-the-design";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62775,7 +62775,10 @@ async function makeArtistFiles(env, ctx) {
           // THE FINISHED LOOK IS THE ONE ON THEIR BODY (2026-10-03, v9.530, Aaron). v9.529 pointed
           // lastDrawn at the design so the files come from it - and this read the same slot, so
           // shows_finished named the design (img_mut0o2y49cel), not the back (img_mut0ptqew5fb).
-          const mockUrl = bodyLook || (lastDrawn && lastDrawn.image) ||
+          // v9.533 (2026-10-03, Aaron): v9.530 put bodyLook HERE, and mockUrl is also the flat sheet
+          // when the design is already flat - so the files traced the body (pta_39503f5842abc072).
+          // mockUrl is the design again; only `shows_finished` takes the look on their body.
+          const mockUrl = (lastDrawn && lastDrawn.image) ||
             ("https://" + (await imageHost(env)) + "/image/" + shopParent);
           // Subtract only when there IS prior ink: an add-on with their own photograph on file.
           // A new piece has none, and FINAL alone is the whole design.
@@ -63152,7 +63155,7 @@ async function makeArtistFiles(env, ctx) {
               ...(_newWorkFail ? { new_work_failed: _newWorkFail } : {}),
               // The whole package, in the order a shop uses it.
               flat_artwork: fp.image,
-              shows_finished: mockUrl,
+              shows_finished: bodyLook || mockUrl,
               // ONE ENTRY PER PANEL, each with the section it covers, its flat artwork and the
               // line art the needle follows. `flat_artwork` above stays the first sheet so a
               // single-panel job reads exactly as it did before this existed.

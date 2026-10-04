@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.534.0-2026-10-04-is-this-the-one";
+const BUILD = "aura-core-v9.535.0-2026-10-04-category-ending";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58645,6 +58645,19 @@ async function tatFrameFor(env, kind, leaf, step) {
   const stripCrop = (fr) => String(fr || "").replace(
     /^,\s*(the face filling the frame[^.]*|full body|head only[^.]*|the complete figure[^.]*)\s*(?=[,.]|$)/i, "");
   const forStep = (fr) => (String(step || "") === "crop" ? (bare || stripCrop(fr)) : fr);
+  // ══ A CATEGORY MAY CARRY ITS OWN ENDING (2026-10-04, v9.535, Aaron) ═══════════════════════════
+  // Every tile ends with one fixed ending, and the shape ending says "no letters, no words" - right
+  // for a dragon, wrong for Lettering & Quotes, where the words ARE the tattoo. `frame:category:<slug>`
+  // (same `{leaf}` convention as `frame:shape`) replaces the ending for every tile under that
+  // category, whichever level the leaf sits at. Unset - every category today - nothing changes.
+  {
+    await climb();
+    for (const c of [cat, owner]) {
+      if (!c) continue;
+      const cf = await get("frame:category:" + tatSlug(c));
+      if (cf && String(cf).trim()) return forStep(String(cf).replace(/\{leaf\}/g, leaf));
+    }
+  }
   if (isRept === true || (isRept === null && (TAT_REPTILE_KIND.test(kind) || TAT_REPTILE_KIND.test(kSing))))
     return forStep(rf || TAT_FRAME_REPTILE);
   if (isPhot === true || (isPhot === null && (TAT_PHOTO_KIND.test(kind) || TAT_PHOTO_KIND.test(kSing))))

@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.536.0-2026-10-04-newest-first";
+const BUILD = "aura-core-v9.537.0-2026-10-05-five-inch-default";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -9906,11 +9906,14 @@ async function processCommand(line, env, isOp) {
     // brief on their PTA, never typed - which is also how Grok's own pack was ordered.
     case "PRINT": {
       if (!isOp) return { cmd: "PRINT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const prm = String(rest || "").trim().match(/^(\S+)\s+([\d.]+)\s*(?:in|")?\s*(pta_[A-Za-z0-9]+)?$/i);
+      // `long` (2026-10-05, v9.537): the inches are the LONGEST side, not the height - the standard
+      // default. Without it, the inches are the finished height, exactly as before.
+      const prm = String(rest || "").trim().match(/^(\S+)\s+([\d.]+)\s*(?:in|")?\s*(long)?\s*(pta_[A-Za-z0-9]+)?$/i);
       if (!prm) return { cmd: "PRINT", payload: { ok: false,
-        error: 'Usage: PRINT <design or image id> <inches> [<pta>]',
+        error: 'Usage: PRINT <design or image id> <inches> [long] [<pta>]',
         note: "Inches is the FINISHED HEIGHT on the body - what the artist measured." } };
-      const pId = prm[1], pIn = parseFloat(prm[2]), pPta = prm[3] || null;
+      const pId = prm[1], pLong = !!prm[3], pPta = prm[4] || null;
+      let pIn = parseFloat(prm[2]);
       if (!(pIn > 0 && pIn <= 60)) return { cmd: "PRINT", payload: { ok: false,
         error: "inches must be between 0 and 60" } };
       if (!env.BROWSER) return { cmd: "PRINT", payload: { ok: false,
@@ -10004,6 +10007,8 @@ async function processCommand(line, env, isOp) {
         const inked = photonCrop(im0, x1, y1, x2 + 1, y2 + 1);
         try { im0.free(); } catch {}
         const W = inked.get_width(), H = inked.get_height();
+        // Longest side asked for and the piece is wider than tall: the height that makes the width it.
+        if (pLong && W > H) pIn = Math.round((pIn * H / W) * 100) / 100;
         // VECTOR FIRST: the line art traced to outlines prints sharp at any height, so the pixel
         // ceiling below no longer applies. If tracing fails, everything below runs as it always has.
         try {
@@ -63169,10 +63174,18 @@ async function makeArtistFiles(env, ctx) {
                 if (/^c/i.test(_szM[2])) _v = _v / 2.54;
                 if (_v >= 1 && _v <= 40) inches = Math.round(_v * 10) / 10;
               }
-              if (!_seeWhole) try { console.log("[PRINT-SIZE] her size=" + JSON.stringify(_szTxt) + " placement=" + JSON.stringify(placeKey) + " -> " + (inches || 8) + "in"); } catch {}
+              if (!_seeWhole) try { console.log("[PRINT-SIZE] her size=" + JSON.stringify(_szTxt) + " placement=" + JSON.stringify(placeKey) + " -> " + (inches ? inches + "in" : "5in on the longest side (standard)")); } catch {}
             }
             if (_seeWhole) inches = _seeWhole;   // what she measured on the finished picture beats any guess
-            if (!inches) inches = 8;   // a hand-sized default, and PRINT reports the real figure
+            // ══ THE STANDARD TATTOO IS FIVE INCHES ON ITS LONGEST SIDE (2026-10-05, v9.537, Aaron) ══
+            // MEASURED: a dragon with no size and no placement printed at the old 8in default - and
+            // being square it was also 8in WIDE, past the 7.5in a letter sheet prints, so it split
+            // across 3 sheets. Aaron: a standard tattoo is "not a whole page, that's for sure"; agreed
+            // 5in. The default is now the LONGEST side (`long`), so a wide piece is not 5in tall and
+            // 9in across, and five inches always lands on one sheet. Her measured size, the size they
+            // asked for, and the placement list all still win over it.
+            let _stdLong = false;
+            if (!inches) { inches = 5; _stdLong = true; }
             // ══ A PDF PER PANEL, AND THE COUNT HAS TO ADD UP (2026-09-15) ═════════════
             // MEASURED: `panel_count: 3` and `print_sheets: 1` in the same object, because PRINT
             // ran once on `lineId` - panel one. Two of the three line arts were never in any PDF,
@@ -63194,9 +63207,10 @@ async function makeArtistFiles(env, ctx) {
               if (!sh.seeIn) for (const k of Object.keys(PLACEMENT_IN)) {
                 if (shKey.includes(k) && PLACEMENT_IN[k] > shIn) shIn = PLACEMENT_IN[k];
               }
-              if (!shIn) shIn = inches;
+              let _shLong = false;
+              if (!shIn) { shIn = inches; _shLong = _stdLong; }
               try {
-                const pr2 = await processCommand("PRINT " + sid + " " + shIn + " " + me, env, true);
+                const pr2 = await processCommand("PRINT " + sid + " " + shIn + (_shLong ? " long" : "") + " " + me, env, true);
                 const pp = (pr2 && pr2.payload) ? pr2.payload : pr2;
                 if (pp && pp.ok && pp.pdf) {
                   sh.pdf = pp.pdf; sh.sheets = pp.sheets || 1; sh.inches = pp.inches; sh.vector = !!pp.vector;

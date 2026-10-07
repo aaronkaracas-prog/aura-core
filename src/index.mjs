@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.537.0-2026-10-05-five-inch-default";
+const BUILD = "aura-core-v9.538.0-2026-10-07-favorites";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -68151,6 +68151,32 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!/^prj_[a-z0-9]{6,40}$/i.test(pid)) return { ok: false, error: "BAD_PROJECT_ID" };
         let r = null; try { r = await talkDo(env, me, "talkProject", [pid]); } catch {}
         return (r && r.ok && r.project) ? { ok: true, project: r.project } : { ok: false, error: "NOT_FOUND" };
+      }
+
+      // ══ FAVORITES (2026-10-07, Aaron) ════════════════════════════════════════════════════════
+      // A heart on every catalogue design made big. The list lives with the person - their own
+      // Durable Object, beside their conversation - so it follows them to every device they sign in
+      // on. Newest first. Each one is what the page needs to open it big again: the picture, its
+      // words, its group and its category. Draws nothing, calls no model.
+      if (action === "favs" || action === "fav") {
+        let list = [];
+        try { list = talkParse((await talkStateGet(env, me, ["favorites"])).favorites) || []; } catch {}
+        if (!Array.isArray(list)) list = [];
+        if (action === "fav") {
+          const it = (b.item && typeof b.item === "object") ? b.item : {};
+          const url = String(it.url || "").trim().slice(0, 300);
+          if (!/^https:\/\//i.test(url)) return { ok: false, error: "BAD_URL" };
+          const at = list.findIndex((x) => x && x.url === url);
+          const on = (b.on === undefined) ? at < 0 : !!b.on;
+          if (at >= 0) list.splice(at, 1);
+          if (on) list.unshift({ url, label: String(it.label || "").slice(0, 300),
+            kind: it.kind ? String(it.kind).slice(0, 120) : null,
+            category: it.category ? String(it.category).slice(0, 120) : null,
+            trend: !!it.trend, ts: Date.now() });
+          list = list.slice(0, 1000);
+          await talkStatePut(env, me, "favorites", JSON.stringify(list));
+        }
+        return { ok: true, favorites: list, count: list.length };
       }
 
       if (action === "talk") {

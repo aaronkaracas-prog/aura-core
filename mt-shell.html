@@ -55,13 +55,96 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 #peek.on{display:flex}
 #peek .box{max-width:460px;width:100%;background:var(--card);border:1px solid var(--line);
   border-radius:18px;overflow:hidden}
-#peek img{width:100%;display:block;aspect-ratio:1;object-fit:cover;background:#000}
+#peek img{width:100%;display:block;max-height:62vh;object-fit:contain;background:#000}
+/* HERO CARDS (2026-10-06, Aaron): the trending row is bigger and shows each split card whole -
+   the design on white on the left, the same tattoo on a body on the right. */
+#trendRow .tile{flex:0 0 240px}
+#trendRow .tile .pic{aspect-ratio:3/2}
+#favRow .tile{flex:0 0 200px} #favRow .tile .pic{aspect-ratio:3/2;background:#fff} #favRow .tile img{object-fit:contain}
+/* EVERY DESIGN IN ONE ROW (2026-10-06, Aaron): no kinds to pick through - all of a category's
+   designs side by side, each shown whole, one tap makes it big. */
+#layRow .tile,#ladRow .tile{flex:0 0 240px}
+#layRow .tile .pic,#ladRow .tile .pic{background:#fff;aspect-ratio:3/2}
+#layRow .tile img,#ladRow .tile img{object-fit:contain}
+/* GROUPS INSIDE THE ONE ROW (2026-10-07, Aaron): no kinds to pick, but you can see where one group
+   ends and the next begins - a marker card with its name - and the line above the row says which
+   group you are in as you swipe. Tiles carry no text, so every picture lines up. */
+.tile.bare b{display:none}
+.grp{flex:0 0 112px;align-self:flex-start;aspect-ratio:auto;height:160px;border-radius:14px;
+  border:1px solid var(--violet);background:linear-gradient(160deg,#2a1d47,#121216);display:flex;
+  flex-direction:column;justify-content:flex-end;padding:12px;text-align:left;scroll-snap-align:start}
+.grp span{font-weight:800;font-size:.86rem;line-height:1.25;color:#fff}
+.grp small{color:#c9b8f5;font-size:.72rem;margin-top:4px}
+.grpnow{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:4px;padding:0 var(--gut);
+  font-size:.86rem;color:var(--ink)}
+.grpnow b{font-weight:800} .grpnow small{color:var(--dim);white-space:nowrap}
+/* FAVOURITES (2026-10-07, Aaron). */
+.pick .fav{display:inline-flex;align-items:center;gap:6px;margin:10px auto 0;min-height:40px;padding:0 16px;
+  border-radius:20px;border:1px solid var(--line);background:#141418;color:var(--ink);font:inherit;
+  font-weight:700;cursor:pointer;flex:none}
+.pick .fav.on{border-color:#ff4d8d;color:#ff4d8d}
+.pick h3.desc{font-size:1rem;line-height:1.35;font-weight:700}
+/* A SPLIT CARD HAS TWO SIDES (2026-10-06, Aaron): a + on each half; tap one and only that side
+   fills the screen - the design on white, or the tattoo on the body. */
+.sp{position:relative}
+.sp .plus,#peek .sp .plus,.pick .sp .plus{position:absolute;bottom:10px;width:40px;height:40px;border-radius:50%;border:0;
+  background:rgba(20,20,24,.78);color:#fff;font-size:1.5rem;line-height:1;font-weight:400;
+  display:none;place-items:center;cursor:pointer;padding:0;z-index:2;min-height:0;flex:none}
+.sp .plus.l,#peek .sp .plus.l,.pick .sp .plus.l{left:calc(25% - 20px)} .sp .plus.r,#peek .sp .plus.r,.pick .sp .plus.r{left:calc(75% - 20px)}
+#peek .sp.split .plus,.pick .sp.split .plus,.sp.split .plus{display:grid}
+#half{position:fixed;inset:0;z-index:90;background:#fff;display:none;align-items:center;justify-content:center}
+#half.on{display:flex}
+#half.r{background:#000}
+#half .fr{position:relative;overflow:hidden;aspect-ratio:3/4;width:min(100vw,75vh);max-height:100vh}
+#half .fr img{position:absolute;top:0;left:0;height:100%;width:200%;max-width:none}
+#half.r .fr img{left:-100%}
+#half .hx{position:absolute;top:12px;right:12px;width:44px;height:44px;border-radius:50%;border:0;
+  background:rgba(20,20,24,.8);color:#fff;font-size:1.6rem;cursor:pointer;z-index:2}
+#half .sw{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);min-height:44px;padding:0 18px;
+  border-radius:22px;border:0;background:rgba(20,20,24,.85);color:#fff;font:inherit;font-weight:700;cursor:pointer;z-index:2}
 #peek .foot{padding:14px 16px 16px}
 #peek h3{font-size:1.15rem;font-weight:800}
 #peek .acts{display:flex;gap:10px;margin-top:12px}
 #peek button{flex:1;min-height:var(--tap);border-radius:12px;border:1px solid var(--line);
   background:#1c1c22;color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
 #peek button.go{background:var(--violet);border-color:var(--violet)}
+/* THE CATALOGUE OPENS ON TOP (2026-09-26, Aaron). "See what we have" used to swap the whole screen
+   for the Design tab. It now opens a layer over home, the same way the peek does: home dimmed behind
+   it, the kinds and designs inside. Close it and they are exactly where they were. On a phone it
+   rises from the bottom and fills most of the screen. */
+#layer{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.86);display:none;
+  align-items:center;justify-content:center;padding:24px}
+#layer.on{display:flex}
+#layer .box{position:relative;max-width:780px;width:100%;max-height:calc(100dvh - 48px);overflow-y:auto;
+  background:var(--card);border:1px solid var(--line);border-radius:18px;padding-bottom:18px;
+  overscroll-behavior:contain}
+#layer .lbar{position:sticky;top:0;z-index:6;display:flex;justify-content:flex-end;padding:10px 10px 0;
+  background:linear-gradient(var(--card) 70%,rgba(20,20,24,0))}
+#layer .x{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:#1c1c22;
+  color:var(--ink);font:inherit;font-size:1.25rem;line-height:1;cursor:pointer}
+#layer .x:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+#layer .dots{padding-top:0}
+#layer .load{color:var(--dim);font-size:.9rem;padding:8px var(--gut) 18px}
+@media (max-width:640px){
+  #layer{align-items:flex-end;padding:0}
+  #layer .box{max-height:92dvh;border-radius:18px 18px 0 0;border-bottom:0;
+    padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+}
+/* The design they picked, big, with one thing to do with it. */
+.pick{padding:6px var(--gut) 0;text-align:center}
+.pick .pbox{max-width:420px;margin:0 auto;aspect-ratio:1;border-radius:16px;overflow:hidden;
+  background:#fff;border:1px solid var(--line);touch-action:pan-y}
+.pick .pbox.split{max-width:640px;aspect-ratio:3/2}
+.pick .pbox img{width:100%;height:100%;object-fit:contain;display:block}
+.pick .nav{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:10px;color:var(--dim);font-size:.85rem}
+.pick .nav button{flex:none;min-height:40px;width:44px;padding:0;font-size:1.2rem}
+.pick h3{font-size:1.2rem;font-weight:800;margin-top:12px}
+.pick p{color:var(--dim);font-size:.88rem;margin-top:2px}
+.pick .acts{display:flex;gap:10px;max-width:420px;margin:14px auto 0}
+.pick button{flex:1;min-height:var(--tap);border-radius:12px;border:1px solid var(--line);
+  background:#1c1c22;color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
+.pick button.go{background:var(--violet);border-color:var(--violet)}
+.pick button:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
 body{background:var(--bg);color:var(--ink);height:100dvh;display:flex;flex-direction:column;
   font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
   -webkit-font-smoothing:antialiased}
@@ -139,6 +222,7 @@ header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-betwe
 .picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));
   gap:12px;padding:0 var(--gut)}
 .picks .tile{width:100%}
+#ladder .rowwrap{padding:0 var(--gut)}
 
 /* ══ ONE STEP AT A TIME, NOT A SCROLLER (2026-09-06) ═══════════════════════════════════════
    This was a horizontal scroll-snap pager nested inside the tab pager, which is also scroll-snap.
@@ -178,7 +262,7 @@ header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-betwe
 .piece{padding:4px var(--gut) 0}
 .piece .shot{width:100%;max-width:420px;margin:0 auto;aspect-ratio:1;border-radius:18px;
   overflow:hidden;background:var(--card);display:grid;place-items:center;position:relative}
-.piece .shot img{width:100%;height:100%;object-fit:cover;display:block}
+.piece .shot img{width:100%;height:100%;object-fit:contain;display:block}
 .piece .shot.busy::after{content:'';position:absolute;inset:0;background:rgba(0,0,0,.55)}
 .piece .cap{text-align:center;padding:12px 0 2px;font-size:1.05rem;font-weight:600}
 .piece .sub{text-align:center;color:var(--dim);font-size:.85rem}
@@ -272,7 +356,7 @@ header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-betwe
 #composer .glyph{width:36px;height:36px;border-radius:50%;flex:0 0 auto;display:grid;
   place-items:center;background:linear-gradient(140deg,#7c3aed,#c084fc);font-size:1.05rem}
 #composer input{flex:1;min-width:0;background:none;border:0;outline:none;color:var(--ink);
-  font:inherit;font-size:.95rem;padding:4px 0}
+  font:inherit;font-size:16px;padding:4px 0}
 #composer input::placeholder{color:#6a6a76}
 #composer .send{width:var(--tap);height:36px;border:0;background:none;color:var(--violet);
   font-size:1.15rem;cursor:pointer;flex:0 0 auto;border-radius:999px}
@@ -322,15 +406,29 @@ nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;bor
   stroke-linecap:round;stroke-linejoin:round}
 #composer .cam.on{border-color:var(--violet)}
 #composer .cam img{width:100%;height:100%;object-fit:cover}
+/* THE + (2026-09-23). One button, two ways in - the way every chat app does it. */
+#addMenu{position:absolute;left:10px;bottom:calc(100% + 8px);display:none;flex-direction:column;
+  min-width:190px;background:#15151b;border:1px solid var(--line);border-radius:14px;overflow:hidden;z-index:20}
+#addMenu.on{display:flex}
+#addMenu button{background:none;border:0;color:var(--ink);text-align:left;padding:12px 16px;
+  font-size:.95rem;cursor:pointer;min-height:var(--tap)}
+#addMenu button+button{border-top:1px solid var(--line)}
 .turn .shot{display:block;max-width:180px;border-radius:12px;margin:0 0 6px auto;border:1px solid var(--line)}
 .files{margin:2px 0 14px;max-width:34rem}
 .files .note{color:var(--dim);font-size:.82rem}
-.files .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin:8px 0}
+.files .grid{display:flex;gap:10px;margin:8px 0;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.files .grid::-webkit-scrollbar{display:none}
+/* ONE SWIPE ROW (2026-10-05, Aaron): artwork, line art, how it will look - each card nearly the phone's
+   width, swiped with a thumb; arrows on a computer. It was a grid that ran off the side. */
+.files .grid a.f{flex:0 0 78%;max-width:300px;scroll-snap-align:start}
+.phead{flex-direction:column;align-items:flex-start;gap:2px}
+.phead ~ .files{padding:0 var(--gut);max-width:none}
+.phead small{color:var(--dim)}
 .files a.f{display:block;background:#141418;border:1px solid var(--line);border-radius:12px;padding:6px;
   text-decoration:none;color:var(--ink);font-size:.8rem}
 .files a.f img{width:100%;aspect-ratio:1;object-fit:contain;background:#fff;border-radius:8px;display:block;margin-bottom:5px}
 .files a.pdf{display:inline-block;background:var(--violet-dim);border:1px solid var(--violet);color:#fff;
-  border-radius:999px;padding:9px 16px;text-decoration:none;font-size:.88rem;margin-top:4px}
+  border-radius:999px;padding:9px 16px;text-decoration:none;font-size:.88rem;margin-top:4px;margin-right:6px}
 
 /* ══ THE THREAD GROWS UP FROM THE COMPOSER, OVER THE STAGE ═════════════════════════════════
    Grok's brief, and it is right: the conversation is not a screen. Browse and Design never
@@ -345,10 +443,122 @@ nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;bor
   background:linear-gradient(to top,rgba(0,0,0,.94) 55%,rgba(0,0,0,.72) 80%,transparent);
   pointer-events:none;opacity:0;transition:opacity .2s;
 }
-#thread.up{opacity:1;pointer-events:auto}
+#thread.up{opacity:1;pointer-events:auto;top:0;background:var(--bg)}
+/* THE CONVERSATION OWNS THE SCREEN (2026-10-05, Aaron): it sat on a see-through layer over Explore and
+   the home page's words showed through behind hers. Up, it is solid from the top. */
+/* ONE SURFACE (2026-09-23). The conversation is the screen; everything else lays over it and goes
+   away again - OpenAI's inline and fullscreen display modes, a bottom-third composer that never
+   leaves. The strip holds every picture of this tattoo; a tap lays it over the stage full-size
+   with the composer still live beneath it, so they can keep talking while they look. */
+#strip{position:absolute;left:0;right:0;top:0;z-index:8;display:none;gap:8px;overflow-x:auto;
+  padding:10px var(--gut);background:linear-gradient(to bottom,rgba(0,0,0,.94),rgba(0,0,0,.7));
+  scrollbar-width:none}
+#strip.up{display:flex}
+#strip::-webkit-scrollbar{display:none}
+#strip button{flex:0 0 auto;width:56px;height:56px;border-radius:10px;overflow:hidden;padding:0;
+  border:2px solid var(--line);background:#000;cursor:pointer}
+#strip button.on{border-color:var(--violet)}
+#strip img{width:100%;height:100%;object-fit:cover;display:block}
+#stage.has-strip #thread{padding-top:86px}
+.turn .made{display:block;width:100%;max-width:340px;height:auto;padding:0;object-fit:contain;border-radius:14px;margin:8px 0 4px;
+  border:1px solid var(--line);cursor:pointer;background:#000}
+#view{position:absolute;inset:0;z-index:9;background:#000;display:none;flex-direction:column;
+  align-items:center;justify-content:center;padding:12px}
+#view.on{display:flex}
+#viewBox{position:relative;display:inline-flex;max-width:100%;max-height:calc(100% - 72px)}
+#viewBox img{max-height:100%}
+#markCv{position:absolute;left:0;top:0;display:none;touch-action:none;cursor:crosshair}
+#view.marking #markCv{display:block}
+#markBar input{flex:2;min-width:0;min-height:var(--tap);border-radius:12px;border:1px solid var(--line);
+  background:#111;color:#fff;padding:0 12px;font:inherit;font-size:16px}
+#view.doc #viewBox{display:none}
+#colourCv{position:absolute;left:0;top:0;display:none;cursor:pointer}
+#view.colouring #colourCv{display:block}
+#view.colouring #viewImg{visibility:hidden}
+#colourBar{width:100%;max-width:460px;margin-top:10px}
+#colourBar .chint{font-size:.8rem;color:#bbb;text-align:center;margin-bottom:6px}
+#colourSlide{width:100%;height:28px;accent-color:#8b5cf6;
+  background:linear-gradient(90deg,#1a1a1a 0%,#9a9a9a 7.7%,#f0f 7.7%,#f00 23%,#ff0 38%,#0f0 54%,#0ff 69%,#00f 85%,#f0f 100%);border-radius:14px;-webkit-appearance:none;appearance:none}
+#colourSlide::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #111}
+#colourBar .vbar{margin-top:10px}
+#colourBar .looks{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
+#colourBar .looks::-webkit-scrollbar{display:none}
+#colourBar .looks button{flex:0 0 auto;min-height:36px;padding:0 12px;border-radius:18px;border:1px solid var(--line);
+  background:#15151b;color:#ddd;font:inherit;font-size:.8rem;cursor:pointer;white-space:nowrap}
+#colourBar .looks button.on{background:var(--violet);border-color:var(--violet);color:#fff}
+#view img{max-width:100%;max-height:calc(100% - 72px);object-fit:contain;border-radius:12px}
+#view .vbar{display:flex;gap:10px;width:100%;max-width:460px;margin-top:12px}
+#view .vbar button{flex:1;min-height:var(--tap);border-radius:12px;border:1px solid var(--line);
+  background:#141418;color:var(--ink);font-weight:700;cursor:pointer}
+#view .vbar button.go{background:var(--violet);border-color:var(--violet)}
+.foundrow{display:flex;gap:8px;overflow-x:auto;margin-top:10px;padding-bottom:4px;scrollbar-width:none}
+.foundrow::-webkit-scrollbar{display:none}
+.foundrow .found{flex:0 0 46%;max-width:210px;border:0;padding:0;background:none;position:relative;
+  border-radius:12px;overflow:hidden;cursor:pointer}
+.foundrow .found img{width:100%;aspect-ratio:1/1;object-fit:cover;display:block}
+.foundrow .found.card{flex:0 0 38%;max-width:170px}
+.foundrow.stylerow{max-width:46rem;scroll-snap-type:x proximity}
+.foundrow.stylerow .found.card{flex:0 0 calc((100% - 24px) / 4);max-width:none;scroll-snap-align:start}
+.foundrow.stylerow .src{font-size:9px}
+.found.card.on{outline:2px solid var(--violet);outline-offset:-2px;border-radius:10px}
+.foundrow .src{position:absolute;left:6px;bottom:6px;font-size:10px;line-height:1;color:#fff;
+  background:rgba(0,0,0,.6);padding:3px 6px;border-radius:8px;max-width:88%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+#view iframe{display:none;width:100%;max-width:900px;height:calc(100% - 72px);border:0;border-radius:12px;background:#fff}
+#view.doc iframe{display:block}
+#view.doc img{display:none}
+#view .vbar a.go{display:none;flex:1;min-height:var(--tap);border-radius:12px;background:var(--violet);
+  color:#fff;font-weight:700;align-items:center;justify-content:center;text-decoration:none}
+#view.doc .vbar a.go{display:flex}
+.tile small.lk{color:var(--violet)}
+.turn .seefiles{display:inline-block;margin-top:4px;background:var(--violet);border:0;color:#fff;
+  font-weight:700;border-radius:999px;padding:10px 16px;cursor:pointer;min-height:var(--tap)}
+.head .back{background:none;border:0;color:var(--violet);font-weight:700;padding:0 0 6px;cursor:pointer}
 #thread::-webkit-scrollbar{display:none}
 #thread .wrap{max-width:var(--wide,none);margin:0 auto;width:100%}
 .turn{margin:0 0 12px;font-size:.95rem;line-height:1.5;max-width:34rem}
+/* THE PICTURE BEING WORKED ON (2026-09-26, Aaron): like ChatGPT and Meta - tap any picture in the
+   conversation and it is the one she works from; the latest is the one in queue until they pick. */
+.turn img.made{cursor:pointer;outline:2px solid transparent;outline-offset:2px;transition:outline-color .15s}
+.turn img.made.sel{outline-color:#22c55e}
+#working{position:relative;z-index:10;flex:0 0 auto;display:flex;align-items:center;gap:10px;width:100%;
+  max-width:var(--wide,none);margin:0 auto 6px;padding:6px 8px;border:1px solid var(--line);border-radius:12px;
+  background:var(--card)}
+#working[hidden]{display:none}
+#working .fresh{flex:0 0 auto;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:17px;background:transparent;color:var(--ink);font-size:.78rem;white-space:nowrap;cursor:pointer}
+#working .fresh:hover{border-color:var(--violet)}
+#working .hint{flex:0 0 auto;max-width:9rem;font-size:.72rem;line-height:1.25;color:var(--dim)}
+#working .thumbs{flex:1;min-width:0;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px}
+#working .thumbs::-webkit-scrollbar{display:none}
+#working .thumbs button{flex:0 0 auto;width:52px;height:52px;padding:0;border:2px solid var(--line);border-radius:9px;
+  overflow:hidden;background:#000;cursor:pointer}
+#working .thumbs button img{width:100%;height:100%;object-fit:cover;display:block}
+#working .thumbs button.on{border-color:#22c55e;box-shadow:0 0 0 2px rgba(34,197,94,.35)}
+#working .thumbs button:focus-visible{outline:2px solid #22c55e;outline-offset:2px}
+/* GET INSPIRED, SHOWN NOT TOLD (2026-09-26, Aaron): under her reply, what they can give her - a
+   screenshot from any app, a photo, or one of our inspiration sets. */
+.insp{margin:4px 0 16px;max-width:46rem;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px}
+.insp h4{font-size:.95rem;font-weight:700;margin:0 0 10px}
+.insp .phones{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px}
+.insp .phones::-webkit-scrollbar{display:none}
+.insp .ph{flex:0 0 96px;height:176px;border-radius:16px;border:2px solid #3a3a44;background:#000;position:relative;overflow:hidden}
+.insp .ph img{width:100%;height:100%;object-fit:cover;display:block}
+.insp .ph .app{position:absolute;left:6px;top:6px;display:flex;align-items:center;gap:4px;background:rgba(0,0,0,.62);
+  color:#fff;border-radius:999px;padding:3px 7px 3px 4px;font-size:.62rem;font-weight:700}
+.insp .ph .app svg{width:12px;height:12px;stroke:#fff;fill:none;stroke-width:2}
+.insp .up{flex:0 0 120px;height:176px;border-radius:16px;border:2px dashed var(--violet);background:none;color:var(--ink);
+  font:inherit;font-weight:700;font-size:.85rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:8px}
+.insp .up i{width:44px;height:44px;border-radius:50%;border:2px solid var(--violet);display:grid;place-items:center;font-style:normal;font-size:1.3rem;color:var(--violet)}
+.insp .up:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+.insp .or{display:flex;align-items:center;gap:10px;color:var(--dim);font-size:.8rem;margin:14px 0 10px}
+.insp .or::before,.insp .or::after{content:'';flex:1;height:1px;background:var(--line)}
+.insp .kinds{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none}
+.insp .kinds::-webkit-scrollbar{display:none}
+.insp .kd{flex:0 0 118px;background:none;border:0;color:var(--ink);font:inherit;text-align:left;cursor:pointer;padding:0}
+.insp .kd .pic{width:118px;height:118px;border-radius:12px;overflow:hidden;background:#000;border:1px solid var(--line)}
+.insp .kd img{width:100%;height:100%;object-fit:cover;display:block}
+.insp .kd b{display:block;font-size:.8rem;font-weight:600;margin-top:6px;line-height:1.25}
+.insp .kd:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
 .turn.them{margin-left:auto;text-align:right;color:#c9c9d4}
 .turn.aura{color:var(--ink)}
 .turn.them b{display:inline-block;background:#1c1c24;border-radius:16px 16px 4px 16px;
@@ -370,9 +580,9 @@ nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;bor
 #chip button:hover{border-color:var(--violet);color:var(--ink)}
 #chip b{color:var(--violet);font-weight:600}
 #scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);opacity:0;pointer-events:none;
-  transition:opacity .22s;z-index:8}
+  transition:opacity .22s;z-index:30}
 #scrim.up{opacity:1;pointer-events:auto}
-#sheet{position:fixed;left:0;right:0;bottom:0;z-index:9;background:#101015;
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:#101015;
   border-top:1px solid var(--line);border-radius:20px 20px 0 0;
   padding:8px 0 calc(env(safe-area-inset-bottom) + 14px);
   transform:translateY(102%);transition:transform .26s cubic-bezier(.32,.72,0,1)}
@@ -401,6 +611,10 @@ nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;bor
   #composer{margin-bottom:10px}
 }
 @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms !important;scroll-behavior:auto !important}}
+/* 2026-10-02: the picture they chose to work on, shown big in the chat as their own message. */
+.turn .shot.pick{max-width:320px}
+/* A picture that has not finished saving yet is dimmed and retried, never shown broken. */
+img.retrying{opacity:.25}
 </style></head><body>
 
 <header>
@@ -411,17 +625,39 @@ nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;bor
 <div id=stage>
   <main id=pager></main>
   <div id=thread><div class=wrap id=threadIn></div></div>
+  <div id=strip></div>
+  <div id=view><div id=viewBox><img id=viewImg alt=""><canvas id=markCv></canvas><canvas id=colourCv></canvas></div><iframe id=viewDoc title="Print file"></iframe>
+    <div class=vbar id=markBar style="display:none">
+      <input id=markSay placeholder="What should change where you marked?" autocomplete=off>
+      <button id=markUndo>Undo</button><button id=markCancel>Cancel</button>
+      <button class=go id=markSend>Send</button></div>
+    <div id=colourBar style="display:none">
+      <div class=chint id=colourHint>Slide to change the colours - tap a colour in the tattoo to change just that one</div>
+      <input type=range id=colourSlide min=-210 max=180 value=0>
+      <div class=vbar><button id=colourBlack>Black</button><button id=colourReset>Reset</button>
+        <button id=colourCancel>Cancel</button><button class=go id=colourKeep>Keep this colour</button></div>
+    </div>
+    <div class=vbar id=viewBar><button id=viewClose>Close</button>
+    <button class=go id=viewWork>Work on this one</button>
+    <button class=go id=viewColour>Change colour</button>
+    <button class=go id=viewLike style="display:none">I like this one</button>
+    <a class=go id=viewDl download>Download</a></div></div>
 </div>
 
 <div id=peek aria-hidden=true><div class=box>
-  <img id=peekImg alt=""><div class=foot><h3 id=peekName></h3>
-  <div class=acts><button id=peekClose>Close</button><button class=go id=peekGo>Explore this</button></div>
+  <div class=sp id=peekSp><img id=peekImg alt=""><button class="plus l" data-half=l aria-label="See the design">+</button><button class="plus r" data-half=r aria-label="See it on the body">+</button></div><div class=foot><h3 id=peekName></h3>
+  <div class=acts><button id=peekClose>Close</button><button id=peekSee>See what we have</button><button class=go id=peekGo>Design your own</button></div>
 </div></div></div>
+<div id=layer aria-hidden=true><div class=box id=layerBox><div class=lbar><button class=x id=layerClose aria-label=Close>&times;</button></div><div id=layerIn></div></div></div>
+<div id=half aria-hidden=true><div class=fr><img id=halfImg alt=""></div><button class=hx id=halfX aria-label=Close>&times;</button><button class=sw id=halfSw></button></div>
 <div id=chip><button id=chipBtn></button></div>
 
+<div id=working hidden><span class=hint>Tap the one you want to work on</span><div class=thumbs id=workThumbs></div><button class=fresh id=freshBtn aria-label="Start a new tattoo">+ New tattoo</button></div>
 <div id=composer>
   <div class=glyph id=auraGlyph aria-hidden=true><img src="data:image/webp;base64,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" alt=""></div>
-  <button class=cam id=camBtn aria-label="Add a photo of your tattoo"></button>
+  <button class=cam id=camBtn aria-label="Add a photo"></button>
+  <div id=addMenu><button id=addFile>Choose a photo</button><button id=addCam>Take a photo</button></div>
+  <input type=file id=fileCam accept="image/*" capture=environment style="display:none">
   <input type=file id=file accept="image/*" style="display:none">
   <input id=say placeholder="Ask Aura or pick a category" autocomplete=off>
   <button class=send id=sendBtn aria-label=Send>&#10003;</button>
@@ -435,6 +671,8 @@ nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;bor
   <a id=gateGo href="#">Sign in</a><button id=gateNo>Not now</button></div></div>
 <div id=sheet><div class=in>
   <div class=grab></div>
+  <a id=freshMenu>Start a new tattoo</a>
+  <div class=rule></div>
   <a>Account</a><a>Saved designs</a><a>Notifications</a>
   <div class=rule></div>
   <a>Help</a><a>Privacy</a><a href="/_signout?to=/shell" id=signOut>Sign out</a>
@@ -468,8 +706,51 @@ var at=0, step=0, chosen={}, index=null, cache={}, SESSION=null;
    next message to Aura as the picture's id. Core reads the words that picture was drawn from and
    hands them to her as context: what they were looking at, never their tattoo. Sent once. */
 var CAME_FROM=null;
+/* THE PROJECT ON SCREEN (2026-09-23). Core says which project each turn landed in. NEWPROJ is set
+   when they choose a fresh start - a job card, or "Explore this" on a tile - and tells core to open
+   a new project rather than keep adding to the last one. */
+var PROJECT=null, NEWPROJ=false, VIEWING=null, MINE_POLL=null, MINE_TRIES=0, MINE_OPEN=false;
+/* A FINISHED CONVERSATION IS FINISHED (2026-09-23, Aaron). Once a tattoo is locked in, the chat has
+   done its job: her last line stays with a button to the project, and the moment they leave the
+   chat it is cleared - no pill, no old thumbnails. The next thing they say starts a new tattoo. */
+var CHAT_DONE=false;
+function finishChat(){
+  thread=[]; piece={}; PROJECT=null; CHAT_DONE=false; NEWPROJ=true; DISC='ask'; INSPIRE_MODE=false;
+  document.getElementById('chip').classList.remove('up');
+  paintThread();
+}
+/* START A NEW TATTOO (2026-10-04, Aaron): the customer's own fresh start, any time. The screen is
+   cleared and the next thing they say goes to core as a fresh start - core already clears the last
+   tattoo's brief, picture and photo on that flag and opens a new project. Aura still knows them;
+   My Tattoos is untouched. */
+function freshStart(){
+  finishChat();
+  pendingRef=null; PICK_REF=null; USE_NEXT=false; OWN_NEXT=false; pendingShow=null; NAME_NEXT=null; CAME_FROM=null; VIEWING=null;
+  var th=document.getElementById('thread'); if(th) th.classList.remove('up');
+  document.getElementById('working').hidden=true;
+  try{ sheetUp(false) }catch(e){}
+  try{ paintStrip() }catch(e){}
+  go(0);
+}
+function seeProject(id){
+  finishChat();
+  var mi=-1; for(var k=0;k<TABS.length;k++) if(TABS[k].id==='mine') mi=k;
+  if(mi>=0) go(mi);
+  if(id) openProjectView(id); else paintMine();
+}
 function imgIdOf(u){ var m=String(u||'').match(/\/image\/(img_[a-z0-9]+)/i); return m?m[1]:null }
 var piece={}, finishes=null, busy=false, busyStyle='', catAll=false, thread=[];
+/* LAYER: the catalogue is open over home. PICK: the catalogue design they are looking at, before
+   they say they like it. pendingRef: that design's picture, sent to Aura with their next words. */
+var LAYER=false, PICK=null, pendingRef=null;
+/* USE_NEXT: the next turn takes the picture as it is. PICK_REF: a catalogue design waiting to be
+   changed - it goes with their words (and `pick`) until a picture has been made from it. */
+var USE_NEXT=false, PICK_REF=null, OWN_NEXT=false, pendingShow=null, NAME_NEXT=null, INSPIRE=null, INSPIRE_BTN=false;
+/* INSPIRE_MODE: this conversation came in through Get Inspired - every turn says so, and core takes the tattoo
+   off the skin for the first picture made from the inspiration photo. Any other new start ends it. */
+var INSPIRE_MODE=false;
+function ladHost(){ return LAYER ? document.getElementById('layerIn') : panel('design') }
+function ladScroller(){ return LAYER ? document.getElementById('layerBox') : panel('design').parentNode }
 var sets=null, chosenSet={}, skipped={}, gate=null, reopen=null, showAll=false;
 function esc(s){var d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML}
 /* The caption under a tile. Things always; pictures only where the count is banked, because a
@@ -552,6 +833,11 @@ function go(i){ pager.scrollTo({left:i*pager.clientWidth,behavior:'smooth'}) }
 
 tabBtns.forEach(function(b){ b.onclick=function(){
   var i=+b.dataset.i;
+  /* A TAB SHOWS ITS TAB (2026-09-23). The chat lay over every tab, so tapping My Tattoos lit the
+     tab and showed nothing. A tab tap now folds the chat to its one-line pill (tap it to come
+     back), and My Tattoos reads fresh each time it is opened. */
+  if(document.getElementById('thread').classList.contains('up')) collapseThread();
+  if(TABS[i] && TABS[i].id==='mine'){ MINE_OPEN=false; MINE_TRIES=0; paintMine(); }
   /* Tapping the tab you are on returns you to the top of it. The standard everywhere, and how
      somebody gets home without a back button. */
   if(i===at){ document.getElementById('p-'+TABS[i].id).scrollTo({top:0,behavior:'smooth'});
@@ -561,6 +847,7 @@ tabBtns.forEach(function(b){ b.onclick=function(){
 /* A mouse cannot swipe, so desktop gets the keyboard. */
 addEventListener('keydown',function(e){
   if(document.activeElement===document.getElementById('say')) return;
+  if(LAYER) return;
   if(e.key==='ArrowRight'&&at<TABS.length-1) go(at+1);
   if(e.key==='ArrowLeft'&&at>0) go(at-1);
 });
@@ -590,6 +877,12 @@ function loadFinishes(){
 }
 
 hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(function(d){
+  /* "Get Inspired" is a category of the catalogue that is only reached from its own card - never listed
+     with the designs. */
+  if(d && d.ok && Array.isArray(d.items)){
+    INSPIRE = d.items.find(function(x){ return x && x.label==='Get Inspired' }) || null;
+    d.items = d.items.filter(function(x){ return !(x && x.label==='Get Inspired') });
+  }
   index=d;
   var el=panel('explore');
   if(!d||!d.ok){
@@ -613,6 +906,20 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
      img:'https://auras.guide/image/img_mud7yw9v0hqd'},
     {say:'I want to cover up a tattoo',              t:'Cover Up<br>a Tattoo', s:'A fresh start.',
      img:'https://auras.guide/image/img_mud7zbb341v0'},
+    /* SEE IT ON YOU (2026-09-23, Aaron). A doorway to a tool that already works: it promotes the
+       feature up front, and tells Aura this person wants it - so they, and only they, are offered it
+       with every new design. */
+    /* The sentence that tested right (2026-09-23): "I want to see a tattoo on me" read as a request
+       for the photo step, six fresh people in a row. This one says new, and on-me at the end. */
+    {say:"I want to create a new tattoo, and I'd like to see it on me when it's done", t:'See It<br>On You', s:'Try it before you ink it.',
+     img:'https://auras.guide/image/img_muemsz3djf9s'},
+    /* GET INSPIRED (2026-09-24, Aaron). Real tattoos people have gotten, found and looked at by
+       Aura - context only, never drawn from. */
+    /* GET INSPIRED IS WHERE THE PHOTOS OF TATTOOS ON PEOPLE LIVE (2026-09-26, Aaron). Our body-shot
+       photos moved out of the catalogue into the catalogue's own "Get Inspired" category; this card
+       opens it, the same way "See what we have" opens a category. */
+    {inspire:true, say:"I'm looking for inspiration - I'll show you something I like", t:'Get<br>Inspired', s:'See tattoos people have gotten.',
+     img:'https://auras.guide/image/img_mufr9nwhw1my'},
     {browse:true,                                    t:'Browse<br>Our Catalog',s:'Explore thousands of designs.',
      img:'https://auras.guide/image/img_mud8136jec30'}
   ];
@@ -635,7 +942,10 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
     ['Tiny Symbols','img_mud4k1jj8nrl'],['Bows & Ribbons','img_mud4kew0vpyw'],
     ['Cherries','img_mud4kt20u3v5'],['Butterflies','img_mud4l7tkpbjd'],
     ['Celestial / Stars','img_mud4llonyzpf'],['Personal Symbols','img_mud4lzgz07gd'],
-    ['Memory / Story Tattoos','img_mud4mdhdjplh'],['Nostalgic Objects','img_mud4msm8ljf0']];
+    ['Memory / Story Tattoos','img_mud4mdhdjplh'],['Nostalgic Objects','img_mud4msm8ljf0'],
+    /* THE MISSING CARDS (2026-09-25): made in the same frame as the trending tiles; approved from
+       the first (Pin-Up Girls). */
+    ['Pin-Up Girls','img_muh4vn6088xi'],['Embroidered Patch','img_muh4z01298ib'],['Stained Glass','img_muh4zi72rd6k'],['Renaissance','img_muh4zvj247i7'],['Cyber-Realism','img_muh50d8vh63n'],['Horror Surrealism','img_muh50swrhh0z'],['Dark Florals','img_muh51csm4vn1'],['1970s Horror Poster','img_muh51s54le2b'],['Cyberpunk','img_muh528kt3c0t'],['Dark Ornamental','img_muh52ontlqlc'],['Chrome Florals','img_muh530zuq23g'],['Medieval','img_muh53el4q44y'],['Woodcut','img_muh53vq5smso'],['Dark Surrealism','img_muh54anml37x'],['Bio-Organic','img_muh54rm3pibp'],['Glass Effect','img_muh555u2ftvg'],['Abstract Blackwork','img_muh55j9abgex'],['Dark Romantic','img_muh55v8sbwiv'],['1980s Airbrush','img_muh56gr7rgyg'],['Meme Tattoos','img_muh57f9r7f5b'],['Ornamental Florals','img_muh57vc8e8sr'],['Fluid Florals','img_muh58dotvtgo'],['Micro-Real Botanical','img_muh58sb2l1lw'],['Locket Portrait','img_muh59790znmx'],['Pastel','img_muh59neafpb2'],['Pop of Colour','img_muh5a3dxnpkv'],['Single-Needle','img_muh5ah2oun85'],['Hand-Drawn','img_muh5avr47mso'],['Freehand','img_muh5ba8g6jpd'],['Medieval Marginalia','img_muh5bn07832s'],['Personal Artifacts','img_muh5c4mi179s'],['Kids Drawings','img_muh5fvfo418n']];
   var byLabel={}; d.items.forEach(function(it){ byLabel[String(it.label).toLowerCase()]=it });
   /* THE PERMANENT CATALOGUE: 44 subjects then 24 styles, each with a picture drawn for this
      screen under one house style - artwork on black, never a body. The catalogue behind them is
@@ -675,17 +985,43 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
     ['Surrealism','img_mud6vpnmcufk'],['Sketch','img_mud6w52nklm9'],
     ['Etching','img_mud6wjg7utii'],['New School','img_mud6wy8uqnak'],
     ['3D / Optical','img_mud6xdh3djfd'],['Tribal','img_mud6y7ralugh']];
-  var catTiles=CATALOG.map(function(c){
-    var hit=byLabel[c[0].toLowerCase()];
-    return tile({value:(hit&&hit.value)||c[0],label:c[0],
-                 image:'https://auras.guide/image/'+c[1]},false,'');
-  }).join('');
-
-  var trendTiles=TRENDING.map(function(t){
-    var name=t[0], own=t[1]?'https://auras.guide/image/'+t[1]:null;
-    var hit=byLabel[name.toLowerCase()]||byLabel[name.split(' / ')[0].toLowerCase()];
-    return tile({value:(hit&&hit.value)||name,label:name,image:own||(hit&&hit.image)},false,'');
-  }).join('');
+  /* The cards the conversation can show (2026-09-24): every trending tile and every style tile,
+     by name and picture. The subjects are not directions, so they are left out. */
+  /* THREE ROWS, ONE MEANING EACH (2026-09-25, Aaron). What's Trending Now is only real trends; Styles
+     is every look people can choose; More to Explore is subjects and the catalogue, with the personal
+     ones going straight to Aura. Every card's picture comes from the lists above, by name. */
+  var PIC={}; TRENDING.concat(CATALOG).concat([['1990s Nostalgia','img_muh5j0dzumzc']]).forEach(function(t){ if(!PIC[t[0]]) PIC[t[0]]=t[1] });
+  /* THE NEW CATALOGUE ONLY (2026-10-06, Aaron): every name below is a category built and drawn in the
+     October rebuild, spelled exactly as the catalogue spells it. Nothing older is ever shown. */
+  var ROW_TREND=["Neo-Tribal", "Cybersigilism", "Patchwork", "Embroidered Tattoos", "Sticker Tattoos", "Ignorant Doodle", "Micro Realism", "Micro Tattoos", "Fine-Line Florals", "Y2K Nostalgia", "Liquid Chrome", "Organic Body Flow", "Red Ink", "Negative Space", "Bows & Ribbons", "Birth Month Flowers", "Stained Glass", "Renaissance"];
+  /* THE STYLES IN FAMILIES (2026-10-05, Aaron): most asked for first, then classic, realism, fine and
+     delicate, florals, dark and gothic, retro and pop, effects - most popular family to most
+     specialised, most asked for first inside each. The home Styles row and the conversation's style
+     row read this one list, so the two never disagree. */
+  var ROW_STYLE=["Fine Line", "Realism", "Hyperrealism", "Black & Grey Realism", "Colour Realism", "Minimalist", "American Traditional", "Neo-Traditional Bold Illustrated", "Neo-Traditional", "Japanese", "Blackwork", "Illustrative", "Watercolour", "Geometric", "Dotwork", "Ornamental", "Chicano", "Surrealism", "Sketch", "Etching", "New School", "3D / Optical", "Tribal"];
+  /* EXPLORE STYLES (2026-10-06, Aaron): the rest of the looks, in their own row under Styles. */
+  var ROW_STYLE2=["Woodcut", "Cyberpunk", "Cyber-Realism", "Glass Effect", "Pastel", "Pop of Colour", "Bio-Organic", "Dark Romantic", "Dark Ornamental", "Dark Surrealism", "Horror Surrealism", "Medieval", "Medieval Marginalia", "1970s Horror Poster", "1980s Airbrush", "1990s Nostalgia", "Abstract Blackwork", "Meme Tattoos"];
+  var ROW_EXPLORE=["Horror", "Music", "Cannabis Culture", "Western", "Witchy and Occult", "Animals & Pets", "Family", "Memorials", "Kids Art", "Birthstones", "Charms and Keepsakes", "Matching Tattoos", "Insects and Butterflies", "Skulls & Skeletons", "Zodiac", "Astrology and Birth Charts", "Symbols and Talismans", "Cars", "Motorcycles", "Gaming", "Movies and TV", "Sports", "Food and Drink", "Holidays", "Pin-Up Girls", "Portraits", "Warriors", "Science", "Where I'm From", "Lettering & Quotes", "Fun", "Abstract Art", "Geometric and Patterns", "Things I Love", "Personal Story"];
+  /* EVERY COVER IS ITS OWN CATEGORY'S PICTURE (2026-10-06): the catalogue hands back a picture for each
+     category, and that is the card. The old covers drawn for this screen are not used. */
+  /* HERO COVERS (2026-10-06, Aaron): each trending card has its own split picture, drawn for the card -
+     the design on white on the left, the same tattoo on a body on the right. */
+  var HERO={"Neo-Tribal":"img_muxg23yqzzae","Cybersigilism":"img_muxf6lq071mm","Patchwork":"img_muxg2go7iwpv",
+    "Embroidered Tattoos":"img_muxg2vhojsuk","Sticker Tattoos":"img_muxg3c5zkx9t","Ignorant Doodle":"img_muxg3pmk6ht8",
+    "Micro Realism":"img_muxf7bea1h76","Micro Tattoos":"img_muxg40nz7bph","Fine-Line Florals":"img_muxg4duyhoxt",
+    "Y2K Nostalgia":"img_muxg4pt95umy","Liquid Chrome":"img_muxf6y87ocxv","Organic Body Flow":"img_muxg55t0x11a",
+    "Red Ink":"img_muxg5il6zrlf","Negative Space":"img_muxg5vpw1jj8","Bows & Ribbons":"img_muxg6841y7er",
+    "Birth Month Flowers":"img_muxg6kocvhhq","Stained Glass":"img_muxg6yrh1948","Renaissance":"img_muxg7cstvy6q"};
+  function cov(n){ if(HERO[n]) return HERO[n]; var h=byLabel[String(n).toLowerCase()]; return (h && imgIdOf(h.image)) || null }
+  window.CARD_PICS = ROW_TREND.concat(ROW_STYLE).concat(ROW_STYLE2).map(function(n){ return [n, cov(n)] }).filter(function(x){ return x[1] });
+  /* The trending cards, for Get Inspired's "Or look through ours" (2026-10-05). */
+  window.TREND_CARDS = ROW_TREND.map(function(n){ return [n, cov(n) ? 'https://auras.guide/image/'+cov(n) : null] });
+  function rowTiles(names){ return names.map(function(name){
+    var hit=byLabel[name.toLowerCase()];
+    var img=HERO[name] ? 'https://auras.guide/image/'+HERO[name] : (hit&&hit.image);
+    return tile({value:(hit&&hit.value)||name,label:name,image:img},false,'');
+  }).join('') }
+  var trendTiles=rowTiles(ROW_TREND), styleTiles=rowTiles(ROW_STYLE), style2Tiles=rowTiles(ROW_STYLE2), catTiles=rowTiles(ROW_EXPLORE);
 
   el.innerHTML=
     '<div class=tag>Good tattoos happen here</div>'+
@@ -702,46 +1038,49 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
     '<div class=rowwrap><button class="arw l" data-row=trendRow>\u2039</button>'+
       '<div class="row" id=trendRow>'+trendTiles+'</div>'+
       '<button class="arw r" data-row=trendRow>\u203a</button></div>'+
+    '<div id=favWrap></div>'+
+    '<div class=sect><h2>Styles</h2>'+
+      '<p>Every look. Pick one and make it yours.</p></div>'+
+    '<div class=rowwrap><button class="arw l" data-row=styleRow>\u2039</button>'+
+      '<div class="row" id=styleRow>'+styleTiles+'</div>'+
+      '<button class="arw r" data-row=styleRow>\u203a</button></div>'+
+    '<div class=sect><h2>Explore Styles</h2>'+
+      '<p>More looks to discover.</p></div>'+
+    '<div class=rowwrap><button class="arw l" data-row=style2Row>\u2039</button>'+
+      '<div class="row" id=style2Row>'+style2Tiles+'</div>'+
+      '<button class="arw r" data-row=style2Row>\u203a</button></div>'+
     '<div class=sect><h2>More to Explore</h2>'+
-      '<p>Dive deeper. '+CATALOG.length+' categories, '+(d.pictures||0)+' pictures behind them.</p></div>'+
+      '<p>Dive deeper. '+ROW_EXPLORE.length+' subjects, '+(d.pictures||0)+' pictures behind them.</p></div>'+
     '<div class=rowwrap><button class="arw l" data-row=catRow>\u2039</button>'+
       '<div class="row" id=catRow>'+catTiles+'</div>'+
       '<button class="arw r" data-row=catRow>\u203a</button></div>';
 
   /* A MOUSE CANNOT SWIPE. The rows scroll by dragging, and a drag is not a tap - anything over a
      few pixels opens nothing. Touch is untouched; the browser already does it better. */
-  [].forEach.call(el.querySelectorAll('.row,.jobs'),function(r){
-    var down=false,x0=0,l0=0,moved=0;
-    r.addEventListener('pointerdown',function(e){ if(e.pointerType==='touch') return;
-      down=true;moved=0;x0=e.clientX;l0=r.scrollLeft;r.classList.add('drag') });
-    r.addEventListener('pointermove',function(e){ if(!down) return;
-      var d=e.clientX-x0; moved=Math.max(moved,Math.abs(d)); r.scrollLeft=l0-d; });
-    ['pointerup','pointerleave','pointercancel'].forEach(function(ev){
-      r.addEventListener(ev,function(){ down=false; r.classList.remove('drag') }) });
-    r.addEventListener('click',function(e){ if(moved>6){ e.stopPropagation(); e.preventDefault(); } },true);
-    /* The wheel moves it sideways with no modifier held - the row is the only thing under the
-       pointer that scrolls, and asking for shift meant nobody found it. */
-    r.addEventListener('wheel',function(e){
-      if(Math.abs(e.deltaX)>Math.abs(e.deltaY)) return;
-      if(r.scrollWidth<=r.clientWidth) return;
-      e.preventDefault(); r.scrollLeft+=e.deltaY; },{passive:false});
-  });
-  /* The arrows: one screenful of tiles a press, and they grey out at each end. */
-  [].forEach.call(el.querySelectorAll('.arw'),function(a){
-    var row=document.getElementById(a.dataset.row); if(!row) return;
-    function mark(){ var max=row.scrollWidth-row.clientWidth-2;
-      if(a.classList.contains('l')) a.disabled = row.scrollLeft<=2;
-      else a.disabled = row.scrollLeft>=max; }
-    a.onclick=function(){ row.scrollBy({left:(a.classList.contains('l')?-1:1)*Math.round(row.clientWidth*.8),
-                                        behavior:'smooth'}) };
-    row.addEventListener('scroll',mark,{passive:true}); setTimeout(mark,60);
-  });
+  wireRows(el);
+  paintFavRow();
 
   el.addEventListener('click',function(e){
     var j=e.target.closest('.job');
     if(j){ var job=JOBS[+j.dataset.job];
       if(job.browse){ document.getElementById('catRow').scrollIntoView({behavior:'smooth',block:'start'}); return }
-      if(imgIdOf(job.img)) CAME_FROM=imgIdOf(job.img);
+      /* GET INSPIRED OPENS THE CONVERSATION (2026-09-26, Aaron). The card's words are the reason, like
+         Add to Existing and Cover Up; she answers and invites them to show her something they like,
+         and our inspiration photos are one tap away under her reply. */
+      if(job.inspire){
+        NEWPROJ=true; DISC='done'; PICK_REF=null; ENTRY='inspire'; INSPIRE_BTN = !!INSPIRE; INSPIRE_MODE=true;
+        askAura(job.say); return;
+      }
+      /* A job card sends only what the job is (2026-09-23, Aaron). Its picture is the button, not
+         context - "See It On You" sent its mirror photo's words, and she asked for a shoulder photo. */
+      NEWPROJ=true; DISC='ask'; PICK_REF=null; INSPIRE_MODE=false;
+      ENTRY = /people have gotten/i.test(job.say || '') ? 'inspire' : 'create';
+      /* EVERY STYLE, THE MOMENT THEY TAP (2026-10-05, Aaron): a new tattoo opens with the whole style
+         row under her reply - four to a screen, swipe for the rest - without waiting on her. */
+      STYLES_NEXT = (ENTRY === 'create' && !/add to a tattoo|cover up/i.test(job.say || ''));
+      /* Style cards only for a new tattoo or inspiration (2026-09-25) - never Add to Existing or
+         Cover Up, where the first thing that matters is their photo. */
+      if(/add to a tattoo|cover up/i.test(job.say || '')) DISC='done';
       askAura(job.say); return;
     }
     var t=e.target.closest('.tile'); if(!t) return;
@@ -752,8 +1091,30 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
 });
 
 /* ── DESIGN: category -> kind -> design, every picture already banked ─────────────────────── */
+/* A TREND CARD IS A LIST OF SETS FROM ANYWHERE (2026-10-04, Aaron). When `chosen.category` came
+   from a trend card it carries `trend:true`; the same screens read the trend's sets instead of a
+   catalogue category. These three name the cache key and the request either way. */
+function isTrendCat(){ return !!(chosen.category && chosen.category.trend) }
+function ckey(lab){ return (isTrendCat()?'tr:':'c:')+lab }
+function akey(lab){ return (isTrendCat()?'tra:':'a:')+lab }
+function cbody(lab,all){ var o=isTrendCat()?{trend:lab}:{category:lab}; if(all) o.all=true; return o }
+/* NO KINDS (2026-10-06, Aaron): "we're not going to subcategory anything out anymore". A category
+   opens straight onto every one of its designs in one row - swipe left and right, one tap makes it big. */
 function loadKinds(cat){
-  return cached('c:'+cat,{category:cat}).then(function(d){ drawLadder(); return d });
+  catAll = true;
+  return cached(akey(cat), cbody(cat, true)).then(function(d){ drawLadder(); return d });
+}
+function loadKindsOld(cat){
+  return cached(ckey(cat),cbody(cat)).then(function(d){
+    /* ONE KIND IS NOT A QUESTION (2026-09-26, Aaron). Red Ink has one kind, Red Ink Ideas, so
+       "Which kind?" over a single card was a tap that told them nothing. Straight to its designs. */
+    if(d && d.ok && d.items && d.items.length===1 && step===1 && !catAll){
+      var k = d.items[0];
+      chosen.kind = { value:k.value, label:k.label }; chosen.leaf = null; PICK = null;
+      step = 2; loadLeaves(k.label); return d;
+    }
+    drawLadder(); return d;
+  });
 }
 function loadLeaves(kind){
   return cached('k:'+kind,{kind:kind}).then(function(d){
@@ -763,9 +1124,7 @@ function loadLeaves(kind){
     if(d && d.ok && d.self && d.items && d.items.length){
       var it = d.items[0];
       chosen.leaf = { value: it.value, label: it.label };
-      piece = { url: it.image || null, label: it.label, style:null, made:null,
-                history: it.image ? [{ url:it.image, label:'original', made:false }] : [] };
-      step = 3; loadSets(it.label); return d;
+      pickDesign(it.image || null, it.label, 1); return d;
     }
     drawLadder(); return d;
   });
@@ -778,7 +1137,7 @@ function loadSets(leaf){
   return cached('l:'+leaf,{leaf:leaf}).then(function(d){
     sets = (d && d.ok && d.sets) || [];
     gate = (d && d.gate) || {};
-    if(step===3) drawPiece();
+    if(step===3 && !PICK) drawPiece();
     return d;
   });
 }
@@ -786,8 +1145,8 @@ function optsFor(i){
   if(i===0) return (index&&index.items)||[];
   if(i===1){
     var c=chosen.category; if(!c) return [];
-    if(catAll){ var a=cache['a:'+c.label]; return (a&&a.items)||[] }
-    var d=cache['c:'+c.label]; return (d&&d.items)||[];
+    if(catAll){ var a=cache[akey(c.label)]; return (a&&a.items)||[] }
+    var d=cache[ckey(c.label)]; return (d&&d.items)||[];
   }
   var k=chosen.kind; var e=k&&cache['k:'+k.label]; return (e&&e.items)||[];
 }
@@ -802,6 +1161,7 @@ function sentence(){
   var last = null;
   STEPS.forEach(function(x,i){
     var c = chosen[x.field]; if(!c) return;
+    if(x.field==='leaf' && catAll) return;
     /* A kind with no leaves is its own leaf, so both crumbs carry the same word - "Sunflower >
        Sunflower" reads like a bug. One of them is enough. */
     if(last && vslug(last) === vslug(c.label)) return;
@@ -821,19 +1181,55 @@ function dots(){
   }).join('')+'</div>';
 }
 
+function esc0(x){ return x==null ? '' : String(x) }
+function grpOf(it){ return it && (it.kind || it.set || it.group) || '' }
+function flatRow(opts){
+  var out='', last=null, sizes={};
+  opts.forEach(function(it){ var g=grpOf(it); sizes[g]=(sizes[g]||0)+1 });
+  var multi = Object.keys(sizes).length > 1;
+  opts.forEach(function(it, i){
+    var g=grpOf(it);
+    if(multi && g && g!==last){
+      out+='<div class=grp data-g="'+esc(g)+'"><span>'+esc(g)+'</span><small>'+sizes[g]+' designs</small></div>';
+      last=g;
+    }
+    out+='<button class="tile bare" data-i="'+i+'" data-g="'+esc(g)+'" data-v="'+esc(it.value)+'" data-l="'+esc(it.label)+'">'+
+      (it.image ? '<div class=pic><img loading=lazy src="'+esc(it.image)+'" alt=""></div>'
+                : '<div class="pic bare"><span>'+esc(it.label)+'</span></div>')+
+      '<b>'+esc(it.label)+'</b></button>';
+  });
+  return out;
+}
+/* Which group is on screen, and where in the hundred they are. */
+function trackGroup(row){
+  var now=document.getElementById('grpNow'); if(!row || !now) return;
+  var tiles=[].slice.call(row.querySelectorAll('.tile')), total=tiles.length;
+  function upd(){
+    var x=row.scrollLeft+8, first=tiles[0];
+    for(var i=0;i<tiles.length;i++){ if(tiles[i].offsetLeft+tiles[i].offsetWidth > x+row.offsetLeft){ first=tiles[i]; break } }
+    if(!first) return;
+    var n=(+first.dataset.i)+1, g=first.dataset.g;
+    now.innerHTML=(g?'<b>'+esc(g)+'</b>':'<b>&nbsp;</b>')+'<small>'+n+' of '+total+'</small>';
+  }
+  row.addEventListener('scroll', function(){ requestAnimationFrame(upd) }, {passive:true});
+  upd();
+}
 function drawLadder(){
-  if(step===3) return drawPiece();
+  if(step===3) return PICK ? drawPick() : drawPiece();
   var s = STEPS[step], opts = optsFor(step);
-  var meta = step===1 && chosen.category ? cache['c:'+chosen.category.label] : null;
+  var rowId = LAYER ? 'layRow' : 'ladRow';
+  var meta = step===1 && chosen.category && !catAll ? cache[ckey(chosen.category.label)] : null;
   if(step===1 && catAll){
     /* Every tile here is a DESIGN, not a kind, so the question changes with the view. */
-    s = { field:'leaf', ask:'Pick any one', hint:'Everything in this category, already drawn.' };
+    s = { field:'leaf', ask:esc0(chosen.category && chosen.category.label) || 'Pick any one',
+          hint:opts.length ? opts.length+' designs. Swipe through them, tap one to see it big.' : '' };
   }
-  panel('design').innerHTML =
+  ladHost().innerHTML =
     dots()+
     sentence()+
     '<div id=ladder><div class=step>'+
       '<div class=ask><h3>'+esc(s.ask)+'</h3>'+(s.hint?'<p>'+esc(s.hint)+'</p>':'')+'</div>'+
+      (catAll && step===1 && opts.length ? '<div class=grpnow id=grpNow></div>' : '')+
       /* On the kinds screen this is the line to check against /walk/<category>. It reports what
          the walk page reports, from the same banked key, so the two cannot disagree. */
       (meta && meta.ok
@@ -847,28 +1243,35 @@ function drawLadder(){
          Aaron: "it's just so difficult to see what's there." Forty-four covers standing in for
          224 pictures is a map, not a browse. This is the same view the walk page gives, on the
          consumer side, and every tile in it goes straight to that design. */
-      (step===1 && chosen.category && meta && meta.ok
+      (false && step===1 && chosen.category && meta && meta.ok
         ? '<button class=allbtn data-catall="'+(catAll?'0':'1')+'">'+
           (catAll ? 'Back to the '+(meta.kinds||0)+' kinds'
                   : 'Show every design in '+esc(chosen.category.label)+' \u00b7 <b>'+
                     (meta.things||0)+'</b>')+'</button>'
         : '')+
+      /* A ROW, LIKE THE HOME SCREEN (2026-09-23, Aaron). This was a grid that kept filling the page
+         downward - Flowers & Plants alone was four screens. One row, swiped with a thumb, arrows
+         on a mouse, the same from the first question to the last. */
       (opts.length
-        ? '<div class=picks>'+opts.map(function(it){
+        ? '<div class=rowwrap><button class="arw l" data-row='+rowId+'>\u2039</button>'+
+          '<div class="row" id='+rowId+'>'+(catAll && step===1 ? flatRow(opts) : opts.map(function(it){
             return tile(it, chosen[s.field]&&chosen[s.field].value===it.value,
-                        count(it)) }).join('')+'</div>'
+                        count(it)) }).join(''))+'</div>'+
+          '<button class="arw r" data-row='+rowId+'>\u203a</button></div>'
         : '<div class=empty><h3>'+(step===0?'Nothing banked yet':'Nothing here')+'</h3>'+
           '<p>'+(step===0?'Run <code>BROWSE</code> to build the index.'
                          :'Tell Aura below what you are after.')+'</p></div>')+
     '</div></div>';
 
-  var host = panel('design');
+  var host = ladHost();
   wireNav(host);
+  wireRows(host);
+  if(catAll && step===1) trackGroup(host.querySelector('#'+rowId));
   host.querySelectorAll('[data-catall]').forEach(function(b){
     b.onclick = function(){
       catAll = b.dataset.catall==='1';
-      if(catAll && !cache['a:'+chosen.category.label]){
-        cached('a:'+chosen.category.label, { category: chosen.category.label, all: true })
+      if(catAll && !cache[akey(chosen.category.label)]){
+        cached(akey(chosen.category.label), cbody(chosen.category.label, true))
           .then(function(){ drawLadder() });
         return;
       }
@@ -881,10 +1284,7 @@ function drawLadder(){
     /* In the flat view a tile IS a design - it skips the kind question entirely. */
     if(here===1 && catAll){
       chosen.kind = null; chosen.leaf = { value:b.dataset.v, label:b.dataset.l };
-      var u1 = b.querySelector('img') ? b.querySelector('img').src : null;
-      piece = { url:u1, label:b.dataset.l, style:null, made:null,
-                history: u1 ? [{ url:u1, label:'original', made:false }] : [] };
-      step = 3; loadSets(b.dataset.l); return;
+      pickDesign(b.querySelector('img') ? b.querySelector('img').src : null, b.dataset.l, 1); return;
     }
     chosen[f] = { value:b.dataset.v, label:b.dataset.l };
     /* THE CHOICE IS THE ADVANCE. There is no Next control in this file - a single-select tap has
@@ -895,10 +1295,7 @@ function drawLadder(){
       /* The leaf is the last question. Picking one carries its BANKED picture through to the
          piece - that image is already drawn and paid for, and it is what every style is applied
          to from here. */
-      var u0 = b.querySelector('img') ? b.querySelector('img').src : null;
-      piece = { url: u0, label: b.dataset.l, style: null, made: null,
-                history: u0 ? [{ url:u0, label:'original', made:false }] : [] };
-      step = 3; loadSets(b.dataset.l);
+      pickDesign(b.querySelector('img') ? b.querySelector('img').src : null, b.dataset.l, 2);
     }
   });
   swipeOn(host.querySelector('#ladder'));
@@ -913,6 +1310,266 @@ function drawLadder(){
 /* ══ WHICH WALLS APPLY, AND WHICH COMPETE ══════════════════════════════════════════════════
    A set carries the conditions it was drawn under - `{crop:"full-body"}` - and the gate carries
    the product rule for walls drawn before those conditions existed. Both have to pass. */
+/* ══ THE DESIGN THEY PICKED (2026-09-26, Aaron) ═══════════════════════════════════════════════
+   This was the end of the catalogue: the picture with rows of "Redraw it in a style" chips under it,
+   and nothing that ever handed the picture to Aura - so "make the stones blue" reached her as words
+   with no picture, and she started from nothing. Now the picked design shows big with one thing to
+   do: "I like this one". That takes them to the conversation with the picture itself, which is what
+   she works on from there. */
+function pickDesign(url, label, back){
+  PICK = { url:url, label:label, back:back, kind:(chosen.kind && chosen.kind.label) || null,
+           category:(chosen.category && chosen.category.label) || null, fresh: PICK_FRESH,
+           own: ownOf(label), home: homeCatOf(label) };
+  step = 3; drawLadder();
+  ladScroller().scrollTo({top:0,behavior:'smooth'});
+}
+/* A pick made from Aura's own suggestion continues that conversation; any other pick is a new tattoo. */
+var PICK_FRESH = true;
+/* MAKE YOUR OWN (2026-09-26, Aaron): sets shown on a model, and the For Her ideas, are marked in the
+   catalogue (`own`). A pick from one is what they liked - they start their own tattoo from it with
+   Aura, who looks at it. The mark comes from the catalogue itself, never from a list in this file. */
+function ownOf(label){
+  var k = chosen.kind && cache['k:'+chosen.kind.label];
+  if(k && k.ok){ var it=(k.items||[]).find(function(x){ return x.label===label }); if(it) return !!it.own; if(k.own) return true; }
+  var a = chosen.category && cache[akey(chosen.category.label)];
+  if(a && a.ok){ var it2=(a.items||[]).find(function(x){ return x.label===label }); if(it2) return !!it2.own; }
+  return false;
+}
+/* ══ FAVORITES (2026-10-07, Aaron) ══════════════════════════════════════════════════════════
+   A heart on every design made big. Kept on this device for now; the list is {url,label,kind,
+   category,trend}, newest first, and a Favorites row on home opens each one big again. */
+function favList(){ try{ return JSON.parse(localStorage.getItem('mt:fav')||'[]')||[] }catch(e){ return FAVS_MEM } }
+var FAVS_MEM=[];
+function favSave(L){ FAVS_MEM=L; try{ localStorage.setItem('mt:fav', JSON.stringify(L)) }catch(e){} paintFavRow() }
+function isFav(url){ return favList().some(function(f){ return f.url===url }) }
+function toggleFav(f){
+  var L=favList(), i=L.findIndex(function(x){ return x.url===f.url });
+  if(i>=0) L.splice(i,1); else L.unshift(f);
+  favSave(L);
+}
+function paintFavRow(){
+  var box=document.getElementById('favWrap'); if(!box) return;
+  var L=favList();
+  if(!L.length){ box.innerHTML=''; return }
+  box.innerHTML='<div class=sect><h2>Your Favorites</h2><p>'+L.length+' saved. Tap one to see it big.</p></div>'+
+    '<div class=rowwrap><button class="arw l" data-row=favRow>\u2039</button><div class="row" id=favRow>'+
+    L.map(function(f,i){ return '<button class="tile bare" data-fav="'+i+'"><div class=pic><img loading=lazy src="'+esc(f.url)+'" alt=""></div><b>'+esc(f.label)+'</b></button>' }).join('')+
+    '</div><button class="arw r" data-row=favRow>\u203a</button></div>';
+  wireRows(box);
+}
+function openFav(i){
+  var f=favList()[i]; if(!f) return;
+  if(!f.category){ openHalf(f.url,'l'); return }
+  chosen={category:{value:vslug(f.category),label:f.category,trend:!!f.trend}};
+  catAll=true; PICK=null; PICK_FRESH=true; step=1; openLayer();
+  cached(akey(f.category), cbody(f.category,true)).then(function(){
+    chosen.leaf={value:vslug(f.label),label:f.label};
+    pickDesign(f.url, f.label, 1);
+  });
+}
+document.addEventListener('click', function(e){
+  var b=e.target.closest('[data-fav]'); if(!b) return;
+  e.preventDefault(); e.stopPropagation(); openFav(+b.getAttribute('data-fav'));
+}, true);
+/* LEFT AND RIGHT THROUGH THE WHOLE CATEGORY (2026-10-06, Aaron): a design made big still swipes to
+   the next one and the one before, through every design the row holds. */
+function pickList(){ return (catAll && step===3) ? optsFor(1) : [] }
+function pickMove(dir){
+  var L=pickList(); if(!PICK || !L.length) return;
+  var i=L.findIndex(function(x){ return x.label===PICK.label }); if(i<0) return;
+  var n=L[(i+dir+L.length)%L.length];
+  chosen.leaf={ value:n.value, label:n.label };
+  pickDesign(n.image||null, n.label, PICK.back);
+}
+function drawPick(){
+  var p = PICK, host = ladHost();
+  var L = pickList(), at = L.findIndex(function(x){ return x.label===p.label });
+  if(at>=0 && !p.kind && grpOf(L[at])) p.kind = grpOf(L[at]);
+  host.innerHTML = dots()+sentence()+
+    '<div class=pick>'+
+      (p.url ? '<div class="pbox sp"><img src="'+esc(p.url)+'" alt="">'+
+        '<button class="plus l" data-half=l aria-label="See the design">+</button>'+
+        '<button class="plus r" data-half=r aria-label="See it on the body">+</button></div>' : '')+
+      (L.length>1 && at>=0 ? '<div class=nav><button id=pickPrev aria-label=Previous>\u2039</button>'+
+        '<span>'+(at+1)+' of '+L.length+'</span><button id=pickNext aria-label=Next>\u203a</button></div>' : '')+
+      '<h3 class=desc>'+esc(p.label)+'</h3>'+
+      ((p.kind||p.category) ? '<p>From '+esc(p.kind||p.category)+'</p>' : '')+
+      (p.url ? '<button class="fav'+(isFav(p.url)?' on':'')+'" id=pickFav>'+(isFav(p.url)?'\u2665 In your favorites':'\u2661 Add to favorites')+'</button>' : '')+
+      '<div class=acts><button id=pickBack>Back</button>'+
+      '<button id=pickChange>Change it</button>'+
+      '<button class=go id=pickUse>I like this one</button></div>'+
+    '</div>';
+  wireNav(host);
+  markSplit(host.querySelector('.pbox'));
+  if(host.querySelector('#pickFav')) host.querySelector('#pickFav').onclick=function(){
+    toggleFav({ url:p.url, label:p.label, kind:p.kind||null,
+                category:(chosen.category&&chosen.category.label)||p.category||null,
+                trend:!!(chosen.category&&chosen.category.trend) });
+    drawPick();
+  };
+  if(host.querySelector('#pickPrev')){
+    host.querySelector('#pickPrev').onclick=function(){ pickMove(-1) };
+    host.querySelector('#pickNext').onclick=function(){ pickMove(1) };
+    var bx=host.querySelector('.pbox'), x0=null, y0=null;
+    if(bx){
+      bx.addEventListener('touchstart',function(e){ x0=e.touches[0].clientX; y0=e.touches[0].clientY },{passive:true});
+      bx.addEventListener('touchend',function(e){
+        if(x0===null) return; var dx=e.changedTouches[0].clientX-x0, dy=e.changedTouches[0].clientY-y0; x0=null;
+        if(Math.abs(dx)<50 || Math.abs(dx)<Math.abs(dy)*1.5) return;
+        pickMove(dx<0?1:-1);
+      },{passive:true});
+    }
+  }
+  host.querySelector('#pickBack').onclick = function(){ goStep(Math.min(p.back || 1, chosen.kind ? 2 : 1)) };
+  /* A PHOTO IN GET INSPIRED IS NOT A FINISHED DESIGN (2026-09-26, Aaron). Either button sends the
+     picture into the conversation exactly like an upload, with their words; she says what it is and
+     asks what they want. Nothing is drawn and no artist files start until they decide. */
+  if(inInspire()){
+    host.querySelector('#pickUse').onclick = function(){ inspirePick('I like this one') };
+    host.querySelector('#pickChange').onclick = function(){ inspirePick('I like this one but I want to change it') };
+    return;
+  }
+  host.querySelector('#pickUse').onclick = useThis;
+  /* A design shown on a body is changed from one look; a design on its own is changed itself. */
+  host.querySelector('#pickChange').onclick = p.own ? changeFromLook : changeIt;
+}
+/* ══ USE THIS ONE / CHANGE IT (2026-09-26, Aaron) ══════════════════════════════════════════
+   "The catalogue is to be passed on to the very end if people want that image" - and changed only
+   if they ask. Use this one: that exact picture goes straight to the artist's files, nothing drawn.
+   Change it: the picture waits in the chat, nothing is sent until they say what to change, and
+   then their words change THAT picture. Aura is told it is a design they chose, not inspiration. */
+function pickRef(p){ var id = imgIdOf(p.url); return id ? 'https://auras.guide/image/' + id : p.url }
+function useThis(){
+  var p = PICK; if(!p || !p.url || busy) return;
+  if(!signedIn()) return;
+  INSPIRE_MODE=false; closeLayer();
+  if(p.fresh){ NEWPROJ = true; ENTRY = 'create'; }
+  DISC = 'done'; CAME_FROM = null;
+  /* I LIKE THIS ONE ASKS FIRST (2026-09-26, Aaron): not straight to the artist's files. The picture
+     goes to her exactly as Change it sends it; she says it is a great pick and asks whether they
+     want it as it is or changed. "This is the one" then locks it in from this picture. */
+  PICK_REF = { ref: pickRef(p), sent: false };
+  pendingShow = p.url; NAME_NEXT = p.label;
+  askAura('I like this one');
+  piece = { url:p.url, made:p.url, label:p.label, style:null,
+            history:[{ url:p.url, label:'original', made:false }] };
+  paintStrip();
+}
+/* CHANGE IT ON A BODY SHOT (2026-09-26, Aaron): these pictures only need their name - "Micro Kitten",
+   "Jewelry Necklace Drape". So Change it starts an ordinary new tattoo, exactly as if they had typed
+   it: their opening words name the design. No picture goes to her and nothing special happens in
+   core - the conversation, the drawing and everything after it are the normal new-tattoo path. */
+/* Where the picked picture actually lives. From a trend card the sets come from several categories,
+   so a Get Inspired picture reached that way keeps the inspiration path - Aura makes a new design
+   from it - and a catalogue design keeps the catalogue path. Decided by the set, not the card. */
+function homeCatOf(label){
+  var c=chosen.category; if(!c) return null;
+  if(!c.trend) return c.label;
+  if(catAll){ var a=cache['tra:'+c.label]; var it=a&&a.items&&a.items.find(function(x){ return x.label===label }); return it?it.category:null }
+  var d=cache['tr:'+c.label]; var k=chosen.kind&&d&&d.items&&d.items.find(function(x){ return x.label===chosen.kind.label });
+  return k?k.category:null;
+}
+function inInspire(){
+  var c=chosen.category; if(!c) return false;
+  if(c.trend) return !!(PICK && PICK.home==='Get Inspired');
+  return c.label==='Get Inspired';
+}
+/* The picture on each example phone is one of our own inspiration covers; the app names are plain
+   words with simple icons - never the apps' own logos. */
+var INSPIRE_KINDS = null, INSPIRE_SEND = false;
+var INSP_APPS = [
+  ['TikTok','<path d="M8 5v14l11-7z"/>'],
+  ['Instagram','<rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="4"/>'],
+  ['Facebook','<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0M16 11a3 3 0 100-6M21 20a5 5 0 00-5-5"/>'],
+  ['Your photos','<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 7"/>']
+];
+function loadInspireKinds(){
+  if(!INSPIRE || INSPIRE_KINDS) return;
+  cached('c:'+INSPIRE.label,{category:INSPIRE.label}).then(function(d){
+    INSPIRE_KINDS = (d && d.ok && d.items) || [];
+    paintThread();
+  });
+}
+function inspirePanel(){
+  loadInspireKinds();
+  var ks = INSPIRE_KINDS || [];
+  var covers = ks.filter(function(k){ return k.image }).map(function(k){ return k.image });
+  /* FOUR DIFFERENT SETS, NOT THE FOUR NEWEST (2026-10-05, Aaron). Newest first put four necklaces on
+     the four phones. Spread across the whole list instead, so the phones show the range. */
+  var step4 = Math.max(1, Math.floor(covers.length / INSP_APPS.length));
+  var phones = INSP_APPS.map(function(a,i){
+    var img = covers[i*step4] || covers[i] || covers[0] || '';
+    return '<div class=ph>'+(img?'<img src="'+esc(img)+'" alt="" loading=lazy>':'')+
+      '<span class=app><svg viewBox="0 0 24 24" aria-hidden=true>'+a[1]+'</svg>'+esc(a[0])+'</span></div>';
+  }).join('');
+  return '<div class=insp><h4>Show me something you like - a screenshot from any app, or a photo</h4>'+
+    '<div class=phones>'+phones+
+      '<button class=up data-inspup=1><i>\u2191</i>Upload from your phone</button></div>'+
+    /* OR LOOK THROUGH OURS IS THE TRENDING CARDS (2026-10-05, Aaron): "if someone clicks Get Inspired
+       it's pretty much the same as what's trending." Each card opens its whole list - the new designs
+       and the on-body pictures together. Before the home screen has drawn, the sets show instead. */
+    ((window.TREND_CARDS||[]).length
+      ? '<div class=or>OR</div><h4>Or look through ours</h4><div class=kinds>'+
+        window.TREND_CARDS.map(function(c){ return '<button class=kd data-insptr="'+esc(c[0])+'"><div class=pic>'+
+          (c[1]?'<img src="'+esc(c[1])+'" alt="" loading=lazy>':'')+'</div><b>'+esc(c[0])+'</b></button>' }).join('')+
+        '</div>'
+    : ks.length ? '<div class=or>OR</div><h4>Or look through ours</h4><div class=kinds>'+
+      ks.map(function(k,i){ return '<button class=kd data-inspk="'+i+'"><div class=pic>'+
+        (k.image?'<img src="'+esc(k.image)+'" alt="" loading=lazy>':'')+'</div><b>'+esc(k.label)+'</b></button>' }).join('')+
+      '</div>' : '')+
+  '</div>';
+}
+function openInspireKind(i){
+  var k = (INSPIRE_KINDS||[])[i]; if(!k || !INSPIRE) return;
+  chosen={category:{value:INSPIRE.value||'get-inspired',label:INSPIRE.label}, kind:{value:k.value,label:k.label}};
+  catAll=false; PICK=null; PICK_FRESH=false; step=2; openLayer(); loadLeaves(k.label);
+}
+function openInspire(){
+  if(!INSPIRE) return;
+  chosen={category:{value:INSPIRE.value||'get-inspired',label:INSPIRE.label}}; catAll=false; PICK=null; PICK_FRESH=false;
+  step=1; openLayer(); loadKinds(INSPIRE.label);
+}
+function inspirePick(words){
+  var p = PICK; if(!p || !p.url || busy) return;
+  if(!signedIn()) return;
+  /* Reached from a trend card there was no Get Inspired card to say so - this is a new tattoo that
+     came in through inspiration, exactly as if they had opened Get Inspired. */
+  if(chosen.category && chosen.category.trend){
+    if(!chosen.category.fromInspire){ NEWPROJ=true; ENTRY='inspire'; }
+    INSPIRE_MODE=true;
+  }
+  closeLayer();
+  if(CHAT_DONE) finishChat();
+  DISC = 'done'; CAME_FROM = null; PICK_REF = null;
+  pendingRef = pickRef(p); NAME_NEXT = p.label;
+  askAura(words);
+}
+function changeFromLook(){
+  var p = PICK; if(!p || !p.label || busy) return;
+  if(!signedIn()) return;
+  INSPIRE_MODE=false; closeLayer();
+  if(CHAT_DONE) finishChat();
+  NEWPROJ = true; ENTRY = 'create'; DISC = 'done'; PICK_REF = null; CAME_FROM = null;
+  pendingShow = p.url || null; NAME_NEXT = p.label;
+  askAura('I want the ' + p.label + ' tattoo but I want to change it a bit');
+  piece = {}; paintStrip();
+}
+function changeIt(){
+  var p = PICK; if(!p || !p.url || busy) return;
+  if(!signedIn()) return;
+  INSPIRE_MODE=false; closeLayer();
+  if(CHAT_DONE) finishChat();
+  if(p.fresh){ NEWPROJ = true; ENTRY = 'create'; }
+  DISC = 'done'; CAME_FROM = null;
+  /* The picture goes with this opening line and with their words after it (`pick`) until a picture
+     has been made from it - so she looks, asks what to change, then changes this exact picture. */
+  PICK_REF = { ref: pickRef(p), sent: false };
+  pendingShow = p.url; NAME_NEXT = p.label;
+  askAura('I want to change this one');
+  piece = { url:p.url, made:p.url, label:p.label, style:null,
+            history:[{ url:p.url, label:'original', made:false }] };
+  paintStrip();
+}
 function vslug(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') }
 /* Does this leaf even HAVE that question? MEASURED: Tabby has pose and expression and no crop
    wall, so a crop gate demanded an answer that could never be given and hid both. A rule that
@@ -1190,7 +1847,8 @@ function sayIt(){
   if(!signedIn()) return;
   /* A photo goes WITH what they say about it - the photo turn in every passing test is a
      sentence and a picture together. Nothing is written for them. */
-  if(!said){ if(pendingPhoto){ el.placeholder='Tell Aura about this photo'; el.focus(); } return; }
+  /* A photo can go on its own (2026-09-25) - she says what she sees and asks what they want to do. */
+  if(!said && !pendingPhoto) return;
   el.value=''; el.blur();
   askAura(said);
 }
@@ -1198,7 +1856,7 @@ function sayIt(){
 /* The thread. Newest at the bottom, catalogue still behind it, never a page of its own. */
 function paintThread(){
   var box = document.getElementById('thread'), inn = document.getElementById('threadIn');
-  if(!thread.length){ box.classList.remove('up'); return }
+  if(!thread.length){ box.classList.remove('up'); paintStrip(); return }
   box.classList.add('up');
   document.getElementById('chip').classList.remove('up');
   /* Reversed: the container is column-reverse so the newest turn sits against the composer and
@@ -1208,21 +1866,174 @@ function paintThread(){
      inside a container that only anchors to the bottom, so the newest turn landed at the top. */
   inn.innerHTML = thread.map(function(t){
     if(t.files) return filesHtml(t.files);
+    if(t.inspireBtn) return inspirePanel();
+    if(t.mine!==undefined) return '<div class="turn aura"><button class=seefiles data-p="'+esc(t.mine)+
+      '">See your tattoo and files \u2192</button></div>';
     if(t.pending) return (t.said ? '<div class="turn aura"><b>'+esc(t.said)+'</b></div>' : '')+
       '<div class=thinking-row><div class="aura-mark'+(t.near?' near':'')+'">'+
       '<img src="'+AURA_MARK+'" alt=""><span class=shimmer></span></div>'+
-      '<span class=lbl>'+esc(t.label||'Aura is imagining\u2026')+'</span></div>';
+      '<span class=lbl>'+esc(t.label||'Aura is imagining\u2026')+'</span></div>'+
+      (t.styles ? '<div class="turn aura">'+styleRowHtml()+'</div>' : '');
     return '<div class="turn '+esc(t.who)+'">'+
-      (t.photo ? '<img class=shot src="'+esc(t.photo)+'" alt="">' : '')+
-      '<b>'+esc(t.said)+'</b></div>';
+      (t.photo ? '<img class="shot'+(t.pick?' pick':'')+'" src="'+esc(t.photo)+'" alt="">' : '')+
+      (t.said ? '<b>'+esc(t.said)+'</b>' : '')+
+      (t.styles ? styleRowHtml() : '')+
+      (t.pic ? '<img class="made'+(isWorking(t.pic, t.design)?' sel':'')+'" data-v="'+esc(t.pic)+'" data-d="'+esc(t.design||'')+'" src="'+
+               esc(t.pic)+'" alt="">' : '')+
+      /* WHAT SHE FOUND (2026-09-24): real tattoos, each tagged with where it came from. A tap
+         opens it; "I like this one" sends her its words - never the picture. */
+      (t.cards && t.cards.length ? '<div class=foundrow>'+t.cards.map(function(c){
+          return '<button class="found card" data-card="'+esc(c.name)+'">'+
+                 '<img src="'+esc(c.img)+'" alt="" loading=lazy><span class=src>'+esc(c.name)+'</span></button>'
+        }).join('')+'</div>' : '')+
+      (t.found ? '<div class=foundrow>'+t.found.map(function(f){
+          return '<button class=found data-fv="'+esc(f.image)+'" data-saw="'+esc(f.saw||'')+'">'+
+                 '<img src="'+esc(f.image)+'" alt="" loading=lazy>'+
+                 (f.source ? '<span class=src>'+esc(String(f.source).replace(/^www\./,''))+'</span>' : '')+
+                 '</button>' }).join('')+'</div>' : '')+'</div>';
   }).join('');
+  threadRows(inn);
   box.scrollTop = 0;
+  paintStrip();
+  paintWorking();
 }
+/* EVERY SIDEWAYS ROW IN THE CONVERSATION GETS ARROWS (2026-10-05, Aaron). "Or look through ours" had
+   no way across on a computer - the home rows had arrows and these never did. A phone swipes them
+   as before; a mouse gets the same arrows, drag and wheel as the home rows. Any row added to the
+   conversation later picks this up by being one of these classes, not by remembering to. */
+var ROW_N=0;
+function threadRows(root){
+  [].forEach.call(root.querySelectorAll('.insp .kinds,.insp .phones,.foundrow,.files .grid'),function(r){
+    if(r.parentNode && r.parentNode.classList.contains('rowwrap')) return;
+    var id='trow'+(++ROW_N); r.id=id;
+    var w=document.createElement('div'); w.className='rowwrap';
+    r.parentNode.insertBefore(w,r);
+    w.innerHTML='<button class="arw l" data-row='+id+'>\u2039</button>';
+    w.appendChild(r);
+    w.insertAdjacentHTML('beforeend','<button class="arw r" data-row='+id+'>\u203a</button>');
+  });
+  wireRows(root);
+}
+/* Which picture is being worked on: the one they tapped, else the latest she made. */
+function threadPics(){ return thread.filter(function(t){ return t.pic }) }
+function isWorking(url, design){
+  if(piece.parent && design) return design === piece.parent;
+  return !!url && url === piece.made;
+}
+function paintWorking(){
+  var bar = document.getElementById('working'), pics = threadPics();
+  /* LOCKED IN, ROW GONE (2026-10-04, Aaron): once the artist files are on their way the tattoo is
+     finished - it lives in My Tattoos, not in the row by the chat box. */
+  if(CHAT_DONE || !pics.length){ bar.hidden = true; return }
+  var cur = null;
+  for(var i=pics.length-1;i>=0;i--){ if(isWorking(pics[i].pic, pics[i].design)){ cur = pics[i]; break } }
+  if(!cur) cur = pics[pics.length-1];
+  bar.hidden = false;
+  /* Newest first, right by the box - nobody scrolls up the conversation to find a picture. */
+  var box = document.getElementById('workThumbs');
+  box.innerHTML = pics.slice().reverse().map(function(t){
+    return '<button class="'+(t===cur?'on':'')+'" data-v="'+esc(t.pic)+'" data-d="'+esc(t.design||'')+'" '+
+      'aria-label="'+(t===cur?'Working on this one':'Work on this one')+'"><img src="'+esc(t.pic)+'" alt=""></button>';
+  }).join('');
+  var imgs = document.querySelectorAll('#threadIn img.made');
+  for(var j=0;j<imgs.length;j++) imgs[j].classList.toggle('sel', imgs[j].getAttribute('data-v') === cur.pic);
+}
+document.getElementById('workThumbs').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if(!b) return;
+  if(b.classList.contains('on')){ openView(b.getAttribute('data-v'), b.getAttribute('data-d')||null); return }
+  workOn(b.getAttribute('data-v'), b.getAttribute('data-d')||null);
+});
+function workOn(url, design){
+  /* "I WANT TO WORK ON THIS ONE" (2026-10-02, Aaron): the picture they picked comes back into the
+     chat, big, as their own message - so they see which one they are on. Local to the screen; the
+     next thing they say carries it to Aura as the picture to work from, as before. */
+  var _changed = (piece.made !== (url || null)) || (piece.parent !== (design || null));
+  piece.made = url || null; piece.parent = design || null;
+  if(_changed && url){ thread.push({ who:'them', said:'I want to work on this one', photo:url, pick:true }); paintThread(); }
+  paintWorking(); paintStrip();
+  var sy = document.getElementById('say'); sy.placeholder = 'Tell Aura what to do with this one'; sy.focus();
+}
+/* The strip: every picture of this tattoo, newest on the right; the one being worked on is lit. */
+function paintStrip(){
+  var el=document.getElementById('strip'), stage=document.getElementById('stage');
+  /* THE STRIP IS GONE (2026-09-26, Aaron): the pictures live in the conversation, not in a row of
+     thumbnails over the top left. `piece.history` is still kept - the Design tab reads it. */
+  el.classList.remove('up'); el.innerHTML=''; stage.classList.remove('has-strip'); return;
+  var h=(piece.history||[]).filter(function(x){ return x && x.url });
+  var up=document.getElementById('thread').classList.contains('up');
+  if(!h.length || !up){ el.classList.remove('up'); el.innerHTML=''; stage.classList.remove('has-strip'); return }
+  el.innerHTML=h.map(function(x){
+    var on = (x.design && x.design===piece.parent) || (!x.design && x.url===piece.made);
+    return '<button data-v="'+esc(x.url)+'" data-d="'+esc(x.design||'')+'"'+(on?' class=on':'')+
+           ' aria-label="Open this picture"><img src="'+esc(x.url)+'" alt=""></button>';
+  }).join('');
+  el.classList.add('up'); stage.classList.add('has-strip');
+  el.scrollLeft = el.scrollWidth;
+}
+/* Full size, over the stage. The composer stays live beneath it. "Work on this one" makes the next
+   thing they say change THIS picture - the `from` core already honours. Swipe down to go back. */
+var JOB_OF = {};
+function openView(url, design, lookOnly){
+  VIEWING={ url:url, design:design||null };
+  document.getElementById('viewImg').src=url;
+  document.getElementById('viewWork').style.display = lookOnly ? 'none' : '';
+  /* Their own photo (add, cover, rework) keeps its colour: no Change colour button there. */
+  var onSkin = ['add','cover','rework'].indexOf(JOB_OF[url]||'') >= 0;
+  document.getElementById('viewColour').style.display = (lookOnly || !design || onSkin) ? 'none' : '';
+  endColour();
+  document.getElementById('viewLike').style.display = 'none';
+  endMark();
+  document.getElementById('view').classList.remove('doc');
+  document.getElementById('view').classList.add('on');
+}
+function closeView(){
+  var v=document.getElementById('view'); v.classList.remove('on'); v.classList.remove('doc');
+  document.getElementById('viewDoc').src='about:blank'; VIEWING=null;
+}
+/* The print file opens in a viewer over the screen, with a download button - nothing leaves. */
+function openDoc(url){
+  VIEWING=null;
+  var v=document.getElementById('view');
+  document.getElementById('viewDoc').src=url;
+  document.getElementById('viewDl').href=url;
+  document.getElementById('viewWork').style.display='none';
+  /* LOCKED MEANS LOCKED (2026-10-02, Aaron): the print file is looked at and downloaded, nothing else. */
+  document.getElementById('viewColour').style.display='none';
+  document.getElementById('viewLike').style.display='none';
+  v.classList.add('doc'); v.classList.add('on');
+}
+/* NEVER A BROKEN PICTURE (2026-10-02, Aaron). A picture can be asked for a moment before it has
+   finished saving; the browser then shows it broken and never asks again. Instead it is dimmed and
+   asked for again - five more times, a little longer each time - and shows the moment it is there. */
+document.addEventListener('error', function(e){
+  var im = e.target;
+  if(!im || im.tagName !== 'IMG') return;
+  var src = String(im.getAttribute('src') || '');
+  if(!/^https?:/i.test(src) && src.charAt(0) !== '/') return;
+  var n = +(im.getAttribute('data-retry') || 0);
+  if(n >= 5){ im.classList.remove('retrying'); return; }
+  im.setAttribute('data-retry', String(n + 1));
+  im.classList.add('retrying');
+  setTimeout(function(){
+    var base = src.replace(/([?&])r=\d+&?/, '$1').replace(/[?&]$/, '');
+    im.src = base + (base.indexOf('?') < 0 ? '?' : '&') + 'r=' + Date.now();
+  }, 1500 * (n + 1));
+}, true);
+document.addEventListener('load', function(e){
+  var im = e.target;
+  if(im && im.tagName === 'IMG' && im.classList.contains('retrying')) im.classList.remove('retrying');
+}, true);
+document.addEventListener('click', function(e){
+  var fv=e.target.closest('[data-fview]'); if(fv){ e.preventDefault(); openView(fv.getAttribute('data-fview'), null, true); return }
+  var fd=e.target.closest('[data-fdoc]'); if(fd){ e.preventDefault(); openDoc(fd.getAttribute('data-fdoc')); }
+});
 /* Collapse. Her last line stays on the pill; the rest is on the chain, not on the glass. */
 function collapseThread(){
+  if(CHAT_DONE){ finishChat(); return; }
   var last = null;
   for(var i=thread.length-1;i>=0;i--) if(thread[i].who==='aura' && thread[i].said){ last=thread[i]; break }
   document.getElementById('thread').classList.remove('up');
+  paintStrip();
   if(last){
     document.getElementById('chipBtn').innerHTML = '<b>Aura</b> \u00b7 ' + esc(last.said);
     document.getElementById('chip').classList.add('up');
@@ -1272,7 +2083,7 @@ function talkStream(body, onText, onStage){
    shown as if it were a new design and the PDF never reached anybody. */
 function filesHtml(f){
   var cards=[];
-  function card(url,label){ if(url) cards.push('<a class=f href="'+esc(url)+'" target=_blank rel=noopener>'+
+  function card(url,label){ if(url) cards.push('<a class=f href="'+esc(url)+'" data-fview="'+esc(url)+'">'+
     '<img loading=lazy src="'+esc(url)+'" alt=""><span>'+esc(label)+'</span></a>') }
   if(f.panels && f.panels.length){
     f.panels.forEach(function(p,i){
@@ -1284,15 +2095,35 @@ function filesHtml(f){
     if(f.image && f.image!==f.flat_artwork) card(f.image,'Line art');
   }
   card(f.shows_finished,'How it will look');
+  /* One print file per sheet (2026-09-28). An add-on makes two - the whole piece and the new work -
+     and only the first PDF was linked, so the new-work print file never reached anybody. */
+  var pdfs=[];
+  if(f.panels && f.panels.length){
+    f.panels.forEach(function(p,i){ if(p.pdf) pdfs.push('<a class=pdf href="'+esc(p.pdf)+'" data-fdoc="'+esc(p.pdf)+'">'+
+      esc(p.section || ('Panel '+(i+1)))+' \u00b7 print file (PDF)</a>') });
+  }
+  if(!pdfs.length && f.print_pdf) pdfs.push('<a class=pdf href="'+esc(f.print_pdf)+'" data-fdoc="'+esc(f.print_pdf)+'">Print file (PDF)</a>');
   return '<div class=files><div class=note>For your artist</div><div class=grid>'+cards.join('')+'</div>'+
-    (f.print_pdf ? '<a class=pdf href="'+esc(f.print_pdf)+'" target=_blank rel=noopener>Print file (PDF)</a>' : '')+
-    '</div>';
+    pdfs.join('')+'</div>';
 }
 
 function askAura(said){
+  if(CHAT_DONE) finishChat();
+  if(VIEWING){ if(VIEWING.design) piece.parent=VIEWING.design; piece.made=VIEWING.url; closeView(); }
+  var fresh = NEWPROJ; NEWPROJ = false;
+  /* A new start from anywhere else ends a pick that was already under way. */
+  if(fresh && PICK_REF && PICK_REF.sent) PICK_REF = null;
+  var pk = PICK_REF; if(pk) pk.sent = true;
+  if(fresh && thread.length){ thread=[]; piece={}; }
+  var use = USE_NEXT; USE_NEXT = false;
+  var own = OWN_NEXT; OWN_NEXT = false;
+  var nm = NAME_NEXT; NAME_NEXT = null;
   var photo = pendingPhoto; clearPhoto();
-  thread.push({ who:'them', said:said, photo:photo||null });
-  var pend = { who:'aura', said:'', pending:true, label:'Aura is imagining\u2026', near:false };
+  var ref = pendingRef; pendingRef = null;
+  var show = pendingShow; pendingShow = null;
+  thread.push({ who:'them', said:said, photo:photo||ref||show||null });
+  var pend = { who:'aura', said:'', pending:true, label:'Aura is imagining\u2026', near:false, styles:STYLES_NEXT };
+  STYLES_NEXT = false;
   thread.push(pend);
   paintThread();
   busy = true; auraBusy(true);
@@ -1300,11 +2131,24 @@ function askAura(said){
   var tile = CAME_FROM; CAME_FROM = null;
   talkStream({action:'talk',session:SESSION,said:said,
               tile: tile || undefined,
+              fresh: fresh || undefined,
               /* WHICH VERSION THEY ARE BRANCHING FROM. Absent, she stacks on the last
                  thing she drew; set by tapping a thumbnail, she stacks on that one. */
               from: piece.parent || null,
               /* Their photo goes in exactly as REF does from the terminal (core v9.338). */
               photo: photo || undefined,
+              /* A catalogue design they picked: its address, read exactly as a terminal REF. */
+              ref: ref || (pk && pk.ref) || undefined,
+              /* A catalogue design: taken as it is, or changed by their words. */
+              use: use || undefined,
+              own: own || undefined,
+              /* The design's name, so My Tattoos can call the card by it. */
+              name: nm || undefined,
+              /* This conversation came in through Get Inspired. */
+              inspire: INSPIRE_MODE || undefined,
+              pick: (pk && !use) ? true : undefined,
+              touch: (function(){ var t=TOUCH_NEXT; TOUCH_NEXT=false; return t || undefined })(),
+              recolor: (function(){ var t=RECOLOR_NEXT; RECOLOR_NEXT=false; return t || undefined })(),
               history:thread.filter(function(t){return !t.pending && t.said})
                             .slice(-12).map(function(t){
                               return { role:t.who==='aura'?'aura':'them', said:t.said } })},
@@ -1316,10 +2160,26 @@ function askAura(said){
       busy = false; auraBusy(false);
       thread = thread.filter(function(t){ return !t.pending });
       if(d && d.ok && d.said){
-        thread.push({ who:'aura', said:d.said });
+        var _pic = (d.drew && d.drew.image && !d.drew.for_the_artist && !d.drew.failed) ? d.drew.image : null;
+        if(d.project){ if(PROJECT && d.project!==PROJECT) piece.history=[]; PROJECT=d.project; }
+        var _found = (d.drew && Array.isArray(d.drew.found) && d.drew.found.length) ? d.drew.found : null;
+        /* FOUR CARDS THAT FIT (2026-09-24, Aaron): while they are finding a direction, the four
+           best-fitting directions that we have a card for, under her words. A tap searches it. */
+        /* THE CARDS COME WITH THE OPENING, ONCE (2026-09-24, Aaron): her first reply of a new
+           tattoo carries four cards - the answers to her opening question. After that, none. */
+        var _styles = !!pend.styles && !_pic && !_found;
+        var _cards = (!_styles && DISC === 'ask' && !_pic && !_found && Array.isArray(d.hot)) ? cardsFor(d.hot, 4) : null;
+        if (DISC === 'ask') DISC = 'done';
+        thread.push({ who:'aura', said:d.said, pic:_pic, design:(_pic && d.drew.design) || null, found:_found, cards:_cards, styles:_styles });
+        if(INSPIRE_BTN){ thread.push({ inspireBtn:true }); INSPIRE_BTN = false; }
         if(d.drew && d.drew.for_the_artist){
           /* The package is not a new design - the piece on the stage stays what it was. */
-          thread.push({ who:'aura', files:d.drew });
+          /* Made in the background now (2026-09-23): her words say they are on their way, and the
+             files land in My Tattoos - refreshed twice while they are being made. */
+          /* THE FILES LIVE IN MY TATTOOS, NEVER IN THE CHAT (2026-09-23, Aaron). */
+          setTimeout(paintMine, 90000); setTimeout(paintMine, 180000);
+          thread.push({ who:'aura', mine:(d.project || PROJECT || '') });
+          CHAT_DONE = true;
           paintThread();
         } else {
           paintThread();
@@ -1327,11 +2187,16 @@ function askAura(said){
              anything here having to interpret them. */
           if(d.drew && d.drew.image){
             piece.label = piece.label || (d.intent && d.intent.subject) || 'Your design';
+            /* WHICH JOB MADE IT (2026-10-02, Aaron): change colour is fun on a new design, wrong on
+               their own skin. Remember the job per picture so the viewer can tell. */
+            if(d.intent && d.intent.job) JOB_OF[d.drew.image] = d.intent.job;
             piece.made = d.drew.image;
             piece.parent = d.drew.design || null;
             remember(d.drew.image, d.drew.changed || d.drew.asked || said, null, d.drew.design);
-            if(at!==1 || step!==3){ step = 3; go(1); }
-            collapseThread(); drawPiece();
+            /* IT STAYS IN THE CHAT (2026-09-23). This jumped to the Design tab and folded the
+               conversation away on every picture. The picture is now in the thread and on the
+               strip; the Design tab keeps up quietly for anyone who opens it. */
+            PICK = null; PICK_REF = null; step = 3; drawPiece(); paintStrip(); paintWorking();
           }
         }
         if(d.show_me) findFor(d.show_me);
@@ -1341,12 +2206,17 @@ function askAura(said){
         paintThread();
       }
     })
-    .catch(function(){
+    .catch(function(e){
       busy = false; auraBusy(false);
       thread = thread.filter(function(t){ return !t.pending });
-      thread.push({ who:'aura', said:'I could not reach the server.' });
+      /* THE REASON, NOT A SHRUG (2026-09-26). Twice on the site the first turn after a photo ended here
+         and the resend worked. The browser knows why - a dropped connection, a page that was not JSON -
+         so it says it, and the next one tells us which. */
+      var why = String((e && e.message) || e || '').slice(0, 120);
+      thread.push({ who:'aura', said:'I could not reach the server' + (why ? ' (' + why + ')' : '') + ' - send it again.' });
       paintThread();
-    });
+    })
+    .then(function(){ if(QUEUED && !busy){ var q=QUEUED; QUEUED=null; askAura(q); } });
 }
 
 /* Take them to what she named. A leaf goes straight to the piece; a kind or a category opens at
@@ -1359,17 +2229,16 @@ function findFor(q){
       chosen = { category:{value:vslug(it.category),label:it.category},
                  kind:{value:vslug(it.kind),label:it.kind},
                  leaf:{value:it.value,label:it.label} };
-      piece = { url:it.image||null, label:it.label, style:null, made:null,
-                history: it.image ? [{ url:it.image, label:'original', made:false }] : [] };
-      step = 3; catAll = false; collapseThread(); go(1); loadSets(it.label);
+      catAll = false; openLayer(); PICK_FRESH = false;
+      cached('k:'+it.kind,{kind:it.kind}).then(function(){ pickDesign(it.image||null, it.label, 2) });
     } else if(it.level === 'kind' && it.category){
       chosen = { category:{value:vslug(it.category),label:it.category} };
-      step = 1; catAll = false;
-      loadKinds(it.category).then(function(){ collapseThread(); go(1); drawLadder() });
+      step = 1; catAll = false; PICK = null; PICK_FRESH = false; openLayer();
+      loadKinds(it.category);
     } else {
       chosen = { category:{value:it.value,label:it.label} };
-      step = 1; catAll = false;
-      loadKinds(it.label).then(function(){ collapseThread(); go(1); drawLadder() });
+      step = 1; catAll = false; PICK = null; PICK_FRESH = false; openLayer();
+      loadKinds(it.label);
     }
   });
 }
@@ -1386,24 +2255,131 @@ function flash(msg){
    desktop they reach for Escape. "Explore this" is the only thing that moves them on. */
 var peek=document.getElementById('peek'), peekImg=document.getElementById('peekImg'),
     peekName=document.getElementById('peekName'), peeked=null;
+/* DESIGN YOUR OWN, OR SEE WHAT WE HAVE (2026-09-25, Aaron). A card offers the catalogue only when
+   the catalogue has designs for it; otherwise it goes straight to Aura. Personal categories never
+   show a catalogue - someone's mum, their kid's handwriting - they go straight to Aura. */
+/* Portraits, Lettering & Quotes, Matching Tattoos and Personal Story have their own designs now
+   (2026-10-04) - they open the catalogue like any other card; "Design your own" still tells Aura
+   which kind of piece it is from PERSONAL_SAY. */
+var PERSONAL = ['memorials','family','something completely original',
+                'locket portrait','personal artifacts','kids drawings','memory / story tattoos','personal symbols'];
+var PERSONAL_SAY = { 'portraits':'I want a portrait tattoo', 'memorials':'I want a memorial tattoo',
+  'lettering & quotes':'I want a lettering tattoo', 'matching tattoos':'I want a matching tattoo',
+  'family':'I want a tattoo for my family', 'personal story':'I want a tattoo about my story',
+  'something completely original':'I want something completely original',
+  'locket portrait':'I want a locket portrait tattoo', 'personal artifacts':'I want a tattoo of something that means a lot to me',
+  'kids drawings':'I want to turn my kids drawing into a tattoo', 'memory / story tattoos':'I want a tattoo about a memory',
+  'personal symbols':'I want a tattoo with a symbol that means something to me' };
+function isPersonal(lab){ return PERSONAL.indexOf(String(lab||'').toLowerCase())>=0 }
+/* A card's name and its catalogue category are not always spelled the same ("Chrome / Metallic" is
+   "Liquid Chrome", "Sticker Tattoos" is "Sticker", "Pin-Up Girls" is "Pin-Up Art"), so the match is by
+   name first, then by the card's main word inside a category's name. Returns the category's label. */
+function catalogFor(lab){
+  var items=(index&&index.items)||[], low=String(lab||'').toLowerCase();
+  var hit=items.find(function(it){ return String(it.label).toLowerCase()===low });
+  if(hit) return hit.label;
+  var words=low.split(/[\/&,]| and /).map(function(w){ return w.replace(/tattoos?|girls?/g,'').trim() })
+    .filter(function(w){ return w.length>3 });
+  for(var i=0;i<words.length;i++){
+    hit=items.find(function(it){ return String(it.label).toLowerCase().indexOf(words[i])>=0 });
+    if(hit) return hit.label;
+  }
+  return null;
+}
+function inCatalog(lab){ return !!catalogFor(lab) }
+/* ══ ONE SIDE, FULL SCREEN (2026-10-06, Aaron) ═══════════════════════════════════════════════
+   A split card is one picture: the design on white is its left half, the tattoo on a body its right
+   half. A picture three wide by two high is a split card; anything else is shown whole and gets no +.
+   Tapping a + fills the screen with that half of the SAME picture - nothing new is drawn. */
+function markSplit(box){
+  if(!box) return; var im=box.querySelector('img'); box.classList.remove('split');
+  if(!im || !im.getAttribute('src')) return;
+  function chk(){ if(im.naturalWidth && im.naturalWidth/im.naturalHeight > 1.3) box.classList.add('split') }
+  if(im.complete) chk(); im.addEventListener('load', chk, {once:true});
+}
+var halfEl=document.getElementById('half'), halfImg=document.getElementById('halfImg');
+function openHalf(src, side){
+  halfImg.src=src; halfEl.classList.toggle('r', side==='r');
+  document.getElementById('halfSw').textContent = side==='r' ? 'See the design' : 'See it on the body';
+  halfEl.classList.add('on'); halfEl.setAttribute('aria-hidden','false');
+}
+function closeHalf(){ halfEl.classList.remove('on'); halfEl.setAttribute('aria-hidden','true') }
+document.addEventListener('click', function(e){
+  var b=e.target.closest('[data-half]'); if(!b) return;
+  e.preventDefault(); e.stopPropagation();
+  var im=b.parentNode.querySelector('img'); if(im && im.src) openHalf(im.src, b.getAttribute('data-half'));
+}, true);
+document.getElementById('halfSw').onclick=function(e){ e.stopPropagation(); openHalf(halfImg.src, halfEl.classList.contains('r')?'l':'r') };
+document.getElementById('halfX').onclick=function(e){ e.stopPropagation(); closeHalf() };
+halfEl.addEventListener('click', function(e){ if(e.target.closest('#halfSw,#halfX')) return; closeHalf() });
+addEventListener('keydown',function(e){ if(e.key==='Escape' && halfEl.classList.contains('on')){ e.stopImmediatePropagation(); closeHalf() } }, true);
 function openPeek(label,value,src){
   peeked={label:label,value:value};
+  document.getElementById('peekSee').style.display = (inCatalog(label) && !isPersonal(label)) ? '' : 'none';
+  /* A trend card with its own list of sets can always be seen, whatever its name matches. */
+  cached('tr:'+label,{trend:label}).then(function(d){
+    if(peeked && peeked.label===label && d && d.ok && d.items && d.items.length)
+      document.getElementById('peekSee').style.display='';
+  });
   if(imgIdOf(src)) CAME_FROM=imgIdOf(src);
   peekName.textContent=label;
   if(src){ peekImg.src=src; peekImg.style.display='block' } else { peekImg.removeAttribute('src'); peekImg.style.display='none' }
+  markSplit(document.getElementById('peekSp'));
   peek.classList.add('on'); peek.setAttribute('aria-hidden','false');
 }
 function closePeek(){ peek.classList.remove('on'); peek.setAttribute('aria-hidden','true'); peeked=null }
+/* THE LAYER (2026-09-26). While it is open the catalogue draws into it; closed, the Design tab is
+   where it draws, exactly as before. */
+var layerEl=document.getElementById('layer');
+function openLayer(){
+  LAYER=true; document.getElementById('layerIn').innerHTML='<p class=load>Loading\u2026</p>';
+  layerEl.classList.add('on'); layerEl.setAttribute('aria-hidden','false');
+  document.getElementById('layerBox').scrollTop=0;
+}
+function closeLayer(){
+  if(!LAYER) return;
+  LAYER=false; layerEl.classList.remove('on'); layerEl.setAttribute('aria-hidden','true');
+  document.getElementById('layerIn').innerHTML='';
+  PICK_FRESH=true;
+  drawLadder();
+}
+document.getElementById('layerClose').onclick=closeLayer;
+layerEl.addEventListener('click',function(e){ if(e.target===layerEl) closeLayer() });
 document.getElementById('peekClose').onclick=closePeek;
 peek.addEventListener('click',function(e){ if(e.target===peek) closePeek() });
-addEventListener('keydown',function(e){ if(e.key==='Escape'&&peek.classList.contains('on')) closePeek() });
+addEventListener('keydown',function(e){ if(e.key==='Escape'&&peek.classList.contains('on')) closePeek();
+  else if(e.key==='Escape'&&LAYER) closeLayer() });
+/* Design your own: straight to Aura. A style starts the conversation with that style; a personal
+   category tells her what kind of piece it is and she asks about them. Finding real tattoos people
+   have gotten belongs to Get Inspired only. */
 document.getElementById('peekGo').onclick=function(){
-  if(!peeked) return; var lab=peeked.label, val=peeked.value; closePeek();
-  var known=index&&index.items&&index.items.some(function(it){
-    return String(it.label).toLowerCase()===String(lab).toLowerCase() });
-  if(!known){ askAura('show me some '+lab+' tattoos'); return }
-  chosen={category:{value:val,label:lab}}; catAll=false;
-  step=1; loadKinds(lab).then(function(){ go(1) });
+  if(!peeked) return; var lab=peeked.label; closePeek();
+  NEWPROJ=true; ENTRY='create'; PICK_REF=null; INSPIRE_MODE=false;
+  var say=PERSONAL_SAY[String(lab).toLowerCase()];
+  if(say){ DISC='done'; askAura(say); return }
+  DISC='done'; askAura('I like the '+lab+' style');
+};
+/* See what we have: the catalogue's designs for it. */
+/* OPEN A CARD: its own list of sets when it has one, otherwise the catalogue category its name
+   matches. WAITS for the list (2026-10-05): the name match is ready instantly and the list is a
+   request, so a quick tap used to land on the name match - "Body Jewelry Tattoos" opened the old
+   Ornamental designs. `fromInspire`: opened inside a Get Inspired conversation, which it continues. */
+function openCard(lab, fresh, fromInspire){
+  return cached('tr:'+lab,{trend:lab}).then(function(tr){
+    if(tr && tr.ok && tr.items && tr.items.length){
+      chosen={category:{value:vslug(lab),label:lab,trend:true,fromInspire:!!fromInspire}};
+      catAll=false; PICK=null; PICK_FRESH=fresh;
+      step=1; openLayer(); loadKinds(lab); return true;
+    }
+    var cat=catalogFor(lab); if(!cat) return false;
+    var it=((index&&index.items)||[]).find(function(x){ return x.label===cat });
+    chosen={category:{value:(it&&it.value)||cat,label:cat}}; catAll=false; PICK=null; PICK_FRESH=fresh;
+    step=1; openLayer(); loadKinds(cat); return true;
+  });
+}
+document.getElementById('peekSee').onclick=function(){
+  if(!peeked) return;
+  var lab=peeked.label; closePeek(); openCard(lab, true, false);
 };
 
 function wireNav(host){
@@ -1417,6 +2393,7 @@ function wireNav(host){
 function swipeOn(el){
   var x0=null, y0=null;
   el.addEventListener('touchstart', function(e){
+    if(e.target.closest('.row,.vrow,.styles,.made,.rail,.pbox')){ x0=null; return }
     x0=e.touches[0].clientX; y0=e.touches[0].clientY;
   }, {passive:true});
   el.addEventListener('touchend', function(e){
@@ -1438,7 +2415,7 @@ function goStep(i){
      at a golden retriever while the breadcrumb above it said dragons. */
   if(i<3 && busy) return;
   step=i; drawLadder();
-  panel('design').parentNode.scrollTo({top:0,behavior:'smooth'});
+  ladScroller().scrollTo({top:0,behavior:'smooth'});
 }
 
 drawLadder();
@@ -1447,51 +2424,460 @@ drawLadder();
 /* Their own pictures, newest first, read from their record - which carries the words each one was
    made from. Tapping one shows that story and can carry on from it: the next thing they ask is
    drawn from THAT picture, not the last one they happened to make. */
+/* MY TATTOOS IS THEIR PROJECTS (2026-09-23). One card per tattoo - its latest picture, how many
+   pictures, locked in or not. A tap reopens the whole conversation in the chat, every picture back
+   in place and on the strip, and they carry on talking from the latest one. */
 function paintMine(){
   var el=panel('mine');
   el.innerHTML='<div class=head><h2>My Tattoos</h2></div><div class=empty><p>Looking\u2026</p></div>';
   fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({action:'mine',session:SESSION})})
     .then(function(r){return r.json()}).then(function(d){
-      if(!d||!d.ok||!d.items||!d.items.length){
+      var ps=(d&&d.ok&&d.projects)||[];
+      if(!ps.length){
         el.innerHTML='<div class=head><h2>My Tattoos</h2></div>'+
           '<div class=empty><h3>Nothing here yet</h3><p>Anything you design or photograph lands '+
           'here and stays on your account, not this browser.</p></div>'; return;
       }
-      el.innerHTML='<div class=head><h2>My Tattoos</h2></div>'+
-        '<div class=rail>'+ d.items.map(function(it,i){
-          return '<button class=tile data-i="'+i+'">'+
-            '<div class=pic><img loading=lazy src="'+esc(it.image)+'" alt=""></div>'+
-            '<b>'+esc((it.asked||it.words||'Your tattoo').slice(0,40))+'</b>'+
-            (it.artist_files?'<small>artist files ready</small>':'')+'</button>';
-        }).join('') +'</div>';
+      el.innerHTML='<div class=head><h2>My Tattoos</h2></div><div class=rail>'+ps.map(function(p,i){
+        var n=+p.count||0;
+        return '<button class=tile data-i="'+i+'">'+
+          '<div class=pic>'+(p.cover?'<img loading=lazy src="'+esc(p.cover)+'" alt="">':'')+'</div>'+
+          '<b>'+esc(String(p.title||'Your tattoo').slice(0,40))+'</b>'+
+          '<small>'+n+' picture'+(n===1?'':'s')+(p.updated?' \u00b7 '+esc(String(p.updated).slice(0,10)):'')+'</small>'+
+          (p.locked?'<small class=lk>'+(p.has_files?'Locked in \u00b7 tap for your artist\u2019s files'
+            :(p.files_failed?'Locked in \u00b7 files didn\u2019t come out':'Locked in \u00b7 making your artist\u2019s files\u2026'))+'</small>':'')+
+          '</button>';
+      }).join('')+'</div>';
+      /* A LOCKED-IN TATTOO IS LOOKED AT, NOT TALKED ABOUT (2026-09-23, Aaron). The chat is for
+         making it; once it is locked in, a tap opens the finished project right here - its pictures
+         and its artist's files - with no chat laid over it. A project still being made reopens its
+         conversation. */
       el.onclick=function(e){
         var t=e.target.closest('.tile'); if(!t) return;
-        var it=d.items[+t.dataset.i]; if(!it) return;
-        openMine(it);
+        var p=ps[+t.dataset.i]; if(!p) return;
+        openProjectView(p.id);
       };
+      /* Files are made in the background and take a minute or two. While any are on their way and
+         this tab is open, it checks again every 15 seconds - nobody has to know to tap. */
+      clearTimeout(MINE_POLL);
+      var waiting = ps.some(function(p){ return p.locked && !p.has_files && !p.files_failed });
+      if(waiting && MINE_TRIES < 20){ MINE_TRIES++; MINE_POLL=setTimeout(function(){
+        if(TABS[at] && TABS[at].id==='mine' && !MINE_OPEN) paintMine(); }, 15000); }
+      else MINE_TRIES = 0;
     }).catch(function(){
       el.innerHTML='<div class=head><h2>My Tattoos</h2></div>'+
         '<div class=empty><h3>Could not reach your tattoos</h3></div>';
     });
 }
-/* One tattoo, its story, and the one button that matters. */
-function openMine(it){
-  peeked=null;
-  peekName.textContent=(it.asked||'Your tattoo').slice(0,80);
-  peekImg.src=it.image; peekImg.style.display='block';
-  peek.classList.add('on'); peek.setAttribute('aria-hidden','false');
-  var go=document.getElementById('peekGo');
-  go.textContent='Carry on with this';
-  go.onclick=function(){
-    closePeek();
-    piece={ url:it.image, label:'your tattoo', style:null, made:null, parent:it.design||null,
-            history:[{url:it.image,label:'saved',made:true,design:it.design||null}] };
-    step=3; drawLadder(); go2(1);
-    flash('Carrying on from this one - tell Aura what to change.');
-  };
+function openProjectView(id){
+  var el=panel('mine'); MINE_OPEN=true;
+  el.innerHTML='<div class=head><h2>My Tattoos</h2></div><div class=empty><p>Opening\u2026</p></div>';
+  fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'project',id:id,session:SESSION})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(!d||!d.ok||!d.project){ MINE_OPEN=false; paintMine(); return }
+      var pj=d.project, pics=pj.pictures||[];
+      el.innerHTML='<div class="head phead"><button class=back id=mineBack>\u2039 My Tattoos</button>'+
+        '<h2>'+esc(String(pj.title||'Your tattoo').slice(0,60))+'</h2>'+
+        '<small>'+esc(String(pj.locked_at||pj.updated||'').slice(0,10))+
+          (pj.locked?' \u00b7 locked in':' \u00b7 not locked in yet')+'</small></div>'+
+        (pj.files ? filesHtml(pj.files)
+          : '<div class=empty><p>'+(!pj.locked ? 'Your artist\u2019s files are made when you lock it in.'
+                                   : pj.files_failed ? 'Your artist\u2019s files didn\u2019t come out.'
+                                   : '')+'</p>'+
+            /* HER BUTTERFLY WHILE THEY ARE MADE (2026-10-02, Aaron): the same mark as "Aura is
+               imagining", so the wait has something alive in it. */
+            ((pj.locked && !pj.files_failed)
+              ? '<div class=thinking-row style="justify-content:center"><div class="aura-mark near">'+
+                '<img src="'+AURA_MARK+'" alt=""><span class=shimmer></span></div>'+
+                '<span class=lbl>Your artist\u2019s files are being made\u2026</span></div>' : '')+
+            '</div>')+
+        (pics.length ? '<div class=head><h3>Every version</h3></div><div class=rail>'+pics.map(function(x,i){
+          return '<button class=tile data-v="'+esc(x.image)+'" data-d="'+esc(x.design||'')+'">'+
+            '<div class=pic><img loading=lazy src="'+esc(x.image)+'" alt=""></div>'+
+            '<small>'+(i+1)+' of '+pics.length+'</small></button>' }).join('')+'</div>' : '');
+      document.getElementById('mineBack').onclick=function(){ MINE_OPEN=false; paintMine() };
+      threadRows(el);
+      el.onclick=function(e){
+        var t=e.target.closest('.tile[data-v]'); if(!t) return;
+        openView(t.getAttribute('data-v'), t.getAttribute('data-d')||null, true);
+      };
+      if(pj.locked && !pj.files && !pj.files_failed) setTimeout(function(){
+        if(MINE_OPEN && TABS[at] && TABS[at].id==='mine') openProjectView(id) }, 15000);
+    }).catch(function(){ MINE_OPEN=false; paintMine() });
+}
+function openProject(id){
+  fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'project',id:id,session:SESSION})})
+    .then(function(r){return r.json()}).then(function(d){
+      if(!d||!d.ok||!d.project) return;
+      var pj=d.project, pics=(pj.pictures||[]).slice(), lines=pj.lines||[], out=[], pi=0;
+      /* Each picture goes back on the line of hers that answered with it. */
+      for(var i=0;i<lines.length;i++){
+        var l=lines[i], t={ who:l.role==='them'?'them':'aura', said:l.said, photo:l.photo||null };
+        if(l.role==='aura' && pi<pics.length){
+          var nx=(i+1<lines.length && lines[i+1].ts) ? lines[i+1].ts : null;
+          if(!nx || !pics[pi].ts || pics[pi].ts<=nx){ t.pic=pics[pi].image; t.design=pics[pi].design||null; pi++; }
+        }
+        out.push(t);
+      }
+      while(pi<pics.length){ out.push({ who:'aura', said:'', pic:pics[pi].image, design:pics[pi].design||null }); pi++; }
+      thread=out;
+      var last=pics.length?pics[pics.length-1]:null;
+      piece={ url:null, label:pj.title||'your tattoo', style:null,
+              made:last?last.image:null, parent:last?(last.design||null):null,
+              history:pics.map(function(x){ return { url:x.image, label:x.words||'', made:true, design:x.design||null } }) };
+      PROJECT = pj.id==='earlier' ? null : pj.id;
+      paintThread();
+    });
+}
+/* EVERY ROW BEHAVES THE SAME (2026-09-23). Drag to scroll with a mouse, the wheel moves it sideways,
+   the arrows page it - the home screen's rows and the Design tab's rows are one thing. */
+function wireRows(el){
+  [].forEach.call(el.querySelectorAll('.row,.jobs,.insp .kinds,.insp .phones,.foundrow,.files .grid'),function(r){
+    var down=false,x0=0,l0=0,moved=0;
+    r.addEventListener('pointerdown',function(e){ if(e.pointerType==='touch') return;
+      down=true;moved=0;x0=e.clientX;l0=r.scrollLeft;r.classList.add('drag') });
+    r.addEventListener('pointermove',function(e){ if(!down) return;
+      var d=e.clientX-x0; moved=Math.max(moved,Math.abs(d)); r.scrollLeft=l0-d; });
+    ['pointerup','pointerleave','pointercancel'].forEach(function(ev){
+      r.addEventListener(ev,function(){ down=false; r.classList.remove('drag') }) });
+    r.addEventListener('click',function(e){ if(moved>6){ e.stopPropagation(); e.preventDefault(); } },true);
+    /* The wheel moves it sideways with no modifier held - the row is the only thing under the
+       pointer that scrolls, and asking for shift meant nobody found it. */
+    r.addEventListener('wheel',function(e){
+      if(Math.abs(e.deltaX)>Math.abs(e.deltaY)) return;
+      if(r.scrollWidth<=r.clientWidth) return;
+      e.preventDefault(); r.scrollLeft+=e.deltaY; },{passive:false});
+  });
+  /* The arrows: one screenful of tiles a press, and they grey out at each end. */
+  [].forEach.call(el.querySelectorAll('.arw'),function(a){
+    var row=document.getElementById(a.dataset.row); if(!row) return;
+    function mark(){ var max=row.scrollWidth-row.clientWidth-2;
+      if(a.classList.contains('l')) a.disabled = row.scrollLeft<=2;
+      else a.disabled = row.scrollLeft>=max; }
+    a.onclick=function(){ row.scrollBy({left:(a.classList.contains('l')?-1:1)*Math.round(row.clientWidth*.8),
+                                        behavior:'smooth'}) };
+    row.addEventListener('scroll',mark,{passive:true}); setTimeout(mark,60);
+  });
 }
 function go2(i){ go(i) }
+document.getElementById('threadIn').addEventListener('click', function(e){
+  var ib=e.target.closest('[data-inspire]'); if(ib){ openInspire(); return }
+  var iu=e.target.closest('[data-inspup]'); if(iu){ if(!signedIn()) return; INSPIRE_SEND=true; document.getElementById('file').click(); return }
+  var ik=e.target.closest('[data-inspk]'); if(ik){ openInspireKind(+ik.getAttribute('data-inspk')); return }
+  var it2=e.target.closest('[data-insptr]'); if(it2){ openCard(it2.getAttribute('data-insptr'), false, true); return }
+  var sf=e.target.closest('button.seefiles'); if(sf){ seeProject(sf.getAttribute('data-p')||''); return }
+  var im=e.target.closest('img.made'); if(!im) return;
+  if(im.classList.contains('sel')){ openView(im.getAttribute('data-v'), im.getAttribute('data-d')||null); return }
+  workOn(im.getAttribute('data-v'), im.getAttribute('data-d')||null);
+});
+document.getElementById('strip').addEventListener('click', function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  openView(b.getAttribute('data-v'), b.getAttribute('data-d')||null);
+});
+document.getElementById('viewClose').onclick=closeView;
+/* A found tattoo: look at it full size; "I like this one" tells Aura what it is, in words. */
+var FOUND_SAW = '';
+function openFound(url, saw){
+  openView(url, null, true);
+  FOUND_SAW = saw || '';
+  document.getElementById('viewLike').style.display = '';
+}
+document.addEventListener('click', function(e){
+  var b = e.target.closest('[data-fv]'); if(!b) return;
+  e.preventDefault(); openFound(b.getAttribute('data-fv'), b.getAttribute('data-saw'));
+});
+/* THE DISCOVERY LINEUP (2026-09-24, Aaron): first she asks what they want ("ask" - no cards), then
+   style choices once she knows ("cards"), then real tattoos when they tap one; once they tap a card
+   or like a photo, discovery is over ("done") - no cards come back for this tattoo. */
+var DISC = null, ENTRY = 'create', STYLES_NEXT = false, QUEUED = null;
+/* The style row: all of them, trending first, then the styles in their families. */
+function styleRowHtml(){
+  var cs=(window.CARD_PICS||[]); if(!cs.length) return '';
+  return '<div class="foundrow stylerow">'+cs.map(function(c){
+    var nm=String(c[0]);
+    return '<button class="found card" data-card="'+esc(nm)+'">'+
+      '<img src="https://auras.guide/image/'+esc(c[1])+'" alt="" loading=lazy><span class=src>'+esc(nm)+'</span></button>';
+  }).join('')+'</div>';
+}
+/* The four fitting directions she is handed, matched to the cards we have - their order is the
+   order of fit. Names differ a little ("Sticker Tattoos" / "sticker"), so they match either way. */
+function cardsFor(hot, n){
+  var norm=function(x){ return String(x||'').toLowerCase().replace(/tattoos?/g,'').replace(/[^a-z0-9]+/g,' ').trim() };
+  var out=[], seen={};
+  (hot||[]).forEach(function(line){
+    if(out.length>=n) return;
+    var nm=norm(String(line).split(' (')[0]); if(!nm) return;
+    var hit=(window.CARD_PICS||[]).filter(function(c){
+      var cn=norm(c[0]); return cn && (cn===nm || cn.indexOf(nm)===0 || nm.indexOf(cn)===0 ||
+        cn.split(' ')[0]===nm.split(' ')[0] && nm.split(' ').length===1);
+    })[0];
+    if(hit && !seen[hit[0]]){ seen[hit[0]]=1;
+      out.push({ name:String(hit[0]).replace(/\s*Tattoos$/,''), img:'https://auras.guide/image/'+hit[1] }); }
+  });
+  return out.length ? out : null;
+}
+document.addEventListener('click', function(e){
+  var b = e.target.closest('[data-card]'); if(!b) return;
+  e.preventDefault(); DISC = 'done';
+  var nm = b.getAttribute('data-card');
+  var words = ENTRY === 'inspire' ? 'show me some ' + nm + ' tattoos people have gotten'
+                                  : 'I like the ' + nm + ' style';
+  /* Tapped while she is still answering the opening: it waits for her and then goes - never two at once. */
+  if(busy){ QUEUED = words; b.classList.add('on'); return }
+  askAura(words);
+});
+document.getElementById('viewLike').onclick=function(){
+  var w = FOUND_SAW; closeView(); DISC = 'done';
+  askAura('I like this one' + (w ? ': ' + w : ''));
+};
+/* TOUCH TO CHANGE (2026-09-24, Aaron - "so people can touch the image and get it right"). They
+   draw on the picture where they want a change and say what; the marked picture goes to core
+   with their words, which asks for that change and nothing else. Marks are kept as fractions of
+   the picture, so they land in the same place at full size. */
+var MARK = { on:false, strokes:[], cur:null };
+function markCanvas(){ return document.getElementById('markCv') }
+function markRedraw(){
+  var c=markCanvas(), g=c.getContext('2d'); g.clearRect(0,0,c.width,c.height);
+  g.strokeStyle='#ff1f3d'; g.lineWidth=Math.max(4, c.width/110); g.lineCap='round'; g.lineJoin='round';
+  MARK.strokes.concat(MARK.cur?[MARK.cur]:[]).forEach(function(st){
+    g.beginPath(); st.forEach(function(p,i){ var x=p[0]*c.width, y=p[1]*c.height; i?g.lineTo(x,y):g.moveTo(x,y) }); g.stroke();
+  });
+}
+function startMark(){
+  var im=document.getElementById('viewImg'), c=markCanvas();
+  c.width=im.clientWidth; c.height=im.clientHeight; c.style.width=im.clientWidth+'px'; c.style.height=im.clientHeight+'px';
+  MARK={ on:true, strokes:[], cur:null }; markRedraw();
+  document.getElementById('view').classList.add('marking');
+  document.getElementById('viewBar').style.display='none';
+  document.getElementById('markBar').style.display='';
+}
+function endMark(){
+  MARK={ on:false, strokes:[], cur:null };
+  var v=document.getElementById('view'); if(v) v.classList.remove('marking');
+  var vb=document.getElementById('viewBar'), mb=document.getElementById('markBar');
+  if(vb) vb.style.display=''; if(mb) mb.style.display='none';
+  var ms=document.getElementById('markSay'); if(ms) ms.value='';
+}
+(function(){
+  var c=markCanvas();
+  function pt(e){ var r=c.getBoundingClientRect(); return [(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height] }
+  c.addEventListener('pointerdown',function(e){ if(!MARK.on) return; c.setPointerCapture(e.pointerId); MARK.cur=[pt(e)]; markRedraw(); e.preventDefault(); });
+  c.addEventListener('pointermove',function(e){ if(!MARK.on||!MARK.cur) return; MARK.cur.push(pt(e)); markRedraw(); e.preventDefault(); });
+  function up(){ if(MARK.cur&&MARK.cur.length){ MARK.strokes.push(MARK.cur) } MARK.cur=null; markRedraw(); }
+  c.addEventListener('pointerup',up); c.addEventListener('pointercancel',up);
+})();
+/* (Touch to change is out, 2026-09-24 - "they don't need to touch the image".) */
+document.getElementById('markUndo').onclick=function(){ MARK.strokes.pop(); markRedraw(); };
+document.getElementById('markCancel').onclick=function(){ endMark(); };
+/* The picture with their marks on it, at full size. Our pictures are loaded from this site's own
+   /image/ address first (a picture from another address cannot be read back off a canvas). */
+function markedPicture(url){
+  function load(src){ return new Promise(function(ok,no){ var im=new Image(); im.crossOrigin='anonymous';
+    im.onload=function(){ ok(im) }; im.onerror=function(){ no(new Error('load')) }; im.src=src; }) }
+  function paint(im){
+    var max=1600, w=im.naturalWidth, h=im.naturalHeight;
+    if(w>max||h>max){ var k=max/Math.max(w,h); w=Math.round(w*k); h=Math.round(h*k); }
+    var c=document.createElement('canvas'); c.width=w; c.height=h; var g=c.getContext('2d');
+    g.drawImage(im,0,0,w,h);
+    g.strokeStyle='#ff1f3d'; g.lineWidth=Math.max(5, w/110); g.lineCap='round'; g.lineJoin='round';
+    MARK.strokes.forEach(function(st){ g.beginPath(); st.forEach(function(p,i){ var x=p[0]*w, y=p[1]*h; i?g.lineTo(x,y):g.moveTo(x,y) }); g.stroke(); });
+    return c.toDataURL('image/jpeg',0.9);
+  }
+  var m=String(url).match(/\/image\/([A-Za-z0-9_]+)/);
+  var same = m ? location.origin+'/image/'+m[1] : url;
+  return load(same).then(paint).catch(function(){ return load(url).then(paint) });
+}
+document.getElementById('markSend').onclick=function(){
+  var said=document.getElementById('markSay').value.trim();
+  if(!MARK.strokes.length){ document.getElementById('markSay').placeholder='Draw on the picture where you want the change'; return }
+  if(!said){ document.getElementById('markSay').focus(); return }
+  var v=VIEWING;
+  markedPicture(v.url).then(function(uri){
+    if(v && v.design) piece.parent=v.design;
+    endMark(); closeView();
+    pendingPhoto = uri; TOUCH_NEXT = true;
+    askAura(said);
+  }).catch(function(){
+    endMark(); closeView();
+    thread.push({ who:'aura', said:'I could not mark that picture - try it again in a moment.' }); paintThread();
+  });
+};
+var TOUCH_NEXT = false;
+/* ══ THE COLOUR SLIDER (2026-09-24, Aaron) ══════════════════════════════════════════════════
+   They drag, the tattoo's colours move live; they stop when they like it and keep it. Only the
+   coloured ink moves - the white background and the black and grey linework and shading stay,
+   because they have no colour to move. Tap a colour in the tattoo and the slider moves just that
+   colour; "Black" turns it (or all of it) to blackwork. Everything runs here, on their screen:
+   free, instant, no model. Keep saves it as the new version of the design. */
+var COL = { on:false };
+function rgb2hsl(r,g,b){ r/=255; g/=255; b/=255; var mx=Math.max(r,g,b), mn=Math.min(r,g,b), l=(mx+mn)/2, h=0, s=0;
+  if(mx!==mn){ var d=mx-mn; s=l>0.5?d/(2-mx-mn):d/(mx+mn);
+    h = mx===r ? (g-b)/d+(g<b?6:0) : mx===g ? (b-r)/d+2 : (r-g)/d+4; h*=60 } return [h,s,l] }
+function hue2(p,q,t){ if(t<0)t+=1; if(t>1)t-=1; if(t<1/6)return p+(q-p)*6*t; if(t<1/2)return q; if(t<2/3)return p+(q-p)*(2/3-t)*6; return p }
+function hsl2rgb(h,s,l){ h=((h%360)+360)%360/360; if(!s){ var v=l*255; return [v,v,v] }
+  var q=l<0.5?l*(1+s):l+s-l*s, p=2*l-q; return [hue2(p,q,h+1/3)*255,hue2(p,q,h)*255,hue2(p,q,h-1/3)*255] }
+function colourPrep(im, max){
+  var w=im.naturalWidth, h=im.naturalHeight, k=Math.min(1,max/Math.max(w,h)); w=Math.round(w*k); h=Math.round(h*k);
+  var c=document.createElement('canvas'); c.width=w; c.height=h; var g=c.getContext('2d'); g.drawImage(im,0,0,w,h);
+  var d=g.getImageData(0,0,w,h), n=w*h, H=new Float32Array(n), S=new Float32Array(n), L=new Float32Array(n), C=new Uint8Array(n);
+  for(var i=0;i<n;i++){ var x=rgb2hsl(d.data[i*4],d.data[i*4+1],d.data[i*4+2]); H[i]=x[0]; S[i]=x[1]; L[i]=x[2];
+    C[i]=(x[1]>0.18 && x[2]>0.06 && x[2]<0.96)?1:0 }
+  return { w:w, h:h, base:d, H:H, S:S, L:L, C:C }
+}
+function colourApply(P, out){
+  var shift=COL.shift, tgt=COL.target, blk=COL.black, n=P.w*P.h, dd=out.data, bd=P.base.data;
+  for(var i=0;i<n;i++){ var j=i*4;
+    var mine = P.C[i] && (tgt===null || Math.min(Math.abs(P.H[i]-tgt),360-Math.abs(P.H[i]-tgt))<28);
+    if(!mine){ dd[j]=bd[j]; dd[j+1]=bd[j+1]; dd[j+2]=bd[j+2]; dd[j+3]=bd[j+3]; continue }
+    var rgb = blk ? hsl2rgb(0,0,P.L[i]*0.32) : hsl2rgb(P.H[i]+shift,P.S[i],P.L[i]);
+    /* BLACK & GREY at the slider's left end (2026-09-25): the colour drains out, shading kept. */
+    if(COL.grey>0){ var lum=0.299*rgb[0]+0.587*rgb[1]+0.114*rgb[2], gk=COL.grey;
+      rgb=[rgb[0]*(1-gk)+lum*gk, rgb[1]*(1-gk)+lum*gk, rgb[2]*(1-gk)+lum*gk]; }
+    dd[j]=rgb[0]; dd[j+1]=rgb[1]; dd[j+2]=rgb[2]; dd[j+3]=bd[j+3] }
+  return out
+}
+/* ══ LOOKS (2026-09-25, Aaron - "as many looks as we can get") ════════════════════════════════
+   The same drawing with a different finish, made live from its own pixels - no model. Only the
+   ink changes; the background stays. Real styles that change WHAT is drawn (neo-tribal, Japanese,
+   realism...) are not looks - those are Aura's to redraw. Applied after the colour slider, so
+   they combine: chrome, then shifted blue. */
+var LOOKS = ['Original','Blackwork','Blackout','Black & grey','Red ink','Chrome','Pastel','Pop of colour',
+             'Dotwork','Etching','Sketch','Vintage','Negative space'];
+function lookApply(out, w, h, look){
+  if(!look || look==='Original') return out;
+  var d=out.data, n=w*h, G=new Float32Array(n), S=new Float32Array(n), H=new Float32Array(n), ink=new Float32Array(n);
+  for(var i=0;i<n;i++){ var x=rgb2hsl(d[i*4],d[i*4+1],d[i*4+2]); H[i]=x[0]; S[i]=x[1];
+    G[i]=(0.299*d[i*4]+0.587*d[i*4+1]+0.114*d[i*4+2])/255;
+    ink[i]=Math.max(0,Math.min(1,(0.92-G[i])/0.25)) || (S[i]>0.25&&G[i]<0.95?1:0); }
+  function put(i,r,g,b){ var a=ink[i], j=i*4; d[j]=d[j]*(1-a)+r*a; d[j+1]=d[j+1]*(1-a)+g*a; d[j+2]=d[j+2]*(1-a)+b*a }
+  function ss(e0,e1,x){ var t=Math.max(0,Math.min(1,(x-e0)/(e1-e0))); return t*t*(3-2*t) }
+  var i, x, y;
+  if(look==='Blackwork'){ for(i=0;i<n;i++){ var v=ss(0.3,0.7,G[i])*255; put(i,v,v,v) } }
+  else if(look==='Blackout'){ for(i=0;i<n;i++){ if(ink[i]>0.15){ ink[i]=1; put(i,8,8,10) } } }
+  else if(look==='Black & grey'){ for(i=0;i<n;i++){ var v2=G[i]*255; put(i,v2,v2,v2) } }
+  else if(look==='Red ink'){ for(i=0;i<n;i++){ var t=G[i]; put(i,190+65*t,18+237*t*t,28+227*t*t) } }
+  else if(look==='Chrome'){ for(i=0;i<n;i++){ y=(i/w)|0;
+      var m=0.5+0.5*Math.sin(G[i]*Math.PI*3.2+y/h*5), hi=Math.pow(Math.max(0,1-G[i]),0.6);
+      var v3=18+225*(0.25*m+0.75*(1-hi)*0.9+0.1*m*hi); put(i,v3*0.93,v3*0.97,v3*1.04+6) } }
+  else if(look==='Pastel'){ for(i=0;i<n;i++){ if(G[i]<0.22){ continue }
+      var hh=S[i]>0.12?H[i]:330; var c=hsl2rgb(hh,0.55,0.78+0.18*G[i]); put(i,c[0],c[1],c[2]) } }
+  else if(look==='Pop of colour'){ var bins=new Float32Array(12);
+      for(i=0;i<n;i++) if(S[i]>0.3&&G[i]<0.9) bins[Math.floor(H[i]/30)%12]+=1;
+      var best=0; for(var b=1;b<12;b++) if(bins[b]>bins[best]) best=b;
+      for(i=0;i<n;i++){ var keep=S[i]>0.3&&Math.floor(H[i]/30)%12===best; if(keep) continue; var g4=G[i]*255; put(i,g4,g4,g4) } }
+  else if(look==='Dotwork'){ var k=Math.max(4,Math.round(w/150)), src=new Float32Array(G), ik=new Float32Array(ink);
+      for(i=0;i<n;i++) put(i,248,248,246);
+      for(var cy=0;cy<h;cy+=k) for(var cx=0;cx<w;cx+=k){ var sum=0,cnt=0,ia=0;
+        for(y=cy;y<Math.min(h,cy+k);y++) for(x=cx;x<Math.min(w,cx+k);x++){ sum+=1-src[y*w+x]; ia+=ik[y*w+x]; cnt++ }
+        var dk=sum/cnt; if(ia/cnt<0.05||dk<0.06) continue; var r=Math.sqrt(dk)*k*0.62, ox=cx+k/2, oy=cy+k/2;
+        for(y=Math.max(0,Math.floor(oy-r));y<Math.min(h,Math.ceil(oy+r));y++) for(x=Math.max(0,Math.floor(ox-r));x<Math.min(w,Math.ceil(ox+r));x++){
+          if((x-ox)*(x-ox)+(y-oy)*(y-oy)<=r*r){ var j2=(y*w+x)*4; d[j2]=12; d[j2+1]=12; d[j2+2]=14 } } } }
+  else if(look==='Etching'){ var per=Math.max(4,Math.round(w/170));
+      for(i=0;i<n;i++){ x=i%w; y=(i/w)|0; var ph=((x+y*0.6)%per)/per, dk2=1-G[i];
+        var on = G[i]<0.18 || ph<dk2*0.9 || (dk2>0.55 && (((x-y*0.6+9999)%per)/per)<(dk2-0.5));
+        var v5=on?15:246; put(i,v5,v5-2,v5-8) } }
+  else if(look==='Sketch'){ var E=new Float32Array(n);
+      for(y=1;y<h-1;y++) for(x=1;x<w-1;x++){ var q=y*w+x;
+        var gx=G[q-w+1]+2*G[q+1]+G[q+w+1]-G[q-w-1]-2*G[q-1]-G[q+w-1], gy=G[q+w-1]+2*G[q+w]+G[q+w+1]-G[q-w-1]-2*G[q-w]-G[q-w+1];
+        E[q]=Math.min(1,Math.sqrt(gx*gx+gy*gy)*1.6) }
+      for(i=0;i<n;i++){ var nz=((i*2654435761)>>>0)%97/97*0.12, v6=255*Math.max(0,1-E[i]-(1-G[i])*0.25-nz*(1-G[i])); put(i,v6*0.97,v6*0.97,v6) } }
+  else if(look==='Vintage'){ for(i=0;i<n;i++){ var j3=i*4, r0=d[j3],g0=d[j3+1],b0=d[j3+2];
+      var r1=0.393*r0+0.769*g0+0.189*b0, g1=0.349*r0+0.686*g0+0.168*b0, b1=0.272*r0+0.534*g0+0.131*b0;
+      put(i,Math.min(255,r1*0.85+30),Math.min(255,g1*0.85+22),Math.min(255,b1*0.85+10)) } }
+  else if(look==='Negative space'){ var x0=w,y0=h,x1=0,y1=0;
+      for(i=0;i<n;i++) if(ink[i]>0.3){ x=i%w; y=(i/w)|0; if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y }
+      if(x1>x0){ var cxm=(x0+x1)/2, cym=(y0+y1)/2, rx=(x1-x0)/2*1.12+w*0.02, ry=(y1-y0)/2*1.12+h*0.02;
+        for(i=0;i<n;i++){ x=i%w; y=(i/w)|0; var e=((x-cxm)*(x-cxm))/(rx*rx)+((y-cym)*(y-cym))/(ry*ry); if(e>1) continue;
+          var j4=i*4, a4=ink[i]; var v7=10+235*a4*(0.55+0.45*G[i]); d[j4]=v7; d[j4+1]=v7; d[j4+2]=v7 } } }
+  return out;
+}
+function paintLooks(){
+  var row=document.getElementById('looksRow');
+  row.innerHTML=LOOKS.map(function(l){ return '<button data-look="'+l+'"'+((COL.look||'Original')===l?' class=on':'')+'>'+l+'</button>' }).join('');
+}
+(document.getElementById('looksRow')||document.createElement('div')).addEventListener('click',function(e){
+  var b=e.target.closest('[data-look]'); if(!b||!COL.on) return;
+  COL.look=b.getAttribute('data-look'); paintLooks(); colourDraw();
+});
+function colourDraw(){
+  if(!COL.on||!COL.view) return;
+  var cv=document.getElementById('colourCv'), g=cv.getContext('2d');
+  g.putImageData(colourApply(COL.view, COL.viewOut), 0, 0);
+}
+function loadForCanvas(url){
+  function load(src){ return new Promise(function(ok,no){ var im=new Image(); im.crossOrigin='anonymous';
+    im.onload=function(){ ok(im) }; im.onerror=function(){ no(new Error('load')) }; im.src=src; }) }
+  var m=String(url).match(/\/image\/([A-Za-z0-9_]+)/), same=m?location.origin+'/image/'+m[1]:url;
+  return load(same).catch(function(){ return load(url) });
+}
+function startColour(){
+  if(!VIEWING) return;
+  var v=VIEWING;
+  loadForCanvas(v.url).then(function(im){
+    var img=document.getElementById('viewImg'), cv=document.getElementById('colourCv');
+    COL={ on:true, v:v, im:im, shift:0, target:null, black:false, look:'Original' };
+    COL.view=colourPrep(im, 700);
+    cv.width=COL.view.w; cv.height=COL.view.h;
+    cv.style.width=img.clientWidth+'px'; cv.style.height=img.clientHeight+'px';
+    COL.viewOut=new ImageData(COL.view.w, COL.view.h);
+    document.getElementById('colourSlide').value=0;
+    document.getElementById('colourHint').textContent='Slide to change the colours - tap a colour in the tattoo to change just that one';
+    document.getElementById('view').classList.add('colouring');
+    document.getElementById('viewBar').style.display='none';
+    document.getElementById('colourBar').style.display='';
+    colourDraw();
+  }).catch(function(){
+    thread.push({ who:'aura', said:'I could not open the colours on that one - try it again in a moment.' }); paintThread();
+  });
+}
+function endColour(){
+  COL={ on:false };
+  var v=document.getElementById('view'); if(v) v.classList.remove('colouring');
+  var cb=document.getElementById('colourBar'), vb=document.getElementById('viewBar');
+  if(cb) cb.style.display='none'; if(vb) vb.style.display='';
+}
+document.getElementById('viewColour').onclick=startColour;
+document.getElementById('colourSlide').oninput=function(){ if(!COL.on) return; var v=+this.value;
+  COL.grey = v < -180 ? Math.min(1,(-v-180)/30) : 0; COL.shift = v < -180 ? 0 : v; COL.black=false; colourDraw(); };
+document.getElementById('colourBlack').onclick=function(){ if(!COL.on) return; COL.black=!COL.black; colourDraw(); };
+document.getElementById('colourReset').onclick=function(){ if(!COL.on) return; COL.shift=0; COL.target=null; COL.black=false;
+  document.getElementById('colourSlide').value=0; COL.grey=0;
+  document.getElementById('colourHint').textContent='Slide to change the colours - tap a colour in the tattoo to change just that one'; colourDraw(); };
+document.getElementById('colourCancel').onclick=endColour;
+document.getElementById('colourCv').addEventListener('click',function(e){
+  if(!COL.on) return; var r=this.getBoundingClientRect(), P=COL.view;
+  var x=Math.floor((e.clientX-r.left)/r.width*P.w), y=Math.floor((e.clientY-r.top)/r.height*P.h), i=y*P.w+x;
+  if(i<0||i>=P.w*P.h||!P.C[i]){ COL.target=null;
+    document.getElementById('colourHint').textContent='That spot has no colour - now changing all the colours'; colourDraw(); return }
+  COL.target=P.H[i]; COL.shift=0; COL.black=false; document.getElementById('colourSlide').value=0;
+  document.getElementById('colourHint').textContent='Now changing just that colour - Reset to change them all'; colourDraw();
+});
+document.getElementById('colourKeep').onclick=function(){
+  if(!COL.on) return;
+  var grey=COL.grey||0, chg=!!(COL.shift||COL.black||grey);
+  if(!chg){ endColour(); return }
+  var full=colourPrep(COL.im, 1600), c=document.createElement('canvas'); c.width=full.w; c.height=full.h;
+  c.getContext('2d').putImageData(colourApply(full, new ImageData(full.w, full.h)),0,0);
+  var uri=c.toDataURL('image/jpeg',0.92), v=COL.v;
+  if(v && v.design) piece.parent=v.design;
+  endColour(); closeView();
+  pendingPhoto=uri; RECOLOR_NEXT=true;
+  askAura(grey>=1 ? 'I made it black and grey - keep this one' : 'I changed the colours - keep this one');
+};
+var RECOLOR_NEXT=false;
+document.getElementById('viewWork').onclick=function(){
+  if(VIEWING){ if(VIEWING.design) piece.parent=VIEWING.design; piece.made=VIEWING.url; }
+  closeView(); paintStrip();
+  var sy=document.getElementById('say'); sy.placeholder='Tell Aura what to change on this one'; sy.focus();
+};
+(function(){ var v=document.getElementById('view'), y0=null;
+  v.addEventListener('touchstart',function(e){ y0=e.touches[0].clientY },{passive:true});
+  v.addEventListener('touchend',function(e){
+    if(y0!==null && !MARK.on && e.changedTouches[0].clientY-y0>80) closeView(); y0=null },{passive:true});
+})();
 paintMine();
 panel('shops').innerHTML='<div class=head><h2>Shops</h2></div>'+
   '<div class=empty><h3>Find someone to do it</h3><p>Search a city in the bar below, or share '+
@@ -1527,12 +2913,16 @@ document.getElementById('homeBtn').onclick=function(){
 };
 
 document.getElementById('sendBtn').onclick = sayIt;
+document.getElementById('freshBtn').onclick = freshStart;
+document.getElementById('freshMenu').onclick = freshStart;
 
-/* THEIR PHOTO. Shrunk on the phone the way mt-design shrinks it - 1280 on the long edge at 0.85
-   JPEG, a few hundred KB - because a raw phone photo in base64 would hit core's six-megabyte
-   ceiling most of the time. It rides on the next thing they say. */
+/* THEIR PHOTO. Shrunk on the phone, never enlarged - 2048 on the long edge at 0.85 JPEG, about
+   0.6-1.5MB - because a raw phone photo in base64 would hit core's six-megabyte ceiling most of
+   the time. 2048 (2026-09-28, was 1280): the image model works at about that size and shrinks
+   anything bigger itself, so this is the most detail it can use for the least upload. A picture
+   already smaller than this passes at its own size. It rides on the next thing they say. */
 var pendingPhoto = null;
-var CAM_SVG = '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+var CAM_SVG = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
 function shrink(file){
   return new Promise(function(resolve,reject){
     var fr=new FileReader();
@@ -1541,7 +2931,7 @@ function shrink(file){
       var im=new Image();
       im.onerror=function(){reject(new Error('that does not look like a photo'))};
       im.onload=function(){
-        var max=1280, w=im.width, h=im.height;
+        var max=2048, w=im.width, h=im.height;
         if(w>max||h>max){ var k=max/Math.max(w,h); w=Math.round(w*k); h=Math.round(h*k); }
         var c=document.createElement('canvas'); c.width=w; c.height=h;
         c.getContext('2d').drawImage(im,0,0,w,h);
@@ -1559,9 +2949,7 @@ function clearPhoto(){
   document.getElementById('say').placeholder = 'Ask Aura or pick a category';
 }
 clearPhoto();
-document.getElementById('camBtn').onclick = function(){ if(!busy && signedIn()) document.getElementById('file').click() };
-document.getElementById('file').onchange = function(){
-  var f = this.files && this.files[0]; this.value = '';
+function takePhoto(f){
   if(!f) return;
   shrink(f).then(function(uri){
     pendingPhoto = uri;
@@ -1569,11 +2957,33 @@ document.getElementById('file').onchange = function(){
     b.classList.add('on'); b.innerHTML = '<img src="'+uri+'" alt="">';
     var s = document.getElementById('say');
     s.placeholder = 'Tell Aura about this photo'; s.focus();
+    /* From the Get Inspired panel the reason is already said - it goes to her straight away. */
+    if(INSPIRE_SEND){ INSPIRE_SEND=false; askAura("Here's something I like"); }
   }).catch(function(e){
     thread.push({ who:'aura', said:'I could not open that photo: '+String(e&&e.message||e) });
     paintThread();
   });
+}
+var addMenu = document.getElementById('addMenu');
+document.getElementById('camBtn').onclick = function(e){
+  e.stopPropagation(); if(busy || !signedIn()) return;
+  addMenu.classList.toggle('on');
 };
+document.getElementById('addFile').onclick = function(){ addMenu.classList.remove('on'); document.getElementById('file').click() };
+document.getElementById('addCam').onclick = function(){ addMenu.classList.remove('on'); document.getElementById('fileCam').click() };
+document.addEventListener('click', function(e){ if(!e.target.closest('#addMenu')) addMenu.classList.remove('on') });
+document.getElementById('file').onchange = function(){ var f=this.files&&this.files[0]; this.value=''; takePhoto(f) };
+document.getElementById('fileCam').onchange = function(){ var f=this.files&&this.files[0]; this.value=''; takePhoto(f) };
+/* PASTE A PICTURE (2026-09-23). A screenshot or a copied image pasted into the box becomes the
+   photo, exactly like choosing it. Pasted text still goes in as text. */
+document.getElementById('say').addEventListener('paste', function(e){
+  var items = (e.clipboardData && e.clipboardData.items) || [];
+  for(var i=0;i<items.length;i++){
+    if(items[i].kind==='file' && /^image\//.test(items[i].type)){
+      e.preventDefault(); if(!signedIn()) return; takePhoto(items[i].getAsFile()); return;
+    }
+  }
+});
 document.getElementById('chipBtn').onclick = function(){
   document.getElementById('chip').classList.remove('up');
   paintThread();

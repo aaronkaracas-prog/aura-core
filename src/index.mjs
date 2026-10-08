@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.539.0-2026-10-07-onme-after-lockin";
+const BUILD = "aura-core-v9.540.0-2026-10-08-subject-cards";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69366,7 +69366,36 @@ export class PublicEntry extends WorkerEntrypoint {
         if (askTrend) {
           const rawT = await env.AURA_KV.get("trend:" + tatSlug(askTrend)).catch(() => null);
           const namesT = String(rawT || "").split(",").map((x) => x.trim()).filter(Boolean);
-          if (!namesT.length) return { ok: false, error: "NO_TREND", trend: askTrend };
+          // ══ A SUBJECT CARD IS A LIST OF DESIGNS FROM ANYWHERE (2026-10-08, v9.540, Aaron) ═══════
+          // "Imagine It": Roses opens every rose in the catalogue, whatever style it is in. The list
+          // is built once from the catalogue and stored as `subject:<slug>` - [[design, set, category],
+          // ...]. Each design keeps its own set and category, so a pick still knows where it lives.
+          // No trend list and no subject list -> NO_TREND as before. Draws nothing.
+          if (!namesT.length) {
+            let subjL = null;
+            try { subjL = await env.AURA_KV.get("subject:" + tatSlug(askTrend), "json"); } catch {}
+            if (Array.isArray(subjL) && subjL.length) {
+              const rows = subjL.filter((x) => Array.isArray(x) && x[0]).map((x) => ({ leaf: String(x[0]), kind: String(x[1] || ""), cat: String(x[2] || "") }));
+              if (!b.all) {
+                // The card itself: its name and one picture to show on it.
+                let cover = null, coverCat = null;
+                for (const x of rows.slice(0, 40)) { const f = await faceOf(x.leaf); if (f) { cover = f; coverCat = x.cat; break; } }
+                return { ok: true, type: "row", trend: true, subject: true, category: askTrend, label: askTrend,
+                         items: [{ value: tatSlug(askTrend), label: askTrend, image: cover, category: coverCat }],
+                         cover, things: rows.length };
+              }
+              const itemsS = [];
+              for (let i = 0; i < rows.length; i += 40) {
+                itemsS.push(...await Promise.all(rows.slice(i, i + 40).map(async (x) => ({
+                  value: tatSlug(x.leaf), label: x.leaf, kind: x.kind, category: x.cat,
+                  image: await faceOf(x.leaf), own: false }))));
+              }
+              return { ok: true, type: "row", trend: true, subject: true, category: askTrend, label: askTrend, all: true,
+                       items: newestFirst(itemsS, (x) => faceAt[x.value]), things: itemsS.length,
+                       pictures: itemsS.filter((x) => x.image).length };
+            }
+            return { ok: false, error: "NO_TREND", trend: askTrend };
+          }
           const homeOf = {};
           for (const c of Object.keys(subj)) for (const k of (subj[c] || [])) homeOf[tatSlug(k)] = { kind: k, cat: c };
           const setsT = [], missingT = [];

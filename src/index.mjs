@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.542.0-2026-10-08-onme-asks-where";
+const BUILD = "aura-core-v9.544.0-2026-10-08-onme-through-aura";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61871,7 +61871,8 @@ export class PtaDurableObject {
     if (!Array.isArray(idx)) idx = [];
     idx = idx.filter((e) => e && e.id !== id);
     idx.unshift({ id, started: pj.started, updated: now, locked: !!pj.locked, title: pj.title,
-      cover: pj.pictures.length ? pj.pictures[pj.pictures.length - 1].image : null,
+      // The card shows the tattoo, never a look at it on them (2026-10-08, v9.544).
+      cover: (pj.pictures.filter((x) => x && !x.on_me).slice(-1)[0] || pj.pictures[pj.pictures.length - 1] || {}).image || null,
       count: pj.pictures.length, has_files: !!pj.files, files_failed: pj.files ? null : (pj.files_failed || null) });
     await this.storage.put("talk-proj:index", JSON.stringify(idx.slice(0, 200)));
     if (Array.isArray(pt.pictures) && pt.pictures.length) {
@@ -63747,7 +63748,10 @@ async function recordArtistFiles(env, d, drew) {
       if ((!_cur || _cur === String(d.project)) && _bf && typeof _bf === "object") {
         const _s = (v, n) => (v == null || v === "") ? null : String(Array.isArray(v) ? v.join(", ") : v).slice(0, n);
         _details = { style: _s(_bf.style, 60), placement: _s(_bf.placement, 60), size: _s(_bf.size, 40),
-                     colour: _s(_bf.colour || _bf.color, 40), notes: _s(_bf.meaning, 300), subject: _s(_bf.subject, 200) };
+                     colour: _s(_bf.colour || _bf.color, 40), notes: _s(_bf.meaning, 300), subject: _s(_bf.subject, 200),
+                     // What kind of job it was - new, add, cover, rework (2026-10-08, v9.543): only a new
+                     // tattoo is offered "see it on you"; the others were drawn on their own photo already.
+                     job: _s(_bf.job, 20) };
         if (!Object.values(_details).some(Boolean)) _details = null;
       }
     } catch {}
@@ -67423,7 +67427,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                        words: String((opts && opts.name) || "their catalogue pick").slice(0, 300) }] : []),
                 ...((drew && drew.image && !drew.failed && !drew.for_the_artist)
                   ? [{ ts: _atP, image: drew.image, design: drew.design || null,
-                       words: String(drew.changed || drew.asked || "").slice(0, 300) }] : []) ],
+                       words: String(drew.changed || drew.asked || "").slice(0, 300),
+                       // A look at it on them is not a new version of the design (2026-10-08, v9.544).
+                       ...(drew.on_me ? { on_me: true } : {}) }] : []) ],
               // Named from its first picture - the words it was drawn from, up to the first comma.
               // A catalogue pick is named after the design they chose ("Micro-Real Lion").
               // Her brief's subject when she has one ("geisha with hannya mask") - the words a picture
@@ -68271,6 +68277,40 @@ export class PublicEntry extends WorkerEntrypoint {
           // A colourway they chose is their design, so it is kept; any other photo is kept two hours.
           await env.AURA_KV.put("image:" + _tmp, _b64, b.recolor ? {} : { expirationTtl: 2 * 3600 });
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
+        }
+        // ══ SEE IT ON YOU, AFTER LOCK-IN, THROUGH HER (2026-10-08, v9.544, Aaron) ═══════════════
+        // "It has to be a discussion... Aura has to look at the image like she does already." The
+        // put-it-on-them step already works in the conversation (the "See It On You" card): she asks
+        // for a photo, looks at it, talks it through and places it. Lock-in clears the conversation,
+        // so the design on screen is gone. When My Tattoos sends `onme_project`, this one turn puts
+        // the locked tattoo back: its clean flat artwork as the design on screen, the conversation
+        // tied to that tattoo, and her brief saying they want to see it on them. Nothing else about
+        // her changes - the rest is the step that already works. New tattoos only.
+        const _onmeP = String(b.onme_project || "").trim();
+        if (_onmeP && me && /^prj_[a-z0-9]{6,40}$/i.test(_onmeP)) {
+          try {
+            const _pr = await talkDo(env, me, "talkProject", [_onmeP]);
+            const _pj = _pr && _pr.ok ? _pr.project : null;
+            const _jobP = String((_pj && _pj.details && _pj.details.job) || "").toLowerCase();
+            const _f = _pj && _pj.files;
+            const _flat = _f ? (_f.flat_artwork || (Array.isArray(_f.panels) && _f.panels[0] && _f.panels[0].flat) || null) : null;
+            if (_pj && _pj.locked && _flat && !["add", "cover", "rework"].includes(_jobP)) {
+              const _locked = (_pj.pictures || []).filter((x) => x && x.image && !x.on_me).slice(-1)[0] || null;
+              const _d = _pj.details || {};
+              const _now = new Date().toISOString();
+              const _rec = JSON.stringify({ design: (_locked && _locked.design) || null, image: _flat, at: _now });
+              const _brief = { on_me: true, job: "new" };
+              for (const k of ["subject", "style", "placement", "size"]) if (_d[k]) _brief[k] = _d[k];
+              if (!_brief.subject && _pj.title) _brief.subject = String(_pj.title).slice(0, 200);
+              await talkDo(env, me, "talkPut", [{
+                "talk-state:design": _rec,
+                "talk-state:last": JSON.stringify({ design: (_locked && _locked.design) || null, image: _flat,
+                                                   subject: _brief.subject || null, at: _now }),
+                "talk-state:brief": JSON.stringify(_brief),
+                "talk-state:project": _onmeP,
+                "talk-state:onme": "", "talk-state:ref": "", "talk-state:bad": "", "talk-state:split": "" }]);
+            }
+          } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
           const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
@@ -69810,6 +69850,11 @@ export class PublicEntry extends WorkerEntrypoint {
           if (!pj) return { ok: false, error: "NOT_FOUND" };
           if (!pj.locked || !pj.files) return { ok: false, error: "NOT_LOCKED",
             say: "Lock it in first - then you can see it on you." };
+          // ONLY A NEW TATTOO (2026-10-08, v9.543, Aaron): an add-on, a cover-up or a rework was made on
+          // their own photo - they have already seen it on them.
+          const _job = String((pj.details && pj.details.job) || "").toLowerCase();
+          if (["add", "cover", "rework"].includes(_job)) return { ok: false, error: "ALREADY_ON_YOU",
+            say: "This one was made on your own photo, so you have already seen it on you." };
           const f = pj.files;
           designUrl = f.flat_artwork || (Array.isArray(f.panels) && f.panels[0] && f.panels[0].flat) || null;
           if (!designUrl) return { ok: false, error: "DESIGN_HAS_NO_IMAGE" };
@@ -69880,8 +69925,11 @@ export class PublicEntry extends WorkerEntrypoint {
         const p2 = (r && r.payload) ? r.payload : r;
         // The photo goes as soon as it has been used, whether or not the composite worked.
         try { await env.AURA_KV.delete("image:" + bodyId); } catch {}
-        if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_PLACE",
-          say: "That did not come out. Try a clearer photo of the area, in good light." };
+        if (!p2?.ok) {
+          try { console.log("[ONME] failed: " + String(p2?.error || "no answer").slice(0, 300)); } catch {}
+          return { ok: false, error: String(p2?.error || "COULD_NOT_PLACE").slice(0, 300),
+            say: "That did not come out. Try a clearer photo of the area, in good light." };
+        }
         if (projId && p2.image_url) await projectAppend(env, me, projId,
           { on_me: { image: p2.image_url, design: p2.entity_id || null } });
         return { ok: true, on_me: p2.entity_id, image: p2.image_url, design: id,

@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.540.0-2026-10-08-subject-cards";
+const BUILD = "aura-core-v9.541.0-2026-10-08-split-covers";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69378,8 +69378,64 @@ export class PublicEntry extends WorkerEntrypoint {
               const rows = subjL.filter((x) => Array.isArray(x) && x[0]).map((x) => ({ leaf: String(x[0]), kind: String(x[1] || ""), cat: String(x[2] || "") }));
               if (!b.all) {
                 // The card itself: its name and one picture to show on it.
+                // ══ THE COVER IS A SPLIT CARD (2026-10-08, v9.541, Aaron) ═══════════════════════
+                // MEASURED: the first drawn design was taken, and for Birds and Animals that was a
+                // body-only photo. The cover is now the newest design whose picture is wide (three
+                // by two - the design on white beside it on a body), read from the picture's own
+                // size, found once and kept as `subject-cover:<slug>`.
                 let cover = null, coverCat = null;
-                for (const x of rows.slice(0, 40)) { const f = await faceOf(x.leaf); if (f) { cover = f; coverCat = x.cat; break; } }
+                const _ck = "subject-cover:" + tatSlug(askTrend);
+                try { const kept = await env.AURA_KV.get(_ck, "json"); if (kept && kept.url) { cover = kept.url; coverCat = kept.cat || null; } } catch {}
+                if (!cover) {
+                  const cand = [];
+                  for (const x of rows.slice(0, 80)) { const f = await faceOf(x.leaf); if (f) cand.push({ f, cat: x.cat, at: faceAt[tatSlug(x.leaf)] || "" }); }
+                  cand.sort((a, b2) => (b2.at > a.at ? 1 : b2.at < a.at ? -1 : 0));
+                  let tries = 0;
+                  for (const c of cand) {
+                    if (++tries > 25) break;
+                    const id = (String(c.f).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                    if (!id) continue;
+                    let wide = false;
+                    try {
+                      const b64 = await env.AURA_KV.get("image:" + id);
+                      if (b64) {
+                        const head = Uint8Array.from(atob(String(b64).replace(/^data:[^,]+,/, "").slice(0, 40000)), (ch) => ch.charCodeAt(0));
+                        let W = 0, H = 0;
+                        if (head[1] === 0x50 && head[2] === 0x4E && head[3] === 0x47) {          // PNG
+                          W = (head[16] << 24) | (head[17] << 16) | (head[18] << 8) | head[19];
+                          H = (head[20] << 24) | (head[21] << 16) | (head[22] << 8) | head[23];
+                        } else if (head[0] === 0xFF && head[1] === 0xD8) {                       // JPEG
+                          for (let q = 2; q + 9 < head.length; ) {
+                            if (head[q] !== 0xFF) { q++; continue; }
+                            const mk = head[q + 1];
+                            if (mk >= 0xC0 && mk <= 0xCF && mk !== 0xC4 && mk !== 0xC8 && mk !== 0xCC) {
+                              H = (head[q + 5] << 8) | head[q + 6]; W = (head[q + 7] << 8) | head[q + 8]; break; }
+                            q += 2 + ((head[q + 2] << 8) | head[q + 3]);
+                          }
+                        } else if (head[0] === 0x52 && head[8] === 0x57) {                       // WEBP (VP8X)
+                          if (head[12] === 0x56 && head[15] === 0x58) { W = 1 + (head[24] | (head[25] << 8) | (head[26] << 16)); H = 1 + (head[27] | (head[28] << 8) | (head[29] << 16)); }
+                        }
+                        wide = W > 0 && H > 0 && W >= H * 1.3;
+                        // Wide is not enough - a body-only photo can be wide too. A split card's left
+                        // half is the design on white paper; its right half is a photograph.
+                        if (wide) {
+                          const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(String(b64).replace(/^data:[^,]+,/, "")), (ch) => ch.charCodeAt(0)));
+                          const IW = im.get_width(), IH = im.get_height(), px = im.get_raw_pixels();
+                          try { im.free(); } catch {}
+                          let lw = 0, lt = 0, rw = 0, rt = 0;
+                          for (let y = 0; y < IH; y += 8) for (let x = 0; x < IW; x += 8) {
+                            const o = (y * IW + x) * 4, wt = px[o] >= 235 && px[o + 1] >= 235 && px[o + 2] >= 235;
+                            if (x < IW * 0.45) { lt++; if (wt) lw++; } else if (x > IW * 0.55) { rt++; if (wt) rw++; }
+                          }
+                          wide = lt > 0 && rt > 0 && lw / lt > 0.45 && rw / rt < 0.5;
+                        }
+                      }
+                    } catch {}
+                    if (wide) { cover = c.f; coverCat = c.cat; break; }
+                  }
+                  if (cover) { try { await env.AURA_KV.put(_ck, JSON.stringify({ url: cover, cat: coverCat })); } catch {} }
+                  else if (cand.length) { cover = cand[0].f; coverCat = cand[0].cat; }
+                }
                 return { ok: true, type: "row", trend: true, subject: true, category: askTrend, label: askTrend,
                          items: [{ value: tatSlug(askTrend), label: askTrend, image: cover, category: coverCat }],
                          cover, things: rows.length };

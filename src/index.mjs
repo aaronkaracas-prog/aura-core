@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.544.0-2026-10-08-onme-through-aura";
+const BUILD = "aura-core-v9.545.0-2026-10-08-onme-retries";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66158,11 +66158,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       if (act === "onme" && me) {
         try {
-          const _om = await processCommand("SHOW_IT " + JSON.stringify({
+          // ══ IT JUST RUNS (2026-10-08, v9.545, Aaron) ═════════════════════════════════════════
+          // MEASURED: "Place it on my chest" came back "it didn't come out this time"; "try again"
+          // worked with the same words and the same two pictures. Nobody should see that - the same
+          // request is tried again, up to twice more, before anything is said.
+          const _omReq = "SHOW_IT " + JSON.stringify({
             subject: onmeAsk(String(brief || "").trim() || String(acted.ask || "").trim() || _onmeWords), context: "seeing a tattoo on their own body", name: "on me",
             raw: true, refs: [_onmeDesign.image, refUrl], source: "onme", parent: _onmeDesign.design
-          }), env, true);
-          const _op = (_om && _om.payload) ? _om.payload : _om;
+          });
+          let _op = null;
+          for (let _try = 0; _try < 3; _try++) {
+            const _om = await processCommand(_omReq, env, true);
+            _op = (_om && _om.payload) ? _om.payload : _om;
+            if (_op && _op.ok && _op.image_url) break;
+            try { console.log("[ONME] attempt " + (_try + 1) + " failed: " + String((_op && _op.error) || "no answer").slice(0, 200)); } catch {}
+          }
           drew = (_op && _op.ok && _op.image_url)
             ? { design: _op.entity_id || null, image: _op.image_url, on_me: true, from: _onmeDesign.design,
                 asked: "the design on screen, on their photo", their_words: _onmeWords }

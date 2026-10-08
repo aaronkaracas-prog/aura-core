@@ -1058,7 +1058,7 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
   /* A MOUSE CANNOT SWIPE. The rows scroll by dragging, and a drag is not a tap - anything over a
      few pixels opens nothing. Touch is untouched; the browser already does it better. */
   wireRows(el);
-  paintFavRow();
+  if(FAVS_LOADED) paintFavRow(); else loadFavs();
 
   el.addEventListener('click',function(e){
     var j=e.target.closest('.job');
@@ -1145,7 +1145,7 @@ function optsFor(i){
   if(i===0) return (index&&index.items)||[];
   if(i===1){
     var c=chosen.category; if(!c) return [];
-    if(catAll){ var a=cache[akey(c.label)]; return (a&&a.items)||[] }
+    if(catAll){ var a=cache[akey(c.label)]; return grouped((a&&a.items)||[]) }
     var d=cache[ckey(c.label)]; return (d&&d.items)||[];
   }
   var k=chosen.kind; var e=k&&cache['k:'+k.label]; return (e&&e.items)||[];
@@ -1183,6 +1183,13 @@ function dots(){
 
 function esc0(x){ return x==null ? '' : String(x) }
 function grpOf(it){ return it && (it.kind || it.set || it.group) || '' }
+/* The list arrives newest first, which mixes the groups (sets are drawn five at a time). Keep each
+   group together, groups in the order their newest design arrived, newest first inside each. */
+function grouped(items){
+  var order=[], by={};
+  items.forEach(function(it){ var g=grpOf(it); if(!by[g]){ by[g]=[]; order.push(g) } by[g].push(it) });
+  return order.reduce(function(o,g){ return o.concat(by[g]) }, []);
+}
 function flatRow(opts){
   var out='', last=null, sizes={};
   opts.forEach(function(it){ var g=grpOf(it); sizes[g]=(sizes[g]||0)+1 });
@@ -1336,16 +1343,33 @@ function ownOf(label){
   return false;
 }
 /* ══ FAVORITES (2026-10-07, Aaron) ══════════════════════════════════════════════════════════
-   A heart on every design made big. Kept on this device for now; the list is {url,label,kind,
-   category,trend}, newest first, and a Favorites row on home opens each one big again. */
-function favList(){ try{ return JSON.parse(localStorage.getItem('mt:fav')||'[]')||[] }catch(e){ return FAVS_MEM } }
-var FAVS_MEM=[];
-function favSave(L){ FAVS_MEM=L; try{ localStorage.setItem('mt:fav', JSON.stringify(L)) }catch(e){} paintFavRow() }
-function isFav(url){ return favList().some(function(f){ return f.url===url }) }
+   A heart on every design made big. The list lives with the person on the server (`favs` reads it,
+   `fav` turns one on or off), so it follows them to every device they sign in on. The list is
+   {url,label,kind,category,trend}, newest first, and a Favorites row on home opens each one big. */
+var FAVS=[], FAVS_LOADED=false;
+function favCall(body){
+  return fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(Object.assign({session:SESSION},body))})
+    .then(function(r){return r.json()}).catch(function(){ return {ok:false,error:'UNREACHABLE'} });
+}
+function loadFavs(){
+  return favCall({action:'favs'}).then(function(d){
+    if(d && d.ok && Array.isArray(d.favorites)){ FAVS=d.favorites; FAVS_LOADED=true; paintFavRow() }
+    return d;
+  });
+}
+function favList(){ return FAVS }
+function isFav(url){ return FAVS.some(function(f){ return f.url===url }) }
 function toggleFav(f){
-  var L=favList(), i=L.findIndex(function(x){ return x.url===f.url });
-  if(i>=0) L.splice(i,1); else L.unshift(f);
-  favSave(L);
+  var on=!isFav(f.url);
+  /* Shown at once; the server's answer replaces it. */
+  if(on) FAVS.unshift(f); else FAVS=FAVS.filter(function(x){ return x.url!==f.url });
+  paintFavRow();
+  return favCall({action:'fav', item:f, on:on}).then(function(d){
+    if(d && d.error==='SIGN_IN'){ needSignin(); return d }
+    if(d && d.ok && Array.isArray(d.favorites)){ FAVS=d.favorites; paintFavRow() }
+    return d;
+  });
 }
 function paintFavRow(){
   var box=document.getElementById('favWrap'); if(!box) return;
@@ -1404,7 +1428,7 @@ function drawPick(){
   if(host.querySelector('#pickFav')) host.querySelector('#pickFav').onclick=function(){
     toggleFav({ url:p.url, label:p.label, kind:p.kind||null,
                 category:(chosen.category&&chosen.category.label)||p.category||null,
-                trend:!!(chosen.category&&chosen.category.trend) });
+                trend:!!(chosen.category&&chosen.category.trend) }).then(function(){ if(PICK===p) drawPick() });
     drawPick();
   };
   if(host.querySelector('#pickPrev')){

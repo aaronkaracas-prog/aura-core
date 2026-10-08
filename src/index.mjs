@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.538.0-2026-10-07-favorites";
+const BUILD = "aura-core-v9.539.0-2026-10-07-onme-after-lockin";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59411,6 +59411,22 @@ async function splitCardLeft(env, url, onlyWide) {
   if (onlyWide && W < H * 1.2) { try { im.free(); } catch {} return null; }
   const xmax = Math.max(1, Math.floor(W / 2) - Math.round(W * 0.01));
   const px = im.get_raw_pixels();
+  // ══ WIDE IS NOT ENOUGH - THE RIGHT HALF HAS TO BE A BODY (2026-10-07, v9.539, Aaron) ═════════
+  // MEASURED: an edit came back wide (1536x1024) as plain flat artwork, centred on white, with no
+  // body half at all. "Wide" said split, so it was cut down the middle and the artist got half a
+  // design. A real split card's right half is a photograph - skin, clothes, grey backdrop - and
+  // almost none of it is paper white. If most of the right half is white, it is not a split card.
+  if (onlyWide) {
+    const xr = Math.min(W - 1, Math.floor(W / 2) + Math.round(W * 0.01));
+    let tot = 0, wht = 0;
+    for (let y = 0; y < H; y += 4) {
+      for (let x = xr; x < W; x += 4) {
+        const o = (y * W + x) * 4; tot++;
+        if (px[o] >= 235 && px[o + 1] >= 235 && px[o + 2] >= 235) wht++;
+      }
+    }
+    if (tot && wht / tot > 0.6) { try { im.free(); } catch {} return null; }
+  }
   let x1 = xmax, y1 = H, x2 = -1, y2 = -1;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < xmax; x++) {
@@ -61840,8 +61856,15 @@ export class PtaDurableObject {
     if (pt.title && !pj.title) pj.title = String(pt.title).slice(0, 80);
     if (pt.came_from && !pj.came_from) pj.came_from = String(pt.came_from).slice(0, 60);
     if (pt.files) { pj.files = pt.files; pj.files_failed = false; }
+    if (pt.details && typeof pt.details === "object" && !pj.details) pj.details = pt.details;
     if (pt.files_failed) pj.files_failed = String(pt.files_failed).slice(0, 200);
     if (pt.locked === true) { pj.locked = true; pj.locked_at = now; }
+    // Every "see it on you" of a locked-in tattoo, newest last (2026-10-07, v9.539).
+    if (pt.on_me && pt.on_me.image) {
+      if (!Array.isArray(pj.on_me)) pj.on_me = [];
+      pj.on_me.push({ image: String(pt.on_me.image).slice(0, 300), design: pt.on_me.design || null, ts: now });
+      if (pj.on_me.length > 30) pj.on_me = pj.on_me.slice(-30);
+    }
     pj.updated = now;
     await this.storage.put(key, JSON.stringify(pj));
     let idx = []; try { idx = JSON.parse((await this.storage.get("talk-proj:index")) || "[]") || []; } catch {}
@@ -63712,7 +63735,24 @@ async function recordArtistFiles(env, d, drew) {
   } catch (e) {
     try { console.log("[FILES] timeline write failed: " + String(e?.message ?? e).slice(0, 160)); } catch {}
   }
-  if (d.project) await projectAppend(env, me, d.project, ok ? { files: artistFilesOf(drew), locked: true }
+  // ══ THE PROJECT KEEPS ITS DETAILS (2026-10-07, v9.539, Aaron) ═══════════════════════════════
+  // My Tattoos shows style, placement, size and notes for the artist. They live in her brief,
+  // which is cleared just below - so they are copied onto the project first, as she had them.
+  let _details = null;
+  if (ok && d.project) {
+    try {
+      const _st = await talkStateGet(env, me, ["brief", "project"]);
+      const _cur = String(_st.project || "").replace(/^"|"$/g, "");
+      const _bf = talkParse(_st.brief);
+      if ((!_cur || _cur === String(d.project)) && _bf && typeof _bf === "object") {
+        const _s = (v, n) => (v == null || v === "") ? null : String(Array.isArray(v) ? v.join(", ") : v).slice(0, n);
+        _details = { style: _s(_bf.style, 60), placement: _s(_bf.placement, 60), size: _s(_bf.size, 40),
+                     colour: _s(_bf.colour || _bf.color, 40), notes: _s(_bf.meaning, 300), subject: _s(_bf.subject, 200) };
+        if (!Object.values(_details).some(Boolean)) _details = null;
+      }
+    } catch {}
+  }
+  if (d.project) await projectAppend(env, me, d.project, ok ? { files: artistFilesOf(drew), locked: true, ...(_details ? { details: _details } : {}) }
     : { files_failed: String((drew && (drew.failed || drew.error)) || "no files came back").slice(0, 200) });
   // ══ LOCKED MEANS FINISHED (2026-10-02, Aaron) ══════════════════════════════════════════════
   // MEASURED: after lock-in the locked tattoo stayed "the tattoo you are on now" - its photo, brief
@@ -64996,7 +65036,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         ? "\n\nTHEY CHOSE THIS DESIGN FROM OUR CATALOGUE" + (seeing ? " - it is attached to this turn" : " - it is at " + refUrl) +
           ". It is the tattoo they want, exactly as drawn - not a photograph of their skin and not inspiration. " +
           (opts.use ? "They are taking it as it is." :
-           "Their words say what to change on it; change only that, on this design. Do not describe it back to them.")
+           "Their words say what to change on it; change only that, on this design. Do not describe it back to them. " +
+           // MAKE IT MINE ASKS WHAT THEY WANT (2026-10-07, v9.539, Aaron).
+           "If they haven't said what they want yet, tell them it's a great choice and ask what they want to do with it - " +
+           "keep it exactly as it is, change a few things, or take the idea somewhere new. Don't ask where it goes or " +
+           "how big unless they bring it up.")
         : "";
       // ══ SHE SEES WHAT SHE ALREADY SETTLED (2026-10-03, v9.520, Aaron) ═══════════════════════
       // MEASURED (pta_f5efe21c422b830d): she rewrote her brief from cold every turn because she was
@@ -69665,19 +69709,41 @@ export class PublicEntry extends WorkerEntrypoint {
       // what lets xAI fetch it, and it is worth saying plainly rather than dressing up.
       // It is deleted as soon as the composite exists. The design is permanent; the body is not.
       if (action === "onme") {
-        const id = String(b.design || "").trim();
+        // ══ SEE IT ON YOU - ONLY ONCE IT IS LOCKED IN (2026-10-07, v9.539, Aaron) ═════════════
+        // "once it's locked in ... they can see it on them if they choose to." Called with a
+        // PROJECT, the design is that project's own clean flat artwork from its artist's files -
+        // never a picture the caller names - and only when the project is locked in with files.
+        // So the image model only ever gets two things: the clean locked design and their photo.
+        // Every look is kept on the project, so they can try it as many times as they like.
+        const projId = String(b.project || "").trim();
+        let id = String(b.design || "").trim(), designUrl = null;
+        if (projId) {
+          if (!me) return { ok: false, error: "NEED_SESSION" };
+          if (!/^prj_[a-z0-9]{6,40}$/i.test(projId)) return { ok: false, error: "BAD_PROJECT_ID" };
+          let pr = null; try { pr = await talkDo(env, me, "talkProject", [projId]); } catch {}
+          const pj = pr && pr.ok ? pr.project : null;
+          if (!pj) return { ok: false, error: "NOT_FOUND" };
+          if (!pj.locked || !pj.files) return { ok: false, error: "NOT_LOCKED",
+            say: "Lock it in first - then you can see it on you." };
+          const f = pj.files;
+          designUrl = f.flat_artwork || (Array.isArray(f.panels) && f.panels[0] && f.panels[0].flat) || null;
+          if (!designUrl) return { ok: false, error: "DESIGN_HAS_NO_IMAGE" };
+          id = id || projId;
+        }
         if (!id) return { ok: false, error: "NEED_DESIGN" };
         const raw = String(b.photo || "");
         if (!raw) return { ok: false, error: "NEED_PHOTO",
           say: "Take a photo of where you want it - the arm, the shoulder, wherever." };
+        if (!designUrl) {
         // The design's own image, from the graph rather than from the caller - so nobody can ask
         // for a composite of an image they did not make.
         const dRow = await env.AURA_MEMORY.prepare(
           "SELECT metadata FROM pta_entities WHERE id = ? AND type IN ('file','image')").bind(id).first();
         if (!dRow) return { ok: false, error: "NO_SUCH_DESIGN" };
         let dMeta = {}; try { dMeta = JSON.parse(dRow.metadata || "{}"); } catch {}
-        const designUrl = dMeta.url || dMeta.image_url || null;
+        designUrl = dMeta.url || dMeta.image_url || null;
         if (!designUrl) return { ok: false, error: "DESIGN_HAS_NO_IMAGE" };
+        }
 
         let bytes;
         try {
@@ -69711,13 +69777,15 @@ export class PublicEntry extends WorkerEntrypoint {
           // them, their pose and their background - which only a model that can edit will do.
           // Left unsaid it would fall through to a generation and redraw the person.
           source: "onme",
-          parent: id
+          ...(projId ? {} : { parent: id })
         }), env, true);
         const p2 = (r && r.payload) ? r.payload : r;
         // The photo goes as soon as it has been used, whether or not the composite worked.
         try { await env.AURA_KV.delete("image:" + bodyId); } catch {}
         if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_PLACE",
           say: "That did not come out. Try a clearer photo of the area, in good light." };
+        if (projId && p2.image_url) await projectAppend(env, me, projId,
+          { on_me: { image: p2.image_url, design: p2.entity_id || null } });
         return { ok: true, on_me: p2.entity_id, image: p2.image_url, design: id,
           note: "Your photo was used to make this and then deleted. Only the picture remains, and " +
             "it is yours." };

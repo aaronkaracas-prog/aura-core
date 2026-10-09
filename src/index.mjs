@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.550.0-2026-10-09-card-says-what";
+const BUILD = "aura-core-v9.551.0-2026-10-09-pdf-saves";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -72907,6 +72907,9 @@ function openAlbum(idx){
       const db = Uint8Array.from(atob(b64d), (c) => c.charCodeAt(0));
       return new Response(db, { headers: { "content-type": "application/pdf",
         "content-disposition": 'inline; filename="' + did + '.pdf"',
+        // THE PAGE CAN SAVE IT (2026-10-09, v9.551, Aaron): mytattoo.world fetches the print file from
+        // here to save it, and without this the browser refuses to hand the bytes to the page.
+        "access-control-allow-origin": "*",
         "cache-control": "public, max-age=31536000" } });
     }
 

@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.547.0-2026-10-09-yes-is-go";
+const BUILD = "aura-core-v9.548.0-2026-10-09-their-words-lock-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65784,6 +65784,51 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = _after.slice(0, 600); break; } }
           if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
         }
+      }
+
+      // ══ THEIR WORDS LOCK IT IN (2026-10-09, v9.548, Aaron) ═══════════════════════════════════
+      // MEASURED (pta_0c1219df91ba274d, and the run before it): "i like it" after her "is this the one?",
+      // then "i want it", then "make artist files" - she answered with talk every time, and on the last
+      // one told them the files were coming while nothing was made. Nothing in core blocked her; the
+      // files have only ever started when SHE chose `artist`. Same rule as a number off the four: when a
+      // finished picture is on screen (not the unpicked grid) and their words say it is the one, it is
+      // the one. Only overrides "none" - if she is changing the picture, their words were a change.
+      let _lockedByWords = false;
+      try {
+        if (me && hasParent && act === "none" && !_usedPick &&
+            !(opts && (opts.touch || opts.recolor || opts.use || opts.inspire || opts.pick))) {
+          let _lp = null;
+          for (let i = tline.length - 1; i >= 0; i--) {
+            const e = tline[i];
+            if (e && e.role === "picture" && e.design === lastDrawn.design) { _lp = e; break; }
+          }
+          const _grid = !!(_lp && (_lp.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_lp.words || ""))));
+          const _t = String(said || "").trim();
+          const _clear = /\b(that'?s the one|this is the one|it'?s the one|that one|i want (it|this one|that one)|i'?ll take it|lock it in|i'?m done|make (the |my )?(artist'?s? )?files|artist'?s? files|send it to (my|the) artist|ready for (my|the) artist)\b/i.test(_t);
+          const _askedOne = /\b(the one|your tattoo)\b[^?]*\?/i.test(_prevAuraLine);
+          const _shortYes = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|love it|i (really )?(like|love) it|it'?s perfect)\b[\s.!]*$/i.test(_t);
+          if (!_grid && (_clear || (_askedOne && _shortYes))) {
+            act = "artist"; _lockedByWords = true;
+            console.log("[LOCK] their words say it is the one - artist files" + (_clear ? "" : " (a yes to her 'is this the one?')"));
+          }
+        }
+      } catch (e) { console.log("[LOCK] check failed: " + String(e?.message ?? e).slice(0, 160)); }
+      // Her line was written for a turn of talk - usually a question. It is redone once, knowing the
+      // files are being made, so she closes it out in her own words instead of asking again.
+      if (_lockedByWords && typeof agentLine === "string" && agentLine) {
+        try {
+          const _shape = "\n\n(Reply with the JSON object. No prose.)";
+          const _base = agentLine.endsWith(_shape) ? agentLine.slice(0, -_shape.length) : agentLine;
+          const _redo = await proxyToAgent(env, _base + "\n\nThey have said this is the one. It is saved in My Tattoos and their artist's files are being made now. " +
+            "Close it out in one warm line - no question, nothing offered." + _shape,
+            false, me, null, world, null);
+          const _ra = (_redo && _redo.reply && !_redo.failed) ? readAct(_redo.reply) : null;
+          console.log("[LOCK] redo: " + (_ra ? ("say=" + String(_ra.say || "").slice(0, 120)) : "unreadable"));
+          if (_ra && _ra.say && !/\?\s*$/.test(String(_ra.say).trim())) acted.say = _ra.say;
+          else acted.say = String(acted.say || "").split(/(?<=[.!])\s+/).filter((x) => !/\?\s*$/.test(x)).join(" ").trim() || acted.say;
+          for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(acted.say || "").slice(0, 600); break; } }
+          if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
+        } catch (e) { console.log("[LOCK] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
       }
 
       // ══ A GO-AHEAD IS NOT A SECOND REQUEST (2026-09-16) ══════════════════════════════════

@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.545.0-2026-10-08-onme-retries";
+const BUILD = "aura-core-v9.546.0-2026-10-09-print-centred";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -10091,6 +10091,16 @@ async function processCommand(line, env, isOp) {
               if (!_inked(_l, top, _r, bot)) continue;
               // Every tile is the full page window, blank past the edge of the art, so the sheets line
               // up when laid edge to edge - a narrower tile would be centred and break the overlap.
+              // ══ ONE SHEET IS CENTRED (2026-10-09, Aaron) ═══════════════════════════════════════
+              // A piece that fits on one sheet was still given the full page window, so it printed
+              // against the top-left corner with the rest of the box blank. When there is only one
+              // tile, the box is the artwork itself and the sheet's flex centre puts it in the middle.
+              // More than one sheet keeps the full window, so the overlaps still line up.
+              if (nPages === 1 && _nCols === 1) {
+                pSlices.push({ vec: { x: 0, y: 0, w: W, h: H }, inches: Math.min(H / pxPerIn, PAGE_IN - 0.02),
+                               row: 1, col: 1, cols: 1 });
+                continue;
+              }
               pSlices.push({ vec: { x: _l, y: top, w: _wWin, h: winPx }, inches: Math.min(winPx / pxPerIn, PAGE_IN - 0.02),   // a hair under the page, or rounding spills a blank sheet
                              row: i + 1, col: c + 1, cols: _nCols });
             }

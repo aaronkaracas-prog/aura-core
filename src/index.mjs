@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.549.0-2026-10-09-any-answer-but-no";
+const BUILD = "aura-core-v9.550.0-2026-10-09-card-says-what";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66014,7 +66014,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // AND SHE KNOWS WHAT IT IS. A fixed sequence is a fact she can state when somebody asks
       // what happens next. A sentence she improvises each time is not.
       if (onStage && me && (act === "draw" || act === "change" || act === "onme" || act === "artist")) {
-        try { await onStage(act === "artist" ? "files" : "drawing"); } catch {}
+        // WHAT IT IS GOES WITH IT (2026-10-09, v9.550, Aaron): the page's picture card says what she is
+        // making - "Imagining your cat and butterfly tattoo" - from the subject in her brief.
+        let _what = "";
+        try { _what = String((intent && intent.subject) || (carriedObj && carriedObj.subject) || "").slice(0, 80); } catch {}
+        try { await onStage(act === "artist" ? "files" : "drawing", _what); } catch {}
       }
       // ══ WHICH PROJECT THIS TURN BELONGS TO (2026-09-23) ══════════════════════════════════════
       // Carrying on from a picture (the page sends it as `from`) continues that picture's project.
@@ -68415,7 +68419,7 @@ export class PublicEntry extends WorkerEntrypoint {
               from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
-              onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },
+              onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },
             });
           } catch (e) {
             out = { ok: false, error: "TALK_THREW", detail: String(e && e.message || e).slice(0, 300) };

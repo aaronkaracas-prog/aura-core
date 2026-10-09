@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.551.0-2026-10-09-pdf-saves";
+const BUILD = "aura-core-v9.552.0-2026-10-09-everything-new";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62998,8 +62998,12 @@ async function makeArtistFiles(env, ctx) {
               const q = await proxyToAgent(env,
                 "[FOR YOU, NOT THEM. Their artist's sheets are being drawn now." +
                 (_saved ? " What they asked for, in their words, in order:\n" + _saved.slice(-1200) + "\n" : "") +
-                " In a few words, name only the new tattoo work that was added to the tattoo they already" +
-                " had - for example \"the dragon with storm clouds\"." +
+                // EVERYTHING NEW, NOT ONLY THE SUBJECTS (2026-10-09, v9.552, Aaron). MEASURED (pta_9e167ef2841b537c):
+                // she named "the man with the topknot and the lion in color" and the sheet came back without
+                // the flowers and leaves that were also new - the picture model drew exactly the name.
+                " Name everything that was added to the tattoo they already had - each new subject and" +
+                " everything new around it, like flowers, leaves, clouds or background - for example" +
+                " \"the dragon with storm clouds and cherry blossoms\"." +
                 " Then, on a second line, from what you see on their body in this picture, the finished" +
                 " height in inches of the whole tattoo and of only the new work, written as" +
                 " whole: N in / new: N in. Reply with only those two lines.]",

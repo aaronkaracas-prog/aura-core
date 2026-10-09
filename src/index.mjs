@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.548.0-2026-10-09-their-words-lock-it";
+const BUILD = "aura-core-v9.549.0-2026-10-09-any-answer-but-no";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64692,9 +64692,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // over nothing again. A short yes or go after she has talked about showing them - question or
       // not - is their go, and it is the same go everywhere below.
       const _prevAuraLine = (() => { for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") return String(tnow[i].said || ""); } return ""; })();
-      const _offeredShow = /\b(show|draw|sketch|see|picture|mock|takes?)\b/i.test(_prevAuraLine);
-      const _yesGo = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|please|absolutely|definitely|of course|go|let'?s go|do it|for sure)\b/i.test(String(said || "").trim());
-      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && _yesGo);
+      // ══ ONCE SHE HAS OFFERED, ANY ANSWER BUT NO IS A GO (2026-10-09, v9.549, Aaron) ═══════════
+      // MEASURED (pta_9a7e5339461d6ba5): she offered four takes, they answered "yees", then "Try giving
+      // me the file again", then "try again" - and every one was blocked, because a yes was a list of
+      // exact words. She wanted to draw each time. Once she has offered to show it anywhere in this
+      // conversation, any reply that is not a no means show it. Before she offers, nothing changes.
+      const _offeredShow = tnow.some((e) => e && e.role === "aura" &&
+        /\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(String(e.said || "")));
+      const _saidNo = /^\s*(no|nope|nah|not (yet|now|really)|wait|hold on|hang on|don'?t|stop|never ?mind|later)\b/i.test(String(said || "").trim());
+      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo);
       // DRAWING NOTES ONLY WHEN THEY SAID GO (2026-10-02, v9.514, Aaron): on a talking turn these sat
       // where her ideas should be - "every picture starts from their photo", "one picture, never four" -
       // while nothing was being drawn. The draw guard already uses these words; so do the notes.
@@ -65144,8 +65150,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           let _pa = "";
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _pa = String(tnow[i].said || ""); break; } }
           const _off = _offeredShow;
-          const _y = /^\s*(yes|yeah|yep|yup|sure|ok|okay|please|absolutely|definitely|of course|go)\b/i.test(String(said || "").trim());
-          _notYet = !(_off && _y);
+          _notYet = !(_off && !_saidNo);
         }
       } catch {}
       const agentLine = hasLive
@@ -65746,8 +65751,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _prevAura = String(tnow[i].said || ""); break; } }
         const _offered = _offeredShow;
         const _goWords = _theirGo;
-        const _yes = /^\s*(yes|yeah|yep|yup|sure|ok|okay|please|absolutely|definitely|of course|go)\b/i.test(_them);
-        if (!(_goWords || (_offered && _yes))) {
+        if (!(_goWords || (_offered && !_saidNo))) {
           act = "none"; _goBlocked = true;
           console.log("[GO] no go-ahead in their words - nothing drawn" + (_offered ? " (she had offered; their reply was not a yes)" : ""));
         }

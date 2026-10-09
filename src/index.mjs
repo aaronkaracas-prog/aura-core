@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.546.0-2026-10-09-print-centred";
+const BUILD = "aura-core-v9.547.0-2026-10-09-yes-is-go";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64685,7 +64685,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const _photoChain = _bodyPhoto && !!refDesign && refHeld && !(opts && opts.inspire);
       // ONE LIST OF GO WORDS (2026-10-02, v9.514) - the draw guard below and the drawing notes read the same one.
       const _GO_WORDS = /\b(show me|show us|let'?s see|let me see|go for it|go ahead|do it|try it|try that|draw it|draw that|see (it|what|that|how)|looks? like)\b/i;
-      const _goSaid = _GO_WORDS.test(String(said || ""));
+      // ══ A YES TO HER OFFER IS A GO (2026-10-09, v9.547, Aaron) ═══════════════════════════════
+      // MEASURED: she asked "Want me to show you four different takes on it?", they said "yes", and
+      // she answered "Let's see it then - I'll show you four" with nothing drawn. They said "go"; her
+      // last line had no question mark, so "go" did not count either, and she said "Here it comes"
+      // over nothing again. A short yes or go after she has talked about showing them - question or
+      // not - is their go, and it is the same go everywhere below.
+      const _prevAuraLine = (() => { for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") return String(tnow[i].said || ""); } return ""; })();
+      const _offeredShow = /\b(show|draw|sketch|see|picture|mock|takes?)\b/i.test(_prevAuraLine);
+      const _yesGo = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|please|absolutely|definitely|of course|go|let'?s go|do it|for sure)\b/i.test(String(said || "").trim());
+      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && _yesGo);
       // DRAWING NOTES ONLY WHEN THEY SAID GO (2026-10-02, v9.514, Aaron): on a talking turn these sat
       // where her ideas should be - "every picture starts from their photo", "one picture, never four" -
       // while nothing was being drawn. The draw guard already uses these words; so do the notes.
@@ -65134,7 +65143,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
           let _pa = "";
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _pa = String(tnow[i].said || ""); break; } }
-          const _off = /\b(show|draw|sketch|see|picture|mock)\b[^?]*\?\s*$/i.test(_pa.trim());
+          const _off = _offeredShow;
           const _y = /^\s*(yes|yeah|yep|yup|sure|ok|okay|please|absolutely|definitely|of course|go)\b/i.test(String(said || "").trim());
           _notYet = !(_off && _y);
         }
@@ -65142,7 +65151,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const agentLine = hasLive
         ? "[A person is designing a tattoo with you on " + world + ".world. Answer as yourself, " +
           "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said +
-          (_notYet ? "\n\nThey have not asked to see anything yet, so nothing is drawn this turn - think with them." : "") + SHAPE
+          (_notYet ? "\n\nThey have not asked to see anything yet, so nothing is drawn this turn - think with them." : "") +
+          // The other half of the same rule (v9.547): told before she answers that this IS their go.
+          ((_goSaid && !_drewNow()) ? "\n\nThey said go - draw it this turn." : "") + SHAPE
         : said;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
@@ -65733,7 +65744,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         const _them = String(said || "").trim();
         let _prevAura = "";
         for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _prevAura = String(tnow[i].said || ""); break; } }
-        const _offered = /\b(show|draw|sketch|see|picture|mock)\b[^?]*\?\s*$/i.test(_prevAura.trim());
+        const _offered = _offeredShow;
         const _goWords = _theirGo;
         const _yes = /^\s*(yes|yeah|yep|yup|sure|ok|okay|please|absolutely|definitely|of course|go)\b/i.test(_them);
         if (!(_goWords || (_offered && _yes))) {

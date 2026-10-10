@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.555.0-2026-10-10-turn-labels";
+const BUILD = "aura-core-v9.556.0-2026-10-10-classify-behind";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65514,8 +65514,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // This branch is the remaining case: no brief anywhere, so this turn had no fields to lose.
         // IF THERE IS NO CONTEXT TO DEFER INTO the await below is unchanged - the same call, the
         // same blocking behaviour, the same result. Nothing depends on the fast path existing.
-        (acted && me && _AURA_CTX && typeof _AURA_CTX.waitUntil === "function")
-          ? (_AURA_CTX.waitUntil((async () => {
+        // ══ THE PAGE'S OWN CONTEXT (2026-10-10, v9.556) ═══════════════════════════════════
+        // MEASURED with [TURN]: classify 8.6-12.1 s IN FRONT of the reply on photo turns and a new
+        // tattoo's first message. The phone arrives through PublicEntry, not fetch(), so _AURA_CTX
+        // was not this request's context and this branch fell through to the blocking call. The
+        // page door hands its own waitUntil in (`_waitUntil`, the same one the record writes use).
+        (acted && me && typeof _waitUntil === "function")
+          ? (_waitUntil((async () => {
               try {
                 const _late = await callBrain(_extractCall, env).catch(() => null);
                 if (!_late?.ok || !_late.text) return;

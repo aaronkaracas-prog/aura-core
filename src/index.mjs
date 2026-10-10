@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.556.0-2026-10-10-classify-behind";
+const BUILD = "aura-core-v9.557.0-2026-10-10-lock-is-theirs";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65932,6 +65932,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // finished picture is on screen (not the unpicked grid) and their words say it is the one, it is
       // the one. Only overrides "none" - if she is changing the picture, their words were a change.
       let _lockedByWords = false;
+      // The words that say "this is the one" - one definition, used by the lock below AND by the hold
+      // after it, so the two can never disagree (2026-10-10, v9.557).
+      const _saysTheOne = (txt) => /\b(that'?s the one|this is the one|it'?s the one|that one|i want (it|this one|that one)|i'?ll take it|lock it in|i'?m done|make (the |my )?(artist'?s? )?files|artist'?s? files|send it to (my|the) artist|ready for (my|the) artist)\b/i.test(String(txt || ""));
+      const _yesToTheOne = (txt) => /\b(the one|your tattoo)\b[^?]*\?/i.test(_prevAuraLine) &&
+        /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|love it|i (really )?(like|love) it|it'?s perfect)\b[\s.!]*$/i.test(String(txt || "").trim());
       try {
         if (me && hasParent && act === "none" && !_usedPick &&
             !(opts && (opts.touch || opts.recolor || opts.use || opts.inspire || opts.pick))) {
@@ -65942,7 +65947,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           }
           const _grid = !!(_lp && (_lp.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_lp.words || ""))));
           const _t = String(said || "").trim();
-          const _clear = /\b(that'?s the one|this is the one|it'?s the one|that one|i want (it|this one|that one)|i'?ll take it|lock it in|i'?m done|make (the |my )?(artist'?s? )?files|artist'?s? files|send it to (my|the) artist|ready for (my|the) artist)\b/i.test(_t);
+          const _clear = _saysTheOne(_t);
           const _askedOne = /\b(the one|your tattoo)\b[^?]*\?/i.test(_prevAuraLine);
           const _shortYes = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|love it|i (really )?(like|love) it|it'?s perfect)\b[\s.!]*$/i.test(_t);
           if (!_grid && (_clear || (_askedOne && _shortYes))) {
@@ -65951,6 +65956,35 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           }
         }
       } catch (e) { console.log("[LOCK] check failed: " + String(e?.message ?? e).slice(0, 160)); }
+      // ══ LOCKING IN IS THEIRS TO SAY (2026-10-10, v9.557, Aaron) ═══════════════════════════════
+      // MEASURED (10:46, Roses "Make It Mine"): "I want to make this one mine" - her own act was
+      // `artist`, no [LOCK] line, and the files were made on the first message. The page's own rule
+      // for that button (2026-09-26): "I like this one asks first - she says it is a great pick and
+      // asks whether they want it as it is or changed." Locking in finishes the tattoo, so it stands
+      // only when THEIR words say it is the one (the same test the lock above uses) - never on her
+      // reading of a first look. Held, she is asked to reply again without locking anything in.
+      let _heldArtist = false;
+      try {
+        if (act === "artist" && !_lockedByWords && !(opts && opts.use) && !_saysTheOne(said) && !_yesToTheOne(said)) {
+          act = "none"; _heldArtist = true;
+          console.log("[LOCK] held - she chose the artist's files but their words do not say it is the one; she asks first");
+        }
+      } catch (e) { console.log("[LOCK] hold check failed: " + String(e?.message ?? e).slice(0, 160)); }
+      if (_heldArtist && typeof agentLine === "string" && agentLine) {
+        try {
+          const _shape2 = "\n\n(Reply with the JSON object. No prose.)";
+          const _base2 = agentLine.endsWith(_shape2) ? agentLine.slice(0, -_shape2.length) : agentLine;
+          const _hx = await proxyToAgent(env, _base2 + "\n\nNothing is locked in and no artist's files are being made - they have not said this is the one yet. " +
+            "Reply without promising files: say what you think of it and ask whether they want it exactly as it is or changed." + _shape2,
+            false, me, null, world, null);
+          const _ha = (_hx && _hx.reply && !_hx.failed) ? readAct(_hx.reply) : null;
+          console.log("[LOCK] hold redo: " + (_ha ? ("say=" + String(_ha.say || "").slice(0, 120)) : "unreadable"));
+          if (_ha && _ha.say) acted.say = _ha.say;
+          else acted.say = String(acted.say || "").split(/(?<=[.!?])\s+/).filter((x) => !/\b(files?|artist)\b/i.test(x)).join(" ").trim() || "Great pick. Do you want it exactly as it is, or would you like to change something?";
+          for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(acted.say || "").slice(0, 600); break; } }
+          if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
+        } catch (e) { console.log("[LOCK] hold redo failed: " + String(e?.message ?? e).slice(0, 160)); }
+      }
       // Her line was written for a turn of talk - usually a question. It is redone once, knowing the
       // files are being made, so she closes it out in her own words instead of asking again.
       if (_lockedByWords && typeof agentLine === "string" && agentLine) {
@@ -67689,7 +67723,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         const _ph = Object.entries(phase_ms).filter(([k, v]) => k !== "total" && v >= 300).map(([k, v]) => k + " " + _sec(v)).join(", ");
         console.log("[TURN] " + _sec(phase_ms.total) + " · think " + _sec(_thk) + " x" + _st.think.length +
           (_st.think.length ? " (" + _st.think.map((x) => x.why + " " + _sec(x.ms) + (x.failed ? " FAILED" : "")).join(", ") + ")" : "") +
-          " · " + _ph + " · act=" + act + " · drew=" + (drew ? (drew.failed ? "failed" : drew.image ? (drew.for_the_artist ? "artist-files" : "yes") : "no") : "no") +
+          " · " + _ph + " · act=" + act + " · drew=" + (drew ? (drew.failed ? "failed" : drew.for_the_artist ? ("artist-files" + (drew.pending ? " (being made)" : "")) : drew.image ? "yes" : "no") : "no") +
           (act === "artist" ? " · LOCKED" : "") + " · said: " + (String(saidIn || "").trim() ? "\"" + String(saidIn).slice(0, 60).replace(/\s+/g, " ") + "\"" : "(no words" + ((opts && opts.ref) ? ", a photo" : "") + ")"));
       } catch {}
       return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,

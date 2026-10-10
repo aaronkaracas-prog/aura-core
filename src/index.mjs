@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.558.0-2026-10-10-keep-the-pick";
+const BUILD = "aura-core-v9.559.0-2026-10-10-kept-design-is-the-artwork";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66447,6 +66447,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // she drew - or, when she has put that design on them since, from that look, which is the
       // mockup the files have always been made from. A photo never.
       let _filesFlat = false, _bodyLook = null;
+      // ══ A KEPT CATALOGUE DESIGN IS ALREADY THE ARTWORK (2026-10-10, v9.559, Aaron) ════════════
+      // MEASURED on the site: a Chicano design - a woman with cash and roses - "Keep It Like This"
+      // (the button, `use`); "Flat artwork" came back as the cash, roses and lettering with NO WOMAN,
+      // and the line art was made from that. The geisha fix (THE APPROVED PICTURE IS THE ARTWORK,
+      // below) covered a pick locked in by words, but `use` skips that whole block, so the picture
+      // went through the "no body, no skin" conversion and the person in the design was removed.
+      // A catalogue design kept as it is goes to the artist exactly as chosen. A split card was
+      // already cut to its left half when it was picked (opts.name).
+      if (act === "artist" && _usedPick) _filesFlat = true;
       if (act === "artist" && me && !_usedPick) {
         let _dRec = null, _oRec = null;
         try { _dRec = await _pre.design; } catch {}
@@ -67703,7 +67712,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               // Her brief's subject when she has one ("geisha with hannya mask") - the words a picture
               // was drawn from can be a fixed instruction, and a card titled "Take the tattoo from
               // this picture..." names nothing (2026-09-26).
-              title: (opts && opts.name) ? String(opts.name).slice(0, 70)
+              title: (opts && opts.name) ? (function (n) {
+                  // THE WHOLE NAME (2026-10-10, v9.559, Aaron): "A beautiful female portrait is almost
+                  // entirely black and grey except f" - cut at 70 letters mid-word. Kept whole; past
+                  // 160 letters it ends at a word, with an ellipsis.
+                  n = String(n).trim(); if (n.length <= 160) return n;
+                  return n.slice(0, 160).replace(/\s+\S*$/, "").replace(/[\s,;:.-]+$/, "") + "\u2026";
+                })(opts.name)
                 : (intent && intent.subject) ? String(intent.subject).slice(0, 70)
                 : (drew && drew.image && !drew.failed && !drew.for_the_artist)
                 ? (String(drew.asked || drew.changed || "").split(",")[0].trim().slice(0, 70) || null) : null,

@@ -99,7 +99,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.552.0-2026-10-09-everything-new";
+const BUILD = "aura-core-v9.553.0-2026-10-10-logs";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5879,6 +5879,91 @@ async function processCommand(line, env, isOp) {
   const rest = line.trim().slice(cmd.length).trim();
 
   switch (cmd) {
+
+    // ══ LOGS ── READ THE SAVED LOGS, NO LIVE TAIL (2026-10-10, v9.553, Aaron) ═══════════════
+    // "I'm not going to dashboards... whatever we can do to pull logs from Cloudflare." Both workers
+    // already SAVE every request (aura-core [observability] since 2026-08-03, aura-think since
+    // 2026-08-14), so a phone test needs nothing running beforehand: this asks Cloudflare's
+    // Workers Observability query API for a time window and prints it in time order.
+    //   RUN "LOGS 07:12 07:20"          today, operator's local time (config:operator:tz, default LA)
+    //   RUN "LOGS 07:12 07:20 think"    one worker only (core | think)
+    //   RUN "LOGS 07:12 07:20 raw"      one raw event per worker, to see the shape
+    // Read only. Uses the cf_api_token the self-read already uses; if that token lacks the
+    // "Workers Observability" read permission, Cloudflare's own answer is returned in plain words.
+    case "LOGS": {
+      const lgTok = await getSecret(env, "cf_api_token");
+      const lgAcct = (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+      if (!lgTok) return { cmd: "LOGS", payload: { ok: false, error: "NO_CF_TOKEN", say: "No cf_api_token is stored, so the logs cannot be read." } };
+      const lgTz = (await env.AURA_KV.get("config:operator:tz").catch(() => null)) || "America/Los_Angeles";
+      const lgA = args.map((x) => String(x));
+      const lgTimes = lgA.filter((x) => /^\d{1,2}:\d{2}$/.test(x));
+      const lgRaw = lgA.some((x) => /^raw$/i.test(x));
+      const lgOnly = (lgA.find((x) => /^(core|think)$/i.test(x)) || "").toLowerCase();
+      // Wall-clock time in the operator's zone -> UTC ms, using the zone's own offset today.
+      const lgParts = (d) => { const o = {}; for (const p of new Intl.DateTimeFormat("en-US", { timeZone: lgTz, hourCycle: "h23",
+        year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(d)) o[p.type] = p.value; return o; };
+      const lgNow = new Date(), lgP = lgParts(lgNow);
+      const lgAt = (hm) => {
+        const [h, mi] = hm.split(":").map(Number);
+        const guess = Date.UTC(+lgP.year, +lgP.month - 1, +lgP.day, h, mi, 0);
+        const g = lgParts(new Date(guess));
+        const seen = Date.UTC(+g.year, +g.month - 1, +g.day, +g.hour, +g.minute, +g.second);
+        return guess - (seen - guess);
+      };
+      let lgFrom, lgTo;
+      if (lgTimes.length >= 2) { lgFrom = lgAt(lgTimes[0]); lgTo = lgAt(lgTimes[1]) + 59999; }
+      else if (lgTimes.length === 1) { lgFrom = lgAt(lgTimes[0]); lgTo = lgFrom + 10 * 60000; }
+      else { lgTo = Date.now(); lgFrom = lgTo - 10 * 60000; }
+      if (!(lgTo > lgFrom)) return { cmd: "LOGS", payload: { ok: false, error: "BAD_WINDOW", say: "Give two times like LOGS 07:12 07:20." } };
+      const lgWorkers = [["core", "aura-core-v2"], ["think", "aura-think"]].filter((w) => !lgOnly || w[0] === lgOnly);
+      const lgFmt = (ms) => { const q = lgParts(new Date(ms)); return q.hour + ":" + q.minute + ":" + q.second + "." + String(ms % 1000).padStart(3, "0"); };
+      // The events array's exact nesting is not something to guess at - find the first array of
+      // objects that carry a timestamp, wherever Cloudflare put it.
+      const lgFindEvents = (o, depth = 0) => {
+        if (!o || depth > 6) return null;
+        if (Array.isArray(o)) { if (o.length && typeof o[0] === "object" && o[0] && ("timestamp" in o[0] || "$metadata" in o[0])) return o; for (const x of o) { const r = lgFindEvents(x, depth + 1); if (r) return r; } return null; }
+        if (typeof o === "object") for (const k of Object.keys(o)) { const r = lgFindEvents(o[k], depth + 1); if (r) return r; }
+        return null;
+      };
+      const lgLines = [], lgOut = {};
+      for (const [short, script] of lgWorkers) {
+        const body = { queryId: "aura-logs-" + Date.now(), timeframe: { from: lgFrom, to: lgTo }, view: "events", limit: 1000,
+          parameters: { filters: [{ key: "$workers.scriptName", operation: "eq", type: "string", value: script }],
+                        filterCombination: "and", calculations: [], groupBys: [], limit: 1000 } };
+        let j = null, st = 0;
+        try {
+          const r = await fetch("https://api.cloudflare.com/client/v4/accounts/" + lgAcct + "/workers/observability/telemetry/query",
+            { method: "POST", headers: { "Authorization": "Bearer " + lgTok, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          st = r.status; j = await r.json().catch(() => null);
+        } catch (e) { lgOut[short] = { ok: false, error: "FETCH_FAILED", detail: String(e && e.message || e) }; continue; }
+        if (!j || j.success === false || st >= 400) {
+          const errs = (j && j.errors) || [];
+          lgOut[short] = { ok: false, status: st, errors: errs.slice(0, 3),
+            say: st === 403 || st === 401 ? "The Cloudflare token cannot read logs - it needs the Workers Observability read permission added." : "Cloudflare refused the query - errors above." };
+          continue;
+        }
+        const ev = lgFindEvents(j.result || j) || [];
+        if (lgRaw) { lgOut[short] = { ok: true, events: ev.length, sample: JSON.stringify(ev[0] || j.result || j).slice(0, 3000) }; continue; }
+        lgOut[short] = { ok: true, events: ev.length };
+        for (const e of ev) {
+          const md = e.$metadata || {}, wk = e.$workers || {}, src = e.source;
+          const ts = Number(e.timestamp || md.timestamp || 0);
+          let msg = md.message || (src && typeof src === "object" ? (src.message || src.msg) : src) || "";
+          if (typeof msg !== "string") msg = JSON.stringify(msg);
+          const ev2 = wk.event || {};
+          const url = (ev2.request && ev2.request.url) || md.url || "";
+          const wall = wk.wallTimeMs != null ? " (" + wk.wallTimeMs + "ms)" : "";
+          const lvl = md.level && md.level !== "log" && md.level !== "info" ? " [" + String(md.level).toUpperCase() + "]" : "";
+          let text = msg || (url ? String(wk.eventType || "request") + " " + url : JSON.stringify(src || md).slice(0, 200));
+          text = String(text).replace(/\s+/g, " ").slice(0, 600);
+          lgLines.push({ t: ts, line: lgFmt(ts) + "  " + short.padEnd(5) + lvl + " " + text + wall });
+        }
+      }
+      lgLines.sort((a, b) => a.t - b.t);
+      return { cmd: "LOGS", payload: { ok: true, zone: lgTz, from: lgFmt(lgFrom), to: lgFmt(lgTo), workers: lgOut,
+        lines: lgLines.length, log: lgLines.map((x) => x.line),
+        note: lgLines.length >= 900 ? "Many lines - narrow the window to see all of it." : undefined } };
+    }
 
     case "DEPLOY_PAGE": {
       if (!env.AURA_OPS) return jsonReply({ ok: false, error: "AURA_OPS not bound" });

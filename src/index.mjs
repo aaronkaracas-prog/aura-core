@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.554.0-2026-10-10-turn-line";
+const BUILD = "aura-core-v9.555.0-2026-10-10-turn-labels";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -4689,8 +4689,11 @@ async function proxyToAgent(env, line, isOp, ptaId, image, channel, onDelta) {
   const _r = await _proxyToAgentInner(env, line, isOp, ptaId, image, channel, onDelta);
   if (_st) {
     const L = String(line || "");
-    const why = /nothing is drawn this turn/.test(L) ? "redo-notyet" : /said this is the one/.test(L) ? "redo-lock"
-      : (_st.think.length ? "extra" : "reply");
+    // The FIRST call is always her reply - the reply's own prompt can carry the same not-yet words as
+    // the redo, which is how v9.554 mislabelled a plain reply "redo-notyet". Only later calls are redos.
+    const why = !_st.think.length ? "reply"
+      : /They have not asked to see it yet - nothing is drawn this turn/.test(L) ? "redo-notyet"
+      : /They have said this is the one/.test(L) ? "redo-lock" : "extra";
     _st.think.push({ ms: Date.now() - _t, why, failed: !!(_r && _r.failed) });
   }
   return _r;
@@ -5919,6 +5922,7 @@ async function processCommand(line, env, isOp) {
       const lgOnly = (lgA.find((x) => /^(core|think)$/i.test(x)) || "").toLowerCase();
       const lgAll = lgA.some((x) => /^all$/i.test(x));
       const lgTurns = lgA.some((x) => /^turns?$/i.test(x));
+      let lgNoFilter = false;
       // Routine platform entries (storage, KV, ledger, alarms) - dropped unless "all" is asked for.
       const lgNoise = /durable_object_storage|durable_object_subrequest|\bkv_(get|put|list|delete)\b|ledger\/record|jsRpcCall|jsrpc OK|PublicEntry\.(jsrpc|ping)|alarm OK|scheduled OK|internal\/health|\bfetch 200$|\b(GET|POST) 200$|GMT\+0000 \(Coordinated Universal Time\)/;
       // Wall-clock time in the operator's zone -> UTC ms, using the zone's own offset today.
@@ -5950,14 +5954,22 @@ async function processCommand(line, env, isOp) {
       const lgLines = [], lgOut = {};
       for (const [short, script] of lgWorkers) {
         const body = { queryId: "aura-logs-" + Date.now(), timeframe: { from: lgFrom, to: lgTo }, view: "events", limit: 1000,
-          parameters: { filters: [{ key: "$workers.scriptName", operation: "eq", type: "string", value: script }],
+          parameters: { filters: [{ key: "$workers.scriptName", operation: "eq", type: "string", value: script }].concat(lgTurns && !lgNoFilter ? [{ key: "$metadata.message", operation: "includes", type: "string", value: "[TURN]" }] : []),
                         filterCombination: "and", calculations: [], groupBys: [], limit: 1000 } };
         let j = null, st = 0;
+        for (let lgTry = 0; lgTry < 2; lgTry++) {
         try {
           const r = await fetch("https://api.cloudflare.com/client/v4/accounts/" + lgAcct + "/workers/observability/telemetry/query",
             { method: "POST", headers: { "Authorization": "Bearer " + lgTok, "Content-Type": "application/json" }, body: JSON.stringify(body) });
           st = r.status; j = await r.json().catch(() => null);
-        } catch (e) { lgOut[short] = { ok: false, error: "FETCH_FAILED", detail: String(e && e.message || e) }; continue; }
+        } catch (e) { j = null; st = 0; }
+        // The [TURN] filter is asked of Cloudflare so noise cannot crowd it out of the 1,000. If
+        // Cloudflare will not take that filter, ask again without it and filter here instead.
+        if (lgTurns && !lgNoFilter && (!j || j.success === false || st >= 400) && st !== 401 && st !== 403) {
+          lgNoFilter = true; body.parameters.filters = body.parameters.filters.slice(0, 1); continue; }
+        break;
+        }
+        if (!j && !st) { lgOut[short] = { ok: false, error: "FETCH_FAILED" }; continue; }
         if (!j || j.success === false || st >= 400) {
           const errs = (j && j.errors) || [];
           lgOut[short] = { ok: false, status: st, errors: errs.slice(0, 3),
@@ -5966,7 +5978,7 @@ async function processCommand(line, env, isOp) {
         }
         const ev = lgFindEvents(j.result || j) || [];
         if (lgRaw) { lgOut[short] = { ok: true, events: ev.length, sample: JSON.stringify(ev[0] || j.result || j).slice(0, 3000) }; continue; }
-        lgOut[short] = { ok: true, events: ev.length,
+        lgOut[short] = { ok: true, events: ev.length, ...(lgTurns ? { turn_filter: lgNoFilter ? "here (Cloudflare refused it)" : "at Cloudflare" } : {}),
           ...(ev.length >= 1000 ? { capped: true, say: "Cloudflare returned its 1,000-entry limit for " + short + " - only the newest part of the window came back. Use a shorter window." } : {}) };
         for (const e of ev) {
           const md = e.$metadata || {}, wk = e.$workers || {}, src = e.source;
@@ -67673,7 +67685,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         console.log("[TURN] " + _sec(phase_ms.total) + " · think " + _sec(_thk) + " x" + _st.think.length +
           (_st.think.length ? " (" + _st.think.map((x) => x.why + " " + _sec(x.ms) + (x.failed ? " FAILED" : "")).join(", ") + ")" : "") +
           " · " + _ph + " · act=" + act + " · drew=" + (drew ? (drew.failed ? "failed" : drew.image ? (drew.for_the_artist ? "artist-files" : "yes") : "no") : "no") +
-          (act === "artist" ? " · LOCKED" : "") + " · said: \"" + String(saidIn || "").slice(0, 60).replace(/\s+/g, " ") + "\"");
+          (act === "artist" ? " · LOCKED" : "") + " · said: " + (String(saidIn || "").trim() ? "\"" + String(saidIn).slice(0, 60).replace(/\s+/g, " ") + "\"" : "(no words" + ((opts && opts.ref) ? ", a photo" : "") + ")"));
       } catch {}
       return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,
                ...(_herTurn ? { her_turn: _herTurn } : {}),

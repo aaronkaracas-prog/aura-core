@@ -43,6 +43,13 @@ import { WorkerEntrypoint, WorkflowEntrypoint } from "cloudflare:workers";
 // VERIFIED, not assumed: a code was generated for a real shop URL, rasterised, and read
 // back with an independent decoder. Exact match.
 import QRCode from "qrcode-svg";
+// ══ ONE LINE PER CUSTOMER MESSAGE (2026-10-10, v9.554) ═══════════════════════════════════════
+// A turn can call aura-think several times (her reply, then a redo from [GO] or [LOCK]) and the
+// time was only visible by adding up log lines by hand. Each auraTalk runs inside this store and
+// proxyToAgent writes each call's duration into it, so the [TURN] line can say where the time
+// went. Concurrency-safe: every request has its own store. Logging only - changes no behaviour.
+import { AsyncLocalStorage } from "node:async_hooks";
+const _TURN_ALS = new AsyncLocalStorage();
 // ══ PHOTON — DETERMINISTIC IMAGE PROCESSING, NO MODEL ════════════════════════════════════════
 // Rust image library compiled to WebAssembly, running inside this Worker. Cloudflare's own
 // documented answer for image processing here: Sharp needs libvips and ImageMagick needs system
@@ -99,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.553.0-2026-10-10-logs";
+const BUILD = "aura-core-v9.554.0-2026-10-10-turn-line";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -4678,6 +4685,17 @@ function worldFor(host) {
 // on screen in ~2s against a 26.7s full turn, and the accumulated deltas reconstructing `reply`
 // exactly - which is what lets this return the usual shape instead of a second one.
 async function proxyToAgent(env, line, isOp, ptaId, image, channel, onDelta) {
+  const _st = _TURN_ALS.getStore(), _t = Date.now();
+  const _r = await _proxyToAgentInner(env, line, isOp, ptaId, image, channel, onDelta);
+  if (_st) {
+    const L = String(line || "");
+    const why = /nothing is drawn this turn/.test(L) ? "redo-notyet" : /said this is the one/.test(L) ? "redo-lock"
+      : (_st.think.length ? "extra" : "reply");
+    _st.think.push({ ms: Date.now() - _t, why, failed: !!(_r && _r.failed) });
+  }
+  return _r;
+}
+async function _proxyToAgentInner(env, line, isOp, ptaId, image, channel, onDelta) {
   try {
     const instance = agentInstanceFor(isOp, ptaId);
     if (!instance) return { failed: "no identity - an anonymous visitor has no agent instance of their own, so the local path answers" };
@@ -5899,6 +5917,10 @@ async function processCommand(line, env, isOp) {
       const lgTimes = lgA.filter((x) => /^\d{1,2}:\d{2}$/.test(x));
       const lgRaw = lgA.some((x) => /^raw$/i.test(x));
       const lgOnly = (lgA.find((x) => /^(core|think)$/i.test(x)) || "").toLowerCase();
+      const lgAll = lgA.some((x) => /^all$/i.test(x));
+      const lgTurns = lgA.some((x) => /^turns?$/i.test(x));
+      // Routine platform entries (storage, KV, ledger, alarms) - dropped unless "all" is asked for.
+      const lgNoise = /durable_object_storage|durable_object_subrequest|\bkv_(get|put|list|delete)\b|ledger\/record|jsRpcCall|jsrpc OK|PublicEntry\.(jsrpc|ping)|alarm OK|scheduled OK|internal\/health|\bfetch 200$|\b(GET|POST) 200$|GMT\+0000 \(Coordinated Universal Time\)/;
       // Wall-clock time in the operator's zone -> UTC ms, using the zone's own offset today.
       const lgParts = (d) => { const o = {}; for (const p of new Intl.DateTimeFormat("en-US", { timeZone: lgTz, hourCycle: "h23",
         year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(d)) o[p.type] = p.value; return o; };
@@ -5944,7 +5966,8 @@ async function processCommand(line, env, isOp) {
         }
         const ev = lgFindEvents(j.result || j) || [];
         if (lgRaw) { lgOut[short] = { ok: true, events: ev.length, sample: JSON.stringify(ev[0] || j.result || j).slice(0, 3000) }; continue; }
-        lgOut[short] = { ok: true, events: ev.length };
+        lgOut[short] = { ok: true, events: ev.length,
+          ...(ev.length >= 1000 ? { capped: true, say: "Cloudflare returned its 1,000-entry limit for " + short + " - only the newest part of the window came back. Use a shorter window." } : {}) };
         for (const e of ev) {
           const md = e.$metadata || {}, wk = e.$workers || {}, src = e.source;
           const ts = Number(e.timestamp || md.timestamp || 0);
@@ -5956,6 +5979,8 @@ async function processCommand(line, env, isOp) {
           const lvl = md.level && md.level !== "log" && md.level !== "info" ? " [" + String(md.level).toUpperCase() + "]" : "";
           let text = msg || (url ? String(wk.eventType || "request") + " " + url : JSON.stringify(src || md).slice(0, 200));
           text = String(text).replace(/\s+/g, " ").slice(0, 600);
+          if (!lgAll && lgNoise.test(text)) continue;
+          if (lgTurns && !/^\[TURN\]/.test(text)) continue;
           lgLines.push({ t: ts, line: lgFmt(ts) + "  " + short.padEnd(5) + lvl + " " + text + wall });
         }
       }
@@ -63893,6 +63918,9 @@ async function recordArtistFiles(env, d, drew) {
 }
 
 async function auraTalk(env, me, stage, saidIn, history, opts) {
+  return _TURN_ALS.run({ think: [] }, () => _auraTalkInner(env, me, stage, saidIn, history, opts));
+}
+async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // ══ MEASURE IT, DO NOT REASON ABOUT IT (2026-09-09) ═══════════════════════════════════
       // One turn took 131 SECONDS. Typical is 26-45. Nobody waits half a minute on a phone, and
       // this file's own record of the last performance hunt is four consecutive wrong guesses
@@ -67637,6 +67665,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const spent = costTapClose(_tap);
       // `act` is what was DONE this turn (2026-09-30). It reported her field, so a turn stopped by the
       // ask-first guard said "draw" with nothing drawn. Her field is kept beside it when they differ.
+      try {
+        const _st = _TURN_ALS.getStore() || { think: [] };
+        const _sec = (ms) => (Math.round((ms || 0) / 100) / 10) + "s";
+        const _thk = _st.think.reduce((n, x) => n + x.ms, 0);
+        const _ph = Object.entries(phase_ms).filter(([k, v]) => k !== "total" && v >= 300).map(([k, v]) => k + " " + _sec(v)).join(", ");
+        console.log("[TURN] " + _sec(phase_ms.total) + " · think " + _sec(_thk) + " x" + _st.think.length +
+          (_st.think.length ? " (" + _st.think.map((x) => x.why + " " + _sec(x.ms) + (x.failed ? " FAILED" : "")).join(", ") + ")" : "") +
+          " · " + _ph + " · act=" + act + " · drew=" + (drew ? (drew.failed ? "failed" : drew.image ? (drew.for_the_artist ? "artist-files" : "yes") : "no") : "no") +
+          (act === "artist" ? " · LOCKED" : "") + " · said: \"" + String(saidIn || "").slice(0, 60).replace(/\s+/g, " ") + "\"");
+      } catch {}
       return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,
                ...(_herTurn ? { her_turn: _herTurn } : {}),
                ...(over_budget ? { over_budget: true } : {}),

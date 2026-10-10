@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.560.0-2026-10-10-a-tap-is-not-talk";
+const BUILD = "aura-core-v9.561.0-2026-10-10-the-whole-name";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61985,7 +61985,7 @@ export class PtaDurableObject {
       }
       if (pj.pictures.length > 60) pj.pictures = pj.pictures.slice(-60);
     }
-    if (pt.title && !pj.title) pj.title = String(pt.title).slice(0, 80);
+    if (pt.title && !pj.title) pj.title = String(pt.title).slice(0, 170); // whole name (v9.561) - the talk turn already ends a long one at a word
     if (pt.came_from && !pj.came_from) pj.came_from = String(pt.came_from).slice(0, 60);
     if (pt.files) { pj.files = pt.files; pj.files_failed = false; }
     if (pt.details && typeof pt.details === "object" && !pj.details) pj.details = pt.details;
@@ -68617,7 +68617,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -68636,7 +68636,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

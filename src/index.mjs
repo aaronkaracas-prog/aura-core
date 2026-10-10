@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.557.0-2026-10-10-lock-is-theirs";
+const BUILD = "aura-core-v9.558.0-2026-10-10-keep-the-pick";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64821,6 +64821,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // over nothing again. A short yes or go after she has talked about showing them - question or
       // not - is their go, and it is the same go everywhere below.
       const _prevAuraLine = (() => { for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") return String(tnow[i].said || ""); } return ""; })();
+      // The words that say "this is the one" - one definition, used by the lock below AND by the hold
+      // after it, so the two can never disagree (2026-10-10, v9.557).
+      const _saysTheOne = (txt) => /\b(that'?s the one|this is the one|it'?s the one|that one|i want (it|this one|that one)|i'?ll take it|lock it in|i'?m done|make (the |my )?(artist'?s? )?files|artist'?s? files|send it to (my|the) artist|ready for (my|the) artist)\b/i.test(String(txt || ""));
+      const _yesToTheOne = (txt) => /\b(the one|your tattoo)\b[^?]*\?/i.test(_prevAuraLine) &&
+        /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|love it|i (really )?(like|love) it|it'?s perfect)\b[\s.!]*$/i.test(String(txt || "").trim());
+      // A catalogue pick they are keeping as it is (2026-10-10, v9.558): words that change nothing.
+      const _keepsIt = (txt) => {
+        const t = String(txt || "").trim();
+        return /\b(keep it|keep it (exactly )?as it is|as it is|exactly as (it is|drawn)|just like (that|this|it is)|no changes?|don'?t change (it|anything)|leave it( as it is)?)\b/i.test(t) ||
+          /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|that'?s perfect|love it|i (really )?(like|love) it|it'?s perfect|i (like|love) (this|that) one)\b[\s.!]*$/i.test(t);
+      };
       // ══ ONCE SHE HAS OFFERED, ANY ANSWER BUT NO IS A GO (2026-10-09, v9.549, Aaron) ═══════════
       // MEASURED (pta_9a7e5339461d6ba5): she offered four takes, they answered "yees", then "Try giving
       // me the file again", then "try again" - and every one was blocked, because a yes was a list of
@@ -65754,6 +65765,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (opts && opts.recolor && refUrl && me) act = "recolor";
       // USE THIS ONE (2026-09-26, Aaron): a catalogue design taken exactly as it is, straight to the
       // artist's files. Nothing is drawn. Resolved to "artist" below, once the picture is theirs.
+      // ══ KEEPING A PICK IS TAKING IT AS IT IS (2026-10-10, v9.558, Aaron) ═══════════════════════
+      // MEASURED (11:01): Make It Mine -> she asked "keep it, change a few things, or somewhere new?" ->
+      // "I like it" -> act=change, a 30 s redraw of the same wildflower, then "is this the one?" again.
+      // The page sends `pick` with every message until a picture is made, and on a pick their words are
+      // read as what to CHANGE - so "I like it" was a change with nothing in it. When their words on a
+      // pick change nothing (they keep it, or say it is the one), it is taken exactly as it is: the same
+      // path as `use` - no drawing, the artist's files from that exact picture.
+      if (opts && opts.pick && !opts.use && refUrl && me && (_saysTheOne(said) || _keepsIt(said))) {
+        act = "use"; console.log("[PICK] their words keep it as it is - taken as it is, nothing redrawn");
+      }
       if (opts && opts.use && refUrl && me) act = "use";
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
@@ -65932,11 +65953,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // finished picture is on screen (not the unpicked grid) and their words say it is the one, it is
       // the one. Only overrides "none" - if she is changing the picture, their words were a change.
       let _lockedByWords = false;
-      // The words that say "this is the one" - one definition, used by the lock below AND by the hold
-      // after it, so the two can never disagree (2026-10-10, v9.557).
-      const _saysTheOne = (txt) => /\b(that'?s the one|this is the one|it'?s the one|that one|i want (it|this one|that one)|i'?ll take it|lock it in|i'?m done|make (the |my )?(artist'?s? )?files|artist'?s? files|send it to (my|the) artist|ready for (my|the) artist)\b/i.test(String(txt || ""));
-      const _yesToTheOne = (txt) => /\b(the one|your tattoo)\b[^?]*\?/i.test(_prevAuraLine) &&
-        /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|love it|i (really )?(like|love) it|it'?s perfect)\b[\s.!]*$/i.test(String(txt || "").trim());
       try {
         if (me && hasParent && act === "none" && !_usedPick &&
             !(opts && (opts.touch || opts.recolor || opts.use || opts.inspire || opts.pick))) {

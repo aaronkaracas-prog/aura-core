@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.559.0-2026-10-10-kept-design-is-the-artwork";
+const BUILD = "aura-core-v9.560.0-2026-10-10-a-tap-is-not-talk";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65335,7 +65335,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // on the page. agentInstanceFor already gives any identity its own instance, and the three
       // other agent calls in this function were only ever gated on `me`. What stays PTA-only is
       // everything that WRITES a person's chain - a lead has no chain until they say who they are.
-      if (me) {
+      // ══ A TAP ON "KEEP IT LIKE THIS" IS NOT A TURN OF TALK (2026-10-10, v9.560, Aaron) ══════════
+      // MEASURED with [TURN] (15:42, 15:46): the button turn took 38-42 s, and 26-29 s of it was her
+      // full reply - which was then REPLACED by her short "it's yours, files are being made" line
+      // (`_reaction`, the USE THIS ONE branch near the end) and never shown. On `use` she is not asked
+      // to reply here; she still writes the line they see, told exactly what happened, in that
+      // later call (~6 s). Nothing else about a typed turn changes.
+      const _tapKeep = !!(opts && opts.use && refUrl && me);
+      if (_tapKeep) { try { console.log("[USE] a tap on Keep It Like This - her reply comes after the files start, not before"); } catch {} }
+      if (me && !_tapKeep) {
         try {
           // ══ SHE LOOKS AT THEIR PHOTO UNTIL THE FIRST PICTURE IS MADE (2026-10-02, Aaron) ══════════
           // MEASURED (pta_74d9cfa0e939be8f, pta_7f46ce6197fe124a): the photo was attached only on the
@@ -65472,6 +65480,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           max_tokens: 700
       };
 
+      // The tap (above): her words come from the line written once the files have started.
+      if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",
+                                        act: "none", prompt: "", use: [], brief: null };
       _tick("agent");
       const [r, iRes] = await Promise.all([
         acted ? Promise.resolve(null) : callBrain({

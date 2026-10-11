@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.564.0-2026-10-11-ask-before-locking";
+const BUILD = "aura-core-v9.565.0-2026-10-11-aura-closes-the-session";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61994,7 +61994,14 @@ export class PtaDurableObject {
     if (pt.name_final) { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
                          pj.title = String(pt.name_final).slice(0, 80); }
     if (pt.files) { pj.files = pt.files; pj.files_failed = false; }
-    if (pt.details && typeof pt.details === "object" && !pj.details) pj.details = pt.details;
+    // FIELD BY FIELD (2026-10-11, v9.565): the collection (at lock-in), her colour reading (just after) and
+    // the conversation's brief (when the files finish) each fill what is still empty; the first to fill a
+    // field keeps it.
+    if (pt.details && typeof pt.details === "object") {
+      const cur = (pj.details && typeof pj.details === "object") ? pj.details : {};
+      for (const [k, v] of Object.entries(pt.details)) { if (v != null && v !== "" && (cur[k] == null || cur[k] === "")) cur[k] = v; }
+      pj.details = cur;
+    }
     if (pt.files_failed) pj.files_failed = String(pt.files_failed).slice(0, 200);
     if (pt.locked === true) { pj.locked = true; pj.locked_at = now; }
     // Every "see it on you" of a locked-in tattoo, newest last (2026-10-07, v9.539).
@@ -66600,26 +66607,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                                          acted, intent, useOne, _checkOn, _verdict, readAct,
                                          alreadyFlat: _filesFlat, bodyLook: _bodyLook });
       }
-      if (_usedPick && drew && !drew.failed) {
-        drew.used = true;
-        try {
-          const _ux = await proxyToAgent(env,
-            "[They chose a design from our catalogue and are taking it exactly as it is - \"" +
-            String(said || "").slice(0, 120) + "\". It is saved in My Tattoos and their artist's files are " +
-            "being made from it now; they land there in a few minutes. In one or two short lines, tell them." +
-            " Then, on a last line of its own, write NAME: and a short name for this tattoo - two to five" +
-            " words, the way a person would name it.]",
-            false, me, null, world);
-          if (_ux && _ux.reply && !_ux.failed) {
-            // HER NAME FOR IT (v9.562): read from her whole reply, then taken out of the line they see.
-            const _nm = String(_ux.reply).match(/\bNAME\s*:\s*["'*]*([^\n"*]{2,60})/i);
-            if (_nm) _herName = _nm[1].replace(/[\\"}\].,;:!]+$/g, "").trim().slice(0, 60) || null;
-            const _t = _verdict(_ux.reply, readAct(_ux.reply)).replace(/\s*\**NAME\s*:[^\n]*/ig, "").trim();
-            if (_t) _reaction = _t.slice(0, 400);
-            try { console.log("[NAME] she named it: " + (_herName || "(no name in her reply)")); } catch {}
-          }
-        } catch {}
-      }
+      // ══ THE CLOSING LINE IS SAID AT ONCE (2026-10-11, v9.565, Aaron) ═══════════════════════════
+      // Her closing call took 6-13 s in front of the reply on every kept pick. The closing line is now the
+      // page's own fixed handoff (below, LOCKED_LINE), and her part - naming it and reading its colour -
+      // runs behind the reply, where nobody waits for it.
+      if (_usedPick && drew && !drew.failed) drew.used = true;
 
       // ══ SOMEBODY HAS TO LOOK AT THE MOCKUP (2026-09-15) ═══════════════════════════════════
       // FIVE RUNS, FIVE PLACEMENT FAILURES, AND NOTHING EVER LOOKED: the dragon on the wrong side,
@@ -67716,6 +67708,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         _said = (acted.act === "artist" || _usedPick)
           ? "I went to make your artist files, but they didn't come out this time - nothing was made yet."
           : "I went to make that picture, but it didn't come out this time - nothing new was made yet.";
+      } else if (act === "artist" && drew && drew.for_the_artist) {
+        // AURA CLOSES THE SESSION (2026-10-11, v9.565, Aaron + GPT): one handoff line, said at once.
+        _said = "It's locked in. I'm making everything your artist needs now \u2013 your artwork, linework and print file. " +
+                "I saved the whole project in My Tattoos, so you can always come back to it.";
       } else if (drew && drew.used && _reaction) {
         // USE THIS ONE: her line about the design they took, not what she said before it was theirs.
         _said = _reaction;
@@ -67788,19 +67784,32 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             await talkStatePut(env, me, "project", _pid);
             // A LOCK-IN BY WORDS IS NAMED TOO (v9.562): the tap names it in her closing line; a typed
             // "this is the one" has no such call, so she names it behind the reply - nobody waits.
+            // THE COLLECTION IS ITS STYLE (2026-10-11, v9.565, Aaron): a catalogue design's style is the
+            // collection they found it in ("Chicano", "Sketch") - the page sends it with the lock-in.
+            if (act === "artist" && opts && opts.cat) {
+              await projectAppend(env, me, _pid, { details: { style: String(opts.cat).slice(0, 60) } });
+            }
             if (act === "artist" && !_herName && typeof _waitUntil === "function" && lastDrawn && lastDrawn.image) {
               const _pidN = _pid, _imgN = lastDrawn.image;
+              const _descN = (opts && opts.name) ? String(opts.name).slice(0, 400) : "";
               _waitUntil((async () => {
                 try {
+                  // SHE NAMES IT AND READS ITS COLOUR (v9.565) - behind the reply, nobody waits.
                   const q = await proxyToAgent(env, "[FOR YOU, NOT THEM. They just locked in the tattoo in this picture." +
-                    " Name it: two to five words, the way a person would name it. Reply with only the name.]",
+                    (_descN ? " It is described as: \"" + _descN + "\"." : "") +
+                    " Reply with exactly two lines. NAME: a name for it, two to five words, the way a person would name it." +
+                    " COLOUR: its colour treatment in a few words, as you see it (for example black and grey, full colour," +
+                    " black and grey with red accents).]",
                     false, me, _imgN, world);
-                  const n = (q && q.reply && !q.failed) ? String(_verdict(q.reply, readAct(q.reply)) || "")
-                    .replace(/^\s*NAME\s*:\s*/i, "").split(/\r?\n/)[0].replace(/^["'*\s]+|["'*.\s]+$/g, "").slice(0, 60) : "";
-                  if (n && n.split(/\s+/).length <= 7) {
-                    await projectAppend(env, me, _pidN, { name_final: n });
-                    console.log("[NAME] she named it (behind the reply): " + n);
+                  const raw = (q && q.reply && !q.failed) ? String(q.reply) + "\n" + String(_verdict(q.reply, readAct(q.reply)) || "") : "";
+                  const clean = (x) => String(x || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 60);
+                  let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
+                  const c = clean((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,60})/i) || [])[1]);
+                  if (n && n.split(/\s+/).length > 7) n = "";
+                  if (n || c) {
+                    await projectAppend(env, me, _pidN, { ...(n ? { name_final: n } : {}), ...(c ? { details: { colour: c } } : {}) });
                   }
+                  console.log("[NAME] she named it (behind the reply): " + (n || "?") + " | colour: " + (c || "?"));
                 } catch (e) { try { console.log("[NAME] naming failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
               })());
             }
@@ -68579,6 +68588,24 @@ export class PublicEntry extends WorkerEntrypoint {
       // Durable Object, beside their conversation - so it follows them to every device they sign in
       // on. Newest first. Each one is what the page needs to open it big again: the picture, its
       // words, its group and its category. Draws nothing, calls no model.
+      // ══ SHE SEES WHAT THEY CHOSE (2026-10-11, v9.565, Aaron + GPT) ═══════════════════════════
+      // "Choose This Design" shows its two buttons at once; this is her line about THAT design, which the
+      // page puts above them when it arrives. She looks at the picture; nothing is drawn or saved.
+      if (action === "react") {
+        const url = String(b.url || "").trim().slice(0, 300);
+        if (!/^https:\/\//i.test(url)) return { ok: false, error: "BAD_URL" };
+        const desc = String(b.label || "").slice(0, 400);
+        let line = "";
+        try {
+          const q = await proxyToAgent(env, "[They just chose this tattoo design from our catalogue" +
+            (desc ? " - it is described as: \"" + desc + "\"" : "") + ". Reply with ONE short sentence that starts with" +
+            " \"Great choice\" and names one thing you genuinely love in it, something you can see. Nothing else.]",
+            false, me, url, world);
+          if (q && q.reply && !q.failed) line = String(talkVerdict(q.reply, talkReadAct(q.reply)) || "").split(/\r?\n/)[0].trim().slice(0, 240);
+        } catch {}
+        if (!/^great choice/i.test(line)) line = "";
+        return { ok: !!line, said: line || null };
+      }
       if (action === "favs" || action === "fav") {
         let list = [];
         try { list = talkParse((await talkStateGet(env, me, ["favorites"])).favorites) || []; } catch {}
@@ -68684,7 +68711,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -68703,7 +68730,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

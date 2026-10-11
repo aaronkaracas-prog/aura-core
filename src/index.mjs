@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.561.0-2026-10-10-the-whole-name";
+const BUILD = "aura-core-v9.562.0-2026-10-10-she-names-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61987,6 +61987,12 @@ export class PtaDurableObject {
     }
     if (pt.title && !pj.title) pj.title = String(pt.title).slice(0, 170); // whole name (v9.561) - the talk turn already ends a long one at a word
     if (pt.came_from && !pj.came_from) pj.came_from = String(pt.came_from).slice(0, 60);
+    // HER NAME FOR IT (2026-10-10, v9.562, Aaron): at lock-in Aura names the tattoo ("California Lowrider
+    // Queen"); that name replaces the title, and the description it was named from is kept as `about`
+    // for the "i" on the page.
+    if (pt.about && !pj.about) pj.about = String(pt.about).slice(0, 800);
+    if (pt.name_final) { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
+                         pj.title = String(pt.name_final).slice(0, 80); }
     if (pt.files) { pj.files = pt.files; pj.files_failed = false; }
     if (pt.details && typeof pt.details === "object" && !pj.details) pj.details = pt.details;
     if (pt.files_failed) pj.files_failed = String(pt.files_failed).slice(0, 200);
@@ -65322,6 +65328,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       let acted = null, agentVia = null, agentNote = null, _herTurn = null;
       // What she says after LOOKING at what she made (2026-09-20). See _lookAtResult.
       let _reaction = null;
+      let _herName = null;
       // What this turn costs, measured rather than estimated (2026-09-20). See costTapOpen.
       const _tap = costTapOpen();
       // Which rung answered, carried out of the block below so the extractor can see it. Null on the
@@ -66566,11 +66573,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const _ux = await proxyToAgent(env,
             "[They chose a design from our catalogue and are taking it exactly as it is - \"" +
             String(said || "").slice(0, 120) + "\". It is saved in My Tattoos and their artist's files are " +
-            "being made from it now; they land there in a few minutes. In one or two short lines, tell them.]",
+            "being made from it now; they land there in a few minutes. In one or two short lines, tell them." +
+            " Then, on a last line of its own, write NAME: and a short name for this tattoo - two to five" +
+            " words, the way a person would name it.]",
             false, me, null, world);
           if (_ux && _ux.reply && !_ux.failed) {
-            const _t = _verdict(_ux.reply, readAct(_ux.reply)).trim();
+            // HER NAME FOR IT (v9.562): read from her whole reply, then taken out of the line they see.
+            const _nm = String(_ux.reply).match(/\bNAME\s*:\s*["'*]*([^\n"*]{2,60})/i);
+            if (_nm) _herName = _nm[1].replace(/[\\"}\].,;:!]+$/g, "").trim().slice(0, 60) || null;
+            const _t = _verdict(_ux.reply, readAct(_ux.reply)).replace(/\s*\**NAME\s*:[^\n]*/ig, "").trim();
             if (_t) _reaction = _t.slice(0, 400);
+            try { console.log("[NAME] she named it: " + (_herName || "(no name in her reply)")); } catch {}
           }
         } catch {}
       }
@@ -67734,10 +67747,30 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 : (drew && drew.image && !drew.failed && !drew.for_the_artist)
                 ? (String(drew.asked || drew.changed || "").split(",")[0].trim().slice(0, 70) || null) : null,
               came_from: _cameFrom ? _cameFrom.id : null,
+              ...(_herName ? { name_final: _herName } : {}),
+              ...((opts && opts.name && String(opts.name).length > 60) ? { about: String(opts.name).slice(0, 800) } : {}),
               ...(act === "artist" ? { locked: true } : {}),
               ...((drew && drew.for_the_artist && !drew.pending && drew.image) ? { files: artistFilesOf(drew) } : {}),
             });
             await talkStatePut(env, me, "project", _pid);
+            // A LOCK-IN BY WORDS IS NAMED TOO (v9.562): the tap names it in her closing line; a typed
+            // "this is the one" has no such call, so she names it behind the reply - nobody waits.
+            if (act === "artist" && !_herName && typeof _waitUntil === "function" && lastDrawn && lastDrawn.image) {
+              const _pidN = _pid, _imgN = lastDrawn.image;
+              _waitUntil((async () => {
+                try {
+                  const q = await proxyToAgent(env, "[FOR YOU, NOT THEM. They just locked in the tattoo in this picture." +
+                    " Name it: two to five words, the way a person would name it. Reply with only the name.]",
+                    false, me, _imgN, world);
+                  const n = (q && q.reply && !q.failed) ? String(_verdict(q.reply, readAct(q.reply)) || "")
+                    .replace(/^\s*NAME\s*:\s*/i, "").split(/\r?\n/)[0].replace(/^["'*\s]+|["'*.\s]+$/g, "").slice(0, 60) : "";
+                  if (n && n.split(/\s+/).length <= 7) {
+                    await projectAppend(env, me, _pidN, { name_final: n });
+                    console.log("[NAME] she named it (behind the reply): " + n);
+                  }
+                } catch (e) { try { console.log("[NAME] naming failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+              })());
+            }
           }
           if (stage === "pta") {
             const _cmdAura = "PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({

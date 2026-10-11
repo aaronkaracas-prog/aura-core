@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.565.0-2026-10-11-aura-closes-the-session";
+const BUILD = "aura-core-v9.566.0-2026-10-11-a-name-not-a-status";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67806,6 +67806,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                   let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
                   const c = clean((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,60})/i) || [])[1]);
                   if (n && n.split(/\s+/).length > 7) n = "";
+                  // NOT A STATUS AS A NAME (2026-10-11, v9.566): MEASURED - a tattoo was titled "Locked In". A name
+                  // is what the tattoo is, never what just happened to it.
+                  if (n && /^(locked( in)?|your tattoo|tattoo|untitled|name|none|n\/a)$/i.test(n.trim())) n = "";
                   if (n || c) {
                     await projectAppend(env, me, _pidN, { ...(n ? { name_final: n } : {}), ...(c ? { details: { colour: c } } : {}) });
                   }

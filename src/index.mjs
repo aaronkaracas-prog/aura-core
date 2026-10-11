@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.562.0-2026-10-10-she-names-it";
+const BUILD = "aura-core-v9.563.0-2026-10-11-change-something-she-looks";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65215,7 +65215,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
            // MAKE IT MINE ASKS WHAT THEY WANT (2026-10-07, v9.539, Aaron).
            "If they haven't said what they want yet, tell them it's a great choice and ask what they want to do with it - " +
            "keep it exactly as it is, change a few things, or take the idea somewhere new. Don't ask where it goes or " +
-           "how big unless they bring it up.")
+           "how big unless they bring it up. " +
+           // CHANGE SOMETHING (2026-10-11, v9.563, Aaron): the button says they want a change and not which one.
+           "If they say they want to change something but not what, look at the design and suggest two or three " +
+           "specific changes that would suit it, then ask which they would like - nothing is drawn yet.")
         : "";
       // ══ SHE SEES WHAT SHE ALREADY SETTLED (2026-10-03, v9.520, Aaron) ═══════════════════════
       // MEASURED (pta_f5efe21c422b830d): she rewrote her brief from cold every turn because she was
@@ -65794,6 +65797,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         act = "use"; console.log("[PICK] their words keep it as it is - taken as it is, nothing redrawn");
       }
       if (opts && opts.use && refUrl && me) act = "use";
+      // CHANGE SOMETHING IS A QUESTION, NOT A DRAWING (2026-10-11, v9.563, Aaron). The page's button sends this
+      // one fixed sentence with the design; she looks and suggests, and nothing is drawn until they say what.
+      if (opts && opts.pick && refUrl && /^\s*i want to change something\.?\s*$/i.test(String(said || "")) && act !== "none") {
+        console.log("[PICK] Change Something - she suggests; nothing drawn (her act was " + act + ")"); act = "none";
+      }
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
       if (act === "artist" && !hasParent) act = "none";

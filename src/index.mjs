@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.566.0-2026-10-11-a-name-not-a-status";
+const BUILD = "aura-core-v9.567.0-2026-10-11-tester-feedback";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5911,6 +5911,57 @@ async function processCommand(line, env, isOp) {
     //   RUN "LOGS 07:12 07:20 raw"      one raw event per worker, to see the shape
     // Read only. Uses the cf_api_token the self-read already uses; if that token lacks the
     // "Workers Observability" read permission, Cloudflare's own answer is returned in plain words.
+    // ══ TESTERS AND THEIR FEEDBACK (2026-10-11, v9.567, Aaron) ═══════════════════════════════════
+    // "Give their feedback and link us to our logs." People Aaron hands mytattoo to are testers: the page
+    // gives them a Feedback button and a thumbs up/down on each of Aura's replies. Every note is kept with
+    // where they were, what Aura last said, their last lines, and the exact LOGS command for their turns.
+    //   RUN "TESTER ADD someone@gmail.com"   RUN "TESTER REMOVE someone@gmail.com"   RUN "TESTER LIST"
+    //   RUN "FEEDBACK"            newest 20      RUN "FEEDBACK 50"      RUN "FEEDBACK pta_..."  one person
+    case "TESTER": {
+      if (!isOp) return { cmd: "TESTER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const [tsSub, ...tsRest] = String(rest || "").trim().split(/\s+/);
+      let list = []; try { list = JSON.parse((await env.AURA_KV.get("config:testers")) || "[]"); } catch {}
+      if (!Array.isArray(list)) list = [];
+      const who = String(tsRest.join(" ") || "").trim().toLowerCase();
+      const sub = String(tsSub || "LIST").toUpperCase();
+      if ((sub === "ADD" || sub === "REMOVE") && !/@|^pta_/.test(who))
+        return { cmd: "TESTER", payload: { ok: false, error: "Usage: TESTER ADD someone@gmail.com  |  TESTER REMOVE ...  |  TESTER LIST" } };
+      if (sub === "ADD" && !list.includes(who)) list.push(who);
+      if (sub === "REMOVE") list = list.filter((x) => x !== who);
+      if (sub === "ADD" || sub === "REMOVE") await env.AURA_KV.put("config:testers", JSON.stringify(list));
+      return { cmd: "TESTER", payload: { ok: true, testers: list, count: list.length,
+        note: "A tester sees the Feedback button and the thumbs on Aura's replies the next time the page opens." } };
+    }
+    case "FEEDBACK": {
+      if (!isOp) return { cmd: "FEEDBACK", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fbA = String(rest || "").trim().split(/\s+/).filter(Boolean);
+      const fbN = Math.min(200, Math.max(1, parseInt(fbA.find((x) => /^\d+$/.test(x)) || "20", 10)));
+      const fbWho = fbA.find((x) => /^pta_/i.test(x)) || null;
+      const fbTz = (await env.AURA_KV.get("config:operator:tz").catch(() => null)) || "America/Los_Angeles";
+      const hm = (ms) => new Intl.DateTimeFormat("en-US", { timeZone: fbTz, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
+      const day = (ms) => new Intl.DateTimeFormat("en-CA", { timeZone: fbTz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+      const out = []; let cursor = undefined;
+      while (out.length < fbN) {
+        const pg = await env.AURA_KV.list({ prefix: "fb:", limit: 200, cursor }).catch(() => null);
+        if (!pg) break;
+        for (const k of pg.keys) {
+          if (out.length >= fbN) break;
+          let it = null; try { it = JSON.parse((await env.AURA_KV.get(k.name)) || "null"); } catch {}
+          if (!it || (fbWho && it.pta !== fbWho)) continue;
+          const at = Date.parse(it.at) || Date.now();
+          out.push({ when: day(at) + " " + hm(at), who: it.name || it.email || it.pta, email: it.email || null, pta: it.pta,
+            kind: it.kind, said: it.text || null, screen: it.screen || null, aura_said: it.line || null,
+            their_last_lines: it.recent || [], screenshot: it.shot || null, project: it.project || null,
+            device: it.ua ? String(it.ua).slice(0, 90) : null,
+            logs: day(at) === day(Date.now())
+              ? 'RUN "LOGS ' + hm(at - 10 * 60000) + " " + hm(at + 60000) + " core turns " + it.pta + '"'
+              : "older than today - LOGS reads today's times; their tattoo is in My Tattoos as " + (it.project || "?") });
+        }
+        if (pg.list_complete || !pg.cursor) break;
+        cursor = pg.cursor;
+      }
+      return { cmd: "FEEDBACK", payload: { ok: true, count: out.length, feedback: out } };
+    }
     case "LOGS": {
       const lgTok = await getSecret(env, "cf_api_token");
       const lgAcct = (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
@@ -5922,6 +5973,8 @@ async function processCommand(line, env, isOp) {
       const lgOnly = (lgA.find((x) => /^(core|think)$/i.test(x)) || "").toLowerCase();
       const lgAll = lgA.some((x) => /^all$/i.test(x));
       const lgTurns = lgA.some((x) => /^turns?$/i.test(x));
+      // ONE PERSON (2026-10-11, v9.567): a pta_ id keeps only lines naming them - every [TURN] line says who=.
+      const lgWho = lgA.find((x) => /^pta_[a-z0-9]+$/i.test(x)) || null;
       let lgNoFilter = false;
       // Routine platform entries (storage, KV, ledger, alarms) - dropped unless "all" is asked for.
       const lgNoise = /durable_object_storage|durable_object_subrequest|\bkv_(get|put|list|delete)\b|ledger\/record|jsRpcCall|jsrpc OK|PublicEntry\.(jsrpc|ping)|alarm OK|scheduled OK|internal\/health|\bfetch 200$|\b(GET|POST) 200$|GMT\+0000 \(Coordinated Universal Time\)/;
@@ -5993,6 +6046,7 @@ async function processCommand(line, env, isOp) {
           text = String(text).replace(/\s+/g, " ").slice(0, 600);
           if (!lgAll && lgNoise.test(text)) continue;
           if (lgTurns && !/^\[TURN\]/.test(text)) continue;
+          if (lgWho && !text.includes(lgWho)) continue;
           lgLines.push({ t: ts, line: lgFmt(ts) + "  " + short.padEnd(5) + lvl + " " + text + wall });
         }
       }
@@ -67844,7 +67898,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         console.log("[TURN] " + _sec(phase_ms.total) + " · think " + _sec(_thk) + " x" + _st.think.length +
           (_st.think.length ? " (" + _st.think.map((x) => x.why + " " + _sec(x.ms) + (x.failed ? " FAILED" : "")).join(", ") + ")" : "") +
           " · " + _ph + " · act=" + act + " · drew=" + (drew ? (drew.failed ? "failed" : drew.for_the_artist ? ("artist-files" + (drew.pending ? " (being made)" : "")) : drew.image ? "yes" : "no") : "no") +
-          (act === "artist" ? " · LOCKED" : "") + " · said: " + (String(saidIn || "").trim() ? "\"" + String(saidIn).slice(0, 60).replace(/\s+/g, " ") + "\"" : "(no words" + ((opts && opts.ref) ? ", a photo" : "") + ")"));
+          (act === "artist" ? " · LOCKED" : "") + (me ? " · who=" + me : "") + " · said: " + (String(saidIn || "").trim() ? "\"" + String(saidIn).slice(0, 60).replace(/\s+/g, " ") + "\"" : "(no words" + ((opts && opts.ref) ? ", a photo" : "") + ")"));
       } catch {}
       return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,
                ...(_herTurn ? { her_turn: _herTurn } : {}),
@@ -68511,10 +68565,10 @@ export class PublicEntry extends WorkerEntrypoint {
       // Only a PTA counts. An old guest session from `hello` (an ent_ lead) is not signed in.
       // PUBLIC is what the page SHOWS - the catalogue, its tiles, the list of styles. Everything that
       // DOES something - talk, a photo, a drawing, a style, saving - needs the person.
-      let me = null;
+      let me = null, meWho = null;
       if (b.session) {
         const who = await this._whoIs(String(b.session));
-        if (who?.pta && /^pta_/.test(who.pta) && !isFallbackIdentity(who)) me = who.pta;
+        if (who?.pta && /^pta_/.test(who.pta) && !isFallbackIdentity(who)) { me = who.pta; meWho = who; }
       }
       const stage = me ? "pta" : null;
       const PUBLIC = new Set(["catalog", "finishes", "tiles", "row"]);
@@ -68594,6 +68648,36 @@ export class PublicEntry extends WorkerEntrypoint {
       // ══ SHE SEES WHAT THEY CHOSE (2026-10-11, v9.565, Aaron + GPT) ═══════════════════════════
       // "Choose This Design" shows its two buttons at once; this is her line about THAT design, which the
       // page puts above them when it arrives. She looks at the picture; nothing is drawn or saved.
+      // ══ TESTERS (2026-10-11, v9.567, Aaron) - see TESTER / FEEDBACK. ═══════════════════════════════
+      const _email = (meWho && /^email:/i.test(String(meWho.identity || ""))) ? String(meWho.identity).slice(6).toLowerCase() : null;
+      if (action === "tester") {
+        let list = []; try { list = JSON.parse((await env.AURA_KV.get("config:testers")) || "[]"); } catch {}
+        return { ok: true, tester: Array.isArray(list) && (list.includes(String(me).toLowerCase()) || (!!_email && list.includes(_email))) };
+      }
+      if (action === "feedback") {
+        const kind = ["note", "up", "down"].includes(String(b.kind)) ? String(b.kind) : "note";
+        const text = String(b.text || "").trim().slice(0, 3000);
+        if (kind === "note" && !text && !b.shot) return { ok: false, error: "EMPTY" };
+        let shot = null;
+        if (/^data:image\//i.test(String(b.shot || ""))) {
+          const b64 = String(b.shot).replace(/^data:[^,]+,/, "");
+          if (b64.length * 0.75 <= 6 * 1024 * 1024) {
+            const id = "img_fb" + Array.from(crypto.getRandomValues(new Uint8Array(9))).map((x) => x.toString(16).padStart(2, "0")).join("");
+            await env.AURA_KV.put("image:" + id, b64, { expirationTtl: 180 * 86400 });
+            shot = "https://" + (await imageHost(env)) + "/image/" + id;
+          }
+        }
+        const recent = (Array.isArray(b.recent) ? b.recent : []).slice(-10)
+          .map((x) => (x && x.who ? String(x.who) : "?") + ": " + String((x && x.said) || "").slice(0, 300));
+        const now = Date.now();
+        const key = "fb:" + String(9999999999999 - now).padStart(13, "0") + ":" + Math.random().toString(36).slice(2, 8);
+        await env.AURA_KV.put(key, JSON.stringify({ at: new Date(now).toISOString(), pta: me, email: _email,
+          name: (meWho && meWho.name) || null, kind, text: text || null, screen: String(b.screen || "").slice(0, 120) || null,
+          project: String(b.project || "").slice(0, 60) || null, line: String(b.line || "").slice(0, 800) || null,
+          recent, shot, ua: String(b.ua || "").slice(0, 200) || null, ver: String(b.ver || "").slice(0, 40) || null }));
+        console.log("[FEEDBACK] " + kind + " from " + (_email || me) + (text ? ": " + text.slice(0, 160) : ""));
+        return { ok: true };
+      }
       if (action === "react") {
         const url = String(b.url || "").trim().slice(0, 300);
         if (!/^https:\/\//i.test(url)) return { ok: false, error: "BAD_URL" };

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.567.0-2026-10-11-tester-feedback";
+const BUILD = "aura-core-v9.568.0-2026-10-11-tester-by-any-identity";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -68652,7 +68652,21 @@ export class PublicEntry extends WorkerEntrypoint {
       const _email = (meWho && /^email:/i.test(String(meWho.identity || ""))) ? String(meWho.identity).slice(6).toLowerCase() : null;
       if (action === "tester") {
         let list = []; try { list = JSON.parse((await env.AURA_KV.get("config:testers")) || "[]"); } catch {}
-        return { ok: true, tester: Array.isArray(list) && (list.includes(String(me).toLowerCase()) || (!!_email && list.includes(_email))) };
+        if (!Array.isArray(list)) list = [];
+        let hit = list.includes(String(me).toLowerCase()) || (!!_email && list.includes(_email));
+        // THE EMAIL MAY NOT BE THE SESSION'S OWN KEY (2026-10-11, v9.568): MEASURED - Aaron, on the list by
+        // email, saw no button; a Google sign-in's session can carry another identity. Any email on the list
+        // that the identity index ties to this person counts.
+        const _keys = list.filter((x) => x.includes("@")).map((x) => "email:" + x);
+        if (!hit && _keys.length) {
+          try {
+            const r = await env.AURA_MEMORY.prepare("SELECT 1 AS y FROM pta_identity_index WHERE pta_id = ? AND lower(identity_key) IN (" +
+              _keys.map(() => "?").join(",") + ") LIMIT 1").bind(me, ..._keys).first();
+            hit = !!r;
+          } catch {}
+        }
+        console.log("[TESTER] " + me + " (" + ((meWho && meWho.identity) || "?") + ") -> " + (hit ? "tester" : "not a tester"));
+        return { ok: true, tester: hit };
       }
       if (action === "feedback") {
         const kind = ["note", "up", "down"].includes(String(b.kind)) ? String(b.kind) : "note";

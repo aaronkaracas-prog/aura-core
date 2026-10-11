@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.563.0-2026-10-11-change-something-she-looks";
+const BUILD = "aura-core-v9.564.0-2026-10-11-ask-before-locking";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63888,7 +63888,11 @@ async function recordArtistFiles(env, d, drew) {
       const _cur = String(_st.project || "").replace(/^"|"$/g, "");
       const _bf = talkParse(_st.brief);
       if ((!_cur || _cur === String(d.project)) && _bf && typeof _bf === "object") {
-        const _s = (v, n) => (v == null || v === "") ? null : String(Array.isArray(v) ? v.join(", ") : v).slice(0, n);
+        // NOT THE FORM'S OWN WORDS (2026-10-11, v9.564): MEASURED - a catalogue lock-in stored "where on the body,
+        // only if they said" and "japanese | realism | fine line | ..." - the brief's field descriptions, never answers.
+        const _tmpl = (x) => /\s\|\s|only if they said|why they are getting it|who it is for/i.test(x);
+        const _s = (v, n) => { if (v == null || v === "") return null; const t = String(Array.isArray(v) ? v.join(", ") : v);
+                               return _tmpl(t) ? null : t.slice(0, n); };
         _details = { style: _s(_bf.style, 60), placement: _s(_bf.placement, 60), size: _s(_bf.size, 40),
                      colour: _s(_bf.colour || _bf.color, 40), notes: _s(_bf.meaning, 300), subject: _s(_bf.subject, 200),
                      // What kind of job it was - new, add, cover, rework (2026-10-08, v9.543): only a new
@@ -65351,7 +65355,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // (`_reaction`, the USE THIS ONE branch near the end) and never shown. On `use` she is not asked
       // to reply here; she still writes the line they see, told exactly what happened, in that
       // later call (~6 s). Nothing else about a typed turn changes.
-      const _tapKeep = !!(opts && opts.use && refUrl && me);
+      // A CONFIRMED LOCK-IN (v9.564) is a tap too: "Yes, Lock It In" on the page's card.
+      const _tapKeep = !!(me && opts && ((opts.use && refUrl) || opts.lock));
       if (_tapKeep) { try { console.log("[USE] a tap on Keep It Like This - her reply comes after the files start, not before"); } catch {} }
       if (me && !_tapKeep) {
         try {
@@ -66005,6 +66010,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // asks whether they want it as it is or changed." Locking in finishes the tattoo, so it stands
       // only when THEIR words say it is the one (the same test the lock above uses) - never on her
       // reading of a first look. Held, she is asked to reply again without locking anything in.
+      // ══ "YES, LOCK IT IN" (2026-10-11, v9.564, Aaron) ════════════════════════════════════════
+      // The page asked first (the card below); this is their yes. A drawn design on screen is locked in.
+      if (opts && opts.lock && !opts.use && me && hasParent && act !== "artist") {
+        act = "artist"; _lockedByWords = true;
+        console.log("[LOCK] they confirmed on the card - artist files");
+      }
       let _heldArtist = false;
       try {
         if (act === "artist" && !_lockedByWords && !(opts && opts.use) && !_saysTheOne(said) && !_yesToTheOne(said)) {
@@ -66029,7 +66040,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       // Her line was written for a turn of talk - usually a question. It is redone once, knowing the
       // files are being made, so she closes it out in her own words instead of asking again.
-      if (_lockedByWords && typeof agentLine === "string" && agentLine) {
+      // ══ ASK BEFORE LOCKING IN (2026-10-11, v9.564, Aaron) ═══════════════════════════════════
+      // MEASURED on the phone: "That's very pretty I like that one" - she answered "So is this the one?" while
+      // the files were already being made, and then the screen moved away. Locking in ends the design
+      // session for that tattoo, so nothing locks until they say yes on the page's card ("Ready to make it
+      // yours?"). Their words or her choice that it is the one bring the card up instead of the files.
+      let _confirmLock = null;
+      if (act === "artist" && me && !(opts && opts.lock)) {
+        _confirmLock = (_usedPick || (opts && opts.pick)) ? "pick" : "design";
+        act = "none"; _lockedByWords = false; _usedPick = false;
+        acted.say = "I love this one.";
+        for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = acted.say; break; } }
+        if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
+        console.log("[LOCK] asking them first - the card, not the files (" + _confirmLock + ")");
+      }
+      if (_lockedByWords && !(opts && opts.lock) && typeof agentLine === "string" && agentLine) {
         try {
           const _shape = "\n\n(Reply with the JSON object. No prose.)";
           const _base = agentLine.endsWith(_shape) ? agentLine.slice(0, -_shape.length) : agentLine;
@@ -67826,6 +67851,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                ...(agentNote && !agentVia ? { agent_note: agentNote } : {}),
                remembering: me ? tline.length : 0,
                ...(_hotPicks ? { hot: _hotPicks } : {}),
+               ...(_confirmLock ? { confirm_lock: _confirmLock } : {}),
                ...(_cameFrom ? { came_from: _cameFrom.id } : {}),
                ...(_pid ? { project: _pid } : {}),
                kept: stage === "pta",
@@ -68658,7 +68684,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -68677,7 +68703,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

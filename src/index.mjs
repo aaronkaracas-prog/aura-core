@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.568.0-2026-10-11-tester-by-any-identity";
+const BUILD = "aura-core-v9.569.0-2026-10-11-test-mode";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5931,6 +5931,17 @@ async function processCommand(line, env, isOp) {
       if (sub === "ADD" || sub === "REMOVE") await env.AURA_KV.put("config:testers", JSON.stringify(list));
       return { cmd: "TESTER", payload: { ok: true, testers: list, count: list.length,
         note: "A tester sees the Feedback button and the thumbs on Aura's replies the next time the page opens." } };
+    }
+    // TEST MODE (2026-10-11, v9.569, Aaron): "put the whole entire asset in test mode". While it is ON,
+    // everyone who signs in is a tester - no emails to collect. RUN "TESTMODE ON" | "TESTMODE OFF" | "TESTMODE"
+    case "TESTMODE": {
+      if (!isOp) return { cmd: "TESTMODE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tmSub = String(rest || "").trim().toUpperCase();
+      if (tmSub === "ON" || tmSub === "OFF") await env.AURA_KV.put("config:testmode", tmSub === "ON" ? "on" : "off");
+      const tmNow = (await env.AURA_KV.get("config:testmode")) === "on";
+      return { cmd: "TESTMODE", payload: { ok: true, testmode: tmNow ? "ON" : "OFF",
+        note: tmNow ? "Everyone who signs in gets the comment button in the chat box. RUN \"TESTMODE OFF\" to end it."
+                    : "Only people on the TESTER list get the comment button." } };
     }
     case "FEEDBACK": {
       if (!isOp) return { cmd: "FEEDBACK", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -68653,19 +68664,12 @@ export class PublicEntry extends WorkerEntrypoint {
       if (action === "tester") {
         let list = []; try { list = JSON.parse((await env.AURA_KV.get("config:testers")) || "[]"); } catch {}
         if (!Array.isArray(list)) list = [];
-        let hit = list.includes(String(me).toLowerCase()) || (!!_email && list.includes(_email));
-        // THE EMAIL MAY NOT BE THE SESSION'S OWN KEY (2026-10-11, v9.568): MEASURED - Aaron, on the list by
-        // email, saw no button; a Google sign-in's session can carry another identity. Any email on the list
-        // that the identity index ties to this person counts.
-        const _keys = list.filter((x) => x.includes("@")).map((x) => "email:" + x);
-        if (!hit && _keys.length) {
-          try {
-            const r = await env.AURA_MEMORY.prepare("SELECT 1 AS y FROM pta_identity_index WHERE pta_id = ? AND lower(identity_key) IN (" +
-              _keys.map(() => "?").join(",") + ") LIMIT 1").bind(me, ..._keys).first();
-            hit = !!r;
-          } catch {}
-        }
-        console.log("[TESTER] " + me + " (" + ((meWho && meWho.identity) || "?") + ") -> " + (hit ? "tester" : "not a tester"));
+        // v9.569: identities are stored hashed (h:v2:...), so an email on the list can never match a sign-in
+        // (MEASURED 2026-10-11) - the v9.568 identity-index lookup is removed. TEST MODE ON makes everyone a tester;
+        // otherwise the list is matched by PTA.
+        const testmode = (await env.AURA_KV.get("config:testmode")) === "on";
+        const hit = testmode || list.includes(String(me).toLowerCase()) || (!!_email && list.includes(_email));
+        console.log("[TESTER] " + me + " -> " + (hit ? (testmode ? "tester (test mode)" : "tester") : "not a tester"));
         return { ok: true, tester: hit };
       }
       if (action === "feedback") {

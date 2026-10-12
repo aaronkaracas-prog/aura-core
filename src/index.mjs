@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.571.0-2026-10-12-fit-128k-card-on-hold";
+const BUILD = "aura-core-v9.572.0-2026-10-12-ideas-keepalive-recover";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63670,6 +63670,7 @@ function talkReadAct(txt) {
              // field in her contract is useless until it survives this line.
              ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 2000) : "",
              words: typeof o.words === "string" ? o.words.trim().slice(0, 2000) : "",
+             ideas: strList(o.ideas, 4, 160).map((x) => x.replace(/\*\*/g, "")),
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
              // first version of this field took that name, and the duplicate key silently lost.
              lines: Array.isArray(o.lines) ? o.lines.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
@@ -64734,6 +64735,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "{\n" +
         '  "say": "what you say to them - short, human, no machine words",\n' +
         '  "do": "draw | change | artist | none",\n' +
+        // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
+        // as a small card under her words; a tap sends it to her as if they had typed it.
+        '  "ideas": ["optional - when you offer them ideas, put each one here instead of in say: a short title, a dash, one short line. Two to four of them. They tap one to choose it."],\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:
@@ -67974,7 +67978,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           " · " + _ph + " · act=" + act + " · drew=" + (drew ? (drew.failed ? "failed" : drew.for_the_artist ? ("artist-files" + (drew.pending ? " (being made)" : "")) : drew.image ? "yes" : "no") : "no") +
           (act === "artist" ? " · LOCKED" : "") + (me ? " · who=" + me : "") + " · said: " + (String(saidIn || "").trim() ? "\"" + String(saidIn).slice(0, 60).replace(/\s+/g, " ") + "\"" : "(no words" + ((opts && opts.ref) ? ", a photo" : "") + ")"));
       } catch {}
+      // THE LAST TURN, KEPT FOR A PAGE THAT LOST THE CONNECTION (2026-10-12, v9.572). MEASURED 06:45: a 128s turn
+      // drew the picture and the phone showed "I could not answer that". The page asks for this by its turn id.
+      if (me && opts && opts.tid) {
+        try {
+          await talkStatePut(env, me, "lastturn", JSON.stringify({ tid: String(opts.tid).slice(0, 40), at: new Date().toISOString(),
+            ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
+            ideas: (acted.ideas && acted.ideas.length) ? acted.ideas : null,
+            brief: (brief && brief.subject) ? { subject: brief.subject } : null,
+            drew: drew ? { image: drew.image || null, design: drew.design || null, changed: drew.changed || null,
+              for_the_artist: !!drew.for_the_artist, pending: !!drew.pending, four_directions: !!drew.four_directions,
+              on_me: !!drew.on_me, failed: !!drew.failed } : null }));
+        } catch {}
+      }
       return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,
+               ...((acted.ideas && acted.ideas.length) ? { ideas: acted.ideas } : {}),
                ...(_herTurn ? { her_turn: _herTurn } : {}),
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),
@@ -68759,6 +68777,13 @@ export class PublicEntry extends WorkerEntrypoint {
         console.log("[FEEDBACK] " + kind + " from " + (_email || me) + (text ? ": " + text.slice(0, 160) : ""));
         return { ok: true };
       }
+      // A TURN THE PAGE LOST (v9.572): the finished turn, by the id the page sent with it.
+      if (action === "talklast") {
+        const tid = String(b.tid || "").slice(0, 40);
+        let lt = null; try { lt = talkParse((await talkStateGet(env, me, ["lastturn"])).lastturn); } catch {}
+        if (tid && lt && lt.tid === tid) return { ok: true, done: true, turn: lt };
+        return { ok: true, done: false };
+      }
       if (action === "react") {
         const url = String(b.url || "").trim().slice(0, 300);
         if (!/^https:\/\//i.test(url)) return { ok: false, error: "BAD_URL" };
@@ -68879,7 +68904,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -68890,6 +68915,10 @@ export class PublicEntry extends WorkerEntrypoint {
         const _w = writable.getWriter();
         const _enc = new TextEncoder();
         const _send = async (frame) => { try { await _w.write(_enc.encode(frame)); } catch { /* reader gone */ } };
+        // NEVER QUIET FOR LONG (2026-10-12, v9.572). MEASURED 06:45: 96s of drawing with nothing sent, and the
+        // connection was dropped at about 100s of silence. A comment line every 15s keeps it open; the page
+        // ignores it.
+        const _hb = setInterval(() => { _send(": still working\n\n"); }, 15000);
         const _pump = (async () => {
           let out;
           try {
@@ -68898,6 +68927,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
+              tid: b.tid ? String(b.tid).slice(0, 40) : null,
               from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
@@ -68910,6 +68940,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // field the page acts on - intent, brief, ready_to_draw, show_me, the drawn image - rides
           // here, so a page that missed every delta still behaves exactly as it does today.
           if (_ref && out && typeof out === "object") out = { ...out, ref: _ref };
+          clearInterval(_hb);
           await _send("event: final\ndata: " + JSON.stringify(out || { ok: false }) + "\n\n");
           try { await _w.close(); } catch { /* already closed */ }
         })();

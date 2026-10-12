@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.570.0-2026-10-12-dated-logs-auto-read";
+const BUILD = "aura-core-v9.571.0-2026-10-12-fit-128k-card-on-hold";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62001,6 +62001,10 @@ async function captureAisHistory(env) {
 //   metadata: "encrypted"
 // }
 
+// A Durable Object value may be at most 128 KiB (131,072 bytes). Kept a little under it.
+const DO_VALUE_MAX = 126000;
+function _doBytes(v) { try { return new TextEncoder().encode(typeof v === "string" ? v : JSON.stringify(v)).length; } catch { return 0; } }
+
 export class PtaDurableObject {
   state;
   storage;
@@ -62047,6 +62051,14 @@ export class PtaDurableObject {
 
   async talkPut(entries) {
     const e = (entries && typeof entries === "object") ? entries : {};
+    // ONE VALUE IS AT MOST 128 KiB (2026-10-12, v9.571). MEASURED: "Values cannot be larger than 131072 bytes"
+    // ended Aaron's turns after the work was done - the photo turn and the sunflower picture were made and
+    // saved nowhere the page could get them, so the phone said "failed". A value too big is named in the log
+    // and left out; the rest is still written.
+    for (const k of Object.keys(e)) {
+      const n = _doBytes(e[k]);
+      if (n > DO_VALUE_MAX) { console.log("[DO] too big to keep: " + k + " " + n + " bytes - left out"); delete e[k]; }
+    }
     if (Object.keys(e).length) await this.storage.put(e);
     return { ok: true };
   }
@@ -62100,7 +62112,15 @@ export class PtaDurableObject {
       if (pj.on_me.length > 30) pj.on_me = pj.on_me.slice(-30);
     }
     pj.updated = now;
-    await this.storage.put(key, JSON.stringify(pj));
+    // Kept under the 128 KiB a value may be (v9.571): the oldest lines go first, then the oldest pictures.
+    let _pjs = JSON.stringify(pj);
+    while (_doBytes(_pjs) > DO_VALUE_MAX && (pj.lines.length > 10 || pj.pictures.length > 6)) {
+      if (pj.lines.length > 10) pj.lines = pj.lines.slice(Math.ceil(pj.lines.length / 4));
+      else pj.pictures = pj.pictures.slice(1);
+      _pjs = JSON.stringify(pj);
+    }
+    if (_doBytes(_pjs) > DO_VALUE_MAX) { console.log("[DO] project still too big: " + id + " " + _doBytes(_pjs) + " bytes"); pj.lines = pj.lines.slice(-4); _pjs = JSON.stringify(pj); }
+    await this.storage.put(key, _pjs);
     let idx = []; try { idx = JSON.parse((await this.storage.get("talk-proj:index")) || "[]") || []; } catch {}
     if (!Array.isArray(idx)) idx = [];
     idx = idx.filter((e) => e && e.id !== id);
@@ -62108,11 +62128,20 @@ export class PtaDurableObject {
       // The card shows the tattoo, never a look at it on them (2026-10-08, v9.544).
       cover: (pj.pictures.filter((x) => x && !x.on_me).slice(-1)[0] || pj.pictures[pj.pictures.length - 1] || {}).image || null,
       count: pj.pictures.length, has_files: !!pj.files, files_failed: pj.files ? null : (pj.files_failed || null) });
-    await this.storage.put("talk-proj:index", JSON.stringify(idx.slice(0, 200)));
+    let _ix = idx.slice(0, 200), _ixs = JSON.stringify(_ix);
+    while (_doBytes(_ixs) > DO_VALUE_MAX && _ix.length > 20) { _ix = _ix.slice(0, _ix.length - 20); _ixs = JSON.stringify(_ix); }
+    await this.storage.put("talk-proj:index", _ixs);
     if (Array.isArray(pt.pictures) && pt.pictures.length) {
       let bd = {}; try { bd = JSON.parse((await this.storage.get("talk-proj:by-design")) || "{}") || {}; } catch {}
       for (const x of pt.pictures) if (x && x.design) bd[x.design] = id;
-      await this.storage.put("talk-proj:by-design", JSON.stringify(bd));
+      let _bds = JSON.stringify(bd);
+      if (_doBytes(_bds) > DO_VALUE_MAX) {   // oldest designs first (kept in the order they were added)
+        const ks = Object.keys(bd); const drop = Math.ceil(ks.length / 3);
+        for (const k of ks.slice(0, drop)) delete bd[k];
+        _bds = JSON.stringify(bd);
+        console.log("[DO] by-design map trimmed by " + drop + " oldest designs");
+      }
+      await this.storage.put("talk-proj:by-design", _bds);
     }
     return { ok: true, id, pictures: pj.pictures.length, locked: !!pj.locked };
   }
@@ -62146,7 +62175,13 @@ export class PtaDurableObject {
     for (const x of incoming) m.set(key(x), x);
     let all = [...m.values()].sort((a, b) => String((a && a.ts) || "").localeCompare(String((b && b.ts) || "")));
     if (all.length > 60) all = all.slice(-60);
-    await this.storage.put("talk-state:timeline", JSON.stringify(all));
+    // Under 128 KiB (v9.571): the oldest lines go first. MEASURED 131,140-131,554 bytes on Aaron's account.
+    let _ts = JSON.stringify(all);
+    const _was = all.length;
+    while (_doBytes(_ts) > DO_VALUE_MAX && all.length > 6) { all = all.slice(Math.max(1, Math.floor(all.length / 6))); _ts = JSON.stringify(all); }
+    if (all.length !== _was) console.log("[DO] timeline kept to the newest " + all.length + " lines (" + _doBytes(_ts) + " bytes)");
+    if (_doBytes(_ts) > DO_VALUE_MAX) { console.log("[DO] timeline still too big: " + _doBytes(_ts) + " bytes - not saved"); return { ok: false, error: "TOO_BIG" }; }
+    await this.storage.put("talk-state:timeline", _ts);
     return { ok: true, lines: all.length };
   }
 
@@ -66142,6 +66177,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // session for that tattoo, so nothing locks until they say yes on the page's card ("Ready to make it
       // yours?"). Their words or her choice that it is the one bring the card up instead of the files.
       let _confirmLock = null;
+      // HELD IS THE CARD TOO (2026-10-12, v9.571, Aaron: "the Lock It In card every time - no word locks it on its
+      // own"). MEASURED 05:55: "Go" - she chose the files, core held them and she was asked again in words, but no
+      // card came. When she thinks it is the one and they have not said so, they get the card.
+      if (_heldArtist && me && !(opts && opts.lock)) _confirmLock = (_usedPick || (opts && opts.pick)) ? "pick" : "design";
       if (act === "artist" && me && !(opts && opts.lock)) {
         _confirmLock = (_usedPick || (opts && opts.pick)) ? "pick" : "design";
         act = "none"; _lockedByWords = false; _usedPick = false;

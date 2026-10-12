@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.569.0-2026-10-11-test-mode";
+const BUILD = "aura-core-v9.570.0-2026-10-12-dated-logs-auto-read";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5964,9 +5964,8 @@ async function processCommand(line, env, isOp) {
             kind: it.kind, said: it.text || null, screen: it.screen || null, aura_said: it.line || null,
             their_last_lines: it.recent || [], screenshot: it.shot || null, project: it.project || null,
             device: it.ua ? String(it.ua).slice(0, 90) : null,
-            logs: day(at) === day(Date.now())
-              ? 'RUN "LOGS ' + hm(at - 10 * 60000) + " " + hm(at + 60000) + " core turns " + it.pta + '"'
-              : "older than today - LOGS reads today's times; their tattoo is in My Tattoos as " + (it.project || "?") });
+            // v9.570: the link carries its DATE, so it works on any later day while Cloudflare keeps the logs.
+            logs: 'RUN "LOGS ' + day(at - 10 * 60000) + " " + hm(at - 10 * 60000) + " " + hm(at + 60000) + " core turns " + it.pta + '"' });
         }
         if (pg.list_complete || !pg.cursor) break;
         cursor = pg.cursor;
@@ -5993,6 +5992,10 @@ async function processCommand(line, env, isOp) {
       const lgParts = (d) => { const o = {}; for (const p of new Intl.DateTimeFormat("en-US", { timeZone: lgTz, hourCycle: "h23",
         year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(d)) o[p.type] = p.value; return o; };
       const lgNow = new Date(), lgP = lgParts(lgNow);
+      // A DATE (2026-10-12, v9.570): "LOGS 2026-10-11 11:36 11:47" reads that day. Without one the times are
+      // today's - which is why a feedback link from yesterday came back empty this morning.
+      const lgDate = lgA.find((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+      if (lgDate) { const [dy, dm, dd] = lgDate.split("-"); lgP.year = dy; lgP.month = dm; lgP.day = dd; }
       const lgAt = (hm) => {
         const [h, mi] = hm.split(":").map(Number);
         const guess = Date.UTC(+lgP.year, +lgP.month - 1, +lgP.day, h, mi, 0);
@@ -61726,6 +61729,24 @@ async function crawlWatchLog(env, line) {
   log.push({ at: new Date().toISOString(), ...line });
   await env.AURA_KV.put("crawl:watch:log", JSON.stringify(log.slice(-100))).catch(() => {});
 }
+// READ FOLLOWS THE CRAWL (2026-10-12, v9.570, Aaron: "go"). When a state's crawl chain ends, its read starts
+// here, watched like any other run - so the queue's next state waits until this one is crawled AND read.
+// A state with nothing left to read starts nothing.
+async function crawlStartRead(env, st, next) {
+  const cmdR = "CG_ENRICH_BATCH READ STATE " + st + " 1000";
+  let r = null;
+  try { r = await processCommand(cmdR + " NOREG", env, true); }
+  catch (e) { r = { payload: { ok: false, error: String(e?.message ?? e) } }; }
+  const p = (r && r.payload) ? r.payload : r;
+  if (p && p.ok && p.started) {
+    next.push({ id: p.started, cmd: cmdR, mode: "read", until: false, started: new Date().toISOString(), restarts: 0, chain: 1 });
+    await crawlWatchLog(env, { did: "read started", state: st, new_id: p.started, shops: p.shops });
+  } else if (p && p.ok) {
+    await crawlWatchLog(env, { did: "read skipped", state: st, why: "nothing left to read" });
+  } else {
+    await crawlWatchLog(env, { did: "read could not start", state: st, error: p && p.error });
+  }
+}
 async function watchCrawlBatches(env) {
   try {
     if (!env.GRID_CRAWL_WORKFLOW) return;
@@ -61769,6 +61790,8 @@ async function watchCrawlBatches(env) {
         await crawlWatchLog(env, { id: b.id, did: "restarted", why, new_id: p.started, shops: p.shops, cmd: b.cmd });
       } else if (p && p.ok && !p.shops) {
         await crawlWatchLog(env, { id: b.id, did: "done", why: "nothing left to do", cmd: b.cmd });
+        const doneSt = b.mode !== "read" && String(b.cmd || "").match(/\bSTATE\s+([A-Z]{2})\b/i);
+        if (doneSt) await crawlStartRead(env, doneSt[1].toUpperCase(), next);
       } else {
         next.push(b);   // could not start - try again on the next tick
         await crawlWatchLog(env, { id: b.id, did: "restart failed", why, error: p && p.error, cmd: b.cmd });
@@ -61795,6 +61818,7 @@ async function watchCrawlBatches(env) {
         } else if (pq && pq.ok && !pq.shops) {
           await env.AURA_KV.put("crawl:queue", JSON.stringify(q.slice(1))).catch(() => {});
           await crawlWatchLog(env, { did: "state skipped", state: st, why: "nothing left to crawl" });
+          await crawlStartRead(env, st, next);   // crawled before - read anything not read yet
         } else {
           await crawlWatchLog(env, { did: "state could not start", state: st, error: pq && pq.error });
         }

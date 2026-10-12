@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.580.0-2026-10-12-four-ideas-last-different";
+const BUILD = "aura-core-v9.581.0-2026-10-12-no-favourite-ink-on-skin";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64757,11 +64757,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "{\n" +
         // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
         // so the floor and her live agent cannot disagree.
-        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to give them some ideas, or to hear their own; don\'t give the ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; the first is the one you\'d pick, and say why in one sentence. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
+        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to give them some ideas, or to hear their own; don\'t give the ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
-        '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\'; the first is the one you\'d pick; the fourth is something completely different - a direction they would never have thought of"],\n' +
+        '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\'; the fourth is something completely different - a direction they would never have thought of"],\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:

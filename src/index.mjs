@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.581.0-2026-10-12-no-favourite-ink-on-skin";
+const BUILD = "aura-core-v9.582.0-2026-10-12-picture-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64825,7 +64825,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         '    "size": "how big, only if they said",\n' +
         '    "elements": ["cherry blossoms","waves"],\n' +
         '    "meaning": "why they are getting it - who it is for, what happened",\n' +
-        '    "brief": "one paragraph, at most 60 words: everything decided so far - where it goes, what it is, colour - this is what the picture is drawn from. Do not describe what is already in their photo; the picture model can see it"\n' +
+        '    "brief": "what the picture is drawn from - everything decided so far, written the way PICTURE WORDS in your craft says: what to add, where it goes on their body, how it looks - plain words in their voice, no imagery, story or meaning, nothing that is not ink on their skin; at most 40 words. Do not describe what is already in their photo; the picture model can see it"\n' +
         "  }\n" +
         "}\n\n" +
         // ══ THE DISCUSSION DECIDES WHEN, NOT YOU (2026-09-08) ════════════════════════════════
@@ -65634,7 +65634,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             '  "size": "how big, only if they said",\n' +
             '  "elements": ["cherry blossoms","waves"],\n' +
             '  "meaning": "why they are getting it - who it is for, what happened",\n' +
-            '  "brief": "one paragraph, at most 60 words: everything decided so far - where it goes, what it is, colour - this is what the picture is drawn from. Do not describe what is already in their photo; the picture model can see it"\n' +
+            '  "brief": "what the picture is drawn from - everything decided so far, written the way PICTURE WORDS in your craft says: what to add, where it goes on their body, how it looks - plain words in their voice, no imagery, story or meaning, nothing that is not ink on their skin; at most 40 words. Do not describe what is already in their photo; the picture model can see it"\n' +
             "}\n\n" +
             (carried ? "WHAT IS ALREADY SETTLED - carry every one of these forward unless this " +
               "message CHANGES it:\n" + carried + "\n\n" : "") +

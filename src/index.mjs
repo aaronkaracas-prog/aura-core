@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.577.0-2026-10-12-read-where-it-can-grow";
+const BUILD = "aura-core-v9.578.0-2026-10-12-turn-story-logs";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6021,7 +6021,7 @@ async function processCommand(line, env, isOp) {
       const lgLines = [], lgOut = {};
       for (const [short, script] of lgWorkers) {
         const body = { queryId: "aura-logs-" + Date.now(), timeframe: { from: lgFrom, to: lgTo }, view: "events", limit: 1000,
-          parameters: { filters: [{ key: "$workers.scriptName", operation: "eq", type: "string", value: script }].concat(lgTurns && !lgNoFilter ? [{ key: "$metadata.message", operation: "includes", type: "string", value: "[TURN]" }] : []),
+          parameters: { filters: [{ key: "$workers.scriptName", operation: "eq", type: "string", value: script }].concat(lgTurns && !lgNoFilter ? [{ key: "$metadata.message", operation: "includes", type: "string", value: "[TURN" }] : []),
                         filterCombination: "and", calculations: [], groupBys: [], limit: 1000 } };
         let j = null, st = 0;
         for (let lgTry = 0; lgTry < 2; lgTry++) {
@@ -6059,7 +6059,10 @@ async function processCommand(line, env, isOp) {
           let text = msg || (url ? String(wk.eventType || "request") + " " + url : JSON.stringify(src || md).slice(0, 200));
           text = String(text).replace(/\s+/g, " ").slice(0, 600);
           if (!lgAll && lgNoise.test(text)) continue;
-          if (lgTurns && !/^\[TURN\]/.test(text)) continue;
+          // THE WHOLE STORY OF A TURN (2026-10-12, v9.578, Aaron: "set up logs so we can see everything"): the turns
+          // view keeps every [TURN...] line - the turn itself, and [TURN:PICTURE] / [TURN:GO] / [TURN:LOCK] /
+          // [TURN:IDEAS] / [TURN:PICK] for what happened inside it.
+          if (lgTurns && !/^\[TURN/.test(text)) continue;
           if (lgWho && !text.includes(lgWho)) continue;
           lgLines.push({ t: ts, line: lgFmt(ts) + "  " + short.padEnd(5) + lvl + " " + text + wall });
         }
@@ -65955,13 +65958,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // pick change nothing (they keep it, or say it is the one), it is taken exactly as it is: the same
       // path as `use` - no drawing, the artist's files from that exact picture.
       if (opts && opts.pick && !opts.use && refUrl && me && (_saysTheOne(said) || _keepsIt(said))) {
-        act = "use"; console.log("[PICK] their words keep it as it is - taken as it is, nothing redrawn");
+        act = "use"; console.log("[TURN:PICK] their words keep it as it is - taken as it is, nothing redrawn");
       }
       if (opts && opts.use && refUrl && me) act = "use";
       // CHANGE SOMETHING IS A QUESTION, NOT A DRAWING (2026-10-11, v9.563, Aaron). The page's button sends this
       // one fixed sentence with the design; she looks and suggests, and nothing is drawn until they say what.
       if (opts && opts.pick && refUrl && /^\s*i want to change something\.?\s*$/i.test(String(said || "")) && act !== "none") {
-        console.log("[PICK] Change Something - she suggests; nothing drawn (her act was " + act + ")"); act = "none";
+        console.log("[TURN:PICK] Change Something - she suggests; nothing drawn (her act was " + act + ")"); act = "none";
       }
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
@@ -66059,7 +66062,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             if (_ns.size === 1) {
               _pickGo = true;
               if (act === "none") act = "change";
-              console.log("[PICK] they picked number " + [..._ns][0] + " off the four - their go");
+              console.log("[TURN:PICK] they picked number " + [..._ns][0] + " off the four - their go");
             }
           }
         }
@@ -66091,7 +66094,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // button sends this exact sentence; she answers with her ideas and nothing is drawn.
       const _askIdeas = /^\s*give me some ideas\.?\s*$/i.test(String(said || "").trim());
       if (_askIdeas && (act === "draw" || act === "change" || act === "onme")) {
-        console.log("[IDEAS] they asked for ideas - she gives them, nothing drawn (her act was " + act + ")"); act = "none";
+        console.log("[TURN:IDEAS] they asked for ideas - she gives them, nothing drawn (her act was " + act + ")"); act = "none";
       }
       if ((act === "draw" || act === "change") && !_drewNow() &&
           !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
@@ -66102,7 +66105,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         const _goWords = _theirGo;
         if (!(_goWords || (_offered && !_saidNo))) {
           act = "none"; _goBlocked = true;
-          console.log("[GO] no go-ahead in their words - nothing drawn" + (_offered ? " (she had offered; their reply was not a yes)" : ""));
+          console.log("[TURN:GO] no go-ahead in their words - nothing drawn" + (_offered ? " (she had offered; their reply was not a yes)" : ""));
         }
       }
       if (_goBlocked && typeof agentLine === "string" && agentLine) {
@@ -66116,7 +66119,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             "Talk with them and ask if they want to see it." + _shape,
             false, me, null, world, null);
           const _ra = (_redo && _redo.reply && !_redo.failed) ? readAct(_redo.reply) : null;
-          console.log("[GO] redo: " + (_ra ? ("do=" + (_ra.act || "?") + " say=" + String(_ra.say || "").slice(0, 120))
+          console.log("[TURN:GO] redo: " + (_ra ? ("do=" + (_ra.act || "?") + " say=" + String(_ra.say || "").slice(0, 120))
             : ("unreadable" + (_redo && _redo.failed ? " - " + String(_redo.failed).slice(0, 120) : ""))));
           if (_ra && _ra.say) {
             acted.say = _ra.say;
@@ -66124,7 +66127,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(_ra.say).slice(0, 600); break; } }
             if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
           }
-        } catch (e) { console.log("[GO] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
+        } catch (e) { console.log("[TURN:GO] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
       }
       // THE LAST SAFETY NET: nothing was drawn, so a sentence claiming a picture is not true. That
       // sentence alone comes out - nothing is added, her other words stand.
@@ -66133,7 +66136,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         const _before = String(acted.say || "");
         const _after = _before.replace(_claim, "$1").replace(/\s{2,}/g, " ").trim();
         if (_after !== _before.trim() && _after) {
-          console.log("[GO] removed a claim of a picture that was not made");
+          console.log("[TURN:GO] removed a claim of a picture that was not made");
           acted.say = _after;
           for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = _after.slice(0, 600); break; } }
           if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
@@ -66163,10 +66166,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const _shortYes = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|love it|i (really )?(like|love) it|it'?s perfect)\b[\s.!]*$/i.test(_t);
           if (!_grid && (_clear || (_askedOne && _shortYes))) {
             act = "artist"; _lockedByWords = true;
-            console.log("[LOCK] their words say it is the one - artist files" + (_clear ? "" : " (a yes to her 'is this the one?')"));
+            console.log("[TURN:LOCK] their words say it is the one - artist files" + (_clear ? "" : " (a yes to her 'is this the one?')"));
           }
         }
-      } catch (e) { console.log("[LOCK] check failed: " + String(e?.message ?? e).slice(0, 160)); }
+      } catch (e) { console.log("[TURN:LOCK] check failed: " + String(e?.message ?? e).slice(0, 160)); }
       // ══ LOCKING IN IS THEIRS TO SAY (2026-10-10, v9.557, Aaron) ═══════════════════════════════
       // MEASURED (10:46, Roses "Make It Mine"): "I want to make this one mine" - her own act was
       // `artist`, no [LOCK] line, and the files were made on the first message. The page's own rule
@@ -66178,15 +66181,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // The page asked first (the card below); this is their yes. A drawn design on screen is locked in.
       if (opts && opts.lock && !opts.use && me && hasParent && act !== "artist") {
         act = "artist"; _lockedByWords = true;
-        console.log("[LOCK] they confirmed on the card - artist files");
+        console.log("[TURN:LOCK] they confirmed on the card - artist files");
       }
       let _heldArtist = false;
       try {
         if (act === "artist" && !_lockedByWords && !(opts && opts.use) && !_saysTheOne(said) && !_yesToTheOne(said)) {
           act = "none"; _heldArtist = true;
-          console.log("[LOCK] held - she chose the artist's files but their words do not say it is the one; she asks first");
+          console.log("[TURN:LOCK] held - she chose the artist's files but their words do not say it is the one; she asks first");
         }
-      } catch (e) { console.log("[LOCK] hold check failed: " + String(e?.message ?? e).slice(0, 160)); }
+      } catch (e) { console.log("[TURN:LOCK] hold check failed: " + String(e?.message ?? e).slice(0, 160)); }
       if (_heldArtist && typeof agentLine === "string" && agentLine) {
         try {
           const _shape2 = "\n\n(Reply with the JSON object. No prose.)";
@@ -66195,12 +66198,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             "Reply without promising files: say what you think of it and ask whether they want it exactly as it is or changed." + _shape2,
             false, me, null, world, null);
           const _ha = (_hx && _hx.reply && !_hx.failed) ? readAct(_hx.reply) : null;
-          console.log("[LOCK] hold redo: " + (_ha ? ("say=" + String(_ha.say || "").slice(0, 120)) : "unreadable"));
+          console.log("[TURN:LOCK] hold redo: " + (_ha ? ("say=" + String(_ha.say || "").slice(0, 120)) : "unreadable"));
           if (_ha && _ha.say) { acted.say = _ha.say; if (_ha.ideas && _ha.ideas.length) acted.ideas = _ha.ideas; }
           else acted.say = String(acted.say || "").split(/(?<=[.!?])\s+/).filter((x) => !/\b(files?|artist)\b/i.test(x)).join(" ").trim() || "Great pick. Do you want it exactly as it is, or would you like to change something?";
           for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(acted.say || "").slice(0, 600); break; } }
           if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
-        } catch (e) { console.log("[LOCK] hold redo failed: " + String(e?.message ?? e).slice(0, 160)); }
+        } catch (e) { console.log("[TURN:LOCK] hold redo failed: " + String(e?.message ?? e).slice(0, 160)); }
       }
       // Her line was written for a turn of talk - usually a question. It is redone once, knowing the
       // files are being made, so she closes it out in her own words instead of asking again.
@@ -66220,7 +66223,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         acted.say = "I love this one.";
         for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = acted.say; break; } }
         if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
-        console.log("[LOCK] asking them first - the card, not the files (" + _confirmLock + ")");
+        console.log("[TURN:LOCK] asking them first - the card, not the files (" + _confirmLock + ")");
       }
       if (_lockedByWords && !(opts && opts.lock) && typeof agentLine === "string" && agentLine) {
         try {
@@ -66230,12 +66233,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             "Close it out in one warm line - no question, nothing offered." + _shape,
             false, me, null, world, null);
           const _ra = (_redo && _redo.reply && !_redo.failed) ? readAct(_redo.reply) : null;
-          console.log("[LOCK] redo: " + (_ra ? ("say=" + String(_ra.say || "").slice(0, 120)) : "unreadable"));
+          console.log("[TURN:LOCK] redo: " + (_ra ? ("say=" + String(_ra.say || "").slice(0, 120)) : "unreadable"));
           if (_ra && _ra.say && !/\?\s*$/.test(String(_ra.say).trim())) acted.say = _ra.say;
           else acted.say = String(acted.say || "").split(/(?<=[.!])\s+/).filter((x) => !/\?\s*$/.test(x)).join(" ").trim() || acted.say;
           for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(acted.say || "").slice(0, 600); break; } }
           if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
-        } catch (e) { console.log("[LOCK] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
+        } catch (e) { console.log("[TURN:LOCK] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
       }
 
       // ══ A GO-AHEAD IS NOT A SECOND REQUEST (2026-09-16) ══════════════════════════════════
@@ -67424,8 +67427,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // ONE VERSION PER DRAWING (Aaron, 2026-09-17): the person works from the one picture
             // on screen and evolves it. Three at once broke the link between what they approved
             // and what the files were made from - measured on pta_4c414b2a09ddab6a.
+            const _pl = (m) => { try { console.log("[TURN:PICTURE] " + m + (me ? " · who=" + me : "")); } catch {} };
+            const _pr = (t) => (t && t.ok && t.image_url) ? "made" : ("not made: " + String((t && t.error) || "no picture").replace(/\s+/g, " ").slice(0, 160));
             {
               const t = await _evolve(cur, ask, null);
+              _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" -> " + _pr(t));
               // A CHANGE IS NOT LOOKED AT (2026-09-20). Aaron: colour, size, a small edit comes back
               // right, and a look there costs money and adds nothing - she writes her one short line
               // with the instruction. New drawings are looked at; see the draw path below.
@@ -67439,6 +67445,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             if (!(got && got.ok && got.image_url) &&
                 /safety system|safety_violations|content policy|moderation|rejected/i.test(String(got?.error || ""))) {
               const tAgain = await _evolve(cur, ask, "again");
+              _pl("refused - the same words sent once more -> " + _pr(tAgain));
               if (tAgain && tAgain.ok && tAgain.image_url) got = tAgain;
             }
             // A REFUSAL COMES BACK TO HER (2026-09-21). MEASURED on the same back-piece conversation:
@@ -67476,10 +67483,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 const _orig = _wd(ask), _new = new Set(_wd(ask2));
                 const _kept = _orig.length ? _orig.filter((w) => _new.has(w)).length / _orig.length : 0;
                 const _closeEnough = _kept >= 0.7 && ask2.length <= Math.max(ask.length * 1.3, ask.length + 40);
+                _pl("refused again - she changed the words to: \"" + String(ask2 || "(nothing)").replace(/\s+/g, " ").slice(0, 400) + "\"" +
+                    (!_closeEnough && ask2 ? " -> not used (she rewrote more than the refused words)" : ""));
                 if (!_closeEnough && ask2) _retried = { refused: _why ? _why[1] : "refused", rewrote: ask2.slice(0, 900),
                                                        ok: false, rejected: "rewrote more than the refused words" };
                 if (_closeEnough && ask2.length >= 20 && ask2 !== ask) {
                   const t2 = await _evolve(cur, ask2.slice(0, 900), null);
+                  _pl("her changed words -> " + _pr(t2));
                   _retried = { refused: _why ? _why[1] : "refused", rewrote: ask2.slice(0, 900),
                                ok: !!(t2 && t2.ok && t2.image_url) };
                   if (t2 && t2.ok && t2.image_url) { got = t2; _asks[si] = ask2.slice(0, 900); }

@@ -25,4 +25,6 @@ $p = $r2.payload
 Write-Host ("IDEAS TURN (" + [math]::Round(((Get-Date) - $t0).TotalSeconds,1) + "s): " + $p.said)
 if ($p.her_act) { Write-Host ("  SHE TRIED TO: " + $p.her_act) }
 $i = 1; foreach ($x in @($p.ideas)) { if ($x) { Write-Host ("  IDEA " + $i + ": " + $x); $i++ } }
+if ($p.drew -and $p.drew.image) { Write-Host ("PICTURE" + $(if ($p.drew.four_directions) { " (grid of four)" } else { "" }) + ": " + $p.drew.image); Write-Host ("  WORDS SENT: " + $p.drew.changed) }
+if ($p.drew -and $p.drew.failed) { Write-Host ("PICTURE FAILED: " + $p.drew.failed) }
 Write-Host "===== END $Label"

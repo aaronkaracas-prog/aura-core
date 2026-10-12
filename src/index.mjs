@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.583.0-2026-10-12-ideas-in-everyday-words";
+const BUILD = "aura-core-v9.584.0-2026-10-12-ideas-as-a-grid";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63693,6 +63693,8 @@ function talkReadAct(txt) {
              ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 2000) : "",
              words: typeof o.words === "string" ? o.words.trim().slice(0, 2000) : "",
              ideas: strList(o.ideas, 4, 160).map((x) => x.replace(/\*\*/g, "")),
+             // HER IDEAS AS PICTURE WORDS (2026-10-12, v9.584, Aaron): the same four, written for the picture.
+             idea_pictures: strList(o.idea_pictures, 4, 300),
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
              // first version of this field took that name, and the duplicate key silently lost.
              lines: Array.isArray(o.lines) ? o.lines.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
@@ -64762,6 +64764,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
         '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
+        '  "idea_pictures": ["the same 4 ideas in the same order, each written as picture words (your PICTURE WORDS craft): what to add, where it goes on their body, how it looks - plain words, at most 30 words each. Only when they asked for ideas on their own photo"],\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:
@@ -66381,6 +66384,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       // A picture made FROM their photo is also a change on that photo, every time (v9.504).
       if (act === "draw" && _fromPic) act = "change";
+      // ══ THE IDEAS ARE A PICTURE (2026-10-12, v9.584, Aaron) ═══════════════════════════════════════════
+      // "They don't have to read anything - they can visually see what's going on." On an add-on, "Give me
+      // some ideas" draws her four ideas as one 2 by 2 grid on their own photo, numbered 1 to 4. PROVEN by
+      // command the same day (img_mv5v3s71iija, $0.0197): one edit call made four numbered versions of
+      // the photo. The words are a fixed opening (a setting, `config:frame:addon:grid`) and her four
+      // picture-word lines. Picking one and changes after it come next; this is the four showing up.
+      let _ideasGrid = null;
+      if (_askIdeas && jobNow === "add" && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
+        const _ip = (Array.isArray(acted.idea_pictures) ? acted.idea_pictures : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4);
+        if (_ip.length === 4) { act = "change"; _ideasGrid = _ip; console.log("[TURN:IDEAS] her four ideas drawn as one grid on their photo"); }
+        else console.log("[TURN:IDEAS] no grid - she wrote " + _ip.length + " picture lines, four are needed; her ideas stay as cards");
+      }
 
       // ══ THE ARTIST'S SHEET - THE OPERATION, NOT A DESCRIPTION (2026-09-10) ═══════════════
       // Everything that failed at this job failed the same way: a model was asked to AUTHOR the
@@ -67398,6 +67413,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               _wordsFrom = _b ? "her_brief" : (acted.ask ? "her_ask" : "her_prompt");
             }
           }
+          // The four ideas as one grid on their photo (v9.584): the grid opening, then her four lines.
+          if (_ideasGrid && parentId === refDesign) {
+            let _go = "This is my tattoo. Show me four versions in a 2 by 2 grid, numbered 1 to 4, each one this same photo with one addition: ____. The existing tattoo stays untouched.";
+            try { const _k = String((await env.AURA_KV.get("config:frame:addon:grid")) || "").trim(); if (_k.includes("____")) _go = _k; } catch {}
+            _sentNow = _go.replace("____", _ideasGrid.map((l, i) => (i + 1) + ". " + l.replace(/[.;\s]+$/, "")).join("; "));
+            _herAsk = _ideasGrid.join(" | ");
+            _wordsFrom = "her_idea_pictures";
+          }
           // ══ MADE FROM THE PICTURE: THE PHOTO, ONE OPENING, HER BRIEF (2026-10-01, v9.504, Aaron) ═══
           // The opening is a setting (`config:frame:from`, "____" is her brief). Their lines never go.
           if (_fromPic && parentId === refDesign && !_gridPick) {
@@ -67511,7 +67534,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           if (me && cp && cp.ok && cp.image_url) {
             // A picture made from an inspiration photo is flat artwork, not their body - the check
             // "is every bit of the new ink on their skin" can only answer WRONG there (2026-09-26).
-            const _lkC = await _lookAtResult(cp.image_url, !(opts && opts.inspire) && !_fromPic);
+            // A grid of four is not one mock-up on them - no body check; her reaction asks which number (v9.584).
+            const _lkC = await _lookAtResult(cp.image_url, !_ideasGrid && !(opts && opts.inspire) && !_fromPic, null, !!_ideasGrid);
             if (_lkC && _lkC.verdict) _mockNote = _lkC.verdict;
             if (_lkC && _lkC.say) _reaction = _lkC.say;
           }
@@ -67524,6 +67548,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
+                ...(_ideasGrid ? { four_directions: true } : {}),
                 ...((acted.ask && !_herAsk && String(jobNow || "") === "add") ? { her_ask_not_used: String(acted.ask).slice(0, 400) } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),

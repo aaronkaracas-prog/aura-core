@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.573.0-2026-10-12-chain-archive-by-size-side-jobs";
+const BUILD = "aura-core-v9.574.0-2026-10-12-see-acknowledge-contribute";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64752,11 +64752,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const CONTRACT =
         "\n\nANSWER WITH ONE JSON OBJECT AND NOTHING ELSE. No preamble, no markdown fence.\n" +
         "{\n" +
-        '  "say": "what you say to them - short, human, no machine words",\n' +
+        // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
+        // so the floor and her live agent cannot disagree.
+        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see in one natural line. If you already know the job - adding to it, covering it, reworking it - don\'t ask what they want to do: contribute. Put 2-3 directions in ideas; the first is the one you\'d pick, and say why in a few words. If you don\'t know the job, ask what they want to do with it. Don\'t ask a question when you can make a useful suggestion instead. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
-        '  "ideas": ["optional - when you offer them ideas, put each one here instead of in say: a short title, a dash, one short line. Two to four of them. They tap one to choose it."],\n' +
+        '  "ideas": ["2-3 directions they can tap, each written \'Short title - one short line\'; the first is the one you\'d pick"],\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:

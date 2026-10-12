@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.572.0-2026-10-12-ideas-keepalive-recover";
+const BUILD = "aura-core-v9.573.0-2026-10-12-chain-archive-by-size-side-jobs";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -62304,6 +62304,25 @@ export class PtaDurableObject {
       }
     }
     
+    // ── AND BY SIZE (2026-10-12, v9.573) ──────────────────────────────────────────────────────────
+    // MEASURED: "Values cannot be larger than 131072 bytes" after every turn on Aaron's account - the
+    // chain passed 128 KiB long before 1000 events (each turn's words ride in it), so every append failed
+    // and nothing more reached his chain. The oldest quarter moves to the same KV archive until the record
+    // fits with room to spare. Nothing is lost; it is where the count-based archive already puts it.
+    if (_doBytes(pta) > DO_VALUE_MAX * 0.85 && pta.chain.length > 20) {
+      const moved = [];
+      while (_doBytes(pta) > DO_VALUE_MAX * 0.6 && pta.chain.length > 20) moved.push(...pta.chain.splice(0, Math.ceil(pta.chain.length / 4)));
+      try {
+        const archiveIndex = (pta.chainArchiveIndex || 0);
+        await this.env.AURA_KV.put(`pta:archive:${pta.id}:${archiveIndex}`, JSON.stringify({
+          ptaId: pta.id, archiveIndex, events: moved, archivedAt: new Date().toISOString(), why: "size" }));
+        pta.chainArchiveIndex = archiveIndex + 1;
+        console.log("[PTA] " + pta.id + " archived " + moved.length + " oldest events by size; " + pta.chain.length + " kept (" + _doBytes(pta) + " bytes)");
+      } catch (e) {
+        pta.chain = moved.concat(pta.chain);   // archive failed: keep them, the write below reports the size
+        console.log("[PTA] size archive failed for " + pta.id + ": " + e.message);
+      }
+    }
     await this.storage.put("pta", pta);
     return { ok: true, chain_length: pta.chain.length, version: pta.version, archived: pta.chain.length <= threshold };
   }
@@ -66092,6 +66111,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             : ("unreadable" + (_redo && _redo.failed ? " - " + String(_redo.failed).slice(0, 120) : ""))));
           if (_ra && _ra.say) {
             acted.say = _ra.say;
+            if (_ra.ideas && _ra.ideas.length) acted.ideas = _ra.ideas;   // her ideas from the redo (v9.573)
             for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(_ra.say).slice(0, 600); break; } }
             if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
           }
@@ -66167,7 +66187,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             false, me, null, world, null);
           const _ha = (_hx && _hx.reply && !_hx.failed) ? readAct(_hx.reply) : null;
           console.log("[LOCK] hold redo: " + (_ha ? ("say=" + String(_ha.say || "").slice(0, 120)) : "unreadable"));
-          if (_ha && _ha.say) acted.say = _ha.say;
+          if (_ha && _ha.say) { acted.say = _ha.say; if (_ha.ideas && _ha.ideas.length) acted.ideas = _ha.ideas; }
           else acted.say = String(acted.say || "").split(/(?<=[.!?])\s+/).filter((x) => !/\b(files?|artist)\b/i.test(x)).join(" ").trim() || "Great pick. Do you want it exactly as it is, or would you like to change something?";
           for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(acted.say || "").slice(0, 600); break; } }
           if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
@@ -67932,7 +67952,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                     " Reply with exactly two lines. NAME: a name for it, two to five words, the way a person would name it." +
                     " COLOUR: its colour treatment in a few words, as you see it (for example black and grey, full colour," +
                     " black and grey with red accents).]",
-                    false, me, _imgN, world);
+                    // HER SIDE NOTEBOOK (2026-10-12, v9.573): MEASURED 07:08 - this request sat in her conversation,
+                    // and her next chat reply to a photo was "NAME: Blush Floral Arm Sleeve COLOUR: ...". Side jobs
+                    // go to her own second instance, never into the conversation with them.
+                    false, me + "_side", _imgN, world);
                   const raw = (q && q.reply && !q.failed) ? String(q.reply) + "\n" + String(_verdict(q.reply, readAct(q.reply)) || "") : "";
                   const clean = (x) => String(x || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 60);
                   let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
@@ -67976,7 +67999,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         console.log("[TURN] " + _sec(phase_ms.total) + " · think " + _sec(_thk) + " x" + _st.think.length +
           (_st.think.length ? " (" + _st.think.map((x) => x.why + " " + _sec(x.ms) + (x.failed ? " FAILED" : "")).join(", ") + ")" : "") +
           " · " + _ph + " · act=" + act + " · drew=" + (drew ? (drew.failed ? "failed" : drew.for_the_artist ? ("artist-files" + (drew.pending ? " (being made)" : "")) : drew.image ? "yes" : "no") : "no") +
-          (act === "artist" ? " · LOCKED" : "") + (me ? " · who=" + me : "") + " · said: " + (String(saidIn || "").trim() ? "\"" + String(saidIn).slice(0, 60).replace(/\s+/g, " ") + "\"" : "(no words" + ((opts && opts.ref) ? ", a photo" : "") + ")"));
+          (act === "artist" ? " · LOCKED" : "") + " · ideas=" + ((acted && acted.ideas && acted.ideas.length) || 0) +
+          " · she: \"" + String((acted && acted.say) || "").slice(0, 50).replace(/\s+/g, " ") + "\"" +
+          (me ? " · who=" + me : "") + " · said: " + (String(saidIn || "").trim() ? "\"" + String(saidIn).slice(0, 60).replace(/\s+/g, " ") + "\"" : "(no words" + ((opts && opts.ref) ? ", a photo" : "") + ")"));
       } catch {}
       // THE LAST TURN, KEPT FOR A PAGE THAT LOST THE CONNECTION (2026-10-12, v9.572). MEASURED 06:45: a 128s turn
       // drew the picture and the phone showed "I could not answer that". The page asks for this by its turn id.
@@ -68793,7 +68818,7 @@ export class PublicEntry extends WorkerEntrypoint {
           const q = await proxyToAgent(env, "[They just chose this tattoo design from our catalogue" +
             (desc ? " - it is described as: \"" + desc + "\"" : "") + ". Reply with ONE short sentence that starts with" +
             " \"Great choice\" and names one thing you genuinely love in it, something you can see. Nothing else.]",
-            false, me, url, world);
+            false, me + "_side", url, world);   // her side notebook (v9.573), never the conversation
           if (q && q.reply && !q.failed) line = String(talkVerdict(q.reply, talkReadAct(q.reply)) || "").split(/\r?\n/)[0].trim().slice(0, 240);
         } catch {}
         if (!/^great choice/i.test(line)) line = "";

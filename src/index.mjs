@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.575.0-2026-10-12-react-then-offer-ideas";
+const BUILD = "aura-core-v9.576.0-2026-10-12-ideas-never-draw";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64754,7 +64754,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "{\n" +
         // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
         // so the floor and her live agent cannot disagree.
-        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. If you know the job - adding to it, covering it, reworking it - offer to give them some ideas, or to hear their own; don\'t give the ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put 2-3 directions in ideas; the first is the one you\'d pick, and say why in a few words. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
+        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. If you know the job - adding to it, covering it, reworking it - offer to give them some ideas, or to hear their own; don\'t give the ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put 2-3 directions in ideas, not in your words; the first is the one you\'d pick, and say why in a few words. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
@@ -66086,6 +66086,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // When it blocks, her reply is redone ONCE with that fact, so she never says "here it is"
       // over nothing - her own words, made true, never ours.
       let _goBlocked = false;
+      // ASKING FOR IDEAS IS NOT A YES (2026-10-12, v9.576, Aaron: "she should have given ideas first then draw").
+      // MEASURED 09:14: "Give me some ideas" passed as a yes to her offer and she drew the first one. The page's
+      // button sends this exact sentence; she answers with her ideas and nothing is drawn.
+      const _askIdeas = /^\s*give me some ideas\.?\s*$/i.test(String(said || "").trim());
+      if (_askIdeas && (act === "draw" || act === "change" || act === "onme")) {
+        console.log("[IDEAS] they asked for ideas - she gives them, nothing drawn (her act was " + act + ")"); act = "none";
+      }
       if ((act === "draw" || act === "change") && !_drewNow() &&
           !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
         const _them = String(said || "").trim();
@@ -66121,7 +66128,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       // THE LAST SAFETY NET: nothing was drawn, so a sentence claiming a picture is not true. That
       // sentence alone comes out - nothing is added, her other words stand.
-      if (_goBlocked) {
+      if (_goBlocked || _askIdeas) {
         const _claim = /(^|[.!?]\s+)[^.!?]*\b(here it is|here's (it|your|the)|here you go|take a look|check it out|have a look)\b[^.!?]*[.!?]?/gi;
         const _before = String(acted.say || "");
         const _after = _before.replace(_claim, "$1").replace(/\s{2,}/g, " ").trim();

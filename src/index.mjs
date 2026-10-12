@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.582.0-2026-10-12-picture-words";
+const BUILD = "aura-core-v9.583.0-2026-10-12-ideas-in-everyday-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64761,7 +64761,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
-        '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\'; the fourth is something completely different - a direction they would never have thought of"],\n' +
+        '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:

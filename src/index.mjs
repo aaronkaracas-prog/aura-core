@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.591.0-2026-10-13-a-canvas-for-the-ideas";
+const BUILD = "aura-core-v9.592.0-2026-10-13-the-photos-own-shape";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67518,12 +67518,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // A FRESH FOUR EVERY TIME (v9.586): the image cache is keyed on the photo and the words, so the
             // same sentence on the same photo would hand back the same grid. A seed makes it a new ask.
             _seedNow = 1 + Math.floor(Math.random() * 2000000000);
-            // ITS OWN CANVAS (v9.591): tall enough for a 2x2 that reads on a phone, big enough that the words
-            // in it read. A setting, `config:edit:grid:size` ("1536x2048"); the photo's shape is not used here.
-            let _gs = "1536x2048";
-            try { const _k = String((await env.AURA_KV.get("config:edit:grid:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(_k)) _gs = _k; } catch {}
-            const _gm = _gs.match(/^(\d+)x(\d+)$/);
-            _canvasNow = { width: parseInt(_gm[1], 10), height: parseInt(_gm[2], 10) };
+            // THE PHOTO'S OWN SHAPE (v9.592, Aaron): a fixed tall canvas (v9.591, 1536x2048) made every idea taller
+            // than the photo, and the model stretched the arm to fill it - a forearm grew past the wrist. ChatGPT and
+            // the control test (img_mv77tclz9ahs) kept the photo's shape and the arm stayed the arm. A canvas is used
+            // only when `config:edit:grid:size` names one ("1536x2048"); unset means the photo's shape.
+            try {
+              const _k = String((await env.AURA_KV.get("config:edit:grid:size")) || "").trim();
+              const _gm = _k.match(/^(\d{3,4})x(\d{3,4})$/);
+              if (_gm) _canvasNow = { width: parseInt(_gm[1], 10), height: parseInt(_gm[2], 10) };
+            } catch {}
           }
           // ══ PICKING A NUMBER ON AN ADD-ON: THEIR PHOTO, AND THE GRID AS THE SECOND PICTURE (2026-10-13, v9.586) ══
           // MEASURED (pta_033302cc27b7eadd): "I want number 3" sent their photo and her one-line description

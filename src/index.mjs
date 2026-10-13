@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.585.0-2026-10-12-grid-from-one-sentence";
+const BUILD = "aura-core-v9.586.0-2026-10-13-pick-and-new-art-from-two-pictures";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63163,6 +63163,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
 async function makeArtistFiles(env, ctx) {
   const { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw, acted, intent,
           useOne, _checkOn, _verdict, readAct, alreadyFlat, bodyLook } = ctx;
+  const refDesign = ctx.refDesign || null;   // v9.586: their original photo, for the new-work sheet
   let drew = null;
 
         try {
@@ -63254,11 +63255,12 @@ async function makeArtistFiles(env, ctx) {
             const _src = /^ent_/.test(String(shopParent || "")) ? shopParent
               : ((String(mockUrl).match(/\/image\/(img_[a-z0-9]+)/i) || [])[1] || shopParent);
             let _flatErr = null;
-            const _flat = async (prompt) => {
+            const _flat = async (prompt, base, withs) => {
               for (let tries = 0; tries < 2; tries++) {
                 try {
-                  const r = await processCommand("IMAGE EVOLVE " + _src + " " +
-                    JSON.stringify({ prompt, by: me, res: "2k", ...(tries ? { seed: "again" } : {}) }), env, true);
+                  const r = await processCommand("IMAGE EVOLVE " + (base || _src) + " " +
+                    JSON.stringify({ prompt, by: me, res: "2k", ...(tries ? { seed: 2 } : {}),
+                                     ...(withs ? { with: withs } : {}) }), env, true);
                   const p = (r && r.payload) ? r.payload : r;
                   if (p && p.ok && p.image_url) return { flat: p.image_url, id: p.child || null };
                   _flatErr = String((p && (p.error || p.why || p.reason)) || "no image came back").slice(0, 200);
@@ -63335,7 +63337,27 @@ async function makeArtistFiles(env, ctx) {
                 try { console.log("[FILES] her answer was empty - new work named from her subject: " + _name); } catch {}
               }
             }
-            if (_name) {
+            // ══ THE NEW WORK IS WHAT IS DIFFERENT BETWEEN TWO PICTURES (2026-10-13, v9.586, Aaron) ═══════════
+            // "Give both images to GPT: here's my original, here's the new look, print only the new art."
+            // The sheet below was drawn from ONE picture and a name, so the model had to guess which ink was
+            // new - and drew old ink, or missed what was new (flowers, 2026-10-09). PROVEN by command
+            // (pta_033302cc27b7eadd): their original photo, the finished look as a second picture, and one
+            // sentence gave back the two lions alone on white - no mask, no skin. Nothing has to be named.
+            // The sentence is a setting (`config:frame:addon:newwork`). The name-based sheet stays only for
+            // an add-on with no original photo on file.
+            if (refDesign && /^https?:\/\//i.test(String(mockUrl || ""))) {
+              let _nw = "The first picture is my original tattoo. The second picture is the new look. Draw only the new art - everything in the second picture that is not in the first - flat on plain white paper, with no body and no skin.";
+              try { const _k = String((await env.AURA_KV.get("config:frame:addon:newwork")) || "").trim(); if (_k) _nw = _k; } catch {}
+              const _new = await _flat(_nw, refDesign, [mockUrl]);
+              if (_new) {
+                _addSheets.push({ panel: "New work", asked: _name || "everything new", flat: _new.flat, id: _new.id,
+                                  seeIn: _seeNew || 0, checked: null, ok: true });
+                try { console.log("[FILES] new work sheet -> ok (original photo + the new look, only what is different)"); } catch {}
+              } else {
+                _newWorkFail = "new work sheet failed: " + (_flatErr || "no image came back");
+                try { console.log("[FILES] " + _newWorkFail); } catch {}
+              }
+            } else if (_name) {
               const _new = await _flat("Draw only " + _name + " from this picture, flat on plain white paper, " +
                                        "with no body and no skin.");
               if (_new) {
@@ -64007,7 +64029,7 @@ async function startArtistFilesJob(env, data) {
 async function runArtistFilesJob(env, d) {
   const refDesign = d.refDesign || null, refUrl = d.refUrl || null, lastDrawn = d.lastDrawn || null;
   return await makeArtistFiles(env, {
-    me: d.me, world: d.world, seeing: !!d.seeing, jobNow: d.jobNow || null, refUrl, lastDrawn,
+    me: d.me, world: d.world, seeing: !!d.seeing, jobNow: d.jobNow || null, refUrl, refDesign, lastDrawn,
     useRaw: Array.isArray(d.useRaw) ? d.useRaw : [], acted: d.acted || {}, intent: d.intent || null,
     alreadyFlat: !!d.alreadyFlat, bodyLook: d.bodyLook || null,
     useOne: (n, want) => talkUseOne(n, want, refDesign, refUrl, lastDrawn),
@@ -66047,9 +66069,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // as asking first, and nothing was drawn; "i love it" then locked the grid itself. Their pick
       // is their decision, whatever her closing line says. Same test the pick sentence uses below:
       // the picture on screen is a four-direction grid and their line names one number.
-      let _pickGo = false;
+      // ══ SHOW ME SOME IDEAS / IMAGINE 4 MORE (2026-10-13, v9.586, Aaron) ═══════════════════════════════
+      // The page's buttons send exactly these lines. "Imagine 4 more" names a number, so it is read here,
+      // before the pick test below, and never mistaken for picking number 4.
+      const _ideasLine = /^\s*(?:give|show) me some ideas\.?\s*$/i.test(String(said || "").trim()) ||
+                         /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(String(said || "").trim());
+      let _pickGo = false, _pickN = 0, _pickGridImg = null;
       try {
-        if (lastDrawn && lastDrawn.design) {
+        if (lastDrawn && lastDrawn.design && !_ideasLine) {
           let _gp = null;
           for (let i = tline.length - 1; i >= 0; i--) {
             const e = tline[i];
@@ -66064,6 +66091,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             }
             if (_ns.size === 1) {
               _pickGo = true;
+              _pickN = [..._ns][0];
+              _pickGridImg = _gp.image || null;
               if (act === "none") act = "change";
               console.log("[TURN:PICK] they picked number " + [..._ns][0] + " off the four - their go");
             }
@@ -66095,7 +66124,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // ASKING FOR IDEAS IS NOT A YES (2026-10-12, v9.576, Aaron: "she should have given ideas first then draw").
       // MEASURED 09:14: "Give me some ideas" passed as a yes to her offer and she drew the first one. The page's
       // button sends this exact sentence; she answers with her ideas and nothing is drawn.
-      const _askIdeas = /^\s*give me some ideas\.?\s*$/i.test(String(said || "").trim());
+      const _askIdeas = _ideasLine;
       if (_askIdeas && (act === "draw" || act === "change" || act === "onme")) {
         console.log("[TURN:IDEAS] they asked for ideas - she gives them, nothing drawn (her act was " + act + ")"); act = "none";
       }
@@ -66788,7 +66817,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         drew = _job
           ? { for_the_artist: true, pending: true, job: _job, from: (lastDrawn && lastDrawn.design) || null }
           : await makeArtistFiles(env, { me, world, seeing, jobNow: _bodyLook ? "new" : jobNow,
-                                         refUrl: _bodyLook ? null : refUrl, lastDrawn, useRaw,
+                                         refUrl: _bodyLook ? null : refUrl, refDesign: _bodyLook ? null : (refDesign || null), lastDrawn, useRaw,
                                          acted, intent, useOne, _checkOn, _verdict, readAct,
                                          alreadyFlat: _filesFlat, bodyLook: _bodyLook });
       }
@@ -66865,7 +66894,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               (isGrid
                 ? "[This is the picture you just made for them: four numbered directions for their tattoo. " +
                   "Look at it. In one or two short lines, say what makes each direction different, then ask " +
-                  "which number grabs them - in your own words. Do not offer to lock anything in yet."
+                  "which number grabs them, or whether you should imagine 4 more - in your own words. Do not offer to lock anything in yet."
                 : "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
                   "in one warm line, then ask whether this is the one - their tattoo - or whether they want to " +
                   "change something, in your own words, different each time. Never say 'lock it in'.") +
@@ -67340,7 +67369,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               const e = tline[i];
               if (e && e.role === "picture" && e.design === parentId) { _pic = e; break; }
             }
-            if (_pic && (_pic.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_pic.words || "")))) {
+            if (_pic && !_ideasLine && (_pic.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_pic.words || "")))) {
               const _line = String(said || "").toLowerCase();
               const _w = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
               const _nums = new Set();
@@ -67387,6 +67416,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // their photo and nothing added. Only if it is short and not a question; otherwise their own
           // lines go, as before. Every change after the first picture is unchanged.
           let _herAsk = null;
+          let _seedNow = null, _withNow = null;   // v9.586: a fresh grid, and the grid sent with a pick
           // CHANGES TOO (2026-09-30, Aaron): MEASURED on pta_4e048acbadd8af04, "Adding color to the new
           // tattoo" went as typed and the model coloured the original forearm piece as well - one picture
           // of a tattooed arm does not say which part is new. She knew ("while the original forearm tattoo
@@ -67425,7 +67455,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // is the whole sentence; a value still holding "____" is the old opening-plus-her-lines shape
           // and is not used.
           if (_ideasGrid && parentId === refDesign) {
-            let _go = "This is my existing tattoo. I want to add to it. Show me 4 completely different artistic visions for where this tattoo could go next. Don't limit yourself to the subject or style that's already there. You can introduce a completely different style, subject, technique, composition, color, or visual language if it creates something beautiful. I want the four to feel like four different artists saw four different possibilities - not four variations of the same idea. Show all 4 on my body in a numbered 2x2 grid. Keep my existing tattoo exactly as it is.";
+            let _go = "This is my existing tattoo. I want to add to it. Show me 4 different possibilities in a numbered 2x2 grid. 1. Show me a beautiful natural continuation of the tattoo I already have. Keep its existing visual language and imagine how the same tattoo could continue into the visible bare skin. For 2, 3 and 4, explore genuinely different artistic possibilities. You have creative freedom to change the subject, style, technique, composition, color, scale or visual language. Show me possibilities I may not have thought of rather than three variations of the same idea. Work with the body and bare skin that are actually visible in this photo. Do not invent body areas outside the image. All four should work with the tattoo I already have, but they do not all need to match it. Keep my existing tattoo exactly as it is.";
             let _goFrom = "default";
             try {
               const _k = String((await env.AURA_KV.get("config:frame:addon:grid")) || "").trim();
@@ -67435,6 +67465,30 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             _sentNow = _go;
             _herAsk = null;
             _wordsFrom = "ideas_grid_" + _goFrom;
+            // A FRESH FOUR EVERY TIME (v9.586): the image cache is keyed on the photo and the words, so the
+            // same sentence on the same photo would hand back the same grid. A seed makes it a new ask.
+            _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+          }
+          // ══ PICKING A NUMBER ON AN ADD-ON: THEIR PHOTO, AND THE GRID AS THE SECOND PICTURE (2026-10-13, v9.586) ══
+          // MEASURED (pta_033302cc27b7eadd): "I want number 3" sent their photo and her one-line description
+          // of number 3 - the model never saw the lions they picked and drew different ones. PROVEN by
+          // command the same morning (img_mv6s3844w7bm, $0.026): their original photo, the grid as a second
+          // picture, and one sentence gave back number 3 as drawn, with their own ink untouched. The
+          // sentence is a setting (`config:frame:addon:pick`, {n} = the number). If they asked for more in
+          // the same line ("3 but in black and grey"), their line follows it.
+          if (String(jobNow || "") === "add" && _pickN && _pickGridImg && parentId === refDesign && !_ideasGrid) {
+            let _pk = "This is my tattoo. Add the new work from number {n} in the second picture. Keep my existing tattoo exactly as it is.";
+            try { const _k = String((await env.AURA_KV.get("config:frame:addon:pick")) || "").trim(); if (_k.includes("{n}")) _pk = _k; } catch {}
+            const _line = String(said || "").toLowerCase();
+            const _w2 = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
+            const _fill = /^(i|i'?m|love|like|want|wanna|the|a|one|number|image|picture|pic|option|go|going|with|let'?s|lets|do|that|this|it|is|please|pick|choose|take|best|most|grabs|me|yeah|yes|yep|ok|okay|really|definitely|def|my|favorite|favourite|for|sure|has|to|be|gotta|think|and|so|oh|wow|nice|cool|awesome|perfect|one'?s|#|no|keep)$/;
+            const _more = _line.replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean)
+              .filter((t) => !_fill.test(t) && !/^([1-4])(st|nd|rd|th)?$/.test(t) && !(t in _w2));
+            _sentNow = _pk.replace(/\{n\}/g, String(_pickN)) + (_more.length ? " " + String(said || "").trim().slice(0, 300) : "");
+            _withNow = [_pickGridImg];
+            _herAsk = null;
+            _wordsFrom = "addon_grid_pick";
+            console.log("[TURN:PICK] number " + _pickN + " drawn on their own photo, the grid sent as the second picture");
           }
           // ══ MADE FROM THE PICTURE: THE PHOTO, ONE OPENING, HER BRIEF (2026-10-01, v9.504, Aaron) ═══
           // The opening is a setting (`config:frame:from`, "____" is her brief). Their lines never go.
@@ -67452,7 +67506,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           const _evolve = async (parent, ask, seed) => {
             try {
               const r = await processCommand("IMAGE EVOLVE " + parent + " " +
-                JSON.stringify({ prompt: ask, by: me, res: "2k", ...(seed ? { seed } : {}) }), env, true);
+                JSON.stringify({ prompt: ask, by: me, res: "2k",
+                  ...(Number.isInteger(seed) ? { seed } : (_seedNow ? { seed: _seedNow + (seed ? 1 : 0) } : (seed ? { seed } : {}))),
+                  ...(_withNow ? { with: _withNow } : {}) }), env, true);
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
           };

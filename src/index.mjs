@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.586.0-2026-10-13-pick-and-new-art-from-two-pictures";
+const BUILD = "aura-core-v9.587.0-2026-10-13-where-it-goes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63716,7 +63716,8 @@ function talkReadAct(txt) {
              words: typeof o.words === "string" ? o.words.trim().slice(0, 2000) : "",
              ideas: strList(o.ideas, 4, 160).map((x) => x.replace(/\*\*/g, "")),
              // HER IDEAS AS PICTURE WORDS (2026-10-12, v9.584, Aaron): the same four, written for the picture.
-             idea_pictures: strList(o.idea_pictures, 4, 300),
+             directions: strList(o.directions, 4, 80).map((x) => x.replace(/^\s*i want it to go\s+/i, "").replace(/[.\s]+$/, "")),
+             where_to: (typeof o.where_to === "string") ? o.where_to.trim().slice(0, 160) : "",
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
              // first version of this field took that name, and the duplicate key silently lost.
              lines: Array.isArray(o.lines) ? o.lines.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
@@ -64554,7 +64555,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // becomes the subject, and the drawing is an ORIGINAL born under their PTA.
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
-let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
+let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto = false;
       // ══ A PHOTOGRAPH THAT ARRIVED IS NOT A DRAWING (2026-09-16, v9.270) ══════════════════
       // `talk:last` is written on a REF turn with `image: refUrl` so the pixels survive the turn.
       // Correct - but three readers took "lastDrawn has an image" to mean SHE DREW IT. The go-ahead
@@ -64592,7 +64593,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             context: "a reference somebody pointed at while designing a tattoo", by: me }), env, true);
           const ip = (ir && ir.payload) ? ir.payload : ir;
           if (ip?.ok) { refSaw = ip.saw || null; refUrl = ip.image_url || wantRef;
-                        refDesign = ip.entity || null; _bodyPhoto = _bodyRefNow; }
+                        refDesign = ip.entity || null; _bodyPhoto = _bodyRefNow; _freshPhoto = true; }
         } catch {}
         // ══ THE ISOLATE IS DELETED, AND IT IS NOT MOVING ANYWHERE (2026-09-13) ═════════════
         //
@@ -64781,12 +64782,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         "{\n" +
         // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
         // so the floor and her live agent cannot disagree.
-        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to give them some ideas, or to hear their own; don\'t give the ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
+        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. When they are adding to it, ask where they want to take it, and put the ways you can see it growing in directions; once they tell you where, offer to show them some ideas or to hear their own. When they are covering or reworking it, offer to give them some ideas, or to hear their own. Don\'t give the ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
         '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
-        '  "idea_pictures": ["the same 4 ideas in the same order, each written as picture words (your PICTURE WORDS craft): what to add, where it goes on their body, how it looks - plain words, at most 30 words each. Only when they asked for ideas on their own photo"],\n' +
+        '  "directions": ["only on your reply to their own tattoo photo when they are adding to it: up to 4 ways you can see it growing on the body in this photo, each finishing the sentence \'I want it to go ___\' in their voice - for example \'down to my wrist\' or \'over my shoulder and across my back\'. Where it goes only, plain words, no designs"],\n' +
+        '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go - by tapping one of your directions or in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:
@@ -66426,6 +66428,31 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // five (S1-S5, img_mv5z7ogg7cn3 .. img_mv5zd5qywyxq), the old ink kept every time. So the grid is
       // drawn from their photo and that one sentence alone (a setting, `config:frame:addon:grid`), and she
       // does what she is good at: she reads what came back and talks about it. Her idea lines are not sent.
+      // ══ WHERE IT GOES (2026-10-13, v9.587, Aaron) ═══════════════════════════════════════════════════
+      // "Any add-on that comes in, we have to establish intent - where they want to put it - and send that
+      // established placement to the image model." PROVEN by command (pta of the lion-arm test, 08:38): the same
+      // grid sentence with "I want it to continue down my arm to my wrist." ran all four down to the wrist; without
+      // it all four stayed on the upper arm. She reads where it can grow and offers those as buttons; a tapped
+      // one arrives as "I want it to go <where>", or she writes it in `placement` when they say it in their own
+      // words. It is kept for this tattoo and a new photo clears it. Nothing is forced: no placement, nothing added.
+      let _placeNow = "";
+      const _dirTap = String(said || "").trim().match(/^i want it to go\s+(.{3,160}?)[.!\s]*$/i);
+      if (me) {
+        try {
+          _placeNow = _freshPhoto ? "" : String((await talkStateGet(env, me, ["placement"])).placement || "").trim();
+          const _herPl = String((acted && acted.where_to) || "").trim().replace(/^i want it to go\s+/i, "").replace(/[.!\s]+$/, "");
+          const _newPl = _dirTap ? _dirTap[1].trim() : _herPl;
+          if (_freshPhoto || (_newPl && _newPl !== _placeNow)) {
+            if (_newPl || _freshPhoto) _placeNow = _newPl || "";
+            await talkStatePut(env, me, "placement", _placeNow);
+            console.log("[TURN:PLACE] " + (_placeNow ? "where it goes: \"" + _placeNow + "\"" + (_dirTap ? " (they tapped it)" : " (she heard it)") : "a new photo - no placement yet"));
+          }
+        } catch {}
+      }
+      // A tapped direction answers her question - it is not a request to draw yet.
+      if (_dirTap && (act === "draw" || act === "change" || act === "onme")) {
+        console.log("[TURN:PLACE] they said where - nothing drawn yet (her act was " + act + ")"); act = "none";
+      }
       let _ideasGrid = false;
       if (_askIdeas && jobNow === "add" && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true;
@@ -67462,6 +67489,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               if (_k && !_k.includes("____")) { _go = _k; _goFrom = "setting"; }
               else if (_k) console.log("[TURN:IDEAS] config:frame:addon:grid still holds the old ____ shape - not used, the default went");
             } catch {}
+            if (_placeNow) {
+              const _ps = "I want it to go " + _placeNow + ".";
+              _go = _go.includes("I want to add to it.") ? _go.replace("I want to add to it.", "I want to add to it. " + _ps) : (_ps + " " + _go);
+              _goFrom += "+placement";
+            }
             _sentNow = _go;
             _herAsk = null;
             _wordsFrom = "ideas_grid_" + _goFrom;
@@ -68125,6 +68157,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           await talkStatePut(env, me, "lastturn", JSON.stringify({ tid: String(opts.tid).slice(0, 40), at: new Date().toISOString(),
             ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
             ideas: (acted.ideas && acted.ideas.length) ? acted.ideas : null,
+            directions: (acted.directions && acted.directions.length && !drew) ? acted.directions : null,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
             drew: drew ? { image: drew.image || null, design: drew.design || null, changed: drew.changed || null,
               for_the_artist: !!drew.for_the_artist, pending: !!drew.pending, four_directions: !!drew.four_directions,
@@ -68133,6 +68166,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,
                ...((acted.ideas && acted.ideas.length) ? { ideas: acted.ideas } : {}),
+               ...((acted.directions && acted.directions.length && !drew) ? { directions: acted.directions } : {}),
                ...(_herTurn ? { her_turn: _herTurn } : {}),
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),

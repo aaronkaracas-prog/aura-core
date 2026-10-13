@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.593.0-2026-10-13-the-chatgpt-way";
+const BUILD = "aura-core-v9.594.0-2026-10-13-same-quality-on-the-meter";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -993,6 +993,21 @@ function costTapClose(tap) {
                + "priced daily - see NEURONS. Exact for one turn at a time." };
 }
 function costTapNeuron() { for (const t of _COST_TAPS) t.neurons_calls += 1; }
+
+// $/image by model and quality - the fallback when a provider reports no usage for a picture.
+// Hoisted v9.594 so the image lane and THREAD price from the same rows (MEASURED where marked).
+const IMAGE_RATE_PER_IMAGE = {   // $/image, model -> quality. MEASURED where marked; inferred otherwise.
+  "gemini-3.1-flash-lite-image": { low: 0.045, medium: 0.045, high: 0.045 },   // inferred - Google Nano Banana 2 Lite
+  "gemini-3.1-flash-image":      { low: 0.067, medium: 0.067, high: 0.067 },   // inferred - Google Nano Banana 2
+  "gemini-3-pro-image":          { low: 0.134, medium: 0.134, high: 0.134 },   // inferred - Google Nano Banana Pro
+  "gemini-2.5-flash-image":      { low: 0.039, medium: 0.039, high: 0.039 },   // inferred - Google Nano Banana (older)
+  "grok-imagine-image-quality": { low: 0.05,  medium: 0.05,  high: 0.05  },   // INFERRED (was 0.005, same 10x) - NOT yet burned
+  "grok-imagine-image":         { low: 0.02,  medium: 0.02,  high: 0.02  },   // MEASURED 2026-07-31, 3-image burn, $0.06 drawdown
+  "gpt-image-1-mini": { low: 0.005, medium: 0.030, high: 0.052 },              // inferred
+  "gpt-image-1":      { low: 0.011, medium: 0.040, high: 0.170 },              // inferred
+  "gpt-image-1.5":    { low: 0.009, medium: 0.034, high: 0.133 },              // inferred
+  "gpt-image-2":      { low: 0.006, medium: 0.053, high: 0.211 },              // inferred
+};
 
 async function _egressCore(env, rec) {
   try {
@@ -13563,6 +13578,14 @@ async function successionGate(env) {
       if (thKey && thKey.trim().charAt(0) === String.fromCharCode(123)) { try { thKey = JSON.parse(thKey).api_key; } catch {} }
       if (!thKey) return { cmd: "THREAD", payload: { ok: false, error: "no provider key" } };
       const thImg = /^https?:\/\//i.test(thArg) ? thArg : ("https://" + (await imageHost(env)) + "/image/" + thArg);
+      // THE SAME PICTURE SETTINGS AS THE APP (v9.594, Aaron): the first OpenAI run left quality to OpenAI and
+      // it drew at its own (higher) quality, far above the app's ~1 cent. The tool now gets the app's own
+      // image model (`config:edit:model`) and quality (`config:edit:quality`) - the dials every edit uses.
+      const thImgModel = thOA ? String((await env.AURA_KV.get("config:edit:model").catch(() => null)) || "").trim() : "";
+      const thQual = thOA ? String((await env.AURA_KV.get("config:edit:quality").catch(() => null)) || "").trim().toLowerCase() : "";
+      const thTool = (action) => ({ type: "image_generation", action,
+        ...(thImgModel && /^gpt-image/i.test(thImgModel) ? { model: thImgModel } : {}),
+        ...(["low", "medium", "high", "auto"].includes(thQual) ? { quality: thQual } : {}) });
       const thBody = thMode === "START"
         // A STEP ALWAYS DRAWS (2026-09-21, design engine rule 5). MEASURED: "I'm thinking of coloring the
         // entire tattoo in" and then "I love your ideas show me what that would look like" both came
@@ -13571,10 +13594,10 @@ async function successionGate(env) {
         // comes back. `tool_choice: "required"` makes the one tool offered - the image tool - mandatory.
         // THE FIRST STEP MAY BE ASKED FOR "auto" (v9.593, Aaron): OpenAI's own default, and the way ChatGPT uses the
         // tool - the model chooses to edit the photo or draw a new one. Unasked, it is still an edit, as before.
-        ? { model: thModel, tools: [{ type: "image_generation", action: (thP && ["edit", "generate", "auto"].includes(String(thP.action || "").toLowerCase())) ? String(thP.action).toLowerCase() : "edit" }], tool_choice: "required",
+        ? { model: thModel, tools: [thTool((thP && ["edit", "generate", "auto"].includes(String(thP.action || "").toLowerCase())) ? String(thP.action).toLowerCase() : "edit")], tool_choice: "required",
             input: [{ role: "user", content: [{ type: "input_text", text: thAsk },
                                               { type: "input_image", image_url: thImg }] }] }
-        : { model: thModel, tools: [{ type: "image_generation", action: thAction }], tool_choice: "required",
+        : { model: thModel, tools: [thTool(thAction)], tool_choice: "required",
             previous_response_id: thArg, input: thAsk };
       try {
         const thR = await pfetch(env, thOA ? "openai" : "xai", "core:thread",
@@ -13590,6 +13613,23 @@ async function successionGate(env) {
         const thText = thOut.filter((o) => o && o.type === "message")
           .flatMap((o) => Array.isArray(o.content) ? o.content : [])
           .map((c) => (c && (c.text || c.output_text)) || "").filter(Boolean).join("\n").trim();
+        // THE PICTURES GO ON THE METER (v9.594). OpenAI's reply carries the chat model's usage only - the image
+        // tool's charge is not in it, so the meter saw the chat step and not the picture. Each picture is priced
+        // from the shared per-image table at the quality it was drawn at, and added as cost only (pfetch has
+        // already counted the request).
+        let thImgCost = null;
+        if (thOA && thCalls.length) {
+          const _m = thImgModel || "gpt-image-2";
+          const _k = Object.keys(IMAGE_RATE_PER_IMAGE).find((k) => _m.toLowerCase().startsWith(k));
+          thImgCost = 0;
+          for (const c of thCalls) {
+            const q = String(c.quality || thQual || "medium").toLowerCase();
+            thImgCost += _k ? (IMAGE_RATE_PER_IMAGE[_k][q] ?? IMAGE_RATE_PER_IMAGE[_k].medium ?? 0) : 0;
+          }
+          thImgCost = +thImgCost.toFixed(6);
+          try { await _egressCore(env, { provider: "openai", caller: "core:thread", model: _m,
+            endpoint: "https://image/" + _m, status: 200, usage: null, cost_usd: thImgCost, cost_only: true }); } catch {}
+        }
         let thUrl = null, thId = null;
         if (thLast) {
           const b64 = String(thLast.result).replace(/^data:[^,]+,/, "");
@@ -13605,6 +13645,9 @@ async function successionGate(env) {
           tool_prompt: (thLast && (thLast.prompt || thLast.revised_prompt)) || null,
           edited: !!(thLast && /^ie_/.test(String(thLast.id || ""))), calls: thCalls.length,
           model: thModel, usage: thD.usage || null,
+          image_model: thImgModel || null, quality_asked: thQual || null,
+          quality_drawn: (thLast && thLast.quality) || null, size_drawn: (thLast && thLast.size) || null,
+          image_cost_usd: thImgCost, image_cost_source: thImgCost != null ? "per-image table at the quality drawn (inferred)" : null,
           // xAI reports its own charge in ticks of 1e-10 USD; read as dollars so a step's cost is exact.
           cost_usd: (thD.usage && thD.usage.cost_in_usd_ticks != null) ? thD.usage.cost_in_usd_ticks / 1e10 : null,
           ...(thMode === "NEXT" ? { action_asked: thAction } : {}),
@@ -61238,18 +61281,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     // TO RE-MEASURE ANY ROW: zero the lane for a day, note credits, burn a known count through the
     // real door (not a test path), read credits again, divide. Label what was measured and what was
     // only inferred - they are not the same evidence and must not look the same in this table.
-    const RATE = {   // $/image, model -> quality. MEASURED where marked; inferred otherwise.
-      "gemini-3.1-flash-lite-image": { low: 0.045, medium: 0.045, high: 0.045 },   // inferred - Google Nano Banana 2 Lite
-      "gemini-3.1-flash-image":      { low: 0.067, medium: 0.067, high: 0.067 },   // inferred - Google Nano Banana 2
-      "gemini-3-pro-image":          { low: 0.134, medium: 0.134, high: 0.134 },   // inferred - Google Nano Banana Pro
-      "gemini-2.5-flash-image":      { low: 0.039, medium: 0.039, high: 0.039 },   // inferred - Google Nano Banana (older)
-      "grok-imagine-image-quality": { low: 0.05,  medium: 0.05,  high: 0.05  },   // INFERRED (was 0.005, same 10x) - NOT yet burned
-      "grok-imagine-image":         { low: 0.02,  medium: 0.02,  high: 0.02  },   // MEASURED 2026-07-31, 3-image burn, $0.06 drawdown
-      "gpt-image-1-mini": { low: 0.005, medium: 0.030, high: 0.052 },              // inferred
-      "gpt-image-1":      { low: 0.011, medium: 0.040, high: 0.170 },              // inferred
-      "gpt-image-1.5":    { low: 0.009, medium: 0.034, high: 0.133 },              // inferred
-      "gpt-image-2":      { low: 0.006, medium: 0.053, high: 0.211 },              // inferred
-    };
+    const RATE = IMAGE_RATE_PER_IMAGE;   // one table, shared with THREAD (v9.594)
     const mkey = Object.keys(RATE).find((k) => model.toLowerCase().startsWith(k));
     if (mkey) costUsd = RATE[mkey][quality] ?? RATE[mkey].medium ?? null;
 

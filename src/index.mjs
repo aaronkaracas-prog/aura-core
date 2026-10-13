@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.587.0-2026-10-13-where-it-goes";
+const BUILD = "aura-core-v9.588.0-2026-10-13-beyond-the-photo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63352,7 +63352,8 @@ async function makeArtistFiles(env, ctx) {
               if (_new) {
                 _addSheets.push({ panel: "New work", asked: _name || "everything new", flat: _new.flat, id: _new.id,
                                   seeIn: _seeNew || 0, checked: null, ok: true });
-                try { console.log("[FILES] new work sheet -> ok (original photo + the new look, only what is different)"); } catch {}
+                try { console.log("[FILES] new work sheet -> ok (original photo + the new look, only what is different) · picture 1: " +
+                                  refDesign + " · picture 2: " + mockUrl + " · words: \"" + _nw + "\" · came back: " + _new.flat); } catch {}
               } else {
                 _newWorkFail = "new work sheet failed: " + (_flatErr || "no image came back");
                 try { console.log("[FILES] " + _newWorkFail); } catch {}
@@ -64787,7 +64788,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
         '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
-        '  "directions": ["only on your reply to their own tattoo photo when they are adding to it: up to 4 ways you can see it growing on the body in this photo, each finishing the sentence \'I want it to go ___\' in their voice - for example \'down to my wrist\' or \'over my shoulder and across my back\'. Where it goes only, plain words, no designs"],\n' +
+        '  "directions": ["only on your reply to their own tattoo photo when they are adding to it: up to 4 ways it could grow on their body. Read the photo, then think about the whole body it continues onto, not only the skin the photo shows. Each finishes the sentence \'I want it to go ___\' in their voice - for example \'down to my wrist\', \'up past my elbow onto my upper arm\' or \'into a full sleeve\'. Where it goes only, plain words, no designs"],\n' +
         '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go - by tapping one of your directions or in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
@@ -67557,7 +67558,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const _pr = (t) => (t && t.ok && t.image_url) ? "made" : ("not made: " + String((t && t.error) || "no picture").replace(/\s+/g, " ").slice(0, 160));
             {
               const t = await _evolve(cur, ask, null);
-              _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" -> " + _pr(t));
+              // EVERY PICTURE SENT IS NAMED (2026-10-13, v9.588, Aaron): which picture it was drawn on, and the second
+              // picture when one went with it - so a result can be checked against exactly what the model was given.
+              _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" · picture 1: " + cur +
+                  (_withNow ? " · picture 2: " + _withNow.join(", ") : "") + (_seedNow ? " · seed " + _seedNow : "") + " -> " + _pr(t) +
+                  (t && t.image_url ? " " + t.image_url : ""));
               // A CHANGE IS NOT LOOKED AT (2026-09-20). Aaron: colour, size, a small edit comes back
               // right, and a look there costs money and adds nothing - she writes her one short line
               // with the instruction. New drawings are looked at; see the draw path below.

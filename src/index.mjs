@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.584.0-2026-10-12-ideas-as-a-grid";
+const BUILD = "aura-core-v9.585.0-2026-10-12-grid-from-one-sentence";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66390,11 +66390,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // command the same day (img_mv5v3s71iija, $0.0197): one edit call made four numbered versions of
       // the photo. The words are a fixed opening (a setting, `config:frame:addon:grid`) and her four
       // picture-word lines. Picking one and changes after it come next; this is the four showing up.
-      let _ideasGrid = null;
+      // ══ THE PICTURE MODEL IMAGINES, SHE READS (2026-10-12, v9.585, Aaron) ═══════════════════════════
+      // "The model can do it and the visual gives people the options." MEASURED the same evening: her four
+      // written lines came back as four timid accessories (G5, G6); their photo and ONE plain sentence of
+      // creative permission came back as four different futures - five different tattoos, $0.09 for all
+      // five (S1-S5, img_mv5z7ogg7cn3 .. img_mv5zd5qywyxq), the old ink kept every time. So the grid is
+      // drawn from their photo and that one sentence alone (a setting, `config:frame:addon:grid`), and she
+      // does what she is good at: she reads what came back and talks about it. Her idea lines are not sent.
+      let _ideasGrid = false;
       if (_askIdeas && jobNow === "add" && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
-        const _ip = (Array.isArray(acted.idea_pictures) ? acted.idea_pictures : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4);
-        if (_ip.length === 4) { act = "change"; _ideasGrid = _ip; console.log("[TURN:IDEAS] her four ideas drawn as one grid on their photo"); }
-        else console.log("[TURN:IDEAS] no grid - she wrote " + _ip.length + " picture lines, four are needed; her ideas stay as cards");
+        act = "change"; _ideasGrid = true;
+        console.log("[TURN:IDEAS] four ideas drawn as one grid on their photo, from the one fixed sentence");
       }
 
       // ══ THE ARTIST'S SHEET - THE OPERATION, NOT A DESCRIPTION (2026-09-10) ═══════════════
@@ -67356,8 +67362,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               }
             }
           } catch {}
+          // Not on the ideas grid (v9.585): "Give me some ideas" is not something they want added, and it
+          // would name the new-work sheet.
           if (String(jobNow || "") === "add" && refDesign && parentId === refDesign && _sentNow &&
-              !(opts && opts.inspire) && me) {
+              !_ideasGrid && !(opts && opts.inspire) && me) {
             try { await talkStatePut(env, me, "added", String(_sentNow).slice(0, 600)); } catch {}
           } else if (String(jobNow || "") === "add" && refDesign && parentId !== refDesign && _sentNow &&
                      !_gridPick && !(opts && opts.inspire) && me) {
@@ -67413,13 +67421,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               _wordsFrom = _b ? "her_brief" : (acted.ask ? "her_ask" : "her_prompt");
             }
           }
-          // The four ideas as one grid on their photo (v9.584): the grid opening, then her four lines.
+          // The four ideas as one grid on their photo (v9.585): the one sentence, nothing added. The setting
+          // is the whole sentence; a value still holding "____" is the old opening-plus-her-lines shape
+          // and is not used.
           if (_ideasGrid && parentId === refDesign) {
-            let _go = "This is my tattoo. Show me four versions in a 2 by 2 grid, numbered 1 to 4, each one this same photo with one addition: ____. The existing tattoo stays untouched.";
-            try { const _k = String((await env.AURA_KV.get("config:frame:addon:grid")) || "").trim(); if (_k.includes("____")) _go = _k; } catch {}
-            _sentNow = _go.replace("____", _ideasGrid.map((l, i) => (i + 1) + ". " + l.replace(/[.;\s]+$/, "")).join("; "));
-            _herAsk = _ideasGrid.join(" | ");
-            _wordsFrom = "her_idea_pictures";
+            let _go = "This is my existing tattoo. I want to add to it. Show me 4 completely different artistic visions for where this tattoo could go next. Don't limit yourself to the subject or style that's already there. You can introduce a completely different style, subject, technique, composition, color, or visual language if it creates something beautiful. I want the four to feel like four different artists saw four different possibilities - not four variations of the same idea. Show all 4 on my body in a numbered 2x2 grid. Keep my existing tattoo exactly as it is.";
+            let _goFrom = "default";
+            try {
+              const _k = String((await env.AURA_KV.get("config:frame:addon:grid")) || "").trim();
+              if (_k && !_k.includes("____")) { _go = _k; _goFrom = "setting"; }
+              else if (_k) console.log("[TURN:IDEAS] config:frame:addon:grid still holds the old ____ shape - not used, the default went");
+            } catch {}
+            _sentNow = _go;
+            _herAsk = null;
+            _wordsFrom = "ideas_grid_" + _goFrom;
           }
           // ══ MADE FROM THE PICTURE: THE PHOTO, ONE OPENING, HER BRIEF (2026-10-01, v9.504, Aaron) ═══
           // The opening is a setting (`config:frame:from`, "____" is her brief). Their lines never go.

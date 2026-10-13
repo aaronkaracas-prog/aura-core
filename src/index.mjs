@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.594.0-2026-10-13-same-quality-on-the-meter";
+const BUILD = "aura-core-v9.595.0-2026-10-13-big-enough-to-read";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13583,7 +13583,12 @@ async function successionGate(env) {
       // image model (`config:edit:model`) and quality (`config:edit:quality`) - the dials every edit uses.
       const thImgModel = thOA ? String((await env.AURA_KV.get("config:edit:model").catch(() => null)) || "").trim() : "";
       const thQual = thOA ? String((await env.AURA_KV.get("config:edit:quality").catch(() => null)) || "").trim().toLowerCase() : "";
-      const thTool = (action) => ({ type: "image_generation", action,
+      // ITS OWN SIZE (v9.595, Aaron): nothing named a size, so OpenAI chose 1254x1254 every time - four ideas and
+      // their captions in ~627 pixels each, too small to read. A setting, `config:edit:thread:size` (default
+      // "1920x1920": the same square shape the model picked, at the largest size `config:edit:maxpx` allows).
+      let thSize = "1920x1920";
+      try { const _k = String((await env.AURA_KV.get("config:edit:thread:size")) || "").trim(); if (/^(\d{3,4}x\d{3,4}|auto)$/.test(_k)) thSize = _k; } catch {}
+      const thTool = (action) => ({ type: "image_generation", action, ...(thOA && thSize ? { size: thSize } : {}),
         ...(thImgModel && /^gpt-image/i.test(thImgModel) ? { model: thImgModel } : {}),
         ...(["low", "medium", "high", "auto"].includes(thQual) ? { quality: thQual } : {}) });
       const thBody = thMode === "START"
@@ -13646,7 +13651,7 @@ async function successionGate(env) {
           edited: !!(thLast && /^ie_/.test(String(thLast.id || ""))), calls: thCalls.length,
           model: thModel, usage: thD.usage || null,
           image_model: thImgModel || null, quality_asked: thQual || null,
-          quality_drawn: (thLast && thLast.quality) || null, size_drawn: (thLast && thLast.size) || null,
+          quality_drawn: (thLast && thLast.quality) || null, size_drawn: (thLast && thLast.size) || null, size_asked: thOA ? thSize : null,
           image_cost_usd: thImgCost, image_cost_source: thImgCost != null ? "per-image table at the quality drawn (inferred)" : null,
           // xAI reports its own charge in ticks of 1e-10 USD; read as dollars so a step's cost is exact.
           cost_usd: (thD.usage && thD.usage.cost_in_usd_ticks != null) ? thD.usage.cost_in_usd_ticks / 1e10 : null,

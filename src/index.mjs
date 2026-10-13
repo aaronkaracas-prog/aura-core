@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.590.0-2026-10-13-the-model-sees-where";
+const BUILD = "aura-core-v9.591.0-2026-10-13-a-canvas-for-the-ideas";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60935,7 +60935,19 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           fd.append(oRefs.length > 1 ? "image[]" : "image",
             new Blob([bytes], { type: "image/png" }), "parent" + i + ".png");
           attached++;
-          if (attached === 1) {
+          // ══ A CALLER MAY NAME THE CANVAS FOR ONE PICTURE (2026-10-13, v9.591, Aaron) ══════════════
+          // MEASURED: the ideas picture boxed into the photo's own shape drew four cramped ideas; with
+          // `config:edit:size` = auto it chose its own layout but came back about 1254 square - each idea
+          // about 600 wide and the words in it unreadable. The ideas picture now names its own canvas
+          // (width and height); every other edit keeps the photo's shape exactly as before.
+          const _cw = Number.isInteger(opts.width) ? opts.width : 0, _ch = Number.isInteger(opts.height) ? opts.height : 0;
+          if (attached === 1 && _cw && _ch) {
+            const _cMax = Math.min(parseInt(_editMaxPxRaw, 10) || 3686400, 8294400);
+            if (_cw % 16 === 0 && _ch % 16 === 0 && Math.max(_cw, _ch) / Math.min(_cw, _ch) <= 3 &&
+                _cw * _ch >= 655360 && _cw * _ch <= _cMax && Math.max(_cw, _ch) <= 3840) _sizeSent = _cw + "x" + _ch;
+            else console.log("[IMG-SIZE] asked for " + _cw + "x" + _ch + " - not a size the model takes, the photo's shape went instead");
+          }
+          if (attached === 1 && !/^\d+x\d+$/.test(_sizeSent)) {
             try {
               _firstHead = Array.from(new Uint8Array(bytes).slice(0, 16)).map((x) => x.toString(16).padStart(2, "0")).join("");
               const _d = imageDimsOf(bytes);
@@ -67449,6 +67461,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // lines go, as before. Every change after the first picture is unchanged.
           let _herAsk = null;
           let _seedNow = null, _withNow = null;   // v9.586: a fresh grid, and the grid sent with a pick
+          let _canvasNow = null;                   // v9.591: the ideas picture's own canvas
           // CHANGES TOO (2026-09-30, Aaron): MEASURED on pta_4e048acbadd8af04, "Adding color to the new
           // tattoo" went as typed and the model coloured the original forearm piece as well - one picture
           // of a tattooed arm does not say which part is new. She knew ("while the original forearm tattoo
@@ -67505,6 +67518,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // A FRESH FOUR EVERY TIME (v9.586): the image cache is keyed on the photo and the words, so the
             // same sentence on the same photo would hand back the same grid. A seed makes it a new ask.
             _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+            // ITS OWN CANVAS (v9.591): tall enough for a 2x2 that reads on a phone, big enough that the words
+            // in it read. A setting, `config:edit:grid:size` ("1536x2048"); the photo's shape is not used here.
+            let _gs = "1536x2048";
+            try { const _k = String((await env.AURA_KV.get("config:edit:grid:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(_k)) _gs = _k; } catch {}
+            const _gm = _gs.match(/^(\d+)x(\d+)$/);
+            _canvasNow = { width: parseInt(_gm[1], 10), height: parseInt(_gm[2], 10) };
           }
           // ══ PICKING A NUMBER ON AN ADD-ON: THEIR PHOTO, AND THE GRID AS THE SECOND PICTURE (2026-10-13, v9.586) ══
           // MEASURED (pta_033302cc27b7eadd): "I want number 3" sent their photo and her one-line description
@@ -67545,7 +67564,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const r = await processCommand("IMAGE EVOLVE " + parent + " " +
                 JSON.stringify({ prompt: ask, by: me, res: "2k",
                   ...(Number.isInteger(seed) ? { seed } : (_seedNow ? { seed: _seedNow + (seed ? 1 : 0) } : (seed ? { seed } : {}))),
-                  ...(_withNow ? { with: _withNow } : {}) }), env, true);
+                  ...(_withNow ? { with: _withNow } : {}),
+                  ...(_canvasNow ? _canvasNow : {}) }), env, true);
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
           };
@@ -67565,7 +67585,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // EVERY PICTURE SENT IS NAMED (2026-10-13, v9.588, Aaron): which picture it was drawn on, and the second
               // picture when one went with it - so a result can be checked against exactly what the model was given.
               _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" · picture 1: " + cur +
-                  (_withNow ? " · picture 2: " + _withNow.join(", ") : "") + (_seedNow ? " · seed " + _seedNow : "") + " -> " + _pr(t) +
+                  (_withNow ? " · picture 2: " + _withNow.join(", ") : "") + (_seedNow ? " · seed " + _seedNow : "") + (_canvasNow ? " · canvas " + _canvasNow.width + "x" + _canvasNow.height : "") + " -> " + _pr(t) +
                   (t && t.image_url ? " " + t.image_url : ""));
               // A CHANGE IS NOT LOOKED AT (2026-09-20). Aaron: colour, size, a small edit comes back
               // right, and a look there costs money and adds nothing - she writes her one short line

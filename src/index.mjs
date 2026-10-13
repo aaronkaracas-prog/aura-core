@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.592.0-2026-10-13-the-photos-own-shape";
+const BUILD = "aura-core-v9.593.0-2026-10-13-the-chatgpt-way";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13569,7 +13569,9 @@ async function successionGate(env) {
         // back as talk with no picture (`calls: 0`) - the conversation model judged for itself whether
         // to call its image tool. In this design Aura decides WHEN; once a function runs, a picture
         // comes back. `tool_choice: "required"` makes the one tool offered - the image tool - mandatory.
-        ? { model: thModel, tools: [{ type: "image_generation", action: "edit" }], tool_choice: "required",
+        // THE FIRST STEP MAY BE ASKED FOR "auto" (v9.593, Aaron): OpenAI's own default, and the way ChatGPT uses the
+        // tool - the model chooses to edit the photo or draw a new one. Unasked, it is still an edit, as before.
+        ? { model: thModel, tools: [{ type: "image_generation", action: (thP && ["edit", "generate", "auto"].includes(String(thP.action || "").toLowerCase())) ? String(thP.action).toLowerCase() : "edit" }], tool_choice: "required",
             input: [{ role: "user", content: [{ type: "input_text", text: thAsk },
                                               { type: "input_image", image_url: thImg }] }] }
         : { model: thModel, tools: [{ type: "image_generation", action: thAction }], tool_choice: "required",

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.588.0-2026-10-13-beyond-the-photo";
+const BUILD = "aura-core-v9.589.0-2026-10-13-a-direction-is-not-a-yes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66077,6 +66077,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // before the pick test below, and never mistaken for picking number 4.
       const _ideasLine = /^\s*(?:give|show) me some ideas\.?\s*$/i.test(String(said || "").trim()) ||
                          /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(String(said || "").trim());
+      // A tapped direction ("I want it to go down my spine...") answers where - it is never a yes to lock in.
+      const _dirLine = /^\s*i want it to go\s/i.test(String(said || ""));
       let _pickGo = false, _pickN = 0, _pickGridImg = null;
       try {
         if (lastDrawn && lastDrawn.design && !_ideasLine) {
@@ -66199,7 +66201,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           const _clear = _saysTheOne(_t);
           const _askedOne = /\b(the one|your tattoo)\b[^?]*\?/i.test(_prevAuraLine);
           const _shortYes = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|love it|i (really )?(like|love) it|it'?s perfect)\b[\s.!]*$/i.test(_t);
-          if (!_grid && (_clear || (_askedOne && _shortYes))) {
+          // MEASURED (pta_6301c17bf1a3ae07, v9.588): the tapped direction "I want it to go down my spine..." read as
+          // "it is the one" against their own photo, and the Lock It In card came up before anything was drawn.
+          // Only a picture that was made (a timeline picture) can be the one, and a direction or an ideas line never is.
+          if (_lp && !_grid && !_dirLine && !_ideasLine && (_clear || (_askedOne && _shortYes))) {
             act = "artist"; _lockedByWords = true;
             console.log("[TURN:LOCK] their words say it is the one - artist files" + (_clear ? "" : " (a yes to her 'is this the one?')"));
           }

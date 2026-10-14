@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.597.0-2026-10-14-she-does-not-read-the-ideas";
+const BUILD = "aura-core-v9.598.0-2026-10-14-every-tattoo-gets-a-name";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -68197,8 +68197,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (act === "artist" && opts && opts.cat) {
               await projectAppend(env, me, _pid, { details: { style: String(opts.cat).slice(0, 60) } });
             }
-            if (act === "artist" && !_herName && typeof _waitUntil === "function" && lastDrawn && lastDrawn.image) {
-              const _pidN = _pid, _imgN = lastDrawn.image;
+            // ALWAYS NAMED (2026-10-14, v9.598, Aaron): MEASURED - two tattoos locked in (17:43 and 05:51) kept a paragraph
+            // as their title and no [NAME] line was written at all: the step needed `lastDrawn.image`, and after a pick
+            // or a change the last drawing is known only by its design id. The picture is now found from that id; and
+            // when it cannot be, the log says so instead of skipping in silence.
+            let _imgForName = (lastDrawn && lastDrawn.image) || (drew && drew.image && !drew.for_the_artist ? drew.image : null);
+            if (act === "artist" && !_herName && !_imgForName && lastDrawn && lastDrawn.design) {
+              try { const _lf = await processCommand("IMAGE LIFE " + lastDrawn.design, env, true);
+                    const _lp = (_lf && _lf.payload) ? _lf.payload : _lf;
+                    _imgForName = (_lp && _lp.image && _lp.image.image_url) || null; } catch {}
+            }
+            if (act === "artist" && !_herName && !_imgForName) console.log("[NAME] not named: no picture of the locked design could be found");
+            if (act === "artist" && !_herName && typeof _waitUntil === "function" && _imgForName) {
+              const _pidN = _pid, _imgN = _imgForName;
               const _descN = (opts && opts.name) ? String(opts.name).slice(0, 400) : "";
               _waitUntil((async () => {
                 try {

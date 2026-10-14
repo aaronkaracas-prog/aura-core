@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.602.0-2026-10-14-fixed-steps-skip-her";
+const BUILD = "aura-core-v9.603.0-2026-10-14-new-tattoo-files-and-markers";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65631,15 +65631,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           const _fx = async (k, d) => { try { const v = String((await env.AURA_KV.get("config:say:" + k)) || "").trim(); return v || d; } catch { return d; } };
           let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change"]); } catch {}
           let _stm = null;
+          // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
+          // because "design_change" from the 9:50 test was still set.
+          if (/^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_s)) {
+            try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
+                  await talkStatePut(env, me, "design_change_parent", ""); } catch {}
+            _ds = {};
+          }
           if (/^i want to create a new tattoo\.?$/i.test(_s)) {
             _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Let's make something that's yours. Pick a style below, or tell me your idea and we'll build it together.");
           } else if ((_stm = _s.match(/^i like the (.+) style\.?$/i))) {
             _fixedWhy = "style"; _fixedSay = (await _fx("style_pick", "____ - great pick. Explore the designs made in this style, or create your own with me.")).replace("____", _stm[1]);
           } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {
             _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
-          } else if (String(_ds.await_change || "") === "1" && _s && !(opts && opts.inspire)) {
+          } else if (String(_ds.await_change || "") === "1" && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
-          } else if (String(_ds.design_change || "").trim() && /^i want number [1-4]\.?$/i.test(_s)) {
+          } else if (String(_ds.design_change || "").trim() && /^i want number [1-4]\.?$/i.test(_s) && !_bodyPhoto) {
             _fixedWhy = "pick"; _fixedSay = await _fx("pick_done", "Here it is on its own. Is this the one, or would you like to change something?");
           }
           if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
@@ -66986,7 +66993,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         intent = (intent || carriedObj) ? _intentFull : intent;
         const _job = await startArtistFilesJob(env, {
           project: _pid,
-          me, world, stage, seeing: !!seeing, jobNow: _bodyLook ? "new" : (jobNow || null), refUrl: _bodyLook ? null : (refUrl || null),
+          // AN ADD-ON NEEDS THEIR OWN PHOTO (2026-10-14, v9.603): MEASURED 10:33 - a catalogue jellyfish they changed ("it would
+          // be fun to ADD that finding Nemo fish") was read as job "add" and got the add-on files (whole piece + new work, 3.4 min).
+          // Without a photo of their own body there is nothing old to keep apart - it is a new tattoo's files.
+          me, world, stage, seeing: !!seeing,
+          jobNow: (_bodyLook || (["add", "cover", "rework"].includes(String(jobNow || "")) && !_bodyPhoto)) ? "new" : (jobNow || null),
+          refUrl: (_bodyLook || (["add", "cover", "rework"].includes(String(jobNow || "")) && !_bodyPhoto)) ? null : (refUrl || null),
           refDesign: refDesign || null, lastDrawn: lastDrawn || null,
           useRaw: Array.isArray(useRaw) ? useRaw : [], acted, intent: intent || null,
           alreadyFlat: _filesFlat, bodyLook: _bodyLook });

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.595.0-2026-10-13-big-enough-to-read";
+const BUILD = "aura-core-v9.596.0-2026-10-13-ideas-the-chatgpt-way";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -19714,6 +19714,28 @@ async function successionGate(env) {
         // A seed makes several versions of one edit distinct asks, so the image cache does not hand
         // back the same picture three times. xAI takes no seed; it is part of the cache key only.
         const evSeed = Number.isInteger(p.seed) ? p.seed : null;
+        // ══ THE CHATGPT WAY, FOR ONE CALL (2026-10-13, v9.596, Aaron) ══════════════════════════════
+        // `via: "thread"` sends the parent picture and the words to a chat model with the image tool
+        // (THREAD START - provider and model are the `config:source:image_thread:*` dials). The chat model
+        // looks at the photo and writes the image model its own brief, as ChatGPT does. PROVEN by command
+        // on the chest and the guitar (img_mv7b3ytxliyu, img_mv7bz95e6ca2): four different subjects on their
+        // own body, their tattoo kept, captions readable at 1920. The picture lands exactly where an evolve
+        // lands - a child of the parent in the Smart File graph - so everything after it works unchanged.
+        if (p.via === "thread" && parentUrl) {
+          const tr = await processCommand("THREAD START " + parentUrl + " " + JSON.stringify({ prompt: p.prompt, action: "auto" }), env, true);
+          const tp = (tr && tr.payload) ? tr.payload : tr;
+          if (!tp || !tp.ok || !tp.image) return { cmd: "IMAGE", payload: { ok: false, error: (tp && tp.error) || "the chat model drew no picture", via: "thread" } };
+          const reg = await registerSmartFile(env, { id: tp.image_id, filetype: "image", name: String(p.prompt).slice(0, 80),
+            url: tp.image, subject: p.prompt, source: "image_thread", creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null,
+            parent: ent.id, context: p.prompt, access: "public" });
+          await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `Spawned a new version: ${p.prompt}`, kind: "spawned_child" });
+          return { cmd: "IMAGE", payload: { ok: true, parent: ent.id, child: (reg && reg.entity_id) || null, child_image_id: tp.image_id,
+            image_url: tp.image, evolved_with: p.prompt, via: "thread", brief: tp.tool_prompt || null,
+            pictures_drawn: tp.calls, model: tp.model || null, image_model: tp.image_model || null,
+            quality: tp.quality_drawn || tp.quality_asked || null, size: tp.size_asked || null,
+            cost_usd: tp.image_cost_usd, cost_note: "picture only - the chat step is on the meter under core:thread",
+            sent_the_parent: true } };
+        }
         const r = parentUrl
           ? await showIt(p.prompt, env, { source: evAs, parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt,
@@ -67501,6 +67523,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           let _herAsk = null;
           let _seedNow = null, _withNow = null;   // v9.586: a fresh grid, and the grid sent with a pick
           let _canvasNow = null;                   // v9.591: the ideas picture's own canvas
+          let _viaNow = null;                      // v9.596: "thread" - the ideas picture goes the chat-model way
           // CHANGES TOO (2026-09-30, Aaron): MEASURED on pta_4e048acbadd8af04, "Adding color to the new
           // tattoo" went as typed and the model coloured the original forearm piece as well - one picture
           // of a tattooed arm does not say which part is new. She knew ("while the original forearm tattoo
@@ -67557,6 +67580,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // A FRESH FOUR EVERY TIME (v9.586): the image cache is keyed on the photo and the words, so the
             // same sentence on the same photo would hand back the same grid. A seed makes it a new ask.
             _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+            // THE CHATGPT WAY (v9.596, Aaron): the photo and the sentence go to the chat model, which writes the brief.
+            _viaNow = "thread";
             // THE PHOTO'S OWN SHAPE (v9.592, Aaron): a fixed tall canvas (v9.591, 1536x2048) made every idea taller
             // than the photo, and the model stretched the arm to fill it - a forearm grew past the wrist. ChatGPT and
             // the control test (img_mv77tclz9ahs) kept the photo's shape and the arm stayed the arm. A canvas is used
@@ -67607,7 +67632,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 JSON.stringify({ prompt: ask, by: me, res: "2k",
                   ...(Number.isInteger(seed) ? { seed } : (_seedNow ? { seed: _seedNow + (seed ? 1 : 0) } : (seed ? { seed } : {}))),
                   ...(_withNow ? { with: _withNow } : {}),
-                  ...(_canvasNow ? _canvasNow : {}) }), env, true);
+                  ...(_canvasNow ? _canvasNow : {}),
+                  // THE IDEAS PICTURE GOES THE CHATGPT WAY (v9.596): a chat model reads their photo and writes the brief.
+                  ...(_viaNow ? { via: _viaNow } : {}) }), env, true);
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
           };
@@ -67626,7 +67653,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const t = await _evolve(cur, ask, null);
               // EVERY PICTURE SENT IS NAMED (2026-10-13, v9.588, Aaron): which picture it was drawn on, and the second
               // picture when one went with it - so a result can be checked against exactly what the model was given.
-              _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" · picture 1: " + cur +
+              if (t && t.via === "thread") _pl("the chat model's brief: \"" + String(t.brief || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · pictures drawn " + t.pictures_drawn + " · " + t.quality + " " + t.size);
+              _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" · picture 1: " + cur + (_viaNow ? " · via the chat model" : "") +
                   (_withNow ? " · picture 2: " + _withNow.join(", ") : "") + (_seedNow ? " · seed " + _seedNow : "") + (_canvasNow ? " · canvas " + _canvasNow.width + "x" + _canvasNow.height : "") + " -> " + _pr(t) +
                   (t && t.image_url ? " " + t.image_url : ""));
               // A CHANGE IS NOT LOOKED AT (2026-09-20). Aaron: colour, size, a small edit comes back

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.600.0-2026-10-14-change-something-always-arms";
+const BUILD = "aura-core-v9.601.0-2026-10-14-no-raw-machine-text";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65850,8 +65850,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if (!acted && r?.ok && r.text) acted = readAct(r.text);
       // JSON that could not be read at all still has to say something - the raw text is a worse
       // answer than a good one and a far better answer than silence.
-      if (!acted) acted = { say: String(r?.text || "").trim() || "Tell me a bit more.",
-                            act: "none", prompt: "" };
+      // NEVER RAW MACHINE TEXT (2026-10-14, v9.601): MEASURED 08:53 - "I want number 4" was answered with the provider's
+      // raw response ({"id":"chatcmpl-...) as her words. Text that is JSON is not something a person should read.
+      if (!acted) { const _t = String(r?.text || "").trim();
+                    acted = { say: (_t && !/^\s*[\x7b\x5b]/.test(_t) && !/chatcmpl-/i.test(_t)) ? _t.slice(0, 900) : "Tell me a bit more.",
+                              act: "none", prompt: "" };
+                    if (_t && /^\s*[\x7b\x5b]|chatcmpl-/i.test(_t)) console.log("[TURN] her reply was raw machine text - not shown to them"); }
 
       // ══ THE BRIEF — FACTS, NOT TURNS ═══════════════════════════════════════════════════
       // "One leg." "Green eyes." "It's for my mum." Those are FACTS about what is being made,

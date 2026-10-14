@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.596.0-2026-10-13-ideas-the-chatgpt-way";
+const BUILD = "aura-core-v9.597.0-2026-10-14-she-does-not-read-the-ideas";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67737,9 +67737,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // A picture made from an inspiration photo is flat artwork, not their body - the check
             // "is every bit of the new ink on their skin" can only answer WRONG there (2026-09-26).
             // A grid of four is not one mock-up on them - no body check; her reaction asks which number (v9.584).
-            const _lkC = await _lookAtResult(cp.image_url, !_ideasGrid && !(opts && opts.inspire) && !_fromPic, null, !!_ideasGrid);
-            if (_lkC && _lkC.verdict) _mockNote = _lkC.verdict;
-            if (_lkC && _lkC.say) _reaction = _lkC.say;
+            // SHE DOES NOT READ THE IDEAS PICTURE (2026-10-14, v9.597, Aaron): "Aura does not need to read an image that
+            // we already have every piece of information on" - each idea's title and lines are written into the picture by
+            // the chat model that designed it. Her look cost ~24s and repeated the captions. One short line instead
+            // (a setting, `config:say:ideas_done`).
+            if (_ideasGrid) {
+              let _done = "Here are four ideas. Tap the one you want to work on, or I can imagine four more.";
+              try { const _k = String((await env.AURA_KV.get("config:say:ideas_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              _reaction = _done;
+            } else {
+              const _lkC = await _lookAtResult(cp.image_url, !(opts && opts.inspire) && !_fromPic, null, false);
+              if (_lkC && _lkC.verdict) _mockNote = _lkC.verdict;
+              if (_lkC && _lkC.say) _reaction = _lkC.say;
+            }
           }
           if (me && cp && cp.ok) {
             const _bad = !!(_mockNote && /^\s*WRONG\b/i.test(_mockNote));

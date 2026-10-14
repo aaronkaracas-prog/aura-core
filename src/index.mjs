@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.603.0-2026-10-14-new-tattoo-files-and-markers";
+const BUILD = "aura-core-v9.604.0-2026-10-14-new-tattoo-locked-flow";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8071,6 +8071,17 @@ async function processCommand(line, env, isOp) {
     // PTA being destroyed twice by wipes, so this clears the tattoo state and nothing else. Without
     // CONFIRM it only reports what the person holds. An email is resolved the way sign-in resolves
     // it (the hashed identity index), so nobody has to find an id.
+    case "TATTOO_FILES": {
+      // `TATTOO_FILES <pta> <prj_id>` - the tattoo as My Tattoos sees it: locked, its pictures and its artist's files
+      // (v9.604, for the PowerShell test). Reads only; the same talkProject the page's project view uses.
+      if (!isOp) return { cmd: "TATTOO_FILES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tfA = String(rest || "").trim().split(/\s+/);
+      if (!/^pta_[a-z0-9]+$/i.test(tfA[0] || "") || !/^prj_[a-z0-9]{6,40}$/i.test(tfA[1] || ""))
+        return { cmd: "TATTOO_FILES", payload: { ok: false, error: "Usage: TATTOO_FILES <pta_id> <prj_id>" } };
+      let tfR = null; try { tfR = await talkDo(env, tfA[0], "talkProject", [tfA[1]]); } catch (e) { tfR = { ok: false, error: String(e?.message ?? e).slice(0, 200) }; }
+      return { cmd: "TATTOO_FILES", payload: tfR || { ok: false, error: "NOT_FOUND" } };
+    }
+
     case "TALK_RESET": {
       if (!isOp) return { cmd: "TALK_RESET", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const trRaw = String(rest || "").trim();
@@ -8153,8 +8164,16 @@ async function processCommand(line, env, isOp) {
         known: AURA_WORLDS.map(([, w]) => w),
         what_to_do: "WORLD must be one of the declared worlds - see AURA_WORLDS in aura-core." } };
       try {
+        // THE PAGE'S TAPS, FROM A TERMINAL (2026-10-14, v9.604): FRESH, LOCK (Finish Design), USE, OWN, PICK, INSPIRE and
+        // FROM <design> are the same flags the page sends, so a PowerShell test walks exactly the path a tap does.
+        const tkFlag = (w) => new RegExp("\\b" + w + "\\b").test(tkId);
+        const tkFrom = (tkId.match(/\bFROM\s+([a-z0-9_]+)/i) || [])[1] || null;
+        const tkT0 = Date.now();
         const tkOut = await auraTalk(env, tkPta, /^pta_/.test(tkPta) ? "pta" : "contacted",
-                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef, world: tkWorld, tile: tkTile });
+                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef, world: tkWorld, tile: tkTile,
+                                       fresh: tkFlag("FRESH"), lock: tkFlag("LOCK"), use: tkFlag("USE"), own: tkFlag("OWN"),
+                                       pick: tkFlag("PICK"), inspire: tkFlag("INSPIRE"), from: tkFrom });
+        if (tkOut && typeof tkOut === "object") tkOut.turn_seconds = Math.round((Date.now() - tkT0) / 100) / 10;
         return { cmd: "TALK", payload: { ...tkOut, pta: tkPta,
                  stage: /^pta_/.test(tkPta) ? "pta" : "contacted",
                  book: "closed",
@@ -64193,7 +64212,7 @@ async function recordArtistFiles(env, d, drew) {
 }
 
 async function auraTalk(env, me, stage, saidIn, history, opts) {
-  return _TURN_ALS.run({ think: [] }, () => _auraTalkInner(env, me, stage, saidIn, history, opts));
+  return _TURN_ALS.run({ think: [], pics: [] }, () => _auraTalkInner(env, me, stage, saidIn, history, opts));
 }
 async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // ══ MEASURE IT, DO NOT REASON ABOUT IT (2026-09-09) ═══════════════════════════════════
@@ -65557,9 +65576,26 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // chasing missed looks, which turned out to be Workers AI dropping pictures - never this.
       // Same rule, same gate as a net, but she hears it first: before the first picture, when their
       // words are not a go, nothing is drawn this turn.
+      // ══ CREATE NEW TATTOO, LOCKED (2026-10-14, v9.604, Aaron) ═══════════════════════════════════════════
+      // The person imagines, the image model makes four, the person chooses and directs, Aura keeps it moving.
+      // Their idea is the instruction: no go step, and the first four come from one fixed sentence with their own
+      // words in it - Aura does not write the drawing words. A pick is the same every round. Fenced: only a
+      // conversation started with "I want to create a new tattoo" (talk-state new_flow), never a body photo or
+      // Get Inspired - add-on, cover-up, See It On You and Get Inspired do not reach any of it.
+      let _newFlow = false, _newStyle = null;
+      if (me) {
+        try {
+          const _nf = await talkStateGet(env, me, ["new_flow", "new_style"]);
+          const _op = String(said || "").trim();
+          const _opener = /^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_op);
+          _newFlow = (_opener ? /^i want to create a new tattoo\.?$/i.test(_op) : String(_nf.new_flow || "") === "1") &&
+                     !_bodyPhoto && !(opts && opts.inspire);
+          _newStyle = _opener ? null : (String(_nf.new_style || "").trim() || null);
+        } catch {}
+      }
       let _notYet = false;
       try {
-        if (hasLive && !_drewNow() && !_goSaid &&
+        if (hasLive && !_drewNow() && !_goSaid && !_newFlow &&
             !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
           let _pa = "";
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _pa = String(tnow[i].said || ""); break; } }
@@ -65629,24 +65665,30 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         try {
           const _s = String(said || "").trim();
           const _fx = async (k, d) => { try { const v = String((await env.AURA_KV.get("config:say:" + k)) || "").trim(); return v || d; } catch { return d; } };
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style"]); } catch {}
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
           // because "design_change" from the 9:50 test was still set.
           if (/^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_s)) {
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
-                  await talkStatePut(env, me, "design_change_parent", ""); } catch {}
-            _ds = {};
+                  await talkStatePut(env, me, "design_change_parent", "");
+                  // THE NEW-TATTOO FLOW MARKER (v9.604): set only by the Create New Tattoo opener, cleared by every other start.
+                  await talkStatePut(env, me, "new_flow", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : "");
+                  await talkStatePut(env, me, "new_style", ""); } catch {}
+            _ds = /^i want to create a new tattoo\.?$/i.test(_s) ? { new_flow: "1" } : {};
           }
+          _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
+          _newStyle = String(_ds.new_style || "").trim() || null;
           if (/^i want to create a new tattoo\.?$/i.test(_s)) {
             _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Let's make something that's yours. Pick a style below, or tell me your idea and we'll build it together.");
           } else if ((_stm = _s.match(/^i like the (.+) style\.?$/i))) {
             _fixedWhy = "style"; _fixedSay = (await _fx("style_pick", "____ - great pick. Explore the designs made in this style, or create your own with me.")).replace("____", _stm[1]);
+            if (_newFlow) { try { await talkStatePut(env, me, "new_style", String(_stm[1]).slice(0, 80)); } catch {} _newStyle = String(_stm[1]).slice(0, 80); }
           } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {
             _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
           } else if (String(_ds.await_change || "") === "1" && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
-          } else if (String(_ds.design_change || "").trim() && /^i want number [1-4]\.?$/i.test(_s) && !_bodyPhoto) {
+          } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-4]\.?$/i.test(_s) && !_bodyPhoto) {
             _fixedWhy = "pick"; _fixedSay = await _fx("pick_done", "Here it is on its own. Is this the one, or would you like to change something?");
           }
           if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
@@ -66225,7 +66267,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
         }
       } catch {}
-      const _theirGo = _goSaid || _pickGo;
+      // THEIR IDEA IS THE INSTRUCTION (v9.604): in the new-tattoo flow a typed idea or change needs no "go".
+      const _theirGo = _goSaid || _pickGo || _newFlow;
       if ((act === "draw" || act === "change") && !_theirGo) {
         const _sayNow = String(acted.say || said || "").trim();
         const _lastQ = (_sayNow.match(/[^.!?]*\?\s*$/) || [""])[0];
@@ -67042,7 +67085,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // the placement verdict off. A look that fails never costs them the picture.
       // Set when the picture being looked at carries the add-on's red marker line (AN ADD-ON MARKS
       // WHAT IS NEW). Her check and her reaction are told it is a marker, not ink.
-      const _lookAtResult = async (url, onBody, where, isGrid) => {
+      const _lookAtResult = async (url, onBody, where, isGrid, flat) => {
         if (!url || !me) return null;
         url = await lookCopy(env, url);   // v9.516: a copy she can be handed; the drawing stays full size
         const body = !!(onBody && seeing && (await _checkOn("mockup")));
@@ -67081,7 +67124,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const rx = await proxyToAgent(env,
               (isGrid
                 ? "[This is the picture you just made for them: four numbered directions for their tattoo. " +
-                  "Look at it. In one or two short lines, say what makes each direction different and where on their body it goes, then ask " +
+                  "Look at it. In one or two short lines, say what makes each direction different" + (flat ? "" : " and where on their body it goes") + ", then ask " +
                   "which number grabs them, or whether you should imagine 4 more - in your own words. Do not offer to lock anything in yet."
                 : "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
                   "in one warm line, then ask whether this is the one - their tattoo - or whether they want to " +
@@ -67749,6 +67792,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const _pr = (t) => (t && t.ok && t.image_url) ? "made" : ("not made: " + String((t && t.error) || "no picture").replace(/\s+/g, " ").slice(0, 160));
             {
               const t = await _evolve(cur, ask, null);
+              // EVERY WORD THE IMAGE MODEL GOT (v9.604) - handed back with the turn, never cut.
+              try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: _viaNow === "thread" ? "chat model, then image model" : "changed",
+                      words: String(ask), ...(t && t.brief ? { chat_model_brief: String(t.brief) } : {}), picture_in: cur,
+                      ...(_withNow ? { second_picture: _withNow } : {}), made: (t && t.image_url) || null,
+                      failed: (t && !t.ok) ? (t.error || "not made") : null,
+                      ...(t && (t.cost_usd ?? t.image_cost_usd) != null ? { picture_cost_usd: (t.cost_usd ?? t.image_cost_usd) } : {}) }); } catch {}
               // EVERY PICTURE SENT IS NAMED (2026-10-13, v9.588, Aaron): which picture it was drawn on, and the second
               // picture when one went with it - so a result can be checked against exactly what the model was given.
               if (t && t.via === "thread") _pl("the chat model's brief: \"" + String(t.brief || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · pictures drawn " + t.pictures_drawn + " · " + t.quality + " " + t.size);
@@ -67843,10 +67892,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               let _done = "Here are four ideas. Tap the one you want to work on, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:ideas_done")) || "").trim(); if (_k) _done = _k; } catch {}
               _reaction = _done;
-            } else if (_fixedWhy === "pick") {
+            } else if (_fixedWhy === "pick" && !_newFlow) {
               _reaction = _fixedSay;   // v9.602: the picked version, no look - the fixed line stands
             } else {
-              const _lkC = await _lookAtResult(cp.image_url, !(opts && opts.inspire) && !_fromPic, null, false);
+              // A NEW TATTOO'S PICK IS LOOKED AT, EVERY ROUND THE SAME (v9.604): she was not called before it was drawn;
+              // she looks at the one they picked and says something short about it. Flat artwork, not a body.
+              const _lkC = await _lookAtResult(cp.image_url, !(opts && opts.inspire) && !_fromPic && !_newFlow, null, false);
               if (_lkC && _lkC.verdict) _mockNote = _lkC.verdict;
               if (_lkC && _lkC.say) _reaction = _lkC.say;
             }
@@ -67882,7 +67933,39 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // 2000, not 900 (2026-09-29): MEASURED on the hummingbird grid, her four directions ran past
           // 900 and the cut took "2 by 2 grid" with it - so the grid frame never applied and a pick
           // on it could never have been read. The image model takes far more; the cap was ours.
-          const askLine = String(acted.prompt || said).trim().slice(0, 2000);
+          let askLine = String(acted.prompt || said).trim().slice(0, 2000);
+          // ══ THE FIRST FOUR OF A NEW TATTOO: ONE FIXED SENTENCE, THEIR WORDS (2026-10-14, v9.604, Aaron) ══════════
+          // "The person's idea is the instruction" and "it should not depend on Aura remembering to write make a 2x2
+          // grid". Their own lines since Create New Tattoo (the taps and bare yeses left out) fill ____, the style they
+          // tapped fills {style}. Nothing of hers goes in. Settings: config:frame:new:grid, config:frame:new:grid:style.
+          let _newSentence = false;
+          if (_newFlow) {
+            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|imagine (4|four) more|i want number [1-4])\.?\s*$/i;
+            const _bare = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
+            const _mine = [];
+            let _start = 0;
+            for (let i = tnow.length - 1; i >= 0; i--) {
+              if (tnow[i] && tnow[i].role === "them" && /^\s*i want to create a new tattoo/i.test(String(tnow[i].said || ""))) { _start = i + 1; break; }
+            }
+            for (let i = _start; i < tnow.length; i++) {
+              const e = tnow[i]; const t = String((e && e.role === "them" && e.said) || "").trim();
+              if (t && !_tap.test(t) && !_bare.test(t)) _mine.push(t);
+            }
+            const _now = String(said || "").trim();
+            if (_now && !_tap.test(_now) && !_bare.test(_now) && _mine[_mine.length - 1] !== _now) _mine.push(_now);
+            const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
+            if (_words) {
+              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Show all 4 as flat tattoo artwork on plain white - not on skin - in a numbered 2x2 grid. Under each one, write a short title and two or three lines about the design.";
+              let _st = ", all in the {name} style";
+              try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
+              try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
+              askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : "");
+              _newSentence = true;
+              console.log("[TURN:NEW] the first four from the fixed sentence - their words: \"" + _words.slice(0, 300) + "\"" + (_newStyle ? " · style: " + _newStyle : ""));
+            }
+            // Her own drawing words never stand in for theirs: no idea of theirs yet, nothing is drawn.
+            if (!_newSentence) { console.log("[TURN:NEW] no idea of theirs yet - nothing drawn"); throw { __skip: true }; }
+          }
           // ══ THE HOUSE REGISTER, AND IT IS A DIAL ═══════════════════════════════════════
           // `tatBuildAsk` ends every prompt with TAT_FRAME_INK - "flat tattoo artwork on white
           // paper, like a design sheet in a studio". Correct for the catalogue, where a flash
@@ -67952,11 +68035,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                "skin, not on a person, not a photograph of a tattoo.");
           // 2k because the first drawing is the ceiling for every later version, and a tattoo is
           // taller than it is wide. If the lane ignores either, the [XAI-IMG] line says so.
+          // The new-tattoo sentence goes alone (v9.604): it already says flat, on white, numbered, a 2x2 grid.
+          const _subjectSent = _newSentence ? askLine : (askLine + ". " + reg + " " + frm +
+              (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
+                        "the way it sits." : ""));
           const dr = await processCommand("SHOW_IT " + JSON.stringify({
             aspect: _grid ? "1:1" : "3:4", res: "2k",
-            subject: askLine + ". " + reg + " " + frm +
-              (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
-                        "the way it sits." : ""),
+            subject: _subjectSent,
+            // Nothing appended (v9.604): without raw, showIt adds "High quality, visually striking..." to the words.
+            ...(_newSentence ? { raw: true } : {}),
             context: "a tattoo somebody is designing for themselves: " + askLine,
             name: askLine.slice(0, 60),
             ...(refUrl ? { refs: [refUrl] } : {}),
@@ -67974,7 +68061,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // white was checked as "the mock-up on their own body" and came back "RIGHT: the original
             // forearm tattoo is untouched... all the new ink is on the skin" - there was no forearm and
             // no skin. Told it was looking at a body, the check found one.
-            const _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid);
+            const _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);   // v9.604: a new tattoo is flat - no body in her look
             const _mockNote2 = _lk2 && _lk2.verdict;
             _reaction = (_lk2 && _lk2.say) || null;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
@@ -67991,7 +68078,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else {
             drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
           }
-        } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
+          // EVERY WORD THE IMAGE MODEL GOT (v9.604) - handed back with the turn, never cut.
+          try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: "drawn new", words: _subjectSent,
+                  aspect: _grid ? "1:1" : "3:4", made: (dp && dp.image_url) || null, failed: (dp && !dp.ok) ? (dp.error || "not made") : null,
+                  model: (dp && (dp.model || dp.provider)) || null, cached: !!(dp && dp.cached) }); } catch {}
+        } catch (e) { drew = (e && e.__skip) ? null : { failed: String(e?.message ?? e).slice(0, 160) }; }
       }
 
       // ══ THEIR MOMENT, IN THEIR OWN INDEX (2026-09-08) ═════════════════════════════════════
@@ -68387,7 +68478,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               on_me: !!drew.on_me, failed: !!drew.failed } : null }));
         } catch {}
       }
+      // WHAT HAPPENED, FOR THE TEST (v9.604): who answered, and every word the image model got, never cut.
+      let _picsGot = []; try { _picsGot = (_TURN_ALS.getStore() || {}).pics || []; } catch {}
       return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,
+               answered_by: _fixedWhy ? ("fixed line (" + _fixedWhy + ")" + (_reaction && _reaction !== _fixedSay ? " + her look" : "")) : (_tapKeep ? "tap (her short line after)" : "Aura"),
+               ...(_picsGot.length ? { image_model_got: _picsGot } : {}),
+               ...(_newFlow ? { flow: "new tattoo" } : {}),
                ...((acted.ideas && acted.ideas.length) ? { ideas: acted.ideas } : {}),
                ...(_herTurn ? { her_turn: _herTurn } : {}),
                ...(over_budget ? { over_budget: true } : {}),

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.601.0-2026-10-14-no-raw-machine-text";
+const BUILD = "aura-core-v9.602.0-2026-10-14-fixed-steps-skip-her";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65618,8 +65618,35 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // later call (~6 s). Nothing else about a typed turn changes.
       // A CONFIRMED LOCK-IN (v9.564) is a tap too: "Yes, Lock It In" on the page's card.
       const _tapKeep = !!(me && opts && ((opts.use && refUrl) || opts.lock));
-      if (_tapKeep) { try { console.log("[USE] a tap on Keep It Like This - her reply comes after the files start, not before"); } catch {} }
+      // ══ THE FIXED STEPS OF A NEW TATTOO DO NOT WAIT FOR HER (2026-10-14, v9.602, Aaron) ══════════════════════
+      // MEASURED 09:40-09:54: 14s, 18s, 32s, 45s and 77s of her thinking on steps whose answer is always the same -
+      // the new-tattoo opener, a style picked, Change Something, the change they then typed (it goes straight to four
+      // versions), and a number picked off those four. Each now answers with one fixed line (a setting each) and she is
+      // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
+      // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
+      let _fixedSay = null, _fixedWhy = null;
       if (me && !_tapKeep) {
+        try {
+          const _s = String(said || "").trim();
+          const _fx = async (k, d) => { try { const v = String((await env.AURA_KV.get("config:say:" + k)) || "").trim(); return v || d; } catch { return d; } };
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change"]); } catch {}
+          let _stm = null;
+          if (/^i want to create a new tattoo\.?$/i.test(_s)) {
+            _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Let's make something that's yours. Pick a style below, or tell me your idea and we'll build it together.");
+          } else if ((_stm = _s.match(/^i like the (.+) style\.?$/i))) {
+            _fixedWhy = "style"; _fixedSay = (await _fx("style_pick", "____ - great pick. Explore the designs made in this style, or create your own with me.")).replace("____", _stm[1]);
+          } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {
+            _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
+          } else if (String(_ds.await_change || "") === "1" && _s && !(opts && opts.inspire)) {
+            _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
+          } else if (String(_ds.design_change || "").trim() && /^i want number [1-4]\.?$/i.test(_s)) {
+            _fixedWhy = "pick"; _fixedSay = await _fx("pick_done", "Here it is on its own. Is this the one, or would you like to change something?");
+          }
+          if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
+        } catch {}
+      }
+      if (_tapKeep) { try { console.log("[USE] a tap on Keep It Like This - her reply comes after the files start, not before"); } catch {} }
+      if (me && !_tapKeep && !_fixedSay) {
         try {
           // ══ SHE LOOKS AT THEIR PHOTO UNTIL THE FIRST PICTURE IS MADE (2026-10-02, Aaron) ══════════
           // MEASURED (pta_74d9cfa0e939be8f, pta_7f46ce6197fe124a): the photo was attached only on the
@@ -65757,6 +65784,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       };
 
       // The tap (above): her words come from the line written once the files have started.
+      if (_fixedSay && !acted) acted = { say: _fixedSay, act: "none", prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
       if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",
                                         act: "none", prompt: "", use: [], brief: null };
       _tick("agent");
@@ -67803,6 +67831,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               let _done = "Here are four ideas. Tap the one you want to work on, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:ideas_done")) || "").trim(); if (_k) _done = _k; } catch {}
               _reaction = _done;
+            } else if (_fixedWhy === "pick") {
+              _reaction = _fixedSay;   // v9.602: the picked version, no look - the fixed line stands
             } else {
               const _lkC = await _lookAtResult(cp.image_url, !(opts && opts.inspire) && !_fromPic, null, false);
               if (_lkC && _lkC.verdict) _mockNote = _lkC.verdict;
@@ -68327,6 +68357,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           (act === "artist" ? " · LOCKED" : "") + " · ideas=" + ((acted && acted.ideas && acted.ideas.length) || 0) +
           " · she: \"" + String((acted && acted.say) || "").slice(0, 50).replace(/\s+/g, " ") + "\"" +
           (me ? " · who=" + me : "") + " · said: " + (String(saidIn || "").trim() ? "\"" + String(saidIn).slice(0, 60).replace(/\s+/g, " ") + "\"" : "(no words" + ((opts && opts.ref) ? ", a photo" : "") + ")"));
+        // EVERY WORD, BOTH WAYS (2026-10-14, v9.602, Aaron: "I want you to see all information"): the line above cuts both
+        // at 50-60 letters; this one does not.
+        console.log("[TURN:WORDS] they said: \"" + String(saidIn || "").replace(/\s+/g, " ").slice(0, 2000) + "\" · shown to them: \"" +
+          String(_said || (acted && acted.say) || "").replace(/\s+/g, " ").slice(0, 2000) + "\"" + (_fixedWhy ? " · fixed (" + _fixedWhy + ")" : "") + (me ? " · who=" + me : ""));
       } catch {}
       // THE LAST TURN, KEPT FOR A PAGE THAT LOST THE CONNECTION (2026-10-12, v9.572). MEASURED 06:45: a 128s turn
       // drew the picture and the phone showed "I could not answer that". The page asks for this by its turn id.

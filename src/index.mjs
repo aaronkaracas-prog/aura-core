@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.599.0-2026-10-14-four-versions-of-a-change";
+const BUILD = "aura-core-v9.600.0-2026-10-14-change-something-always-arms";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66067,9 +66067,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // one fixed sentence with the design; she looks and suggests, and nothing is drawn until they say what.
       if (opts && opts.pick && refUrl && /^\s*i want to change something\.?\s*$/i.test(String(said || "")) && act !== "none") {
         console.log("[TURN:PICK] Change Something - she asks what; nothing drawn (her act was " + act + ")"); act = "none";
-        // No suggestion cards (v9.599), and whatever they say next is the change - four versions of it.
+      }
+      // WHATEVER HER ACT WAS (v9.600): MEASURED 08:24 - she had already chosen to talk (act none), so the branch above was
+      // skipped and the flag that makes their next words the change was never set; "I would like to have two roses" then
+      // drew nothing. The button's sentence alone decides it now: no suggestion cards, and their next words are the change.
+      if (me && /^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
         if (acted) acted.ideas = [];
-        if (me) { try { await talkStatePut(env, me, "await_change", "1"); } catch {} }
+        try { await talkStatePut(env, me, "await_change", "1"); } catch {}
+        console.log("[TURN:DESIGN] Change Something - their next words are the change");
       }
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
@@ -66560,7 +66565,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         if (me && _await && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
           try { await talkStatePut(env, me, "await_change", ""); } catch {}
         }
-        if (_newJob && hasParent && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo) {
+        if (_newJob && (hasParent || refDesign) && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo) {
           if (_ideasLine && _lastChange && _lastParent) {
             act = "change"; _designGrid = true; _designWords = _lastChange; _designParent = _lastParent;
           } else if (!_ideasLine && String(said || "").trim() && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.598.0-2026-10-14-every-tattoo-gets-a-name";
+const BUILD = "aura-core-v9.599.0-2026-10-14-four-versions-of-a-change";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65480,8 +65480,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
            "keep it exactly as it is, change a few things, or take the idea somewhere new. Don't ask where it goes or " +
            "how big unless they bring it up. " +
            // CHANGE SOMETHING (2026-10-11, v9.563, Aaron): the button says they want a change and not which one.
-           "If they say they want to change something but not what, look at the design and suggest two or three " +
-           "specific changes that would suit it, then ask which they would like - nothing is drawn yet.")
+           // ASK, DON'T SUGGEST (2026-10-14, v9.599, Aaron): "I do not want Aura recommending these type of things
+           // when they want to change something" - they say what they want, and four versions of it come back.
+           "If they say they want to change something but not what, ask in one short line what they would like to change - " +
+           "no suggestions, nothing is drawn yet.")
         : "";
       // ══ SHE SEES WHAT SHE ALREADY SETTLED (2026-10-03, v9.520, Aaron) ═══════════════════════
       // MEASURED (pta_f5efe21c422b830d): she rewrote her brief from cold every turn because she was
@@ -66064,7 +66066,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // CHANGE SOMETHING IS A QUESTION, NOT A DRAWING (2026-10-11, v9.563, Aaron). The page's button sends this
       // one fixed sentence with the design; she looks and suggests, and nothing is drawn until they say what.
       if (opts && opts.pick && refUrl && /^\s*i want to change something\.?\s*$/i.test(String(said || "")) && act !== "none") {
-        console.log("[TURN:PICK] Change Something - she suggests; nothing drawn (her act was " + act + ")"); act = "none";
+        console.log("[TURN:PICK] Change Something - she asks what; nothing drawn (her act was " + act + ")"); act = "none";
+        // No suggestion cards (v9.599), and whatever they say next is the change - four versions of it.
+        if (acted) acted.ideas = [];
+        if (me) { try { await talkStatePut(env, me, "await_change", "1"); } catch {} }
       }
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
@@ -66536,6 +66541,35 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         act = "change"; _ideasGrid = true;
         console.log("[TURN:IDEAS] four ideas drawn as one grid on their photo, from the one fixed sentence");
       }
+      // ══ A CHANGE TO A DESIGN COMES BACK AS FOUR VERSIONS (2026-10-14, v9.599, Aaron) ═══════════════════
+      // "When they tell us what they want ... four different versions." On a new tattoo (not add / cover / rework),
+      // a change to the design is sent the ChatGPT way - the chat model reads the design and their words - and comes
+      // back as four versions in a numbered 2x2 on white, in the design's own style. PROVEN by command on the tribal
+      // butterfly (img_mv88a12rku5n). After "I want to change something" their next words are that change. Picking a
+      // number is the existing grid pick, untouched. "Imagine 4 more" on such a grid redoes the same change.
+      let _designGrid = false, _designWords = null, _designParent = null;
+      try {
+        const _newJob = !["add", "cover", "rework"].includes(String(jobNow || ""));
+        let _await = false, _lastChange = null, _lastParent = null;
+        if (me && _newJob) {
+          const _ds = await talkStateGet(env, me, ["await_change", "design_change", "design_change_parent"]);
+          _await = String(_ds.await_change || "") === "1";
+          _lastChange = String(_ds.design_change || "").trim() || null;
+          _lastParent = String(_ds.design_change_parent || "").trim() || null;
+        }
+        if (me && _await && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
+          try { await talkStatePut(env, me, "await_change", ""); } catch {}
+        }
+        if (_newJob && hasParent && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo) {
+          if (_ideasLine && _lastChange && _lastParent) {
+            act = "change"; _designGrid = true; _designWords = _lastChange; _designParent = _lastParent;
+          } else if (!_ideasLine && String(said || "").trim() && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
+            if (_await && act !== "artist" && act !== "use") act = "change";
+            if (act === "change") { _designGrid = true; _designWords = String(said || "").trim().slice(0, 600); }
+          }
+        }
+        if (_designGrid) console.log("[TURN:DESIGN] four versions of their change, the chat-model way: \"" + String(_designWords).slice(0, 200) + "\"");
+      } catch {}
 
       // ══ THE ARTIST'S SHEET - THE OPERATION, NOT A DESCRIPTION (2026-09-10) ═══════════════
       // Everything that failed at this job failed the same way: a model was asked to AUTHOR the
@@ -67592,6 +67626,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (_gm) _canvasNow = { width: parseInt(_gm[1], 10), height: parseInt(_gm[2], 10) };
             } catch {}
           }
+          // THE FOUR VERSIONS OF A CHANGE (v9.599): their words inside one fixed sentence (`config:frame:design:grid`,
+          // "____" is their words), sent with the design to the chat model. Not when this turn is a pick off a grid.
+          if (_designGrid && _gridPick) _designGrid = false;
+          if (_designGrid) {
+            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Show all 4 as flat tattoo artwork on plain white - not on skin - in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you changed and why.";
+            try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
+            _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
+            _herAsk = null;
+            _wordsFrom = "design_grid";
+            _viaNow = "thread";
+            if (me) {
+              try { await talkStatePut(env, me, "design_change", String(_designWords || "").slice(0, 600)); } catch {}
+              try { await talkStatePut(env, me, "design_change_parent", String(_designParent || parentId)); } catch {}
+            }
+          }
           // ══ PICKING A NUMBER ON AN ADD-ON: THEIR PHOTO, AND THE GRID AS THE SECOND PICTURE (2026-10-13, v9.586) ══
           // MEASURED (pta_033302cc27b7eadd): "I want number 3" sent their photo and her one-line description
           // of number 3 - the model never saw the lions they picked and drew different ones. PROVEN by
@@ -67615,7 +67664,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
           // ══ MADE FROM THE PICTURE: THE PHOTO, ONE OPENING, HER BRIEF (2026-10-01, v9.504, Aaron) ═══
           // The opening is a setting (`config:frame:from`, "____" is her brief). Their lines never go.
-          if (_fromPic && parentId === refDesign && !_gridPick) {
+          if (_fromPic && parentId === refDesign && !_gridPick && !_designGrid) {
             let _openF = "Make this into tattoo artwork on its own, on a plain white background: ____";
             try { const _k = String((await env.AURA_KV.get("config:frame:from")) || "").trim(); if (_k.includes("____")) _openF = _k; } catch {}
             const _herF = String(brief || "").trim() || String(acted.ask || "").trim() || String(acted.prompt || "").trim();
@@ -67638,7 +67687,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
           };
-          let cur = parentId, cp = null, _mockNote = null;
+          let cur = (_designGrid && _designParent) ? _designParent : parentId, cp = null, _mockNote = null;
           const _stepLog = [];
           let _retried = null;
           for (let si = 0; si < _asks.length; si++) {
@@ -67741,7 +67790,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // we already have every piece of information on" - each idea's title and lines are written into the picture by
             // the chat model that designed it. Her look cost ~24s and repeated the captions. One short line instead
             // (a setting, `config:say:ideas_done`).
-            if (_ideasGrid) {
+            if (_ideasGrid || _designGrid) {
               let _done = "Here are four ideas. Tap the one you want to work on, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:ideas_done")) || "").trim(); if (_k) _done = _k; } catch {}
               _reaction = _done;
@@ -67760,7 +67809,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
-                ...(_ideasGrid ? { four_directions: true } : {}),
+                ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}),
                 ...((acted.ask && !_herAsk && String(jobNow || "") === "add") ? { her_ask_not_used: String(acted.ask).slice(0, 400) } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),

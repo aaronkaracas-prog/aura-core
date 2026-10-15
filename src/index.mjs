@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.613.0-2026-10-15-placed-by-hand";
+const BUILD = "aura-core-v9.614.0-2026-10-15-green-box";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67085,9 +67085,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           let _omRefs = [_onmeDesign.image, refUrl];
           if (_fixedWhy === "placed") {
             // The first picture is their photo with the design laid where they put it; the second is the design itself.
-            _omSubject = "The first image is a photo of a person with a tattoo design laid on their skin. Make that design a real " +
-              "tattoo on their skin - exactly where it is, the same size and the same angle. Keep everything else in the photo exactly " +
-              "as it is, including any tattoos already on them. The second image is the design, for its detail.";
+            // THE GREEN BOX (v9.614, 2026-10-15, Aaron). MEASURED 08:46 and 08:59: their photo with the design laid on it was
+            // refused as [sexual] twice, with either wording - the pasted-on picture was the trouble, and the words were confusing
+            // it. Now their photo is sent untouched except for a green box drawn where they placed it, with the design.
+            _omSubject = "Put my tattoo on me inside the green box - the same size and angle as the box. Remove the green box.";
             try { const _k = String((await env.AURA_KV.get("config:frame:onme:placed")) || "").trim(); if (_k) _omSubject = _k; } catch {}
             _omRefs = [refUrl, _onmeDesign.image];
           }

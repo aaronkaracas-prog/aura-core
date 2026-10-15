@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.611.0-2026-10-15-onme-sides-no-wait";
+const BUILD = "aura-core-v9.612.0-2026-10-15-onme-retry-blocked-check";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65783,6 +65783,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
           }
           if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
+          // WHY THE PLACEMENT WAITED FOR HER (v9.612): on any turn after they asked to see it on them, each condition is logged.
+          if (_fixedWhy !== "onme" && (carriedObj && carriedObj.on_me === true || refHeld)) {
+            let _dz2 = null; try { _dz2 = _pre ? await _pre.design : null; } catch {}
+            try { console.log("[TURN:ONME-CHECK] on_me=" + !!(carriedObj && carriedObj.on_me === true) + " photo_held=" + !!refHeld +
+              " body_photo=" + !!_bodyPhoto + " photo_url=" + !!refUrl + " fresh_photo=" + !!_freshPhoto +
+              " job=" + String((carriedObj && carriedObj.job) || "-") + " design=" + !!(_dz2 && _dz2.image && _dz2.design && _dz2.design !== refDesign) +
+              " mirror=" + String((carriedObj && carriedObj.mirror_photo) || "-") + " fixed=" + (_fixedWhy || "-") + (me ? " · who=" + me : "")); } catch {}
+          }
         } catch {}
       }
       if (_tapKeep) { try { console.log("[USE] a tap on Keep It Like This - her reply comes after the files start, not before"); } catch {} }
@@ -67034,6 +67042,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // and bee matching the ink already there. Her own brief went first in this sentence ("dainty like the lotus
           // piece..."), so the model drew her description, not the picture. Only the person's placement words go in now.
           let _omWords = String(_onmeWords || "").trim().replace(/^show me:\s*/i, "");
+          // ══ "TRY AGAIN" IS NOT A PLACE (v9.612, 2026-10-15, Aaron) ═══════════════════════════════════════════
+          // MEASURED 08:02: after a failed "on my right thigh", "Try again" was sent as where it goes - the model chose her
+          // stomach. A retry or a bare yes reuses the last place they named (talk-state `onme_words`).
+          const _retryRx = /^\s*(try (it |that )?again|again|retry|one more time|redo( it)?|do it again|yes|yeah|yep|ok|okay|sure|go|go ahead|go for it|do it|please)[\s.!]*$/i;
+          if (me) {
+            try {
+              if (!_omWords || _retryRx.test(_omWords)) {
+                const _prevW = String((await talkStateGet(env, me, ["onme_words"])).onme_words || "").trim();
+                if (_prevW) { try { console.log("[TURN:ONME] \"" + (_omWords || "(nothing)") + "\" is not a place - using the last one: \"" + _prevW + "\""); } catch {} _omWords = _prevW; }
+              } else {
+                await talkStatePut(env, me, "onme_words", _omWords.slice(0, 400));
+              }
+            } catch {}
+          }
           // ══ THEIR RIGHT AND LEFT, IN THE PICTURE'S TERMS (v9.611, 2026-10-15, Aaron) ══════════════════════════
           // MEASURED 07:06: "my right chest" came back in the middle of the chest. In a normal photo their right is the
           // LEFT of the picture; in a mirror photo it is the right. She records whether their photo is a mirror shot when
@@ -68431,6 +68453,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // files were made under it for a design that is not chrome. A turn whose picture failed keeps the brief as it was.
       const _drawFailed = !!(drew && drew.failed);
       if (_drawFailed) { try { console.log("[BRIEF] the picture failed - nothing from this turn is saved to the brief"); } catch {} }
+      if (_freshPhoto) { try { console.log("[BRIEF] their photo arrived - mirror photo, as she read it: " + String((intent && intent.mirror_photo) || "not given") + (me ? " · who=" + me : "")); } catch {} }
       if (me && intent && typeof intent === "object" && !_drawFailed) {
         try {
           const merged = Object.assign({}, carriedObj || {});
@@ -68504,6 +68527,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         _said = (acted.act === "artist" || _usedPick)
           ? "I went to make your artist files, but they didn't come out this time - nothing was made yet."
           : "I went to make that picture, but it didn't come out this time - nothing new was made yet.";
+        // SAY WHEN IT WAS BLOCKED (v9.612, 2026-10-15, Aaron). MEASURED 08:01: "on my right thigh" was refused by the image
+        // model's safety system three times, and they were told only "it didn't come out". A refusal is not a glitch - trying
+        // the same thing again will not help, so they are told plainly (`config:say:blocked`).
+        if (!(acted.act === "artist" || _usedPick) && /safety system|rejected|moderation|content polic/i.test(String(drew.error || ""))) {
+          _said = "That one got blocked by the image filter - try a different spot or a different photo.";
+          try { const _k = String((await env.AURA_KV.get("config:say:blocked")) || "").trim(); if (_k) _said = _k; } catch {}
+          try { console.log("[TURN] the picture was blocked by the image model's safety filter - told them so"); } catch {}
+        }
       } else if (act === "artist" && drew && drew.for_the_artist) {
         // AURA CLOSES THE SESSION (2026-10-11, v9.565, Aaron + GPT): one handoff line, said at once.
         _said = "It's locked in. I'm making everything your artist needs now \u2013 your artwork, linework and print file. " +

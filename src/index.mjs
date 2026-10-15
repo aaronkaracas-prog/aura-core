@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.610.0-2026-10-15-onme-fixed-line";
+const BUILD = "aura-core-v9.611.0-2026-10-15-onme-sides-no-wait";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65007,6 +65007,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         '    "detail": "bold | balanced | intricate | ultra",\n' +
         '    "placement": "where on the body, only if they said",\n' +
         '    "size": "how big, only if they said",\n' +
+        '    "mirror_photo": "yes | no - only when their photo of themselves is in this conversation: is it taken in a mirror (a mirror selfie)",\n' +
         '    "elements": ["cherry blossoms","waves"],\n' +
         '    "meaning": "why they are getting it - who it is for, what happened",\n' +
         '    "brief": "what the picture is drawn from - everything decided so far, written the way PICTURE WORDS in your craft says: what to add, where it goes on their body, how it looks - plain words in their voice, no imagery, story or meaning, nothing that is not ink on their skin; at most 40 words. Do not describe what is already in their photo; the picture model can see it"\n' +
@@ -65766,7 +65767,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _fixedWhy = "four_new"; _fixedSay = await _fx("four_coming", "Here they come - four versions of that for you.");
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
           } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-4]\.?$/i.test(_s) && !_bodyPhoto) {
-            _fixedWhy = "pick"; _fixedSay = await _fx("pick_done", "Here it is on its own. Is this the one, or would you like to change something?");
+            _fixedWhy = "pick"; _fixedSay = await _fx("pick_done", "Love this design? Your selected concept is ready. You can move forward with this design or make more changes.");
+          } else if (_s && carriedObj && carriedObj.on_me === true && refHeld && _bodyPhoto && refUrl && !_freshPhoto &&
+                     !["add", "cover", "rework"].includes(String(carriedObj.job || "").toLowerCase()) &&
+                     !/^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|no|nope|nah|thanks?( you)?)[\s.!]*$/i.test(_s) &&
+                     !/^i'?d like to see this tattoo on me/i.test(_s) && !/^i want number [1-4]/i.test(_s) &&
+                     !/^\s*imagine\s/i.test(_s) && !/^i want to (create|add|cover)/i.test(_s)) {
+            // ══ WHERE IT GOES ON THEM, WITHOUT CALLING HER (v9.611, 2026-10-15, Aaron) ═══════════════════════════
+            // MEASURED 07:06: the placement turn took 55s - 29.6s of it was her writing a reply nobody saw (the fixed
+            // line replaces it). Once they want to see a finished design on them and their photo is in, what they say
+            // next is where it goes: the picture is made from their words at once, with a fixed line.
+            let _dz = null; try { _dz = _pre ? await _pre.design : null; } catch {}
+            if (_dz && _dz.image && _dz.design && _dz.design !== refDesign) {
+              _fixedWhy = "onme"; _fixedSay = await _fx("onme_coming", "Putting it on you now.");
+            }
           }
           if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
         } catch {}
@@ -65887,6 +65901,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             '  "detail": "bold | balanced | intricate | ultra",\n' +
             '  "placement": "where on the body, only if they said",\n' +
             '  "size": "how big, only if they said",\n' +
+            '  "mirror_photo": "yes | no - only when their photo of themselves is in this conversation: is it taken in a mirror (a mirror selfie)",\n' +
             '  "elements": ["cherry blossoms","waves"],\n' +
             '  "meaning": "why they are getting it - who it is for, what happened",\n' +
             '  "brief": "what the picture is drawn from - everything decided so far, written the way PICTURE WORDS in your craft says: what to add, where it goes on their body, how it looks - plain words in their voice, no imagery, story or meaning, nothing that is not ink on their skin; at most 40 words. Do not describe what is already in their photo; the picture model can see it"\n' +
@@ -65913,7 +65928,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // THE FIXED LINE SHOWS AT ONCE (v9.607): MEASURED 18:45 - "Here they come..." was ready at the tap and reached the page
       // only with the finished picture, 32s later. It goes out the way her streamed words do, then the work starts.
       if (_fixedSay && !acted && onDelta) { try { await onDelta(_fixedSay); } catch {} }
-      if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
+      if (_fixedSay && !acted) acted = { say: _fixedSay, act: (_fixedWhy === "onme" ? "onme" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
                                          prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
       if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",
                                         act: "none", prompt: "", use: [], brief: null };
@@ -66103,6 +66118,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               placement:   str(parsed.placement, 60),
               size:        str(parsed.size, 40),
               colour:      one(parsed.colour ?? parsed.color, ["full_colour", "full_color", "black_and_grey", "black_and_gray", "muted"]),
+              mirror_photo: one(parsed.mirror_photo, ["yes", "no"]),
               // FORM and CHARACTER are FREE STRINGS, not enums. Their vocabulary is generated
               // per subject and cached, so there is no fixed list to validate against - and a
               // person who says "head and chest" or "goofy" must have that survive verbatim.
@@ -66842,6 +66858,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         // said last: the newest line she points at, or what they said this turn.
         const _newest = _ptd.slice().sort((a, b) => (b.n || 0) - (a.n || 0))[0];
         _onmeWords = _newest ? String(_newest.said).trim() : String(said || "").trim();
+        // v9.611: when she was not called (fixed placement turn), what they said this turn is where it goes.
+        if (_fixedWhy === "onme") _onmeWords = String(said || "").trim();
       }
       // ══ FIND - REAL TATTOOS FOR INSPIRATION (2026-09-24, Aaron) ═══════════════════════════
       // Get Inspired: the wall (unchanged, shared) finds real tattoos of what they described, she
@@ -67015,8 +67033,26 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // a colour biomech head with sunflowers and bees - came back on her shoulder as a small black fine-line sunflower
           // and bee matching the ink already there. Her own brief went first in this sentence ("dainty like the lotus
           // piece..."), so the model drew her description, not the picture. Only the person's placement words go in now.
-          const _omWords = String(_onmeWords || "").trim().replace(/^show me:\s*/i, "");
-          const _omSubject = onmeAsk(_omWords);
+          let _omWords = String(_onmeWords || "").trim().replace(/^show me:\s*/i, "");
+          // ══ THEIR RIGHT AND LEFT, IN THE PICTURE'S TERMS (v9.611, 2026-10-15, Aaron) ══════════════════════════
+          // MEASURED 07:06: "my right chest" came back in the middle of the chest. In a normal photo their right is the
+          // LEFT of the picture; in a mirror photo it is the right. She records whether their photo is a mirror shot when
+          // she sees it (`mirror_photo` in her brief); the sentence then says which side of the picture that is.
+          const _mir = String((intent && intent.mirror_photo) || (carriedObj && carriedObj.mirror_photo) || "").toLowerCase();
+          const _sideR = /\bright\b/i.test(_omWords), _sideL = /\bleft\b/i.test(_omWords);
+          let _sideNote = "";
+          if (_sideR || _sideL) {
+            const _flip = _mir === "no", _same = _mir === "yes";
+            if (_flip || _same) {
+              const _parts = [];
+              if (_sideR) _parts.push("their right side is on the " + (_flip ? "left" : "right") + " side of the picture");
+              if (_sideL) _parts.push("their left side is on the " + (_flip ? "right" : "left") + " side of the picture");
+              _sideNote = (_same ? "This photo is taken in a mirror: " : "") + _parts.join(" and ") + ".";
+              _sideNote = _sideNote.charAt(0).toUpperCase() + _sideNote.slice(1);
+            } else _sideNote = "Right and left mean the person's own right and left.";
+          }
+          const _omSubject = onmeAsk(_omWords) + (_sideNote ? " " + _sideNote : "");
+          if (_sideNote) { try { console.log("[TURN:ONME] sides - mirror photo: " + (_mir || "not known") + " · added: \"" + _sideNote + "\""); } catch {} }
           const _omReq = "SHOW_IT " + JSON.stringify({
             subject: _omSubject, context: "seeing a tattoo on their own body", name: "on me",
             raw: true, refs: [_onmeDesign.image, refUrl], source: "onme", parent: _onmeDesign.design
@@ -67266,7 +67302,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // page adds "your artist will make any final changes" under it for a finished tattoo.
       if (act === "onme" && drew && drew.on_me && drew.image && !drew.failed) {
         let _lkOn = null;
-        _reaction = "Here it is on you.";
+        _reaction = "Your tattoo, on you.";
         try { const _k = String((await env.AURA_KV.get("config:say:onme_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
         try { console.log("[TURN:ONME] no look - fixed line: \"" + _reaction + "\"" + (me ? " · who=" + me : "")); } catch {}
         if (me) {
@@ -68009,7 +68045,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_designGrid) {
               // FOUR VERSIONS OF A CHANGE (v9.605, Aaron): her own words to their change stay - she was called before it
               // was drawn - and the same fixed line as the first four follows. No look: the titles are in the picture.
-              let _done = "Here are your four - tap Keep on the one you like, or I can imagine four more.";
+              let _done = "Here are your four - tap Choose on the one you like, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _done = _k; } catch {}
               const _hers = (!_fixedSay && acted && acted.say) ? String(acted.say).trim() : "";
               _reaction = _hers ? (_hers + "\n\n" + _done) : _done;
@@ -68211,7 +68247,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // reading them back added ~20s and told them nothing new. One fixed line instead (config:say:four_done).
             let _lk2 = null;
             if (_newSentence) {
-              _reaction = "Here are your four - tap Keep on the one you like, or I can imagine four more.";
+              _reaction = "Here are your four - tap Choose on the one you like, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
             } else {
               _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);

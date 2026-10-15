@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.606.0-2026-10-14-four-stacked-cards";
+const BUILD = "aura-core-v9.607.0-2026-10-14-phone-shaped-panels";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65859,6 +65859,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       };
 
       // The tap (above): her words come from the line written once the files have started.
+      // THE FIXED LINE SHOWS AT ONCE (v9.607): MEASURED 18:45 - "Here they come..." was ready at the tap and reached the page
+      // only with the finished picture, 32s later. It goes out the way her streamed words do, then the work starts.
+      if (_fixedSay && !acted && onDelta) { try { await onDelta(_fixedSay); } catch {} }
       if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
                                          prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
       if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",
@@ -67758,13 +67761,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // "____" is their words), sent with the design to the chat model. Not when this turn is a pick off a grid.
           if (_designGrid && _gridPick) _designGrid = false;
           if (_designGrid) {
-            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Lay them out as 4 cards stacked from top to bottom on one tall page, all the same size and clearly separated. On each card, put the number and a short title with two or three lines about what you changed and why on the left, and the tattoo artwork large on the right, on plain white - not on skin.";
+            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Make one tall page divided into a 2 by 2 grid of 4 equal panels, each panel the shape of a phone screen. In each panel, the tattoo artwork fills the top five-sixths on plain white - not on skin - and the bottom sixth is a black strip with the number in a white circle, a short title in bold white letters, and two short lines about what you changed and why in white.";
             try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
             _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
             _herAsk = null;
             _wordsFrom = "design_grid";
             _viaNow = "thread";
-            _sizeNow = "1440x2560";
+            _sizeNow = "2160x3840";
             try { const _k = String((await env.AURA_KV.get("config:edit:new:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(_k)) _sizeNow = _k; } catch {}
             if (me) {
               try { await talkStatePut(env, me, "design_change", String(_designWords || "").slice(0, 600)); } catch {}
@@ -67957,7 +67960,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
-                ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { stack: true } : {}),
+                ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { panels: true } : {}),
                 ...((acted.ask && !_herAsk && String(jobNow || "") === "add") ? { her_ask_not_used: String(acted.ask).slice(0, 400) } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),
@@ -68002,7 +68005,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_now && !_tap.test(_now) && !_bare.test(_now) && _mine[_mine.length - 1] !== _now) _mine.push(_now);
             const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
             if (_words) {
-              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Lay them out as 4 cards stacked from top to bottom on one tall page, all the same size and clearly separated. On each card, put the number and a short title with two or three lines about the design on the left, and the tattoo artwork large on the right, on plain white - not on skin.";
+              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page divided into a 2 by 2 grid of 4 equal panels, each panel the shape of a phone screen. In each panel, the tattoo artwork fills the top five-sixths on plain white - not on skin - and the bottom sixth is a black strip with the number in a white circle, a short title in bold white letters, and two short lines about the design in white.";
               let _st = ", all in the {name} style";
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
@@ -68083,8 +68086,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                "skin, not on a person, not a photograph of a tattoo.");
           // 2k because the first drawing is the ceiling for every later version, and a tattoo is
           // taller than it is wide. If the lane ignores either, the [XAI-IMG] line says so.
-          // THE TALL FOUR-CARD PAGE (v9.606, Aaron): config:edit:new:size, default 1440x2560 - fills a phone screen.
-          let _newSize = { width: 1440, height: 2560, exact_size: true };
+          // PHONE-SHAPED PANELS (v9.607, Aaron): config:edit:new:size, default 2160x3840 - the model's largest page (8.29M px);
+          // four 1080x1920 panels, each the shape of a phone screen, art 1080x1600 + a 1080x320 black strip.
+          let _newSize = { width: 2160, height: 3840, exact_size: true };
           if (_newSentence) { try { const _k = String((await env.AURA_KV.get("config:edit:new:size")) || "").trim(); const _m = _k.match(/^(\d{3,4})x(\d{3,4})$/);
             if (_m) _newSize = { width: parseInt(_m[1], 10), height: parseInt(_m[2], 10), exact_size: true }; } catch {} }
           // The new-tattoo sentence goes alone (v9.604): it already says flat, on white, numbered, a 2x2 grid.
@@ -68129,7 +68133,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
             const _mockNote2 = _lk2 && _lk2.verdict;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
-                     asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}), ...(_newSentence ? { stack: true } : {}),
+                     asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}), ...(_newSentence ? { panels: true } : {}),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
                      ...(_twist ? { world: "twist" } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,
@@ -68543,7 +68547,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
             drew: drew ? { image: drew.image || null, design: drew.design || null, changed: drew.changed || null,
               for_the_artist: !!drew.for_the_artist, pending: !!drew.pending, four_directions: !!drew.four_directions,
-              on_me: !!drew.on_me, failed: !!drew.failed, stack: !!drew.stack } : null }));
+              on_me: !!drew.on_me, failed: !!drew.failed, panels: !!drew.panels } : null }));
         } catch {}
       }
       // WHAT HAPPENED, FOR THE TEST (v9.604): who answered, and every word the image model got, never cut.

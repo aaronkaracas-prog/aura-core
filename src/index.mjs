@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.607.0-2026-10-14-phone-shaped-panels";
+const BUILD = "aura-core-v9.608.0-2026-10-14-imagine-more-draws-fresh";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66534,7 +66534,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // design). A photo is a canvas only for add / cover / rework (below) and for put-it-on-me.
       let _herDesign = null; try { _herDesign = _pre ? await _pre.design : null; } catch {}
       const _isHerDrawing = !!(lastDrawn && lastDrawn.design && _herDesign && _herDesign.design === lastDrawn.design);
-      if (act === "draw" && hasParent) {
+      // IMAGINE 4 MORE IS A FRESH FOUR, NOT A CHANGE (v9.608). MEASURED 20:03: the fixed "more" turn drew, then this rule
+      // turned it into a change of the four on screen - the grid was EDITED with the words "Imagine 4 more" (numbered 5-8,
+      // old grid layout) and she was asked to look at it (49s). A fresh four of the same idea is a new drawing.
+      if (act === "draw" && hasParent && _fixedWhy !== "more") {
         const namedParent = useRaw.length ? useOne(useRaw[0], "design") : null;
         const wasSubj = String((lastDrawn && lastDrawn.subject) || "").trim().toLowerCase();
         const nowSubj = String((intent && intent.subject) || "").trim().toLowerCase();

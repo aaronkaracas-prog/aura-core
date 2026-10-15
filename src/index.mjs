@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.605.0-2026-10-14-new-tattoo-fixes-from-the-runs";
+const BUILD = "aura-core-v9.606.0-2026-10-14-four-stacked-cards";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13607,6 +13607,9 @@ async function successionGate(env) {
       // "1920x1920": the same square shape the model picked, at the largest size `config:edit:maxpx` allows).
       let thSize = "1920x1920";
       try { const _k = String((await env.AURA_KV.get("config:edit:thread:size")) || "").trim(); if (/^(\d{3,4}x\d{3,4}|auto)$/.test(_k)) thSize = _k; } catch {}
+      // A CALLER MAY NAME ITS SIZE (v9.606): the new-tattoo four-card page is tall (config:edit:new:size); every other
+      // caller names none and keeps the setting above.
+      if (thP && /^\d{3,4}x\d{3,4}$/.test(String(thP.size || ""))) thSize = String(thP.size);
       const thTool = (action) => ({ type: "image_generation", action, ...(thOA && thSize ? { size: thSize } : {}),
         ...(thImgModel && /^gpt-image/i.test(thImgModel) ? { model: thImgModel } : {}),
         ...(["low", "medium", "high", "auto"].includes(thQual) ? { quality: thQual } : {}) });
@@ -19741,7 +19744,8 @@ async function successionGate(env) {
         // own body, their tattoo kept, captions readable at 1920. The picture lands exactly where an evolve
         // lands - a child of the parent in the Smart File graph - so everything after it works unchanged.
         if (p.via === "thread" && parentUrl) {
-          const tr = await processCommand("THREAD START " + parentUrl + " " + JSON.stringify({ prompt: p.prompt, action: "auto" }), env, true);
+          const tr = await processCommand("THREAD START " + parentUrl + " " + JSON.stringify({ prompt: p.prompt, action: "auto",
+            ...(/^\d{3,4}x\d{3,4}$/.test(String(p.size || "")) ? { size: String(p.size) } : {}) }), env, true);
           const tp = (tr && tr.payload) ? tr.payload : tr;
           if (!tp || !tp.ok || !tp.image) return { cmd: "IMAGE", payload: { ok: false, error: (tp && tp.error) || "the chat model drew no picture", via: "thread" } };
           const reg = await registerSmartFile(env, { id: tp.image_id, filetype: "image", name: String(p.prompt).slice(0, 80),
@@ -67681,6 +67685,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           let _seedNow = null, _withNow = null;   // v9.586: a fresh grid, and the grid sent with a pick
           let _canvasNow = null;                   // v9.591: the ideas picture's own canvas
           let _viaNow = null;                      // v9.596: "thread" - the ideas picture goes the chat-model way
+          let _sizeNow = null;                     // v9.606: the four-card page's own tall size, through the thread
           // CHANGES TOO (2026-09-30, Aaron): MEASURED on pta_4e048acbadd8af04, "Adding color to the new
           // tattoo" went as typed and the model coloured the original forearm piece as well - one picture
           // of a tattooed arm does not say which part is new. She knew ("while the original forearm tattoo
@@ -67753,12 +67758,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // "____" is their words), sent with the design to the chat model. Not when this turn is a pick off a grid.
           if (_designGrid && _gridPick) _designGrid = false;
           if (_designGrid) {
-            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Show all 4 as flat tattoo artwork on plain white - not on skin - in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you changed and why.";
+            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Lay them out as 4 cards stacked from top to bottom on one tall page, all the same size and clearly separated. On each card, put the number and a short title with two or three lines about what you changed and why on the left, and the tattoo artwork large on the right, on plain white - not on skin.";
             try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
             _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
             _herAsk = null;
             _wordsFrom = "design_grid";
             _viaNow = "thread";
+            _sizeNow = "1440x2560";
+            try { const _k = String((await env.AURA_KV.get("config:edit:new:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(_k)) _sizeNow = _k; } catch {}
             if (me) {
               try { await talkStatePut(env, me, "design_change", String(_designWords || "").slice(0, 600)); } catch {}
               try { await talkStatePut(env, me, "design_change_parent", String(_designParent || parentId)); } catch {}
@@ -67806,7 +67813,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   ...(_withNow ? { with: _withNow } : {}),
                   ...(_canvasNow ? _canvasNow : {}),
                   // THE IDEAS PICTURE GOES THE CHATGPT WAY (v9.596): a chat model reads their photo and writes the brief.
-                  ...(_viaNow ? { via: _viaNow } : {}) }), env, true);
+                  ...(_viaNow ? { via: _viaNow } : {}),
+                  ...(_sizeNow ? { size: _sizeNow } : {}) }), env, true);
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
           };
@@ -67949,7 +67957,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
-                ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}),
+                ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { stack: true } : {}),
                 ...((acted.ask && !_herAsk && String(jobNow || "") === "add") ? { her_ask_not_used: String(acted.ask).slice(0, 400) } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),
@@ -67994,7 +68002,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_now && !_tap.test(_now) && !_bare.test(_now) && _mine[_mine.length - 1] !== _now) _mine.push(_now);
             const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
             if (_words) {
-              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Show all 4 as flat tattoo artwork on plain white - not on skin - in a numbered 2x2 grid. Under each one, write a short title and two or three lines about the design.";
+              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Lay them out as 4 cards stacked from top to bottom on one tall page, all the same size and clearly separated. On each card, put the number and a short title with two or three lines about the design on the left, and the tattoo artwork large on the right, on plain white - not on skin.";
               let _st = ", all in the {name} style";
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
@@ -68058,7 +68066,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // directions for the idea and asks for the grid in her own words (her mytattoo contract).
           // The single-picture frame ("the artwork alone, centred, nothing else in frame") would
           // fight a grid, so a grid gets the same rule said for each of the four.
-          const _grid = /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(askLine);
+          // The four stacked cards are a set of four exactly as the 2x2 grid was (v9.606) - same pick, same Keep.
+          const _grid = _newSentence || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(askLine);
           // Four on the body was tried for add-ons (v9.476-477) and taken out (2026-09-30, Aaron): an
           // add-on is one picture on their photo. Four directions are for new tattoos, on white.
           const frm = _grid
@@ -68074,8 +68083,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                "skin, not on a person, not a photograph of a tattoo.");
           // 2k because the first drawing is the ceiling for every later version, and a tattoo is
           // taller than it is wide. If the lane ignores either, the [XAI-IMG] line says so.
-          let _newSize = { width: 1920, height: 1920, exact_size: true };
-          if (_newSentence) { try { const _k = String((await env.AURA_KV.get("config:edit:thread:size")) || "").trim(); const _m = _k.match(/^(\d{3,4})x(\d{3,4})$/);
+          // THE TALL FOUR-CARD PAGE (v9.606, Aaron): config:edit:new:size, default 1440x2560 - fills a phone screen.
+          let _newSize = { width: 1440, height: 2560, exact_size: true };
+          if (_newSentence) { try { const _k = String((await env.AURA_KV.get("config:edit:new:size")) || "").trim(); const _m = _k.match(/^(\d{3,4})x(\d{3,4})$/);
             if (_m) _newSize = { width: parseInt(_m[1], 10), height: parseInt(_m[2], 10), exact_size: true }; } catch {} }
           // The new-tattoo sentence goes alone (v9.604): it already says flat, on white, numbered, a 2x2 grid.
           const _subjectSent = _newSentence ? askLine : (askLine + ". " + reg + " " + frm +
@@ -68119,7 +68129,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
             const _mockNote2 = _lk2 && _lk2.verdict;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
-                     asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}),
+                     asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}), ...(_newSentence ? { stack: true } : {}),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
                      ...(_twist ? { world: "twist" } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,
@@ -68533,7 +68543,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
             drew: drew ? { image: drew.image || null, design: drew.design || null, changed: drew.changed || null,
               for_the_artist: !!drew.for_the_artist, pending: !!drew.pending, four_directions: !!drew.four_directions,
-              on_me: !!drew.on_me, failed: !!drew.failed } : null }));
+              on_me: !!drew.on_me, failed: !!drew.failed, stack: !!drew.stack } : null }));
         } catch {}
       }
       // WHAT HAPPENED, FOR THE TEST (v9.604): who answered, and every word the image model got, never cut.

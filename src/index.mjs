@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.604.0-2026-10-14-new-tattoo-locked-flow";
+const BUILD = "aura-core-v9.605.0-2026-10-14-new-tattoo-fixes-from-the-runs";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -19817,6 +19817,8 @@ async function successionGate(env) {
       let subject = after, ctx = null, nm = null, viaP = null, hostP = null;
       let refsP = null, rawP = false, parentP = null, creatorP = null;
       let aspP = null, resP = null, modelP = null, srcP = null, maskP = null;
+      // EXACT SIZE AND SEED (v9.605): only a caller that names them gets them - today only the new-tattoo four.
+      let wP = null, hP = null, seedP = null;
       if (/^\s*\{/.test(after)) {
         try {
           const p = JSON.parse(after);
@@ -19845,6 +19847,8 @@ async function successionGate(env) {
             // job keeps it; anything unnamed is still "show_it_cmd".
             srcP = (typeof p.source === "string" && /^[a-z_]{2,40}$/.test(p.source.trim())) ? p.source.trim() : null;
             maskP = (typeof p.mask === "string" && /^https:\/\//i.test(p.mask.trim())) ? p.mask.trim() : null;
+            if (Number.isInteger(p.width) && Number.isInteger(p.height) && p.exact_size === true) { wP = p.width; hP = p.height; }
+            if (Number.isInteger(p.seed)) seedP = p.seed;
           }
         } catch (e) {}
       }
@@ -19865,7 +19869,8 @@ async function successionGate(env) {
       const r = await showIt(subject, env, { source: srcP || "show_it_cmd", context: ctx || subject, name: nm,
         via: viaP, host: hostP, refs: refsP || undefined, raw: rawP, parent: parentP, creator: creatorP,
         ...(aspP ? { aspect: aspP } : {}), ...(resP ? { res: resP } : {}),
-        ...(modelP ? { model: modelP } : {}), ...(maskP ? { mask: maskP } : {}) });
+        ...(modelP ? { model: modelP } : {}), ...(maskP ? { mask: maskP } : {}),
+        ...(wP && hP ? { width: wP, height: hP, exactSize: true } : {}), ...(seedP != null ? { seed: seedP } : {}) });
       return { cmd: "SHOW_IT", payload: r };
     }
 
@@ -61076,6 +61081,15 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           body: JSON.stringify({ model, prompt: pOA, n: 1, quality,
             ...(_modOk ? { moderation: _modOk } : {}),
             size: (function () {
+              // AN EXACT SIZE, WHEN THE CALLER NAMES ONE (v9.605): the new-tattoo four ask for the same 1920x1920 the
+              // other grids use (config:edit:thread:size). Checked against the model's own limits; anything else keeps
+              // the old shapes below. Only a caller that sets exactSize reaches this.
+              if (opts.exactSize && opts.width && opts.height && opts.width % 16 === 0 && opts.height % 16 === 0 &&
+                  opts.width * opts.height >= 655360 && opts.width * opts.height <= 8294400 && Math.max(opts.width, opts.height) <= 3840 &&
+                  Math.max(opts.width, opts.height) / Math.min(opts.width, opts.height) <= 3) {
+                console.log("[IMG-SIZE] generate size=" + opts.width + "x" + opts.height);
+                return opts.width + "x" + opts.height;
+              }
               const a = String(opts.aspect || "");
               if (/^(9:16|3:4|2:3)$/.test(a)) return "1024x1536";
               if (/^(16:9|4:3|3:2|2:1)$/.test(a)) return "1536x1024";
@@ -61577,7 +61591,7 @@ async function showIt(subject, env, opts = {}) {
   // matter which model, which quality tier or which endpoint, and `[XAI-IMG]` printed
   // `asked aspect=- res=-` the moment it was pointed at the right branch. An afternoon of
   // theories about xAI's silent fallbacks, and the parameters never left this worker.
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, mask: opts.mask || null });
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, mask: opts.mask || null, exactSize: opts.exactSize === true });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════
@@ -64879,7 +64893,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
-        '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
+        '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', each one bringing together everything they have told you they want, said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
         '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go - by tapping one of your directions or in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
@@ -65595,7 +65609,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       }
       let _notYet = false;
       try {
-        if (hasLive && !_drewNow() && !_goSaid && !_newFlow &&
+        if (hasLive && !_drewNow() && !_goSaid &&
             !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
           let _pa = "";
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _pa = String(tnow[i].said || ""); break; } }
@@ -65660,7 +65674,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // versions), and a number picked off those four. Each now answers with one fixed line (a setting each) and she is
       // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
-      let _fixedSay = null, _fixedWhy = null;
+      let _fixedSay = null, _fixedWhy = null, _lastDesignChange = "";
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -65678,6 +65692,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _ds = /^i want to create a new tattoo\.?$/i.test(_s) ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
+          _lastDesignChange = String(_ds.design_change || "").trim();
           _newStyle = String(_ds.new_style || "").trim() || null;
           if (/^i want to create a new tattoo\.?$/i.test(_s)) {
             _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Let's make something that's yours. Pick a style below, or tell me your idea and we'll build it together.");
@@ -65688,6 +65703,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
           } else if (String(_ds.await_change || "") === "1" && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
+          } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) {
+            // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
+            _fixedWhy = "more"; _fixedSay = await _fx("four_more", "Round two, coming right up - four more.");
+          } else if (_newFlow && !_drewNow() && _goSaid && !_saidNo) {
+            // THEIR YES TO THE FIRST FOUR (v9.605): she offered, they said yes or tapped one of her ideas - she is not
+            // called again; the four start and this line says they are coming.
+            _fixedWhy = "four_new"; _fixedSay = await _fx("four_coming", "Here they come - four versions of that for you.");
           } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-4]\.?$/i.test(_s) && !_bodyPhoto) {
             _fixedWhy = "pick"; _fixedSay = await _fx("pick_done", "Here it is on its own. Is this the one, or would you like to change something?");
           }
@@ -65833,7 +65855,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       };
 
       // The tap (above): her words come from the line written once the files have started.
-      if (_fixedSay && !acted) acted = { say: _fixedSay, act: "none", prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
+      if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
+                                         prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
       if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",
                                         act: "none", prompt: "", use: [], brief: null };
       _tick("agent");
@@ -66267,8 +66290,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
         }
       } catch {}
-      // THEIR IDEA IS THE INSTRUCTION (v9.604): in the new-tattoo flow a typed idea or change needs no "go".
-      const _theirGo = _goSaid || _pickGo || _newFlow;
+      // THEIR IDEA IS THE INSTRUCTION (v9.604, v9.605): a typed change needs no "go" once a design exists.
+      // v9.605: she talks and offers first - the first four need their yes or a tapped idea; once a design exists, a
+      // typed change draws at once.
+      const _theirGo = _goSaid || _pickGo || (_newFlow && _drewNow());
       if ((act === "draw" || act === "change") && !_theirGo) {
         const _sayNow = String(acted.say || said || "").trim();
         const _lastQ = (_sayNow.match(/[^.!?]*\?\s*$/) || [""])[0];
@@ -66294,7 +66319,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // MEASURED 09:14: "Give me some ideas" passed as a yes to her offer and she drew the first one. The page's
       // button sends this exact sentence; she answers with her ideas and nothing is drawn.
       const _askIdeas = _ideasLine;
-      if (_askIdeas && (act === "draw" || act === "change" || act === "onme")) {
+      if (_askIdeas && _fixedWhy !== "more" && (act === "draw" || act === "change" || act === "onme")) {
         console.log("[TURN:IDEAS] they asked for ideas - she gives them, nothing drawn (her act was " + act + ")"); act = "none";
       }
       if ((act === "draw" || act === "change") && !_drewNow() &&
@@ -66651,8 +66676,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_ideasLine && _lastChange && _lastParent) {
             act = "change"; _designGrid = true; _designWords = _lastChange; _designParent = _lastParent;
           } else if (!_ideasLine && String(said || "").trim() && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
-            if (_await && act !== "artist" && act !== "use") act = "change";
-            if (act === "change") { _designGrid = true; _designWords = String(said || "").trim().slice(0, 600); }
+            // A BARE YES IS NEVER A CHANGE (v9.605). MEASURED 16:44 and 17:17: "Go" became "I want to change it: Go." and
+            // the chat model made four guesses at an alteration nobody asked for. Nothing is drawn on a bare yes here.
+            const _bareYes = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i.test(String(said || ""));
+            if (_bareYes) { if (act === "change" || act === "draw") { console.log("[TURN:DESIGN] a bare yes is not a change - nothing drawn"); act = "none"; } }
+            else {
+              if (_await && act !== "artist" && act !== "use") act = "change";
+              if (act === "change") { _designGrid = true; _designWords = String(said || "").trim().slice(0, 600); }
+            }
           }
         }
         if (_designGrid) console.log("[TURN:DESIGN] four versions of their change, the chat-model way: \"" + String(_designWords).slice(0, 200) + "\"");
@@ -67888,12 +67919,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // we already have every piece of information on" - each idea's title and lines are written into the picture by
             // the chat model that designed it. Her look cost ~24s and repeated the captions. One short line instead
             // (a setting, `config:say:ideas_done`).
-            if (_ideasGrid || _designGrid) {
+            if (_designGrid) {
+              // FOUR VERSIONS OF A CHANGE (v9.605, Aaron): her own words to their change stay - she was called before it
+              // was drawn - and the same fixed line as the first four follows. No look: the titles are in the picture.
+              let _done = "Here are your four - tap Keep on the one you like, or I can imagine four more.";
+              try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              const _hers = (!_fixedSay && acted && acted.say) ? String(acted.say).trim() : "";
+              _reaction = _hers ? (_hers + "\n\n" + _done) : _done;
+            } else if (_ideasGrid) {
               let _done = "Here are four ideas. Tap the one you want to work on, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:ideas_done")) || "").trim(); if (_k) _done = _k; } catch {}
               _reaction = _done;
-            } else if (_fixedWhy === "pick" && !_newFlow) {
-              _reaction = _fixedSay;   // v9.602: the picked version, no look - the fixed line stands
+            } else if (_fixedWhy === "pick") {
+              _reaction = _fixedSay;   // v9.602 / v9.605: the picked version, no look - the fixed line stands, every round
             } else {
               // A NEW TATTOO'S PICK IS LOOKED AT, EVERY ROUND THE SAME (v9.604): she was not called before it was drawn;
               // she looks at the one they picked and says something short about it. Flat artwork, not a body.
@@ -67948,14 +67986,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (tnow[i] && tnow[i].role === "them" && /^\s*i want to create a new tattoo/i.test(String(tnow[i].said || ""))) { _start = i + 1; break; }
             }
             for (let i = _start; i < tnow.length; i++) {
-              const e = tnow[i]; const t = String((e && e.role === "them" && e.said) || "").trim();
+              const e = tnow[i]; const t = String((e && e.role === "them" && e.said) || "").trim().replace(/^show me:\s*/i, "");
               if (t && !_tap.test(t) && !_bare.test(t)) _mine.push(t);
             }
-            const _now = String(said || "").trim();
+            // A tapped idea arrives as "Show me: <idea>" - the two tap words are not theirs and do not go in (v9.605).
+            const _now = String(said || "").trim().replace(/^show me:\s*/i, "");
             if (_now && !_tap.test(_now) && !_bare.test(_now) && _mine[_mine.length - 1] !== _now) _mine.push(_now);
             const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
             if (_words) {
-              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Show all 4 as flat tattoo artwork on plain white - not on skin - in a numbered 2x2 grid. Under each one, write a short title and two or three lines about the design.";
+              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Show all 4 as flat tattoo artwork on plain white - not on skin - in a numbered 2x2 grid. Under each one, write a short title and two or three lines about the design.";
               let _st = ", all in the {name} style";
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
@@ -68035,6 +68074,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                "skin, not on a person, not a photograph of a tattoo.");
           // 2k because the first drawing is the ceiling for every later version, and a tattoo is
           // taller than it is wide. If the lane ignores either, the [XAI-IMG] line says so.
+          let _newSize = { width: 1920, height: 1920, exact_size: true };
+          if (_newSentence) { try { const _k = String((await env.AURA_KV.get("config:edit:thread:size")) || "").trim(); const _m = _k.match(/^(\d{3,4})x(\d{3,4})$/);
+            if (_m) _newSize = { width: parseInt(_m[1], 10), height: parseInt(_m[2], 10), exact_size: true }; } catch {} }
           // The new-tattoo sentence goes alone (v9.604): it already says flat, on white, numbered, a 2x2 grid.
           const _subjectSent = _newSentence ? askLine : (askLine + ". " + reg + " " + frm +
               (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
@@ -68044,6 +68086,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             subject: _subjectSent,
             // Nothing appended (v9.604): without raw, showIt adds "High quality, visually striking..." to the words.
             ...(_newSentence ? { raw: true } : {}),
+            // THE SAME SIZE AS THE OTHER GRIDS (v9.605): config:edit:thread:size, default 1920x1920; and Imagine 4 more
+            // gets a new seed - the same words would otherwise hand back the same cached picture.
+            ...(_newSentence ? _newSize : {}),
+            ...(_newSentence && _fixedWhy === "more" ? { seed: 1 + Math.floor(Math.random() * 2000000000) } : {}),
             context: "a tattoo somebody is designing for themselves: " + askLine,
             name: askLine.slice(0, 60),
             ...(refUrl ? { refs: [refUrl] } : {}),
@@ -68061,9 +68107,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // white was checked as "the mock-up on their own body" and came back "RIGHT: the original
             // forearm tattoo is untouched... all the new ink is on the skin" - there was no forearm and
             // no skin. Told it was looking at a body, the check found one.
-            const _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);   // v9.604: a new tattoo is flat - no body in her look
+            // NO LOOK AT THE NEW FOUR (v9.605, Aaron): the titles and lines are printed in the picture already - her
+            // reading them back added ~20s and told them nothing new. One fixed line instead (config:say:four_done).
+            let _lk2 = null;
+            if (_newSentence) {
+              _reaction = "Here are your four - tap Keep on the one you like, or I can imagine four more.";
+              try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
+            } else {
+              _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);
+              _reaction = (_lk2 && _lk2.say) || null;
+            }
             const _mockNote2 = _lk2 && _lk2.verdict;
-            _reaction = (_lk2 && _lk2.say) || null;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
@@ -68078,6 +68132,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else {
             drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
           }
+          if (_newSentence) { try { console.log("[TURN:NEW] drawn by " + ((dp && dp.model) || "?") + " · asked " + (_newSize.width + "x" + _newSize.height) +
+            (_fixedWhy === "more" ? " · a fresh four (new seed)" : "") + " -> " + ((dp && dp.image_url) || ("not made: " + ((dp && dp.error) || "?"))) + (me ? " · who=" + me : "")); } catch {} }
           // EVERY WORD THE IMAGE MODEL GOT (v9.604) - handed back with the turn, never cut.
           try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: "drawn new", words: _subjectSent,
                   aspect: _grid ? "1:1" : "3:4", made: (dp && dp.image_url) || null, failed: (dp && !dp.ok) ? (dp.error || "not made") : null,
@@ -68426,6 +68482,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                     await projectAppend(env, me, _pidN, { ...(n ? { name_final: n } : {}), ...(c ? { details: { colour: c } } : {}) });
                   }
                   console.log("[NAME] she named it (behind the reply): " + (n || "?") + " | colour: " + (c || "?"));
+                  // WHY NO NAME (v9.605): MEASURED 17:00:37 "named it: ?" - her answer is logged whole when no name is read.
+                  if (!n) console.log("[NAME] no name read from her answer: \"" + String((q && (q.reply || q.failed)) || "(nothing)").replace(/\s+/g, " ").slice(0, 400) + "\"");
                 } catch (e) { try { console.log("[NAME] naming failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
               })());
             }

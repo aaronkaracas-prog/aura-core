@@ -22,6 +22,7 @@ function Say([string]$Words, [switch]$Fresh, [switch]$Lock, [switch]$Use, [switc
   if ($Fresh) { $flags += "FRESH" }; if ($Lock) { $flags += "LOCK" }; if ($Use) { $flags += "USE" }
   if ($Pick) { $flags += "PICK" }; if ($Own) { $flags += "OWN" }
   $n = $global:FT.steps.Count + 1
+  $t0 = Get-Date
   $sw = [Diagnostics.Stopwatch]::StartNew()
   $raw = RUN ("TALK " + $global:FT.pta + " WORLD mytattoo " + ($flags -join " ") + " ::: " + $Words) | Out-String
   $sw.Stop()
@@ -52,8 +53,19 @@ function Say([string]$Words, [switch]$Fresh, [switch]$Lock, [switch]$Use, [switc
   if ($o.phase_ms) { Write-Host ("TIMING (ms): " + (($o.phase_ms.PSObject.Properties | Where-Object { $_.Value -ge 300 } | ForEach-Object { $_.Name + " " + $_.Value }) -join " · ")) }
   if ($o.spent) { Write-Host ("COST: " + ($o.spent | ConvertTo-Json -Compress -Depth 4)) }
   if ($o.project) { Write-Host ("PROJECT: " + $o.project) }
+  # EVERYTHING THE WORKER LOGGED DURING THIS STEP - the image model's own lines included. Cloudflare takes a few
+  # seconds to make logs readable, so it waits 20s first. Crawl lines are left out.
+  Start-Sleep -Seconds 20
+  $from = $t0.AddMinutes(-0).ToString("HH:mm"); $to = (Get-Date).ToString("HH:mm")
+  $lg = $null; try { $lg = ((RUN ("LOGS " + $t0.ToString("yyyy-MM-dd") + " " + $from + " " + $to + " core") | Out-String) | ConvertFrom-Json).payload } catch {}
+  $logLines = @()
+  if ($lg -and $lg.log) {
+    $logLines = @(@($lg.log) | Where-Object { $_ -notmatch 'CRAWL|SITE_READING|CG_ENRICH|crawl|GridCrawl|\[CRON|scheduled' })
+  }
+  Write-Host ("LOGS DURING THIS STEP (" + $logLines.Count + " lines, " + $from + "-" + $to + "):")
+  foreach ($l in $logLines) { Write-Host ("   " + $l) }
   $global:FT.steps += ,@{ n = $n; said = $Words; flags = ($flags -join ", "); she = $o.said; by = $o.answered_by; act = $o.act;
-                          secs = $secs; pics = $pics; cost = $(if ($o.spent) { $o.spent | ConvertTo-Json -Compress -Depth 4 } else { "" }) }
+                          secs = $secs; pics = $pics; logs = $logLines; cost = $(if ($o.spent) { $o.spent | ConvertTo-Json -Compress -Depth 4 } else { "" }) }
 }
 
 function Files([int]$MaxMinutes = 6) {
@@ -91,6 +103,7 @@ function Sheet {
       $html += "</div></div>"
     }
     if ($s.cost) { $html += "<div style='font-size:11px;color:#888'>cost: " + $h::HtmlEncode($s.cost) + "</div>" }
+    if ($s.logs -and $s.logs.Count) { $html += "<details><summary style='font-size:11px;color:#888'>logs (" + $s.logs.Count + " lines)</summary><pre style='font-size:10px;color:#aaa;white-space:pre-wrap'>" + $h::HtmlEncode(($s.logs -join "`n")) + "</pre></details>" }
     $html += "</div>"
   }
   if ($global:FT.files) {

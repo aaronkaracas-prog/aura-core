@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.614.0-2026-10-15-green-box";
+const BUILD = "aura-core-v9.615.0-2026-10-15-placed-the-chatgpt-way";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13609,7 +13609,9 @@ async function successionGate(env) {
       try { const _k = String((await env.AURA_KV.get("config:edit:thread:size")) || "").trim(); if (/^(\d{3,4}x\d{3,4}|auto)$/.test(_k)) thSize = _k; } catch {}
       // A CALLER MAY NAME ITS SIZE (v9.606): the new-tattoo four-card page is tall (config:edit:new:size); every other
       // caller names none and keeps the setting above.
-      if (thP && /^\d{3,4}x\d{3,4}$/.test(String(thP.size || ""))) thSize = String(thP.size);
+      if (thP && /^(\d{3,4}x\d{3,4}|auto)$/.test(String(thP.size || ""))) thSize = String(thP.size);
+      // MORE THAN ONE PICTURE, IN THE ORDER GIVEN (v9.615, Aaron): the way he asks ChatGPT - his tattoo, then his photo.
+      const thImgs = (thP && Array.isArray(thP.images)) ? thP.images.filter((u) => /^https?:\/\//i.test(String(u || ""))).slice(0, 4) : [];
       const thTool = (action) => ({ type: "image_generation", action, ...(thOA && thSize ? { size: thSize } : {}),
         ...(thImgModel && /^gpt-image/i.test(thImgModel) ? { model: thImgModel } : {}),
         ...(["low", "medium", "high", "auto"].includes(thQual) ? { quality: thQual } : {}) });
@@ -13622,8 +13624,8 @@ async function successionGate(env) {
         // THE FIRST STEP MAY BE ASKED FOR "auto" (v9.593, Aaron): OpenAI's own default, and the way ChatGPT uses the
         // tool - the model chooses to edit the photo or draw a new one. Unasked, it is still an edit, as before.
         ? { model: thModel, tools: [thTool((thP && ["edit", "generate", "auto"].includes(String(thP.action || "").toLowerCase())) ? String(thP.action).toLowerCase() : "edit")], tool_choice: "required",
-            input: [{ role: "user", content: [{ type: "input_text", text: thAsk },
-                                              { type: "input_image", image_url: thImg }] }] }
+            input: [{ role: "user", content: [{ type: "input_text", text: thAsk }].concat(
+                                              (thImgs.length ? thImgs : [thImg]).map((u) => ({ type: "input_image", image_url: u }))) }] }
         : { model: thModel, tools: [thTool(thAction)], tool_choice: "required",
             previous_response_id: thArg, input: thAsk };
       try {
@@ -67088,9 +67090,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // THE GREEN BOX (v9.614, 2026-10-15, Aaron). MEASURED 08:46 and 08:59: their photo with the design laid on it was
             // refused as [sexual] twice, with either wording - the pasted-on picture was the trouble, and the words were confusing
             // it. Now their photo is sent untouched except for a green box drawn where they placed it, with the design.
-            _omSubject = "Put my tattoo on me inside the green box - the same size and angle as the box. Remove the green box.";
+            _omSubject = "Here's the tattoo I want to get here's where I want it placed on me. Can you show me what that would look like as a real tattoo?";
             try { const _k = String((await env.AURA_KV.get("config:frame:onme:placed")) || "").trim(); if (_k) _omSubject = _k; } catch {}
-            _omRefs = [refUrl, _onmeDesign.image];
+            // THE CHATGPT WAY (v9.615, 2026-10-15, Aaron). MEASURED 09:09: the same two pictures and these words in the ChatGPT
+            // app came back as a real tattoo on her; sent straight to the image model they were refused [sexual]. In the app a
+            // chat model reads the pictures and asks its image tool itself - the THREAD route already does that. Same order as
+            // the app: his tattoo first, then his photo with the green box.
+            _omRefs = [_onmeDesign.image, refUrl];
           }
           if (_sideNote) { try { console.log("[TURN:ONME] sides - mirror photo: " + (_mir || "not known") + " · added: \"" + _sideNote + "\""); } catch {} }
           const _omReq = "SHOW_IT " + JSON.stringify({
@@ -67098,8 +67104,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             raw: true, refs: _omRefs, source: "onme", parent: _onmeDesign.design
           });
           let _op = null;
-          for (let _try = 0; _try < 3; _try++) {
-            const _om = await processCommand(_omReq, env, true);
+          let _omA = null, _omB = null;
+          if (_fixedWhy === "placed") { try { _omA = await sendCopy(env, _omRefs[0]); _omB = await sendCopy(env, _omRefs[1]); } catch {} }
+          for (let _try = 0; _try < (_fixedWhy === "placed" ? 2 : 3); _try++) {
+            let _om = null;
+            if (_fixedWhy === "placed") {
+              const _tr = await processCommand("THREAD START " + (_omB || _omRefs[1]) + " " + JSON.stringify({ prompt: _omSubject, action: "auto",
+                size: "auto", images: [_omA || _omRefs[0], _omB || _omRefs[1]] }), env, true);
+              const _tp = (_tr && _tr.payload) ? _tr.payload : _tr;
+              if (_tp && _tp.ok && _tp.image) {
+                let _reg = null;
+                try { _reg = await registerSmartFile(env, { id: _tp.image_id, filetype: "image", name: "on me", url: _tp.image,
+                  subject: _omSubject, source: "onme", creator: me, parent: _onmeDesign.design, context: "seeing a tattoo on their own body", access: "public" }); } catch {}
+                _om = { ok: true, image_url: _tp.image, entity_id: (_reg && _reg.entity_id) || null };
+                try { console.log("[TURN:ONME] the chat model asked its image tool: \"" + String(_tp.tool_prompt || "").replace(/\s+/g, " ").slice(0, 600) + "\" · drawn " + (_tp.size_drawn || "?")); } catch {}
+              } else _om = { ok: false, error: String((_tp && (_tp.error || (_tp.said ? "no picture - it said: " + _tp.said : ""))) || "no picture").slice(0, 300) };
+            } else _om = await processCommand(_omReq, env, true);
             _op = (_om && _om.payload) ? _om.payload : _om;
             if (_op && _op.ok && _op.image_url) break;
             try { console.log("[ONME] attempt " + (_try + 1) + " failed: " + String((_op && _op.error) || "no answer").slice(0, 200)); } catch {}

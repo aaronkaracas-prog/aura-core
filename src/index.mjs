@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.612.0-2026-10-15-onme-retry-blocked-check";
+const BUILD = "aura-core-v9.613.0-2026-10-15-placed-by-hand";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65746,7 +65746,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
           _lastDesignChange = String(_ds.design_change || "").trim();
           _newStyle = String(_ds.new_style || "").trim() || null;
-          if (/^i want to create a new tattoo\.?$/i.test(_s)) {
+          let _dzP = null;
+          if (opts && opts.placed && refUrl) { try { _dzP = _pre ? await _pre.design : null; } catch {} }
+          if (opts && opts.placed && refUrl && _dzP && _dzP.image && _dzP.design && _dzP.design !== refDesign) {
+            // ══ THEY PLACED IT THEMSELVES (v9.613, 2026-10-15, Aaron) ═══════════════════════════════════════
+            // "Let the user do whatever they want with it - size it, rotate it... once they say here's where I want it the image
+            // model gets the exact spot." The page sends their photo with the design laid on it where they put it. She is not
+            // called; the picture model only makes it real ink, there.
+            _fixedWhy = "placed"; _fixedSay = await _fx("onme_coming", "Putting it on you now.");
+          } else if (/^i want to create a new tattoo\.?$/i.test(_s)) {
             _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Let's make something that's yours. Pick a style below, or tell me your idea and we'll build it together.");
           } else if ((_stm = _s.match(/^i like the (.+) style\.?$/i))) {
             _fixedWhy = "style"; _fixedSay = (await _fx("style_pick", "____ - great pick. Explore the designs made in this style, or create your own with me.")).replace("____", _stm[1]);
@@ -65936,7 +65944,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // THE FIXED LINE SHOWS AT ONCE (v9.607): MEASURED 18:45 - "Here they come..." was ready at the tap and reached the page
       // only with the finished picture, 32s later. It goes out the way her streamed words do, then the work starts.
       if (_fixedSay && !acted && onDelta) { try { await onDelta(_fixedSay); } catch {} }
-      if (_fixedSay && !acted) acted = { say: _fixedSay, act: (_fixedWhy === "onme" ? "onme" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
+      if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
                                          prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
       if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",
                                         act: "none", prompt: "", use: [], brief: null };
@@ -67046,7 +67054,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // MEASURED 08:02: after a failed "on my right thigh", "Try again" was sent as where it goes - the model chose her
           // stomach. A retry or a bare yes reuses the last place they named (talk-state `onme_words`).
           const _retryRx = /^\s*(try (it |that )?again|again|retry|one more time|redo( it)?|do it again|yes|yeah|yep|ok|okay|sure|go|go ahead|go for it|do it|please)[\s.!]*$/i;
-          if (me) {
+          if (me && _fixedWhy !== "placed") {
             try {
               if (!_omWords || _retryRx.test(_omWords)) {
                 const _prevW = String((await talkStateGet(env, me, ["onme_words"])).onme_words || "").trim();
@@ -67073,11 +67081,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               _sideNote = _sideNote.charAt(0).toUpperCase() + _sideNote.slice(1);
             } else _sideNote = "Right and left mean the person's own right and left.";
           }
-          const _omSubject = onmeAsk(_omWords) + (_sideNote ? " " + _sideNote : "");
+          let _omSubject = onmeAsk(_omWords) + (_sideNote ? " " + _sideNote : "");
+          let _omRefs = [_onmeDesign.image, refUrl];
+          if (_fixedWhy === "placed") {
+            // The first picture is their photo with the design laid where they put it; the second is the design itself.
+            _omSubject = "The first image is a photo of a person with a tattoo design laid on their skin. Make that design a real " +
+              "tattoo on their skin - exactly where it is, the same size and the same angle. Keep everything else in the photo exactly " +
+              "as it is, including any tattoos already on them. The second image is the design, for its detail.";
+            try { const _k = String((await env.AURA_KV.get("config:frame:onme:placed")) || "").trim(); if (_k) _omSubject = _k; } catch {}
+            _omRefs = [refUrl, _onmeDesign.image];
+          }
           if (_sideNote) { try { console.log("[TURN:ONME] sides - mirror photo: " + (_mir || "not known") + " · added: \"" + _sideNote + "\""); } catch {} }
           const _omReq = "SHOW_IT " + JSON.stringify({
             subject: _omSubject, context: "seeing a tattoo on their own body", name: "on me",
-            raw: true, refs: [_onmeDesign.image, refUrl], source: "onme", parent: _onmeDesign.design
+            raw: true, refs: _omRefs, source: "onme", parent: _onmeDesign.design
           });
           let _op = null;
           for (let _try = 0; _try < 3; _try++) {
@@ -67088,11 +67105,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
           // EVERY LOOK ON THEM IS LOGGED (v9.609): the design picture, their photo, every word sent and what came back -
           // this step logged only failures, so the wrong result at 21:17 could not be traced.
-          try { console.log("[TURN:ONME] sent: \"" + _omSubject + "\" · picture 1 (the design): " + _onmeDesign.image +
-            " (" + (_onmeDesign.design || "?") + ") · picture 2 (their photo): " + refUrl + " -> " +
+          try { console.log("[TURN:ONME] sent: \"" + _omSubject + "\" · picture 1: " + _omRefs[0] +
+            " · picture 2: " + _omRefs[1] + " · design " + (_onmeDesign.design || "?") + (_fixedWhy === "placed" ? " · placed by hand" : "") + " -> " +
             ((_op && _op.image_url) || ("not made: " + String((_op && _op.error) || "?").slice(0, 200))) + (me ? " · who=" + me : "")); } catch {}
           try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: "put on their photo", words: _omSubject,
-            picture_in: _onmeDesign.image, second_picture: [refUrl], made: (_op && _op.image_url) || null,
+            picture_in: _omRefs[0], second_picture: [_omRefs[1]], made: (_op && _op.image_url) || null,
             failed: (_op && _op.image_url) ? null : String((_op && _op.error) || "?").slice(0, 200) }); } catch {}
           drew = (_op && _op.ok && _op.image_url)
             ? { design: _op.entity_id || null, image: _op.image_url, on_me: true, from: _onmeDesign.design,
@@ -69626,7 +69643,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, placed: !!b.placed, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -69650,7 +69667,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, placed: !!b.placed, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

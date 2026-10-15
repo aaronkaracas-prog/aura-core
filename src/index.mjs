@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.609.0-2026-10-15-ideas-fresh-four-onme-their-words";
+const BUILD = "aura-core-v9.610.0-2026-10-15-onme-fixed-line";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67259,9 +67259,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // reply - "Let me put the circus clown on your chest... What do you think?" - was written
       // before the picture existed. A drawing and a change have always ended with her looking at
       // what came out; put-it-on-me never did. Same look, same body check, same place in her reply.
+      // ══ NO LOOK AFTER IT IS ON THEM - ONE FIXED LINE (v9.609b, 2026-10-15, Aaron) ════════════════════════════
+      // MEASURED 06:23 (prj_1a86117b30cc401a): the wizard went on his forearm correctly, and her look said "the shark
+      // under it is reading pretty dark... bring that shark out?" - the sharks are the print on his swim shorts. Same
+      // rule as the four and the pick: no look, no read-back after a picture. `config:say:onme_done` is the line; the
+      // page adds "your artist will make any final changes" under it for a finished tattoo.
       if (act === "onme" && drew && drew.on_me && drew.image && !drew.failed) {
-        const _lkOn = await _lookAtResult(drew.image, true, _onmeWords || null);
-        if (_lkOn && _lkOn.say) _reaction = _lkOn.say;
+        let _lkOn = null;
+        _reaction = "Here it is on you.";
+        try { const _k = String((await env.AURA_KV.get("config:say:onme_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
+        try { console.log("[TURN:ONME] no look - fixed line: \"" + _reaction + "\"" + (me ? " · who=" + me : "")); } catch {}
         if (me) {
           try {
             await talkStatePut(env, me, "onme",

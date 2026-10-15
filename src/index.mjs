@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.608.0-2026-10-14-imagine-more-draws-fresh";
+const BUILD = "aura-core-v9.609.0-2026-10-15-ideas-fresh-four-onme-their-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -19744,9 +19744,16 @@ async function successionGate(env) {
         // own body, their tattoo kept, captions readable at 1920. The picture lands exactly where an evolve
         // lands - a child of the parent in the Smart File graph - so everything after it works unchanged.
         if (p.via === "thread" && parentUrl) {
-          const tr = await processCommand("THREAD START " + parentUrl + " " + JSON.stringify({ prompt: p.prompt, action: "auto",
-            ...(/^\d{3,4}x\d{3,4}$/.test(String(p.size || "")) ? { size: String(p.size) } : {}) }), env, true);
-          const tp = (tr && tr.payload) ? tr.payload : tr;
+          // v9.609: a copy small enough to download in time, and one more try if the picture does not come back.
+          const _sendUrl = await sendCopy(env, parentUrl);
+          let tp = null;
+          for (let _t = 0; _t < 2; _t++) {
+            const tr = await processCommand("THREAD START " + _sendUrl + " " + JSON.stringify({ prompt: p.prompt, action: "auto",
+              ...(/^\d{3,4}x\d{3,4}$/.test(String(p.size || "")) ? { size: String(p.size) } : {}) }), env, true);
+            tp = (tr && tr.payload) ? tr.payload : tr;
+            if (tp && tp.ok && tp.image) break;
+            try { console.log("[THREAD] attempt " + (_t + 1) + " drew nothing: " + String((tp && tp.error) || "no answer").replace(/\s+/g, " ").slice(0, 200)); } catch {}
+          }
           if (!tp || !tp.ok || !tp.image) return { cmd: "IMAGE", payload: { ok: false, error: (tp && tp.error) || "the chat model drew no picture", via: "thread" } };
           const reg = await registerSmartFile(env, { id: tp.image_id, filetype: "image", name: String(p.prompt).slice(0, 80),
             url: tp.image, subject: p.prompt, source: "image_thread", creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null,
@@ -59794,6 +59801,46 @@ async function lookCopy(env, url) {
   }
 }
 
+// ══ A COPY THE IMAGE MODEL CAN DOWNLOAD IN TIME (v9.609, 2026-10-15, Aaron) ═════════════════════
+// MEASURED 21:04 (pta_f9416356d49499dd): a change to the four failed with "Unable to download content from the
+// provided URL before the timeout" - the full 2160x3840 sheet, and our own fetch of it lost connection three times.
+// The chat-model route now sends a copy at most `config:edit:thread:send_edge` px (default 2048) on the long side,
+// as JPEG. The sheet itself is untouched; the person and the artist files keep full size. Anything that fails
+// returns the original.
+async function sendCopy(env, url) {
+  try {
+    const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
+    if (!id) return url;
+    let edge = 2048;
+    try { const k = parseInt(String((await env.AURA_KV.get("config:edit:thread:send_edge")) || ""), 10); if (k >= 512 && k <= 3840) edge = k; } catch {}
+    const was = await env.AURA_KV.get("sendcopy:" + edge + ":" + id).catch(() => null);
+    if (was) return was;
+    const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+    if (!b64 || b64.length * 0.75 <= 1500 * 1024) return url;   // small enough as it is
+    const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    const W = im.get_width(), H = im.get_height();
+    const s = edge / Math.max(W, H);
+    let small = im;
+    if (s < 1) small = photonResize(im, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)), PhotonSampling.Lanczos3);
+    const bts = small.get_bytes_jpeg(90);
+    try { if (small !== im) small.free(); } catch {}
+    try { im.free(); } catch {}
+    let t = "";
+    for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+    const nid = "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
+      .map((x) => x.toString(16).padStart(2, "0")).join("");
+    await env.AURA_KV.put("image:" + nid, btoa(t), { expirationTtl: 7 * 24 * 3600 });
+    const out = "https://" + (await imageHost(env)) + "/image/" + nid;
+    await env.AURA_KV.put("sendcopy:" + edge + ":" + id, out, { expirationTtl: 7 * 24 * 3600 }).catch(() => {});
+    console.log("[SENDCOPY] " + id + " " + W + "x" + H + " " + Math.round(b64.length * 0.75 / 1024) + " KB -> " + nid + " " +
+      Math.round(W * Math.min(1, s)) + "x" + Math.round(H * Math.min(1, s)) + " " + Math.round(bts.length / 1024) + " KB");
+    return out;
+  } catch (e) {
+    console.log("[SENDCOPY] failed, original used: " + String(e?.message ?? e).slice(0, 160));
+    return url;
+  }
+}
+
 async function tatOwnerOf(env, leaf) {
   try {
     const t = await env.AURA_KV.get("card:tree", "json");
@@ -65710,10 +65757,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) {
             // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
             _fixedWhy = "more"; _fixedSay = await _fx("four_more", "Round two, coming right up - four more.");
-          } else if (_newFlow && !_drewNow() && _goSaid && !_saidNo) {
+          } else if (_newFlow && _goSaid && !_saidNo && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s))) {
             // THEIR YES TO THE FIRST FOUR (v9.605): she offered, they said yes or tapped one of her ideas - she is not
             // called again; the four start and this line says they are coming.
+            // ANOTHER OF HER IDEAS IS A FRESH FOUR TOO (v9.609, 2026-10-15, Aaron). MEASURED 21:04 (prj_83c97810dfe14e64):
+            // with four on screen, tapping "Chrome garden" was read as a CHANGE of the four - Aura was called (34s) and the
+            // image model was told "I want to change it: Show me: Chrome garden...". A tapped idea is a new four of that idea.
             _fixedWhy = "four_new"; _fixedSay = await _fx("four_coming", "Here they come - four versions of that for you.");
+            if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
           } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-4]\.?$/i.test(_s) && !_bodyPhoto) {
             _fixedWhy = "pick"; _fixedSay = await _fx("pick_done", "Here it is on its own. Is this the one, or would you like to change something?");
           }
@@ -66537,7 +66588,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // IMAGINE 4 MORE IS A FRESH FOUR, NOT A CHANGE (v9.608). MEASURED 20:03: the fixed "more" turn drew, then this rule
       // turned it into a change of the four on screen - the grid was EDITED with the words "Imagine 4 more" (numbered 5-8,
       // old grid layout) and she was asked to look at it (49s). A fresh four of the same idea is a new drawing.
-      if (act === "draw" && hasParent && _fixedWhy !== "more") {
+      // v9.609: the same for a tapped idea (four_new) with four already on screen.
+      if (act === "draw" && hasParent && _fixedWhy !== "more" && _fixedWhy !== "four_new") {
         const namedParent = useRaw.length ? useOne(useRaw[0], "design") : null;
         const wasSubj = String((lastDrawn && lastDrawn.subject) || "").trim().toLowerCase();
         const nowSubj = String((intent && intent.subject) || "").trim().toLowerCase();
@@ -66692,7 +66744,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_bareYes) { if (act === "change" || act === "draw") { console.log("[TURN:DESIGN] a bare yes is not a change - nothing drawn"); act = "none"; } }
             else {
               if (_await && act !== "artist" && act !== "use") act = "change";
-              if (act === "change") { _designGrid = true; _designWords = String(said || "").trim().slice(0, 600); }
+              if (act === "change") { _designGrid = true; _designWords = String(said || "").trim().replace(/^show me:\s*/i, "").slice(0, 600); }
             }
           }
         }
@@ -66959,8 +67011,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // MEASURED: "Place it on my chest" came back "it didn't come out this time"; "try again"
           // worked with the same words and the same two pictures. Nobody should see that - the same
           // request is tried again, up to twice more, before anything is said.
+          // THEIR WORDS, NEVER HERS (v9.609, 2026-10-15, Aaron). MEASURED 21:17 (prj_83c97810dfe14e64): the locked design -
+          // a colour biomech head with sunflowers and bees - came back on her shoulder as a small black fine-line sunflower
+          // and bee matching the ink already there. Her own brief went first in this sentence ("dainty like the lotus
+          // piece..."), so the model drew her description, not the picture. Only the person's placement words go in now.
+          const _omWords = String(_onmeWords || "").trim().replace(/^show me:\s*/i, "");
+          const _omSubject = onmeAsk(_omWords);
           const _omReq = "SHOW_IT " + JSON.stringify({
-            subject: onmeAsk(String(brief || "").trim() || String(acted.ask || "").trim() || _onmeWords), context: "seeing a tattoo on their own body", name: "on me",
+            subject: _omSubject, context: "seeing a tattoo on their own body", name: "on me",
             raw: true, refs: [_onmeDesign.image, refUrl], source: "onme", parent: _onmeDesign.design
           });
           let _op = null;
@@ -66970,6 +67028,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_op && _op.ok && _op.image_url) break;
             try { console.log("[ONME] attempt " + (_try + 1) + " failed: " + String((_op && _op.error) || "no answer").slice(0, 200)); } catch {}
           }
+          // EVERY LOOK ON THEM IS LOGGED (v9.609): the design picture, their photo, every word sent and what came back -
+          // this step logged only failures, so the wrong result at 21:17 could not be traced.
+          try { console.log("[TURN:ONME] sent: \"" + _omSubject + "\" · picture 1 (the design): " + _onmeDesign.image +
+            " (" + (_onmeDesign.design || "?") + ") · picture 2 (their photo): " + refUrl + " -> " +
+            ((_op && _op.image_url) || ("not made: " + String((_op && _op.error) || "?").slice(0, 200))) + (me ? " · who=" + me : "")); } catch {}
+          try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: "put on their photo", words: _omSubject,
+            picture_in: _onmeDesign.image, second_picture: [refUrl], made: (_op && _op.image_url) || null,
+            failed: (_op && _op.image_url) ? null : String((_op && _op.error) || "?").slice(0, 200) }); } catch {}
           drew = (_op && _op.ok && _op.image_url)
             ? { design: _op.entity_id || null, image: _op.image_url, on_me: true, from: _onmeDesign.design,
                 asked: "the design on screen, on their photo", their_words: _onmeWords }
@@ -67999,13 +68065,23 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             for (let i = tnow.length - 1; i >= 0; i--) {
               if (tnow[i] && tnow[i].role === "them" && /^\s*i want to create a new tattoo/i.test(String(tnow[i].said || ""))) { _start = i + 1; break; }
             }
+            // ONE TAPPED IDEA AT A TIME (v9.609): their own typed lines all go in, but of her idea cards only the newest tap -
+            // tapping "Chrome garden" after "Torn skin" is a new choice, not both at once.
+            let _lastTap = null;
             for (let i = _start; i < tnow.length; i++) {
-              const e = tnow[i]; const t = String((e && e.role === "them" && e.said) || "").trim().replace(/^show me:\s*/i, "");
-              if (t && !_tap.test(t) && !_bare.test(t)) _mine.push(t);
+              const e = tnow[i]; const raw = String((e && e.role === "them" && e.said) || "").trim();
+              const t = raw.replace(/^show me:\s*/i, "");
+              if (!t || _tap.test(t) || _bare.test(t)) continue;
+              if (/^show me:/i.test(raw)) _lastTap = t; else _mine.push(t);
             }
             // A tapped idea arrives as "Show me: <idea>" - the two tap words are not theirs and do not go in (v9.605).
-            const _now = String(said || "").trim().replace(/^show me:\s*/i, "");
-            if (_now && !_tap.test(_now) && !_bare.test(_now) && _mine[_mine.length - 1] !== _now) _mine.push(_now);
+            const _rawNow = String(said || "").trim();
+            const _now = _rawNow.replace(/^show me:\s*/i, "");
+            if (_now && !_tap.test(_now) && !_bare.test(_now)) {
+              if (/^show me:/i.test(_rawNow)) _lastTap = _now;
+              else if (_mine[_mine.length - 1] !== _now) _mine.push(_now);
+            }
+            if (_lastTap) _mine.push(_lastTap);
             const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
             if (_words) {
               let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page divided into a 2 by 2 grid of 4 equal panels, each panel the shape of a phone screen. In each panel, the tattoo artwork fills the top five-sixths on plain white - not on skin - and the bottom sixth is a black strip with the number in a white circle, a short title in bold white letters, and two short lines about the design in white.";
@@ -68307,7 +68383,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // Banked so the next turn amends it instead of reading the conversation cold. Merged, not
       // replaced: a turn that mentions nothing about colour must not erase the colour they chose
       // three turns ago. Only a field this turn actually filled overwrites what was there.
-      if (me && intent && typeof intent === "object") {
+      // A FAILED PICTURE CHANGES NOTHING ON FILE (v9.609, 2026-10-15, Aaron). MEASURED (prj_83c97810dfe14e64): the
+      // "Chrome garden" tap failed to draw, yet her notes from that turn saved style "liquid chrome" - and the artist's
+      // files were made under it for a design that is not chrome. A turn whose picture failed keeps the brief as it was.
+      const _drawFailed = !!(drew && drew.failed);
+      if (_drawFailed) { try { console.log("[BRIEF] the picture failed - nothing from this turn is saved to the brief"); } catch {} }
+      if (me && intent && typeof intent === "object" && !_drawFailed) {
         try {
           const merged = Object.assign({}, carriedObj || {});
           for (const k of Object.keys(intent)) {

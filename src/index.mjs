@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.620.0-2026-10-15-words-are-the-edge";
+const BUILD = "aura-core-v9.621.0-2026-10-15-every-four-is-cut";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59794,7 +59794,10 @@ async function cutPanel(env, url, n) {
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return { ok: false, error: "picture not found: " + id };
   const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
-  const W = im.get_width(), H = im.get_height(), px = im.get_raw_pixels();
+  const W = im.get_width(), H = im.get_height();
+  // Only a tall page of four phone-shaped cards (9:16) is cut; anything else is not ours to chop.
+  if (Math.abs(W / H - 0.5625) > 0.03) { try { im.free(); } catch {} return { ok: false, error: "not a four-card sheet (" + W + "x" + H + ")" }; }
+  const px = im.get_raw_pixels();
   const col = (n - 1) % 2, row = Math.floor((n - 1) / 2), qw = W / 2, qh = H / 2;
   // THE CARD, NOT THE STRIP (v9.619, 2026-10-15, Aaron). MEASURED 18:31 on img_mvaa8xlyn7d5: the white title and
   // description words inside the black strip made it look like the strip ended half way, so designs 3 and 4 started
@@ -67954,7 +67957,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 // A PICK OFF THE FOUR IS CUT, NOT REDRAWN (v9.618, Aaron): "this saves a call to the image model and it will
                 // never fluctuate." The phone-panel sheets (new four and change grids) are cut by hand; any other grid keeps the
                 // image-model pick.
-                if (/phone screen/i.test(String(_pic.words || "")) && _pic.image) _gridPickCut = { img: _pic.image, n };
+                // ANY FOUR SHEET IS CUT, NOT REDRAWN (v9.621, 2026-10-15, Aaron: "we just redrew the card"). MEASURED 19:57
+                // (pta_ed580175b82433ba): the new four is saved with empty words, so the "phone screen" test never matched and
+                // number 3 went back to the image model (img_mvadmt76nhgz, 21.8s). The cut now tries every four sheet; it
+                // refuses a page that is not phone-shaped (old square grids), and only then does the image model draw it.
+                if (_pic.image) _gridPickCut = { img: _pic.image, n };
                 _sentNow = _rest.length ? (_fixed + " " + String(said || "").trim()).slice(0, 900) : _fixed;
                 _wordsFrom = "grid_pick";
               }

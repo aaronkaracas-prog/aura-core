@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.616.0-2026-10-15-heart-one-of-four";
+const BUILD = "aura-core-v9.617.0-2026-10-15-cut-panel";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13686,6 +13686,19 @@ async function successionGate(env) {
       }
     }
 
+    case "CUT_PANEL": {
+      // CUT_PANEL <picture url | img_ id | pta_ id> <1-4> - cut one design out of a four sheet (v9.617). With a pta_ id, the
+      // newest four sheet on that person's conversation is used.
+      let cpSrc = String(args[0] || "").trim(); const cpN = Number(args[1] || 0);
+      if (/^pta_[a-z0-9]+$/i.test(cpSrc)) {
+        let tl = []; try { tl = talkParse((await talkStateGet(env, cpSrc, ["timeline"])).timeline) || []; } catch {}
+        let hit = null;
+        for (let i = tl.length - 1; i >= 0; i--) { const e = tl[i]; if (e && e.role === "picture" && e.image && (e.grid === true || /2\s*(?:by|x)\s*2\s+grid/i.test(String(e.words || "")))) { hit = e; break; } }
+        if (!hit) return { cmd: "CUT_PANEL", payload: { ok: false, error: "no four sheet on " + cpSrc } };
+        cpSrc = hit.image;
+      }
+      return { cmd: "CUT_PANEL", payload: await cutPanel(env, cpSrc, cpN) };
+    }
     case "GETKV": {
       const key = args[0] || "";
       if (!key) return { cmd: "GETKV", payload: { ok: false, error: "BAD_KEY" } };
@@ -59763,6 +59776,57 @@ async function splitCardLeft(env, url, onlyWide) {
   await env.AURA_KV.put("image:" + nid, btoa(t));
   const out = "https://" + (await imageHost(env)) + "/image/" + nid;
   await env.AURA_KV.put("splitcut:" + id, out).catch(() => {});
+  return out;
+}
+
+// ══ ONE OF THE FOUR, CUT BY HAND (v9.617, 2026-10-15, Aaron) ═════════════════════════════════════════════
+// "Is there a way we can manually chop the grid and just take out the piece we wanted... our grids are always identical."
+// The four come back as one 2x2 sheet; each panel is the art on white over a black strip (number, title, two lines).
+// Panel n (1-4) is cut straight out of the stored pixels in this worker - no image model, no cost, never different from
+// what they chose: its quarter with a 1.5% trim (the dividers are not exactly on the halfway lines), the art above the
+// black strip only, trimmed to the ink with a little white around it. Same tools as the split-card cut above.
+async function cutPanel(env, url, n) {
+  const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
+  if (!id || ![1, 2, 3, 4].includes(Number(n))) return { ok: false, error: "need a picture and a number 1-4" };
+  n = Number(n);
+  const was = await env.AURA_KV.get("panelcut:" + id + ":" + n).catch(() => null);
+  if (was) { try { return JSON.parse(was); } catch {} }
+  const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+  if (!b64) return { ok: false, error: "picture not found: " + id };
+  const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+  const W = im.get_width(), H = im.get_height(), px = im.get_raw_pixels();
+  const col = (n - 1) % 2, row = Math.floor((n - 1) / 2), qw = W / 2, qh = H / 2;
+  const x0 = Math.round(col * qw + qw * 0.015), x1 = Math.round((col + 1) * qw - qw * 0.015);
+  const y0 = Math.round(row * qh + qh * 0.015), y1 = Math.round((row + 1) * qh - qh * 0.015);
+  const dark = (y) => { let t = 0, d = 0; for (let x = x0; x < x1; x += 3) { const o = (y * W + x) * 4; t++; if (px[o] < 70 && px[o + 1] < 70 && px[o + 2] < 70) d++; } return t ? d / t : 0; };
+  // The strip: the first run of mostly-black rows in the lower part of the panel.
+  let stripTop = y1;
+  for (let y = Math.round(y0 + (y1 - y0) * 0.6); y < y1 - 6; y++) {
+    if (dark(y) > 0.55 && dark(y + 3) > 0.55 && dark(y + 6) > 0.55) { stripTop = y; break; }
+  }
+  const yEnd = Math.max(y0 + 10, stripTop - 4);
+  let a = x1, b = yEnd, c = -1, d = -1;
+  for (let y = y0; y < yEnd; y++) {
+    for (let x = x0; x < x1; x++) {
+      const o = (y * W + x) * 4;
+      if (px[o] < 232 || px[o + 1] < 232 || px[o + 2] < 232) { if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; }
+    }
+  }
+  if (c < 0) { try { im.free(); } catch {} return { ok: false, error: "no artwork found in panel " + n }; }
+  const pad = Math.round(Math.max(qw, qh) * 0.03);
+  a = Math.max(x0, a - pad); b = Math.max(y0, b - pad); c = Math.min(x1 - 1, c + pad); d = Math.min(yEnd - 1, d + pad);
+  const cut = photonCrop(im, a, b, c + 1, d + 1);
+  try { im.free(); } catch {}
+  const bts = cut.get_bytes(); const cw = cut.get_width(), ch = cut.get_height();
+  try { cut.free(); } catch {}
+  let t = "";
+  for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+  const nid = "img_p" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+  await env.AURA_KV.put("image:" + nid, btoa(t));
+  const out = { ok: true, image_url: "https://" + (await imageHost(env)) + "/image/" + nid, from: id, panel: n,
+    sheet: W + "x" + H, cut: cw + "x" + ch, strip_found: stripTop < y1, strip_at: stripTop - y0, panel_height: y1 - y0 };
+  await env.AURA_KV.put("panelcut:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
+  console.log("[CUT] panel " + n + " of " + id + " (" + out.sheet + ") -> " + nid + " " + out.cut + (out.strip_found ? " · strip cut off" : " · no strip found"));
   return out;
 }
 

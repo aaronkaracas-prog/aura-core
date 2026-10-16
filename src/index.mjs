@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.625.0-2026-10-16-new-four-via-chat-model";
+const BUILD = "aura-core-v9.626.0-2026-10-16-the-cards-it-wrote";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59959,6 +59959,35 @@ async function lookCopy(env, url) {
 // gets their photo with a turned green box and the design upright - and a turned box alone does not say which edge is the
 // top. So the design goes turned to the same angle, on white, and the model sees the same tilt in both pictures. Nothing is
 // added to their words. Turned on white, trimmed, at most 1600 on its long side. Any failure sends the design as it was.
+// ══ THE CARDS THE CHAT MODEL WROTE (v9.626, 2026-10-16, Aaron) ═══════════════════════════════════════════════════
+// "Utilize the information the image model is giving back." On the chat-model route its brief names every card in order -
+// the title it printed, the two lines under it, and what the design shows. Read here, kept with the sheet, and the one
+// they pick carries its own name and description everywhere after (the project, Favorites, the "i"). Proven on the wolf and
+// rose briefs: all four cards, in order, matching the print. Anything it cannot read gives nothing - never a guess.
+function readCards(brief) {
+  const s = String(brief || "");
+  if (!s) return null;
+  const qs = []; const re = /(^|[\s:(\[])'(.+?)'(?=[\s.,;:)\]]|$)/g; let m;
+  while ((m = re.exec(s))) qs.push({ text: m[2].trim(), at: m.index + m[1].length, end: m.index + m[0].length });
+  const isTitle = (t) => t.length >= 2 && t.length <= 40 && /[A-Z]/.test(t) && !/[a-z]/.test(t);
+  const cards = []; let from = 0;
+  for (let i = 0; i < qs.length && cards.length < 4; i++) {
+    if (!isTitle(qs[i].text)) continue;
+    const lines = [];
+    for (let k = i + 1; k < qs.length && lines.length < 2; k++) { if (isTitle(qs[k].text)) break; lines.push(qs[k].text); }
+    // What it shows: the words between the last card and this title, without the position or the caption instructions.
+    let about = s.slice(from, qs[i].at);
+    const mk = about.search(/\b(TOP|BOTTOM)[\s-]+(LEFT|RIGHT)\b/);
+    if (mk >= 0) about = about.slice(mk);
+    about = about.replace(/^\s*(TOP|BOTTOM)[\s-]+(LEFT|RIGHT)\b[^:]*:\s*/, "")
+                 .replace(/\s*(Caption\s+)?title[^.:']*:?\s*$/i, "").replace(/\s+/g, " ").trim().slice(0, 600);
+    cards.push({ title: qs[i].text, lines, about });
+    from = (lines.length ? qs[i + lines.length].end : qs[i].end);
+    i += lines.length;
+  }
+  return cards.length === 4 ? cards : null;
+}
+
 async function turnedCopy(env, url, deg) {
   try {
     const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
@@ -62458,9 +62487,15 @@ export class PtaDurableObject {
     // HER NAME FOR IT (2026-10-10, v9.562, Aaron): at lock-in Aura names the tattoo ("California Lowrider
     // Queen"); that name replaces the title, and the description it was named from is kept as `about`
     // for the "i" on the page.
+    // A CARD'S NAME STANDS (v9.626): the design they picked off the four names the tattoo and its "i"; a later pick replaces
+    // it, a name made up afterwards does not.
+    if (pt.card_named && pt.name_final) { pj.card_named = true; pj.title = String(pt.name_final).slice(0, 80);
+                                          if (pt.about) pj.about = String(pt.about).slice(0, 800); }
+    else {
     if (pt.about && !pj.about) pj.about = String(pt.about).slice(0, 800);
-    if (pt.name_final) { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
+    if (pt.name_final && !pj.card_named) { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
                          pj.title = String(pt.name_final).slice(0, 80); }
+    }
     if (pt.files) { pj.files = pt.files; pj.files_failed = false; }
     // FIELD BY FIELD (2026-10-11, v9.565): the collection (at lock-in), her colour reading (just after) and
     // the conversation's brief (when the files finish) each fill what is still empty; the first to fill a
@@ -68050,7 +68085,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 // (pta_ed580175b82433ba): the new four is saved with empty words, so the "phone screen" test never matched and
                 // number 3 went back to the image model (img_mvadmt76nhgz, 21.8s). The cut now tries every four sheet; it
                 // refuses a page that is not phone-shaped (old square grids), and only then does the image model draw it.
-                if (_pic.image) _gridPickCut = { img: _pic.image, n };
+                if (_pic.image) _gridPickCut = { img: _pic.image, n, card: (Array.isArray(_pic.cards) && _pic.cards[n - 1]) || null };
                 _sentNow = _rest.length ? (_fixed + " " + String(said || "").trim()).slice(0, 900) : _fixed;
                 _wordsFrom = "grid_pick";
               }
@@ -68235,10 +68270,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   const _c = await cutPanel(env, _gridPickCut.img, _gridPickCut.n);
                   if (_c && _c.ok && _c.image_url) {
                     const _cid = (String(_c.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1] || null;
-                    const _reg = await registerSmartFile(env, { id: _cid, filetype: "image", name: "number " + _gridPickCut.n + " of the four",
+                    const _cardT = _gridPickCut.card && _gridPickCut.card.title ? String(_gridPickCut.card.title) : null;
+                    const _reg = await registerSmartFile(env, { id: _cid, filetype: "image", name: _cardT || ("number " + _gridPickCut.n + " of the four"),
                       url: _c.image_url, subject: "number " + _gridPickCut.n + ", cut from the four", source: "panel_cut", creator: me || null,
                       parent: cur, context: "they chose number " + _gridPickCut.n + " - cut from the sheet, nothing redrawn", access: "public" });
-                    t = { ok: true, image_url: _c.image_url, child: (_reg && _reg.entity_id) || null, cut: true };
+                    t = { ok: true, image_url: _c.image_url, child: (_reg && _reg.entity_id) || null, cut: true,
+                          ...(_gridPickCut.card ? { card: _gridPickCut.card } : {}) };
                     _pl("number " + _gridPickCut.n + " cut from the sheet by hand - no image model, nothing redrawn -> " + _c.image_url + " (" + _c.cut + (_c.strip_found ? ", strip cut off" : "") + ")");
                   } else _pl("the cut did not work (" + String((_c && _c.error) || "?") + ") - the image model picks it instead");
                 } catch (e) { _pl("the cut failed (" + String(e?.message ?? e).slice(0, 120) + ") - the image model picks it instead"); }
@@ -68371,6 +68408,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
                 ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { panels: true } : {}),
+                ...(_designGrid && cp.brief && readCards(cp.brief) ? { cards: readCards(cp.brief) } : {}),
+                ...(cp.card ? { card: cp.card } : {}),
                 ...((acted.ask && !_herAsk && String(jobNow || "") === "add") ? { her_ask_not_used: String(acted.ask).slice(0, 400) } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),
@@ -68586,6 +68625,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}), ...(_newSentence ? { panels: true } : {}),
                      ...(_newSentence && _nameHint ? { name_hint: _nameHint } : {}),
+                     ...(_newSentence && dp.brief && readCards(dp.brief) ? { cards: readCards(dp.brief) } : {}),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
                      ...(_twist ? { world: "twist" } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,
@@ -68871,6 +68911,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                          ...(drew.image ? { image: drew.image, design: drew.design || null } : { failed: true }),
                          words: String(drew.changed || acted.prompt || "").slice(0, 600),
                          ...(drew.four_directions ? { grid: true } : {}),
+                         ...(Array.isArray(drew.cards) ? { cards: drew.cards } : {}),
                          ...(drew.for_the_artist ? { artist_files: true, files: artistFilesOf(drew) } : {}) });
           }
           if (tline.length > 60) tline = tline.slice(-60);
@@ -68913,6 +68954,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 ? (String(drew.asked || drew.changed || "").split(",")[0].trim().slice(0, 70) || null) : null,
               came_from: _cameFrom ? _cameFrom.id : null,
               ...(_herName ? { name_final: _herName } : {}),
+              // THE ONE THEY PICKED NAMES THE TATTOO (v9.626): its card's title, and its two lines and what it shows as the "i".
+              ...((drew && drew.card && drew.card.title) ? { card_named: true,
+                  name_final: String(drew.card.title).toLowerCase().replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()),
+                  about: [Array.isArray(drew.card.lines) ? drew.card.lines.join(" ") : "", drew.card.about || ""].filter(Boolean).join(" \u2014 ") } : {}),
               ...((opts && opts.name && String(opts.name).length > 60) ? { about: String(opts.name).slice(0, 800) } : {}),
               ...(act === "artist" ? { locked: true } : {}),
               ...((drew && drew.for_the_artist && !drew.pending && drew.image) ? { files: artistFilesOf(drew) } : {}),
@@ -69853,7 +69898,9 @@ export class PublicEntry extends WorkerEntrypoint {
             kind: it.kind ? String(it.kind).slice(0, 120) : null,
             category: it.category ? String(it.category).slice(0, 120) : null,
             trend: !!it.trend, ...(q ? { q } : {}),
-            ...(/^https:\/\//i.test(String(it.from || "")) ? { from: String(it.from).slice(0, 300) } : {}), ts: Date.now() });
+            ...(/^https:\/\//i.test(String(it.from || "")) ? { from: String(it.from).slice(0, 300) } : {}),
+            // What the design is, from the card the chat model wrote (v9.626) - for its "i".
+            ...(it.about ? { about: String(it.about).slice(0, 800) } : {}), ts: Date.now() });
           list = list.slice(0, 1000);
           await talkStatePut(env, me, "favorites", JSON.stringify(list));
         }

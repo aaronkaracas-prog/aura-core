@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.615.0-2026-10-15-placed-the-chatgpt-way";
+const BUILD = "aura-core-v9.616.0-2026-10-15-heart-one-of-four";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69567,13 +69567,17 @@ export class PublicEntry extends WorkerEntrypoint {
           const it = (b.item && typeof b.item === "object") ? b.item : {};
           const url = String(it.url || "").trim().slice(0, 300);
           if (!/^https:\/\//i.test(url)) return { ok: false, error: "BAD_URL" };
-          const at = list.findIndex((x) => x && x.url === url);
+          // ONE OF THE FOUR (v9.616, 2026-10-15, Aaron): a heart on one design of a four-panel sheet keeps the sheet's own
+          // picture and which of the four (1-4) - nothing new is drawn or saved; the page shows only that quarter. Each of the
+          // four is its own favourite.
+          const q = [1, 2, 3, 4].includes(Number(it.q)) ? Number(it.q) : null;
+          const at = list.findIndex((x) => x && x.url === url && (Number(x.q) || null) === q);
           const on = (b.on === undefined) ? at < 0 : !!b.on;
           if (at >= 0) list.splice(at, 1);
           if (on) list.unshift({ url, label: String(it.label || "").slice(0, 300),
             kind: it.kind ? String(it.kind).slice(0, 120) : null,
             category: it.category ? String(it.category).slice(0, 120) : null,
-            trend: !!it.trend, ts: Date.now() });
+            trend: !!it.trend, ...(q ? { q } : {}), ts: Date.now() });
           list = list.slice(0, 1000);
           await talkStatePut(env, me, "favorites", JSON.stringify(list));
         }

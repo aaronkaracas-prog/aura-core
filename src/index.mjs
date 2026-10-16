@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.629.0-2026-10-16-possibilities-image-only";
+const BUILD = "aura-core-v9.630.0-2026-10-16-image-model-only";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67070,8 +67070,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
           }
         }
-        if (_designGrid) console.log(_designWords === "__poss__" ? "[TURN:DESIGN] four possibilities of the chosen design, the chat-model way" + (_designParent ? " (4 more, same design " + _designParent + ")" : "")
-          : "[TURN:DESIGN] four versions of their change, the chat-model way: \"" + String(_designWords).slice(0, 200) + "\"");
+        if (_designGrid) console.log(_designWords === "__poss__" ? "[TURN:DESIGN] four possibilities of the chosen design, image model only" + (_designParent ? " (4 more, same design " + _designParent + ")" : "")
+          : "[TURN:DESIGN] four versions of their change, image model only: \"" + String(_designWords).slice(0, 200) + "\"");
       } catch {}
 
       // ══ THE ARTIST'S SHEET - THE OPERATION, NOT A DESCRIPTION (2026-09-10) ═══════════════
@@ -68246,19 +68246,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _wordsFrom = "design_grid";
             _sizeNow = "2160x3840";
             try { const _k = String((await env.AURA_KV.get("config:edit:new:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(_k)) _sizeNow = _k; } catch {}
-            if (_designWords === "__poss__") {
-              // IMAGE MODEL ONLY (v9.629, 2026-10-16, Aaron: "keep it image only"): their design and the sentence, exactly as
-              // run 9 went by SHOW_IT - same job dial (show_it_cmd), same size, nothing added (no card list: the image model
-              // writes no reply). A fresh seed every time, so "4 more" is a new sheet and not the cached one.
+            {
+              // IMAGE MODEL ONLY (v9.629 possibilities, v9.630 every change four, 2026-10-16, Aaron: "image model only"): their
+              // design and the sentence, exactly as run 9 went by SHOW_IT - same job dial (show_it_cmd), same size, nothing added
+              // (no card list: the "i" is gone). A fresh seed every time, so "4 more" is a new sheet and not the cached one.
               const _pm = _sizeNow.match(/^(\d{3,4})x(\d{3,4})$/);
               _canvasNow = { width: parseInt(_pm[1], 10), height: parseInt(_pm[2], 10) };
               _asNow = "show_it_cmd";
               _seedNow = 1 + Math.floor(Math.random() * 2000000000);
-            } else {
-              // THE CARD INFORMATION BACK (v9.628, Aaron: "I'd like the information back"): one sentence asks the chat model to
-              // list the four cards in its written reply - read by readSaidCards, shown under the "i". A setting.
-              _sentNow = _sentNow + " " + (await cardInfoAsk(env));
-              _viaNow = "thread";
             }
             if (me) {
               try { await talkStatePut(env, me, "design_change", String(_designWords || "").slice(0, 600)); } catch {}
@@ -68648,7 +68643,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // Measured 08:02: the chat-model route drew the sheet for $0.006 against $0.012. If it draws nothing twice, the
           // straight route below draws it, as before.
           let _thNew = null;
-          if (_newSentence) {
+          // IMAGE MODEL ONLY (v9.630, 2026-10-16, Aaron: "image model only and the i information - that's gone"). The chat-model
+          // route below is kept but never taken: every sheet it drew pushed its own stock picks (phoenix, crescent moon, neon,
+          // desert) - Bay Phoenix at 14:32 on a San Francisco idea. The sentence goes straight to the image model, as run 9 did.
+          if (_newSentence && false) {
             for (let _t = 0; _t < 2 && !_thNew; _t++) {
               try {
                 const _tr = await processCommand("THREAD START NONE " + JSON.stringify({ prompt: askLine + " " + (await cardInfoAsk(env)), action: "generate",
@@ -68669,7 +68667,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
           }
           const dr = _thNew ? { payload: _thNew } : await processCommand("SHOW_IT " + JSON.stringify({
-            aspect: _grid ? "1:1" : "3:4", res: "2k",
+            // The new four name their own size below and nothing else, exactly as run 9 went (no aspect, no res).
+            ...(_newSentence ? {} : { aspect: _grid ? "1:1" : "3:4", res: "2k" }),
             subject: _subjectSent,
             // Nothing appended (v9.604): without raw, showIt adds "High quality, visually striking..." to the words.
             ...(_newSentence ? { raw: true } : {}),
@@ -68721,6 +68720,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else {
             drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
           }
+          if (_newSentence) { try { console.log("[TURN:NEW] sent to the image model only: \"" + String(_subjectSent).replace(/\s+/g, " ").slice(0, 1500) + "\"" + (dp && dp.cost_usd != null ? " · $" + dp.cost_usd : "")); } catch {} }
           if (_newSentence) { try { console.log("[TURN:NEW] drawn by " + ((dp && dp.model) || "?") + " · asked " + (_newSize.width + "x" + _newSize.height) +
             (_fixedWhy === "more" ? " · a fresh four (new seed)" : "") + " -> " + ((dp && dp.image_url) || ("not made: " + ((dp && dp.error) || "?"))) + (me ? " · who=" + me : "")); } catch {} }
           // EVERY WORD THE IMAGE MODEL GOT (v9.604) - handed back with the turn, never cut.

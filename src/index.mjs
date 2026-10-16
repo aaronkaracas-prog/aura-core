@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.619.0-2026-10-15-cut-the-card";
+const BUILD = "aura-core-v9.620.0-2026-10-15-words-are-the-edge";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59789,7 +59789,7 @@ async function cutPanel(env, url, n) {
   const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
   if (!id || ![1, 2, 3, 4].includes(Number(n))) return { ok: false, error: "need a picture and a number 1-4" };
   n = Number(n);
-  const was = await env.AURA_KV.get("panelcut3:" + id + ":" + n).catch(() => null);
+  const was = await env.AURA_KV.get("panelcut4:" + id + ":" + n).catch(() => null);
   if (was) { try { return JSON.parse(was); } catch {} }
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return { ok: false, error: "picture not found: " + id };
@@ -59812,26 +59812,48 @@ async function cutPanel(env, url, n) {
   const x0 = col === 0 ? 0 : mid + 2, x1 = col === 0 ? mid - 2 : W;
   const frac = (y, f) => { let t = 0, d = 0; for (let x = x0; x < x1; x += 3) { t++; if (f((y * W + x) * 4)) d++; } return t ? d / t : 0; };
   const white = (y) => frac(y, isWh), dark = (y) => frac(y, isBlk);
-  const darkRun = (y) => { let s = 0, k = 0; for (; k < 40; k += 4) { if (y + k >= H) return 0; s += dark(y + k); } return s / 10; };
+  // WHERE ONE CARD ENDS AND THE NEXT BEGINS (v9.620): a line that is almost all black - the black strip of the
+  // first layout, or the thin black gap between the white cards of the second.
+  const frame = (y) => y + 4 < H && dark(y) > 0.9 && dark(y + 4) > 0.9;
   let lo = row === 0 ? 0 : Math.round(qh - H * 0.08);
   const hi = row === 0 ? Math.round(qh + H * 0.04) : H;
-  if (row === 1) { for (let y = lo; y < Math.round(qh + H * 0.04); y++) { if (darkRun(y) > 0.7) { lo = y + 40; break; } } }
+  if (row === 1) { for (let y = lo; y < Math.round(qh + H * 0.04); y++) { if (frame(y)) { lo = y; break; } } }
   // The card's top: the first line that is mostly white and stays white.
   let top = -1;
   for (let y = lo; y < hi - 12 && top < 0; y++) { let ok = true; for (let k = 0; k < 12; k += 3) if (white(y + k) <= 0.5) { ok = false; break; } if (ok) top = y; }
-  // The card's bottom: where the black strip starts (a solid black stretch 40 lines deep, words and all).
-  let bot = -1;
-  if (top >= 0) for (let y = top + Math.round((hi - top) * 0.5); y < hi - 40; y++) { if (darkRun(y) > 0.7) { while (y > top && dark(y - 1) > 0.5) y--; bot = y; break; } }
   if (top < 0) top = row === 0 ? 0 : Math.round(qh);
+  // The card's bottom: the first black line in its lower half.
+  let bot = -1;
+  for (let y = top + Math.round((hi - top) * 0.5); y < hi - 4; y++) { if (frame(y)) { bot = y; break; } }
   if (bot < 0) bot = row === 0 ? Math.round(qh) : H;
+  let band = 0; while (bot + band < H && dark(bot + band) > 0.5) band++;
   // The card's sides: columns that are mostly white between its top and bottom.
   let cl = x1, cr = x0;
   for (let x = x0; x < x1; x++) { let t = 0, w = 0; for (let y = top; y < bot; y += 4) { t++; if (isWh((y * W + x) * 4)) w++; } if (t && w / t > 0.5) { if (x < cl) cl = x; if (x + 1 > cr) cr = x + 1; } }
   if (cr <= cl) { cl = x0; cr = x1; }
-  // The artwork inside the card (its rounded corners are left out of the search), with a little white around it.
   const r = Math.round((cr - cl) * 0.03);
-  let a = cr, b = bot, c = -1, d = -1;
-  for (let y = top + r; y < bot - r; y++) {
+  // THE WORDS ON THE CARD ARE THE EDGE (v9.620, 2026-10-15, Aaron: "if the image model is putting any text on this image
+  // it's easier for us to crop it"). When the cards sit on a thin black gap (not the old black strip), the title and two
+  // lines are printed in black under the art. Read up from the bottom: the short lines of the description, then the
+  // title - a line far taller than the ones under it. The art ends just above the title. If no title is found, the whole
+  // card is kept - nothing is ever cut off.
+  let artBot = bot - r, words = false;
+  if (band < 60) {
+    const inkRow = (y) => { let t = 0, d = 0; for (let x = cl + r; x < cr - r; x += 2) { t++; const o = (y * W + x) * 4; if (px[o] < 232 || px[o + 1] < 232 || px[o + 2] < 232) d++; } return t ? d / t > 0.004 : false; };
+    const segs = []; let s0 = -1;
+    for (let y = top + r; y < bot - r; y++) { const v = inkRow(y); if (v && s0 < 0) s0 = y; if (!v && s0 >= 0) { segs.push([s0, y]); s0 = -1; } }
+    if (s0 >= 0) segs.push([s0, bot - r]);
+    const ch = bot - top, below = [];
+    for (let i = segs.length - 1; i >= 0; i--) {
+      const h = segs[i][1] - segs[i][0];
+      if (segs[i][0] < top + ch * 0.45 || h > ch * 0.15) break;
+      if (below.length) { const med = below.slice().sort((p, q) => p - q)[Math.floor(below.length / 2)]; if (h >= 1.8 * med) { artBot = segs[i][0]; words = true; break; } }
+      below.push(h);
+    }
+  }
+  // The artwork inside the card (its rounded corners left out of the search), with a little white around it.
+  let a = cr, b = artBot, c = -1, d = -1;
+  for (let y = top + r; y < artBot; y++) {
     for (let x = cl + r; x < cr - r; x++) {
       const o = (y * W + x) * 4;
       if (px[o] < 232 || px[o + 1] < 232 || px[o + 2] < 232) { if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; }
@@ -59839,7 +59861,7 @@ async function cutPanel(env, url, n) {
   }
   if (c < 0) { try { im.free(); } catch {} return { ok: false, error: "no artwork found in panel " + n }; }
   const pad = Math.round(Math.max(qw, qh) * 0.03);
-  a = Math.max(cl, a - pad); b = Math.max(top, b - pad); c = Math.min(cr, c + 1 + pad); d = Math.min(bot, d + 1 + pad);
+  a = Math.max(cl, a - pad); b = Math.max(top, b - pad); c = Math.min(cr, c + 1 + pad); d = Math.min(words ? artBot - 8 : bot, d + 1 + pad);
   const cw = c - a, ch = d - b, dst = new Uint8Array(cw * ch * 4);
   // The card's rounded corners are painted white, so no black sliver of the sheet shows.
   const R = Math.round((cr - cl) * 0.06), R2 = (R - 6) * (R - 6);
@@ -59856,15 +59878,15 @@ async function cutPanel(env, url, n) {
   const cut = new PhotonImage(dst, cw, ch);
   const bts = cut.get_bytes();
   try { cut.free(); } catch {}
-  const y0 = top, y1 = hi, stripTop = bot;
+  const y0 = top, y1 = hi, stripTop = words ? artBot : bot;
   let t = "";
   for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
   const nid = "img_p" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
   await env.AURA_KV.put("image:" + nid, btoa(t));
   const out = { ok: true, image_url: "https://" + (await imageHost(env)) + "/image/" + nid, from: id, panel: n,
-    sheet: W + "x" + H, cut: cw + "x" + ch, strip_found: stripTop < y1, strip_at: stripTop - y0, panel_height: y1 - y0 };
-  await env.AURA_KV.put("panelcut3:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
-  console.log("[CUT] panel " + n + " of " + id + " (" + out.sheet + ") -> " + nid + " " + out.cut + (out.strip_found ? " · strip cut off" : " · no strip found"));
+    sheet: W + "x" + H, cut: cw + "x" + ch, cut_above_title: words, strip_found: stripTop < y1, strip_at: stripTop - y0, panel_height: y1 - y0 };
+  await env.AURA_KV.put("panelcut4:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
+  console.log("[CUT] panel " + n + " of " + id + " (" + out.sheet + ") -> " + nid + " " + out.cut + (words ? " · cut above the title" : out.strip_found ? " · strip cut off" : " · no strip found"));
   return out;
 }
 
@@ -68039,7 +68061,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // "____" is their words), sent with the design to the chat model. Not when this turn is a pick off a grid.
           if (_designGrid && _gridPick) _designGrid = false;
           if (_designGrid) {
-            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Make one tall page divided into a 2 by 2 grid of 4 equal panels, each panel the shape of a phone screen. In each panel, the tattoo artwork fills the top five-sixths on plain white - not on skin - and the bottom sixth is a black strip with the number in a white circle, a short title in bold white letters, and two short lines about what you changed and why in white.";
+            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Make one tall page divided into a 2 by 2 grid of 4 equal white cards, each card the shape of a phone screen, with a thin black gap between the cards. In each card, the tattoo artwork fills the top two-thirds on plain white - not on skin. Under the artwork, a short title in very large bold black capital letters, and under that two short lines about what you changed and why in large black letters, as large as will fit. No numbers anywhere. Leave the bottom strip of each card empty white.";
             try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
             _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
             _herAsk = null;
@@ -68307,7 +68329,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_lastTap) _mine.push(_lastTap);
             const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
             if (_words) {
-              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page divided into a 2 by 2 grid of 4 equal panels, each panel the shape of a phone screen. In each panel, the tattoo artwork fills the top five-sixths on plain white - not on skin - and the bottom sixth is a black strip with the number in a white circle, a short title in bold white letters, and two short lines about the design in white.";
+              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page divided into a 2 by 2 grid of 4 equal white cards, each card the shape of a phone screen, with a thin black gap between the cards. In each card, the tattoo artwork fills the top two-thirds on plain white - not on skin. Under the artwork, a short title in very large bold black capital letters, and under that two short lines about the design in large black letters, as large as will fit. No numbers anywhere. Leave the bottom strip of each card empty white.";
               let _st = ", all in the {name} style";
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}

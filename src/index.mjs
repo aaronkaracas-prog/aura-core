@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.630.0-2026-10-16-image-model-only";
+const BUILD = "aura-core-v9.631.0-2026-10-16-tall-page-edits";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61352,10 +61352,14 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           // (width and height); every other edit keeps the photo's shape exactly as before.
           const _cw = Number.isInteger(opts.width) ? opts.width : 0, _ch = Number.isInteger(opts.height) ? opts.height : 0;
           if (attached === 1 && _cw && _ch) {
-            const _cMax = Math.min(parseInt(_editMaxPxRaw, 10) || 3686400, 8294400);
+            // A NAMED CANVAS IS HELD TO THE MODEL'S OWN LIMIT (v9.631, 2026-10-16). MEASURED 15:05 and 15:10: the possibilities
+            // asked for 2160x3840 (the same tall page the first four get) and were turned down by `config:edit:maxpx` - a cap
+            // meant for photos sized automatically - so the edit went out as size=auto and came back ~1024x1536: a shorter page
+            // the buttons did not line up on and the cut would not take. The cap still sizes every edit that names no canvas.
+            const _cMax = 8294400;
             if (_cw % 16 === 0 && _ch % 16 === 0 && Math.max(_cw, _ch) / Math.min(_cw, _ch) <= 3 &&
                 _cw * _ch >= 655360 && _cw * _ch <= _cMax && Math.max(_cw, _ch) <= 3840) _sizeSent = _cw + "x" + _ch;
-            else console.log("[IMG-SIZE] asked for " + _cw + "x" + _ch + " - not a size the model takes, the photo's shape went instead");
+            else console.log("[IMG-SIZE] asked for " + _cw + "x" + _ch + " - not a size the model takes (cap " + _cMax + ", setting " + _editMaxPxRaw + "), the photo's shape went instead");
           }
           if (attached === 1 && !/^\d+x\d+$/.test(_sizeSent)) {
             try {

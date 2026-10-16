@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.617.0-2026-10-15-cut-panel";
+const BUILD = "aura-core-v9.618.0-2026-10-15-pick-is-a-cut";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59789,21 +59789,43 @@ async function cutPanel(env, url, n) {
   const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
   if (!id || ![1, 2, 3, 4].includes(Number(n))) return { ok: false, error: "need a picture and a number 1-4" };
   n = Number(n);
-  const was = await env.AURA_KV.get("panelcut:" + id + ":" + n).catch(() => null);
+  const was = await env.AURA_KV.get("panelcut2:" + id + ":" + n).catch(() => null);
   if (was) { try { return JSON.parse(was); } catch {} }
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return { ok: false, error: "picture not found: " + id };
   const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
   const W = im.get_width(), H = im.get_height(), px = im.get_raw_pixels();
   const col = (n - 1) % 2, row = Math.floor((n - 1) / 2), qw = W / 2, qh = H / 2;
-  const x0 = Math.round(col * qw + qw * 0.015), x1 = Math.round((col + 1) * qw - qw * 0.015);
-  const y0 = Math.round(row * qh + qh * 0.015), y1 = Math.round((row + 1) * qh - qh * 0.015);
-  const dark = (y) => { let t = 0, d = 0; for (let x = x0; x < x1; x += 3) { const o = (y * W + x) * 4; t++; if (px[o] < 70 && px[o + 1] < 70 && px[o + 2] < 70) d++; } return t ? d / t : 0; };
+  // EDGES ARE FOUND, NOT TRIMMED (v9.618, 2026-10-15, Aaron). MEASURED 18:07: a fixed 1.5% trim on every side cut the
+  // tips off art that runs to the top of its panel. The sheet's own edges are kept whole; the line between the two rows
+  // is where the black strip of the design above ENDS; the line between the columns is the model's divider (a column
+  // that is not white from top to bottom) near the middle, or the exact middle when there is none.
+  const rowDark = (y, xa, xb) => { let t = 0, d = 0; for (let x = xa; x < xb; x += 3) { const o = (y * W + x) * 4; t++; if (px[o] < 70 && px[o + 1] < 70 && px[o + 2] < 70) d++; } return t ? d / t : 0; };
+  let mid = Math.round(qw);
+  { let best = -1, bestScore = 0.6;
+    for (let x = Math.round(qw - W * 0.03); x <= Math.round(qw + W * 0.03); x++) {
+      let t = 0, nw = 0; for (let y = 0; y < H; y += 6) { const o = (y * W + x) * 4; t++; if (px[o] < 235 || px[o + 1] < 235 || px[o + 2] < 235) nw++; }
+      if (t && nw / t > bestScore) { bestScore = nw / t; best = x; } }
+    if (best >= 0) mid = best; }
+  const x0 = col === 0 ? 0 : mid + 2, x1 = col === 0 ? mid - 2 : W;
+  let y0 = 0, y1 = row === 0 ? Math.round(qh + H * 0.03) : H;
+  if (row === 1) {
+    // Start one line under the black strip of the design above.
+    // The strip above is one solid band: find its first black row, walk down to its last, and start just under it -
+    // dark rows further down are this design's own ink and are never counted.
+    let end = Math.round(qh), y = Math.round(qh - H * 0.06), lim = Math.round(qh + H * 0.04);
+    while (y < lim && rowDark(y, x0, x1) <= 0.6) y++;
+    if (y < lim) { while (y < H - 1 && rowDark(y + 1, x0, x1) > 0.6) y++; end = y; }
+    y0 = Math.min(H - 1, end + 3);
+  }
+  const dark = (y) => rowDark(y, x0, x1);
   // The strip: the first run of mostly-black rows in the lower part of the panel.
   let stripTop = y1;
   for (let y = Math.round(y0 + (y1 - y0) * 0.6); y < y1 - 6; y++) {
-    if (dark(y) > 0.55 && dark(y + 3) > 0.55 && dark(y + 6) > 0.55) { stripTop = y; break; }
+    let solid = true; for (let k = 0; k <= 20; k += 4) { if (y + k >= H || dark(y + k) <= 0.65) { solid = false; break; } }
+    if (solid) { stripTop = y; break; }
   }
+  if (row === 0 && stripTop === y1) stripTop = Math.round(qh);   // no strip found: stop at the middle, never in the panel below
   const yEnd = Math.max(y0 + 10, stripTop - 4);
   let a = x1, b = yEnd, c = -1, d = -1;
   for (let y = y0; y < yEnd; y++) {
@@ -59825,7 +59847,7 @@ async function cutPanel(env, url, n) {
   await env.AURA_KV.put("image:" + nid, btoa(t));
   const out = { ok: true, image_url: "https://" + (await imageHost(env)) + "/image/" + nid, from: id, panel: n,
     sheet: W + "x" + H, cut: cw + "x" + ch, strip_found: stripTop < y1, strip_at: stripTop - y0, panel_height: y1 - y0 };
-  await env.AURA_KV.put("panelcut:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
+  await env.AURA_KV.put("panelcut2:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
   console.log("[CUT] panel " + n + " of " + id + " (" + out.sheet + ") -> " + nid + " " + out.cut + (out.strip_found ? " · strip cut off" : " · no strip found"));
   return out;
 }
@@ -67867,7 +67889,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // picture being changed is a four-direction grid and their line names one number, the model
           // gets exactly the pick sentence (a setting, `config:frame:pick`, {n} = the number). If they
           // asked for something more in the same line ("number 2 but in colour"), their line follows.
-          let _gridPick = null;
+          let _gridPick = null, _gridPickCut = null;
           try {
             let _pic = null;
             for (let i = tline.length - 1; i >= 0; i--) {
@@ -67891,6 +67913,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 const _rest = _line.replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean)
                   .filter((t) => !_filler.test(t) && !/^([1-4])(st|nd|rd|th)?$/.test(t) && !(t in _w));
                 _gridPick = n;
+                // A PICK OFF THE FOUR IS CUT, NOT REDRAWN (v9.618, Aaron): "this saves a call to the image model and it will
+                // never fluctuate." The phone-panel sheets (new four and change grids) are cut by hand; any other grid keeps the
+                // image-model pick.
+                if (/phone screen/i.test(String(_pic.words || "")) && _pic.image) _gridPickCut = { img: _pic.image, n };
                 _sentNow = _rest.length ? (_fixed + " " + String(said || "").trim()).slice(0, 900) : _fixed;
                 _wordsFrom = "grid_pick";
               }
@@ -68069,7 +68095,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const _pl = (m) => { try { console.log("[TURN:PICTURE] " + m + (me ? " · who=" + me : "")); } catch {} };
             const _pr = (t) => (t && t.ok && t.image_url) ? "made" : ("not made: " + String((t && t.error) || "no picture").replace(/\s+/g, " ").slice(0, 160));
             {
-              const t = await _evolve(cur, ask, null);
+              let t = null;
+              if (_gridPickCut) {
+                try {
+                  const _c = await cutPanel(env, _gridPickCut.img, _gridPickCut.n);
+                  if (_c && _c.ok && _c.image_url) {
+                    const _cid = (String(_c.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1] || null;
+                    const _reg = await registerSmartFile(env, { id: _cid, filetype: "image", name: "number " + _gridPickCut.n + " of the four",
+                      url: _c.image_url, subject: "number " + _gridPickCut.n + ", cut from the four", source: "panel_cut", creator: me || null,
+                      parent: cur, context: "they chose number " + _gridPickCut.n + " - cut from the sheet, nothing redrawn", access: "public" });
+                    t = { ok: true, image_url: _c.image_url, child: (_reg && _reg.entity_id) || null, cut: true };
+                    _pl("number " + _gridPickCut.n + " cut from the sheet by hand - no image model, nothing redrawn -> " + _c.image_url + " (" + _c.cut + (_c.strip_found ? ", strip cut off" : "") + ")");
+                  } else _pl("the cut did not work (" + String((_c && _c.error) || "?") + ") - the image model picks it instead");
+                } catch (e) { _pl("the cut failed (" + String(e?.message ?? e).slice(0, 120) + ") - the image model picks it instead"); }
+              }
+              if (!t) t = await _evolve(cur, ask, null);
               // EVERY WORD THE IMAGE MODEL GOT (v9.604) - handed back with the turn, never cut.
               try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: _viaNow === "thread" ? "chat model, then image model" : "changed",
                       words: String(ask), ...(t && t.brief ? { chat_model_brief: String(t.brief) } : {}), picture_in: cur,
@@ -69623,6 +69663,10 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!/^great choice/i.test(line)) line = "";
         return { ok: !!line, said: line || null };
       }
+      // THE PAGE CUTS ONE OF THE FOUR (v9.618): for the heart and "Work on this" on one design of a four sheet.
+      if (action === "cut") {
+        return await cutPanel(env, String(b.url || "").slice(0, 300), Number(b.n));
+      }
       if (action === "favs" || action === "fav") {
         let list = [];
         try { list = talkParse((await talkStateGet(env, me, ["favorites"])).favorites) || []; } catch {}
@@ -69641,7 +69685,8 @@ export class PublicEntry extends WorkerEntrypoint {
           if (on) list.unshift({ url, label: String(it.label || "").slice(0, 300),
             kind: it.kind ? String(it.kind).slice(0, 120) : null,
             category: it.category ? String(it.category).slice(0, 120) : null,
-            trend: !!it.trend, ...(q ? { q } : {}), ts: Date.now() });
+            trend: !!it.trend, ...(q ? { q } : {}),
+            ...(/^https:\/\//i.test(String(it.from || "")) ? { from: String(it.from).slice(0, 300) } : {}), ts: Date.now() });
           list = list.slice(0, 1000);
           await talkStatePut(env, me, "favorites", JSON.stringify(list));
         }

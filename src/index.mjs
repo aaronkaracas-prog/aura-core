@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.618.0-2026-10-15-pick-is-a-cut";
+const BUILD = "aura-core-v9.619.0-2026-10-15-cut-the-card";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59789,18 +59789,20 @@ async function cutPanel(env, url, n) {
   const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
   if (!id || ![1, 2, 3, 4].includes(Number(n))) return { ok: false, error: "need a picture and a number 1-4" };
   n = Number(n);
-  const was = await env.AURA_KV.get("panelcut2:" + id + ":" + n).catch(() => null);
+  const was = await env.AURA_KV.get("panelcut3:" + id + ":" + n).catch(() => null);
   if (was) { try { return JSON.parse(was); } catch {} }
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return { ok: false, error: "picture not found: " + id };
   const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
   const W = im.get_width(), H = im.get_height(), px = im.get_raw_pixels();
   const col = (n - 1) % 2, row = Math.floor((n - 1) / 2), qw = W / 2, qh = H / 2;
-  // EDGES ARE FOUND, NOT TRIMMED (v9.618, 2026-10-15, Aaron). MEASURED 18:07: a fixed 1.5% trim on every side cut the
-  // tips off art that runs to the top of its panel. The sheet's own edges are kept whole; the line between the two rows
-  // is where the black strip of the design above ENDS; the line between the columns is the model's divider (a column
-  // that is not white from top to bottom) near the middle, or the exact middle when there is none.
-  const rowDark = (y, xa, xb) => { let t = 0, d = 0; for (let x = xa; x < xb; x += 3) { const o = (y * W + x) * 4; t++; if (px[o] < 70 && px[o + 1] < 70 && px[o + 2] < 70) d++; } return t ? d / t : 0; };
+  // THE CARD, NOT THE STRIP (v9.619, 2026-10-15, Aaron). MEASURED 18:31 on img_mvaa8xlyn7d5: the white title and
+  // description words inside the black strip made it look like the strip ended half way, so designs 3 and 4 started
+  // in the middle of the words above them ("Futuristic chrome... liquid light portal" across the top of the bridge).
+  // Every design sits on its own white card; the words are always on black. So we find the white card and keep only
+  // what is inside it - the words can never get in, however they are laid out. Proven on that sheet: all four whole.
+  const isBlk = (o) => px[o] < 70 && px[o + 1] < 70 && px[o + 2] < 70;
+  const isWh = (o) => px[o] > 235 && px[o + 1] > 235 && px[o + 2] > 235;
   let mid = Math.round(qw);
   { let best = -1, bestScore = 0.6;
     for (let x = Math.round(qw - W * 0.03); x <= Math.round(qw + W * 0.03); x++) {
@@ -59808,46 +59810,60 @@ async function cutPanel(env, url, n) {
       if (t && nw / t > bestScore) { bestScore = nw / t; best = x; } }
     if (best >= 0) mid = best; }
   const x0 = col === 0 ? 0 : mid + 2, x1 = col === 0 ? mid - 2 : W;
-  let y0 = 0, y1 = row === 0 ? Math.round(qh + H * 0.03) : H;
-  if (row === 1) {
-    // Start one line under the black strip of the design above.
-    // The strip above is one solid band: find its first black row, walk down to its last, and start just under it -
-    // dark rows further down are this design's own ink and are never counted.
-    let end = Math.round(qh), y = Math.round(qh - H * 0.06), lim = Math.round(qh + H * 0.04);
-    while (y < lim && rowDark(y, x0, x1) <= 0.6) y++;
-    if (y < lim) { while (y < H - 1 && rowDark(y + 1, x0, x1) > 0.6) y++; end = y; }
-    y0 = Math.min(H - 1, end + 3);
-  }
-  const dark = (y) => rowDark(y, x0, x1);
-  // The strip: the first run of mostly-black rows in the lower part of the panel.
-  let stripTop = y1;
-  for (let y = Math.round(y0 + (y1 - y0) * 0.6); y < y1 - 6; y++) {
-    let solid = true; for (let k = 0; k <= 20; k += 4) { if (y + k >= H || dark(y + k) <= 0.65) { solid = false; break; } }
-    if (solid) { stripTop = y; break; }
-  }
-  if (row === 0 && stripTop === y1) stripTop = Math.round(qh);   // no strip found: stop at the middle, never in the panel below
-  const yEnd = Math.max(y0 + 10, stripTop - 4);
-  let a = x1, b = yEnd, c = -1, d = -1;
-  for (let y = y0; y < yEnd; y++) {
-    for (let x = x0; x < x1; x++) {
+  const frac = (y, f) => { let t = 0, d = 0; for (let x = x0; x < x1; x += 3) { t++; if (f((y * W + x) * 4)) d++; } return t ? d / t : 0; };
+  const white = (y) => frac(y, isWh), dark = (y) => frac(y, isBlk);
+  const darkRun = (y) => { let s = 0, k = 0; for (; k < 40; k += 4) { if (y + k >= H) return 0; s += dark(y + k); } return s / 10; };
+  let lo = row === 0 ? 0 : Math.round(qh - H * 0.08);
+  const hi = row === 0 ? Math.round(qh + H * 0.04) : H;
+  if (row === 1) { for (let y = lo; y < Math.round(qh + H * 0.04); y++) { if (darkRun(y) > 0.7) { lo = y + 40; break; } } }
+  // The card's top: the first line that is mostly white and stays white.
+  let top = -1;
+  for (let y = lo; y < hi - 12 && top < 0; y++) { let ok = true; for (let k = 0; k < 12; k += 3) if (white(y + k) <= 0.5) { ok = false; break; } if (ok) top = y; }
+  // The card's bottom: where the black strip starts (a solid black stretch 40 lines deep, words and all).
+  let bot = -1;
+  if (top >= 0) for (let y = top + Math.round((hi - top) * 0.5); y < hi - 40; y++) { if (darkRun(y) > 0.7) { while (y > top && dark(y - 1) > 0.5) y--; bot = y; break; } }
+  if (top < 0) top = row === 0 ? 0 : Math.round(qh);
+  if (bot < 0) bot = row === 0 ? Math.round(qh) : H;
+  // The card's sides: columns that are mostly white between its top and bottom.
+  let cl = x1, cr = x0;
+  for (let x = x0; x < x1; x++) { let t = 0, w = 0; for (let y = top; y < bot; y += 4) { t++; if (isWh((y * W + x) * 4)) w++; } if (t && w / t > 0.5) { if (x < cl) cl = x; if (x + 1 > cr) cr = x + 1; } }
+  if (cr <= cl) { cl = x0; cr = x1; }
+  // The artwork inside the card (its rounded corners are left out of the search), with a little white around it.
+  const r = Math.round((cr - cl) * 0.03);
+  let a = cr, b = bot, c = -1, d = -1;
+  for (let y = top + r; y < bot - r; y++) {
+    for (let x = cl + r; x < cr - r; x++) {
       const o = (y * W + x) * 4;
       if (px[o] < 232 || px[o + 1] < 232 || px[o + 2] < 232) { if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; }
     }
   }
   if (c < 0) { try { im.free(); } catch {} return { ok: false, error: "no artwork found in panel " + n }; }
   const pad = Math.round(Math.max(qw, qh) * 0.03);
-  a = Math.max(x0, a - pad); b = Math.max(y0, b - pad); c = Math.min(x1 - 1, c + pad); d = Math.min(yEnd - 1, d + pad);
-  const cut = photonCrop(im, a, b, c + 1, d + 1);
+  a = Math.max(cl, a - pad); b = Math.max(top, b - pad); c = Math.min(cr, c + 1 + pad); d = Math.min(bot, d + 1 + pad);
+  const cw = c - a, ch = d - b, dst = new Uint8Array(cw * ch * 4);
+  // The card's rounded corners are painted white, so no black sliver of the sheet shows.
+  const R = Math.round((cr - cl) * 0.06), R2 = (R - 6) * (R - 6);
+  const corner = (x, y) => {
+    const cx = x < cl + R ? cl + R : x >= cr - R ? cr - R : null, cy = y < top + R ? top + R : y >= bot - R ? bot - R : null;
+    return cx !== null && cy !== null && ((x - cx) * (x - cx) + (y - cy) * (y - cy)) > R2;
+  };
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const so = ((b + y) * W + (a + x)) * 4, to = (y * cw + x) * 4;
+    if (corner(a + x, b + y)) { dst[to] = dst[to + 1] = dst[to + 2] = dst[to + 3] = 255; }
+    else { dst[to] = px[so]; dst[to + 1] = px[so + 1]; dst[to + 2] = px[so + 2]; dst[to + 3] = 255; }
+  }
   try { im.free(); } catch {}
-  const bts = cut.get_bytes(); const cw = cut.get_width(), ch = cut.get_height();
+  const cut = new PhotonImage(dst, cw, ch);
+  const bts = cut.get_bytes();
   try { cut.free(); } catch {}
+  const y0 = top, y1 = hi, stripTop = bot;
   let t = "";
   for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
   const nid = "img_p" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
   await env.AURA_KV.put("image:" + nid, btoa(t));
   const out = { ok: true, image_url: "https://" + (await imageHost(env)) + "/image/" + nid, from: id, panel: n,
     sheet: W + "x" + H, cut: cw + "x" + ch, strip_found: stripTop < y1, strip_at: stripTop - y0, panel_height: y1 - y0 };
-  await env.AURA_KV.put("panelcut2:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
+  await env.AURA_KV.put("panelcut3:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
   console.log("[CUT] panel " + n + " of " + id + " (" + out.sheet + ") -> " + nid + " " + out.cut + (out.strip_found ? " · strip cut off" : " · no strip found"));
   return out;
 }

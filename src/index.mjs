@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.627.0-2026-10-16-all-of-her-ideas";
+const BUILD = "aura-core-v9.628.0-2026-10-16-four-possibilities";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -19778,7 +19778,7 @@ async function successionGate(env) {
             parent: ent.id, context: p.prompt, access: "public" });
           await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `Spawned a new version: ${p.prompt}`, kind: "spawned_child" });
           return { cmd: "IMAGE", payload: { ok: true, parent: ent.id, child: (reg && reg.entity_id) || null, child_image_id: tp.image_id,
-            image_url: tp.image, evolved_with: p.prompt, via: "thread", brief: tp.tool_prompt || null,
+            image_url: tp.image, evolved_with: p.prompt, via: "thread", brief: tp.tool_prompt || null, said: tp.said || null,
             pictures_drawn: tp.calls, model: tp.model || null, image_model: tp.image_model || null,
             quality: tp.quality_drawn || tp.quality_asked || null, size: tp.size_asked || null,
             cost_usd: tp.image_cost_usd, cost_note: "picture only - the chat step is on the meter under core:thread",
@@ -59959,6 +59959,31 @@ async function lookCopy(env, url) {
 // gets their photo with a turned green box and the design upright - and a turned box alone does not say which edge is the
 // top. So the design goes turned to the same angle, on white, and the model sees the same tilt in both pictures. Nothing is
 // added to their words. Turned on white, trimmed, at most 1600 on its long side. Any failure sends the design as it was.
+// ══ FOUR POSSIBILITIES AND THE CARD INFORMATION (v9.628, 2026-10-16, Aaron) ══════════════════════════════════
+// The sentence for "Imagine 4 Possibilities" (a setting overrides it: `config:frame:design:possibilities`), and the one
+// sentence added to every four that asks the chat model to list the cards in its written reply (`config:frame:cards:info`).
+// The image model never writes words back - the chat model does, in its reply; until now that reply was thrown away.
+const POSS_SENTENCE = "This is my tattoo design. Show me 4 possibilities for it, all in the same style and keeping what the design is. Make each possibility different from the others in one clear way. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about what makes this possibility different in white. No numbers anywhere.";
+const CARD_INFO_ASK = "In your written reply, also list the 4 cards in order, one per line, as: TITLE | first line | second line | one sentence about the design and where on the body it would look best.";
+async function cardInfoAsk(env) {
+  try { const k = String((await env.AURA_KV.get("config:frame:cards:info")) || "").trim(); if (k) return k; } catch {}
+  return CARD_INFO_ASK;
+}
+// Reads the four lines "TITLE | line | line | about" out of the chat model's reply. Four, or nothing.
+function readSaidCards(said) {
+  const s = String(said || ""); if (!s) return null;
+  const cards = [];
+  for (const raw of s.split(/\r?\n/)) {
+    const parts = raw.split("|").map((x) => x.trim());
+    if (parts.length < 4) continue;
+    const clean = (x) => String(x || "").replace(/^[\s>*_`#-]*(?:\d+[.):]\s*)?(?:card\s*\d+\s*[:.-]\s*)?/i, "").replace(/[*`]+/g, "").trim().replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, "").trim();
+    const title = clean(parts[0]); if (!title || title.length > 60) continue;
+    if (/^title$/i.test(title)) continue;
+    cards.push({ title: title.toUpperCase(), lines: [clean(parts[1]), clean(parts[2])].filter(Boolean),
+                 about: clean(parts.slice(3).join(" | ")) || null });
+  }
+  return cards.length >= 4 ? cards.slice(0, 4) : null;
+}
 // ══ THE CARDS THE CHAT MODEL WROTE (v9.626, 2026-10-16, Aaron) ═══════════════════════════════════════════════════
 // "Utilize the information the image model is giving back." On the chat-model route its brief names every card in order -
 // the title it printed, the two lines under it, and what the design shows. Read here, kept with the sheet, and the one
@@ -66010,6 +66035,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
           } else if (String(_ds.await_change || "") === "1" && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
+          } else if ((_newFlow || _lastDesignChange) && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
+            // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): after they choose a design, four possibilities for that
+            // same design, on the same four-card sheet - the chat model reads the design, nothing is asked of her.
+            _fixedWhy = "poss"; _fixedSay = await _fx("poss_coming", "Imagining 4 possibilities for your design now.");
           } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) {
             // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
             _fixedWhy = "more"; _fixedSay = await _fx("four_more", "Round two, coming right up - four more.");
@@ -66022,7 +66051,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _fixedWhy = "four_new"; _fixedSay = await _fx("four_coming", "Here they come - four versions of that for you.");
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
           } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-4]\.?$/i.test(_s) && !_bodyPhoto) {
-            _fixedWhy = "pick"; _fixedSay = await _fx("pick_done", "Love this design? Your selected concept is ready. You can move forward with this design or make more changes.");
+            // CHOOSE, THEN THE OFFER (v9.628, 2026-10-16, Aaron): change it, imagine 4 possibilities, or finish.
+            _fixedWhy = "pick"; _fixedSay = await _fx("pick_ask", "Great choice. Want to change something on it, or should I imagine 4 possibilities for it?");
           } else if (_s && carriedObj && carriedObj.on_me === true && refHeld && _bodyPhoto && refUrl && !_freshPhoto &&
                      !["add", "cover", "rework"].includes(String(carriedObj.job || "").toLowerCase()) &&
                      !/^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|no|nope|nah|thanks?( you)?)[\s.!]*$/i.test(_s) &&
@@ -66191,7 +66221,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // THE FIXED LINE SHOWS AT ONCE (v9.607): MEASURED 18:45 - "Here they come..." was ready at the tap and reached the page
       // only with the finished picture, 32s later. It goes out the way her streamed words do, then the work starts.
       if (_fixedSay && !acted && onDelta) { try { await onDelta(_fixedSay); } catch {} }
-      if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
+      if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : _fixedWhy === "poss" ? "change" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
                                          prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
       if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",
                                         act: "none", prompt: "", use: [], brief: null };
@@ -66603,11 +66633,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // before the pick test below, and never mistaken for picking number 4.
       const _ideasLine = /^\s*(?:give|show) me some ideas\.?\s*$/i.test(String(said || "").trim()) ||
                          /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(String(said || "").trim());
+      // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): the button under a chosen design. It names a number,
+      // so it is read here and never mistaken for picking number 4.
+      const _possLine = /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(String(said || "").trim());
       // A tapped direction ("I want it to go down my spine...") answers where - it is never a yes to lock in.
       const _dirLine = /^\s*i want it to go\s/i.test(String(said || ""));
       let _pickGo = false, _pickN = 0, _pickGridImg = null;
       try {
-        if (lastDrawn && lastDrawn.design && !_ideasLine) {
+        if (lastDrawn && lastDrawn.design && !_ideasLine && !_possLine) {
           let _gp = null;
           for (let i = tline.length - 1; i >= 0; i--) {
             const e = tline[i];
@@ -67017,7 +67050,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           try { await talkStatePut(env, me, "await_change", ""); } catch {}
         }
         if (_newJob && (hasParent || refDesign) && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo) {
-          if (_ideasLine && _lastChange && _lastParent) {
+          if (_fixedWhy === "poss") {
+            // FOUR POSSIBILITIES OF THE CHOSEN DESIGN (v9.628): the first time, the design on screen; "4 more" keeps the same
+            // design they chose, not the sheet of possibilities.
+            act = "change"; _designGrid = true; _designWords = "__poss__";
+            _designParent = (/\bmore\b/i.test(String(said || "")) && _lastChange === "__poss__" && _lastParent) ? _lastParent : null;
+          } else if (_ideasLine && _lastChange && _lastParent) {
             act = "change"; _designGrid = true; _designWords = _lastChange; _designParent = _lastParent;
           } else if (!_ideasLine && String(said || "").trim() && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
             // A BARE YES IS NEVER A CHANGE (v9.605). MEASURED 16:44 and 17:17: "Go" became "I want to change it: Go." and
@@ -67030,7 +67068,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
           }
         }
-        if (_designGrid) console.log("[TURN:DESIGN] four versions of their change, the chat-model way: \"" + String(_designWords).slice(0, 200) + "\"");
+        if (_designGrid) console.log(_designWords === "__poss__" ? "[TURN:DESIGN] four possibilities of the chosen design, the chat-model way" + (_designParent ? " (4 more, same design " + _designParent + ")" : "")
+          : "[TURN:DESIGN] four versions of their change, the chat-model way: \"" + String(_designWords).slice(0, 200) + "\"");
       } catch {}
 
       // ══ THE ARTIST'S SHEET - THE OPERATION, NOT A DESCRIPTION (2026-09-10) ═══════════════
@@ -68194,7 +68233,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_designGrid) {
             let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about what you changed and why in white. No numbers anywhere.";
             try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
-            _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
+            if (_designWords === "__poss__") {
+              // FOUR POSSIBILITIES (v9.628, Aaron): its own sentence, a setting (`config:frame:design:possibilities`).
+              _dg = POSS_SENTENCE;
+              try { const _k = String((await env.AURA_KV.get("config:frame:design:possibilities")) || "").trim(); if (_k) _dg = _k; } catch {}
+              _sentNow = _dg;
+            } else _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
+            // THE CARD INFORMATION BACK (v9.628, Aaron: "I'd like the information back"): one sentence asks the chat model to
+            // list the four cards in its written reply - read by readSaidCards, shown under the "i". A setting.
+            _sentNow = _sentNow + " " + (await cardInfoAsk(env));
             _herAsk = null;
             _wordsFrom = "design_grid";
             _viaNow = "thread";
@@ -68290,6 +68337,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // EVERY PICTURE SENT IS NAMED (2026-10-13, v9.588, Aaron): which picture it was drawn on, and the second
               // picture when one went with it - so a result can be checked against exactly what the model was given.
               if (t && t.via === "thread") _pl("the chat model's brief: \"" + String(t.brief || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · pictures drawn " + t.pictures_drawn + " · " + t.quality + " " + t.size);
+              if (t && t.via === "thread" && _designGrid) _pl("the chat model's reply: \"" + String(t.said || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · cards from it: " + (readSaidCards(t.said) ? "4" : "none"));
               if (!(t && t.cut)) _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" · picture 1: " + cur + (_viaNow ? " · via the chat model" : "") +
                   (_withNow ? " · picture 2: " + _withNow.join(", ") : "") + (_seedNow ? " · seed " + _seedNow : "") + (_canvasNow ? " · canvas " + _canvasNow.width + "x" + _canvasNow.height : "") + " -> " + _pr(t) +
                   (t && t.image_url ? " " + t.image_url : ""));
@@ -68382,6 +68430,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // was drawn - and the same fixed line as the first four follows. No look: the titles are in the picture.
               let _done = "Here are your four - tap Choose on the one you like, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              if (_designWords === "__poss__") {
+                _done = "Here are 4 possibilities for your design. Tap Choose This One on the one you like, or I can imagine 4 more.";
+                try { const _k = String((await env.AURA_KV.get("config:say:poss_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              }
               const _hers = (!_fixedSay && acted && acted.say) ? String(acted.say).trim() : "";
               _reaction = _hers ? (_hers + "\n\n" + _done) : _done;
             } else if (_ideasGrid) {
@@ -68408,8 +68460,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
                 ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { panels: true } : {}),
-                ...(_designGrid && cp.brief && readCards(cp.brief) ? { cards: readCards(cp.brief) } : {}),
-                ...(cp.card ? { card: cp.card } : {}),
+                ...(_designGrid && (readSaidCards(cp.said) || (cp.brief && readCards(cp.brief))) ? { cards: readSaidCards(cp.said) || readCards(cp.brief) } : {}),
+                ...(_designGrid && _designWords === "__poss__" ? { possibilities: true } : {}),
+                ...(cp.card ? { card: cp.card } : {}), ...(cp.cut ? { cut: true } : {}),
                 ...((acted.ask && !_herAsk && String(jobNow || "") === "add") ? { her_ask_not_used: String(acted.ask).slice(0, 400) } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),
@@ -68585,7 +68638,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_newSentence) {
             for (let _t = 0; _t < 2 && !_thNew; _t++) {
               try {
-                const _tr = await processCommand("THREAD START NONE " + JSON.stringify({ prompt: askLine, action: "generate",
+                const _tr = await processCommand("THREAD START NONE " + JSON.stringify({ prompt: askLine + " " + (await cardInfoAsk(env)), action: "generate",
                   size: _newSize.width + "x" + _newSize.height }), env, true);
                 const _tp = (_tr && _tr.payload) ? _tr.payload : _tr;
                 if (_tp && _tp.ok && _tp.image) {
@@ -68594,9 +68647,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                     subject: askLine, source: "image_thread", creator: me || null, parent: null,
                     context: "a tattoo somebody is designing for themselves: " + askLine, access: "public" }); } catch {}
                   _thNew = { ok: true, image_url: _tp.image, id: _tp.image_id, entity_id: (_reg && _reg.entity_id) || null,
-                    model: "chat model " + (_tp.model || "?") + ", image tool " + (_tp.image_model || "?"), brief: _tp.tool_prompt || null,
+                    model: "chat model " + (_tp.model || "?") + ", image tool " + (_tp.image_model || "?"), brief: _tp.tool_prompt || null, said: _tp.said || null,
                     cost_usd: _tp.image_cost_usd != null ? _tp.image_cost_usd : null };
                   try { console.log("[TURN:NEW] the chat model's brief: \"" + String(_tp.tool_prompt || "").replace(/\s+/g, " ").slice(0, 1500) + "\"" + (me ? " · who=" + me : "")); } catch {}
+                  try { console.log("[TURN:NEW] the chat model's reply: \"" + String(_tp.said || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · cards from it: " + (readSaidCards(_tp.said) ? "4" : "none")); } catch {}
                 } else { try { console.log("[TURN:NEW] chat model try " + (_t + 1) + " drew nothing: " + String((_tp && _tp.error) || "no answer").replace(/\s+/g, " ").slice(0, 200)); } catch {} }
               } catch (e) { try { console.log("[TURN:NEW] chat model try " + (_t + 1) + " failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
             }
@@ -68641,7 +68695,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}), ...(_newSentence ? { panels: true } : {}),
                      ...(_newSentence && _nameHint ? { name_hint: _nameHint } : {}),
-                     ...(_newSentence && dp.brief && readCards(dp.brief) ? { cards: readCards(dp.brief) } : {}),
+                     ...(_newSentence && (readSaidCards(dp.said) || (dp.brief && readCards(dp.brief))) ? { cards: readSaidCards(dp.said) || readCards(dp.brief) } : {}),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
                      ...(_twist ? { world: "twist" } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,

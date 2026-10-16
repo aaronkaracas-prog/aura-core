@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.624.0-2026-10-16-words-found-by-width";
+const BUILD = "aura-core-v9.625.0-2026-10-16-new-four-via-chat-model";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13597,6 +13597,9 @@ async function successionGate(env) {
       if (thKey && thKey.trim().charAt(0) === String.fromCharCode(123)) { try { thKey = JSON.parse(thKey).api_key; } catch {} }
       if (!thKey) return { cmd: "THREAD", payload: { ok: false, error: "no provider key" } };
       const thImg = /^https?:\/\//i.test(thArg) ? thArg : ("https://" + (await imageHost(env)) + "/image/" + thArg);
+      // A START WITH NO PICTURE (v9.625, 2026-10-16, Aaron): a new tattoo has nothing to start from. `THREAD START NONE {...}`
+      // sends the words alone; the chat model writes its brief and draws.
+      const thNoImg = thMode === "START" && /^none$/i.test(thArg);
       // THE SAME PICTURE SETTINGS AS THE APP (v9.594, Aaron): the first OpenAI run left quality to OpenAI and
       // it drew at its own (higher) quality, far above the app's ~1 cent. The tool now gets the app's own
       // image model (`config:edit:model`) and quality (`config:edit:quality`) - the dials every edit uses.
@@ -13625,7 +13628,7 @@ async function successionGate(env) {
         // tool - the model chooses to edit the photo or draw a new one. Unasked, it is still an edit, as before.
         ? { model: thModel, tools: [thTool((thP && ["edit", "generate", "auto"].includes(String(thP.action || "").toLowerCase())) ? String(thP.action).toLowerCase() : "edit")], tool_choice: "required",
             input: [{ role: "user", content: [{ type: "input_text", text: thAsk }].concat(
-                                              (thImgs.length ? thImgs : [thImg]).map((u) => ({ type: "input_image", image_url: u }))) }] }
+                                              (thImgs.length ? thImgs : (thNoImg ? [] : [thImg])).map((u) => ({ type: "input_image", image_url: u }))) }] }
         : { model: thModel, tools: [thTool(thAction)], tool_choice: "required",
             previous_response_id: thArg, input: thAsk };
       try {
@@ -68154,7 +68157,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // "____" is their words), sent with the design to the chat model. Not when this turn is a pick off a grid.
           if (_designGrid && _gridPick) _designGrid = false;
           if (_designGrid) {
-            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Make one tall page divided into a 2 by 2 grid of 4 equal white cards, each card the shape of a phone screen, with a thin black gap between the cards. In each card, the tattoo artwork fills the top two-thirds on plain white - not on skin. Under the artwork, a short title in very large bold black capital letters, and under that two short lines about what you changed and why in large black letters, as large as will fit. No numbers anywhere. Leave the bottom strip of each card empty white.";
+            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about what you changed and why in white. No numbers anywhere.";
             try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
             _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
             _herAsk = null;
@@ -68427,7 +68430,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                                  : (_mine[0] ? String(_mine[0]).replace(/[\s.]+$/, "").slice(0, 70) : null);
             const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
             if (_words) {
-              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page divided into a 2 by 2 grid of 4 equal white cards, each card the shape of a phone screen, with a thin black gap between the cards. In each card, the tattoo artwork fills the top two-thirds on plain white - not on skin. Under the artwork, a short title in very large bold black capital letters, and under that two short lines about the design in large black letters, as large as will fit. No numbers anywhere. Leave the bottom strip of each card empty white.";
+              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
               let _st = ", all in the {name} style";
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
@@ -68517,7 +68520,33 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           const _subjectSent = _newSentence ? askLine : (askLine + ". " + reg + " " + frm +
               (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
                         "the way it sits." : ""));
-          const dr = await processCommand("SHOW_IT " + JSON.stringify({
+          // ══ THE NEW FOUR GO THROUGH THE CHAT MODEL (v9.625, 2026-10-16, Aaron) ═══════════════════════════════
+          // "We thought we were sending everything through the chat model now - it always works better and it's cheaper."
+          // The change-a-design four already did; the new four went straight to the image model. Now both go the same way:
+          // our sentence to the chat model, which writes its brief (a title and two lines for every card, in order) and draws.
+          // Measured 08:02: the chat-model route drew the sheet for $0.006 against $0.012. If it draws nothing twice, the
+          // straight route below draws it, as before.
+          let _thNew = null;
+          if (_newSentence) {
+            for (let _t = 0; _t < 2 && !_thNew; _t++) {
+              try {
+                const _tr = await processCommand("THREAD START NONE " + JSON.stringify({ prompt: askLine, action: "generate",
+                  size: _newSize.width + "x" + _newSize.height }), env, true);
+                const _tp = (_tr && _tr.payload) ? _tr.payload : _tr;
+                if (_tp && _tp.ok && _tp.image) {
+                  let _reg = null;
+                  try { _reg = await registerSmartFile(env, { id: _tp.image_id, filetype: "image", name: askLine.slice(0, 60), url: _tp.image,
+                    subject: askLine, source: "image_thread", creator: me || null, parent: null,
+                    context: "a tattoo somebody is designing for themselves: " + askLine, access: "public" }); } catch {}
+                  _thNew = { ok: true, image_url: _tp.image, id: _tp.image_id, entity_id: (_reg && _reg.entity_id) || null,
+                    model: "chat model " + (_tp.model || "?") + ", image tool " + (_tp.image_model || "?"), brief: _tp.tool_prompt || null,
+                    cost_usd: _tp.image_cost_usd != null ? _tp.image_cost_usd : null };
+                  try { console.log("[TURN:NEW] the chat model's brief: \"" + String(_tp.tool_prompt || "").replace(/\s+/g, " ").slice(0, 1500) + "\"" + (me ? " · who=" + me : "")); } catch {}
+                } else { try { console.log("[TURN:NEW] chat model try " + (_t + 1) + " drew nothing: " + String((_tp && _tp.error) || "no answer").replace(/\s+/g, " ").slice(0, 200)); } catch {} }
+              } catch (e) { try { console.log("[TURN:NEW] chat model try " + (_t + 1) + " failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+            }
+          }
+          const dr = _thNew ? { payload: _thNew } : await processCommand("SHOW_IT " + JSON.stringify({
             aspect: _grid ? "1:1" : "3:4", res: "2k",
             subject: _subjectSent,
             // Nothing appended (v9.604): without raw, showIt adds "High quality, visually striking..." to the words.

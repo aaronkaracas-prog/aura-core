@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.622.0-2026-10-16-placed-beats-pick";
+const BUILD = "aura-core-v9.623.0-2026-10-16-named-from-their-idea";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65320,8 +65320,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // me the file again", then "try again" - and every one was blocked, because a yes was a list of
       // exact words. She wanted to draw each time. Once she has offered to show it anywhere in this
       // conversation, any reply that is not a no means show it. Before she offers, nothing changes.
+      // SAYING SHE WILL SHOW THEM IS AN OFFER TOO (v9.623, 2026-10-16, Aaron). MEASURED 05:23 (pta_033302cc27b7eadd): she
+      // said "send me a photo of each... Once I have those I'll show you four different takes", they answered "I don't have a
+      // photo, anyone that you generate will be fine", she chose to draw - and the gate stopped her, because her line had no
+      // question mark. She asked the same question again. "I'll show you" counts the same as "want me to show you?".
       const _offeredShow = tnow.some((e) => e && e.role === "aura" &&
-        /\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(String(e.said || "")));
+        (/\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(String(e.said || "")) ||
+         /\b(i'?ll|i will|let me|i'?m going to|i can)\s+(show|draw|sketch|make)\b/i.test(String(e.said || ""))));
       const _saidNo = /^\s*(no|nope|nah|not (yet|now|really)|wait|hold on|hang on|don'?t|stop|never ?mind|later)\b/i.test(String(said || "").trim());
       const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo);
       // DRAWING NOTES ONLY WHEN THEY SAID GO (2026-10-02, v9.514, Aaron): on a talking turn these sat
@@ -68159,7 +68164,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               }
               if (!t) t = await _evolve(cur, ask, null);
               // EVERY WORD THE IMAGE MODEL GOT (v9.604) - handed back with the turn, never cut.
-              try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: _viaNow === "thread" ? "chat model, then image model" : "changed",
+              try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: (t && t.cut) ? "cut from the sheet - no image model" : _viaNow === "thread" ? "chat model, then image model" : "changed",
                       words: String(ask), ...(t && t.brief ? { chat_model_brief: String(t.brief) } : {}), picture_in: cur,
                       ...(_withNow ? { second_picture: _withNow } : {}), made: (t && t.image_url) || null,
                       failed: (t && !t.ok) ? (t.error || "not made") : null,
@@ -68167,7 +68172,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // EVERY PICTURE SENT IS NAMED (2026-10-13, v9.588, Aaron): which picture it was drawn on, and the second
               // picture when one went with it - so a result can be checked against exactly what the model was given.
               if (t && t.via === "thread") _pl("the chat model's brief: \"" + String(t.brief || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · pictures drawn " + t.pictures_drawn + " · " + t.quality + " " + t.size);
-              _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" · picture 1: " + cur + (_viaNow ? " · via the chat model" : "") +
+              if (!(t && t.cut)) _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" · picture 1: " + cur + (_viaNow ? " · via the chat model" : "") +
                   (_withNow ? " · picture 2: " + _withNow.join(", ") : "") + (_seedNow ? " · seed " + _seedNow : "") + (_canvasNow ? " · canvas " + _canvasNow.width + "x" + _canvasNow.height : "") + " -> " + _pr(t) +
                   (t && t.image_url ? " " + t.image_url : ""));
               // A CHANGE IS NOT LOOKED AT (2026-09-20). Aaron: colour, size, a small edit comes back
@@ -68311,7 +68316,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // "The person's idea is the instruction" and "it should not depend on Aura remembering to write make a 2x2
           // grid". Their own lines since Create New Tattoo (the taps and bare yeses left out) fill ____, the style they
           // tapped fills {style}. Nothing of hers goes in. Settings: config:frame:new:grid, config:frame:new:grid:style.
-          let _newSentence = false;
+          let _newSentence = false, _nameHint = null;
           if (_newFlow) {
             const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|imagine (4|four) more|i want number [1-4])\.?\s*$/i;
             const _bare = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
@@ -68337,6 +68342,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               else if (_mine[_mine.length - 1] !== _now) _mine.push(_now);
             }
             if (_lastTap) _mine.push(_lastTap);
+            // ITS NAME IS THEIRS, NEVER OUR SENTENCE (v9.623, 2026-10-16, Aaron). MEASURED 05:26: the project was titled "This
+            // is my tattoo idea: I like surfing and golden retrievers I wanna m" - the first words sent to the image model.
+            // The title of the idea card they tapped ("Surfing retriever"), else their own first line.
+            _nameHint = _lastTap ? String(_lastTap).split(/\s+[-\u2013\u2014:]\s+/)[0].trim().slice(0, 60)
+                                 : (_mine[0] ? String(_mine[0]).replace(/[\s.]+$/, "").slice(0, 70) : null);
             const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
             if (_words) {
               let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page divided into a 2 by 2 grid of 4 equal white cards, each card the shape of a phone screen, with a thin black gap between the cards. In each card, the tattoo artwork fills the top two-thirds on plain white - not on skin. Under the artwork, a short title in very large bold black capital letters, and under that two short lines about the design in large black letters, as large as will fit. No numbers anywhere. Leave the bottom strip of each card empty white.";
@@ -68468,6 +68478,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const _mockNote2 = _lk2 && _lk2.verdict;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}), ...(_newSentence ? { panels: true } : {}),
+                     ...(_newSentence && _nameHint ? { name_hint: _nameHint } : {}),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
                      ...(_twist ? { world: "twist" } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,
@@ -68789,6 +68800,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   n = String(n).trim(); if (n.length <= 160) return n;
                   return n.slice(0, 160).replace(/\s+\S*$/, "").replace(/[\s,;:.-]+$/, "") + "\u2026";
                 })(opts.name)
+                : (drew && drew.name_hint) ? String(drew.name_hint)
                 : (intent && intent.subject) ? String(intent.subject).slice(0, 70)
                 : (drew && drew.image && !drew.failed && !drew.for_the_artist)
                 ? (String(drew.asked || drew.changed || "").split(",")[0].trim().slice(0, 70) || null) : null,

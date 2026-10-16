@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.626.0-2026-10-16-the-cards-it-wrote";
+const BUILD = "aura-core-v9.627.0-2026-10-16-all-of-her-ideas";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66013,7 +66013,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) {
             // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
             _fixedWhy = "more"; _fixedSay = await _fx("four_more", "Round two, coming right up - four more.");
-          } else if (_newFlow && _goSaid && !_saidNo && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s))) {
+          } else if (_newFlow && _goSaid && !_saidNo && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s) || (opts && Array.isArray(opts.all_ideas) && opts.all_ideas.length))) {
             // THEIR YES TO THE FIRST FOUR (v9.605): she offered, they said yes or tapped one of her ideas - she is not
             // called again; the four start and this line says they are coming.
             // ANOTHER OF HER IDEAS IS A FRESH FOUR TOO (v9.609, 2026-10-15, Aaron). MEASURED 21:04 (prj_83c97810dfe14e64):
@@ -68438,7 +68438,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // tapped fills {style}. Nothing of hers goes in. Settings: config:frame:new:grid, config:frame:new:grid:style.
           let _newSentence = false, _nameHint = null;
           if (_newFlow) {
-            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|imagine (4|four) more|i want number [1-4])\.?\s*$/i;
+            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four) more|i want number [1-4])\.?\s*$/i;
             const _bare = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
             const _mine = [];
             let _start = 0;
@@ -68474,6 +68474,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
               askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : "");
+              // ══ ALL OF HER IDEAS AT ONCE (v9.627, 2026-10-16, Aaron: "let me see all 4 absolutely") ══════════════════════
+              // "Show me all of them" under her idea cards: one sheet, each card one of her ideas, in her order - instead of four
+              // versions of one. Their own words stay the idea; only the "4 different designs of it" clause changes.
+              const _allIdeas = (opts && Array.isArray(opts.all_ideas)) ? opts.all_ideas.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4) : [];
+              if (_allIdeas.length) {
+                const _list = _allIdeas.concat(_allIdeas.length < 4 ? ["one more idea of your own"] : []).slice(0, 4)
+                  .map((x, i) => (i + 1) + ". " + x.replace(/[\s.]+$/, "")).join(". ") + ".";
+                let _ac = "Show me these 4 ideas for it{style}, one on each card, in this order: {ideas}";
+                try { const _k = String((await env.AURA_KV.get("config:frame:new:all")) || "").trim(); if (_k.includes("{ideas}")) _ac = _k; } catch {}
+                const _clause = _ac.replace("{ideas}", _list).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : "");
+                const _mineOnly = _mine.filter((x) => x !== _lastTap).map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200) || _words;
+                const _base = _ng.replace("____", _mineOnly);
+                const _from = _base.search(/Show me 4 different designs of it/i), _to = _base.search(/Make them in colour/i);
+                askLine = (_from >= 0 && _to > _from) ? (_base.slice(0, _from) + _clause + " " + _base.slice(_to)) : (askLine + " " + _clause);
+                console.log("[TURN:NEW] all of her ideas, one per card: " + _allIdeas.length + (me ? " · who=" + me : ""));
+              }
               _newSentence = true;
               console.log("[TURN:NEW] the first four from the fixed sentence - their words: \"" + _words.slice(0, 300) + "\"" + (_newStyle ? " · style: " + _newStyle : ""));
             }
@@ -69991,7 +70007,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -70015,7 +70031,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

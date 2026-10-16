@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.623.0-2026-10-16-named-from-their-idea";
+const BUILD = "aura-core-v9.624.0-2026-10-16-words-found-by-width";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59789,7 +59789,7 @@ async function cutPanel(env, url, n) {
   const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
   if (!id || ![1, 2, 3, 4].includes(Number(n))) return { ok: false, error: "need a picture and a number 1-4" };
   n = Number(n);
-  const was = await env.AURA_KV.get("panelcut4:" + id + ":" + n).catch(() => null);
+  const was = await env.AURA_KV.get("panelcut5:" + id + ":" + n).catch(() => null);
   if (was) { try { return JSON.parse(was); } catch {} }
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return { ok: false, error: "picture not found: " + id };
@@ -59842,17 +59842,32 @@ async function cutPanel(env, url, n) {
   // card is kept - nothing is ever cut off.
   let artBot = bot - r, words = false;
   if (band < 60) {
-    const inkRow = (y) => { let t = 0, d = 0; for (let x = cl + r; x < cr - r; x += 2) { t++; const o = (y * W + x) * 4; if (px[o] < 232 || px[o + 1] < 232 || px[o + 2] < 232) d++; } return t ? d / t > 0.004 : false; };
+    // THE WORDS ARE FOUND BY THEIR WIDTH (v9.624, 2026-10-16, Aaron). MEASURED 06:26 on img_mvb027pdffce number 3 ("Two
+    // Faces"): the spike at the bottom of the art runs into the title, so art and title were one tall band, the title was
+    // never found, and the whole card was kept - words and all. Lines of words run wide across the card; art that touches
+    // them is narrow there. Reading up from the bottom: each short, wide band is a line of words. A tall band right above
+    // them is read up row by row while it stays wide (the title's letters) - where it turns narrow, the art begins.
+    // At least two lines of words, or the whole card is kept - nothing is ever cut off.
+    const xa = cl + r, xb = cr - r, cw = xb - xa, ch = bot - top;
+    const inkAt = (o) => px[o] < 232 || px[o + 1] < 232 || px[o + 2] < 232;
+    const inkRow = (y) => { let t = 0, d = 0; for (let x = xa; x < xb; x += 2) { t++; if (inkAt((y * W + x) * 4)) d++; } return t ? d / t > 0.004 : false; };
+    const widthAt = (y) => { let lo = -1, hi = -1; for (let x = xa; x < xb; x++) { if (inkAt((y * W + x) * 4)) { if (lo < 0) lo = x; hi = x; } } return lo < 0 ? 0 : (hi - lo) / cw; };
     const segs = []; let s0 = -1;
     for (let y = top + r; y < bot - r; y++) { const v = inkRow(y); if (v && s0 < 0) s0 = y; if (!v && s0 >= 0) { segs.push([s0, y]); s0 = -1; } }
     if (s0 >= 0) segs.push([s0, bot - r]);
-    const ch = bot - top, below = [];
+    const text = [];
     for (let i = segs.length - 1; i >= 0; i--) {
-      const h = segs[i][1] - segs[i][0];
-      if (segs[i][0] < top + ch * 0.45 || h > ch * 0.15) break;
-      if (below.length) { const med = below.slice().sort((p, q) => p - q)[Math.floor(below.length / 2)]; if (h >= 1.8 * med) { artBot = segs[i][0]; words = true; break; } }
-      below.push(h);
+      const [ya, yb] = segs[i], h = yb - ya;
+      let wmax = 0; for (let y = ya; y < yb; y += 2) { const w = widthAt(y); if (w > wmax) wmax = w; }
+      if (h <= 0.12 * ch && wmax >= 0.3) { text.push([ya, yb]); continue; }
+      if (text.length) {
+        let narrow = 0, cut = -1;
+        for (let y = yb - 1; y > ya; y--) { if (widthAt(y) < 0.25) narrow++; else narrow = 0; if (narrow >= 8) { cut = y + 8; break; } }
+        if (cut > 0 && yb - cut >= 0.02 * ch && yb - cut <= 0.12 * ch) text.push([cut, yb]);
+      }
+      break;
     }
+    if (text.length >= 2) { artBot = text[text.length - 1][0]; words = true; }
   }
   // The artwork inside the card (its rounded corners left out of the search), with a little white around it.
   let a = cr, b = artBot, c = -1, d = -1;
@@ -59888,7 +59903,7 @@ async function cutPanel(env, url, n) {
   await env.AURA_KV.put("image:" + nid, btoa(t));
   const out = { ok: true, image_url: "https://" + (await imageHost(env)) + "/image/" + nid, from: id, panel: n,
     sheet: W + "x" + H, cut: cw + "x" + ch, cut_above_title: words, strip_found: stripTop < y1, strip_at: stripTop - y0, panel_height: y1 - y0 };
-  await env.AURA_KV.put("panelcut4:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
+  await env.AURA_KV.put("panelcut5:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
   console.log("[CUT] panel " + n + " of " + id + " (" + out.sheet + ") -> " + nid + " " + out.cut + (words ? " · cut above the title" : out.strip_found ? " · strip cut off" : " · no strip found"));
   return out;
 }
@@ -59936,6 +59951,66 @@ async function lookCopy(env, url) {
 // The chat-model route now sends a copy at most `config:edit:thread:send_edge` px (default 2048) on the long side,
 // as JPEG. The sheet itself is untouched; the person and the artist files keep full size. Anything that fails
 // returns the original.
+// ══ THE DESIGN, TURNED THE WAY THEY TURNED THE BOX (v9.624, 2026-10-16, Aaron) ═══════════════════════════════════
+// MEASURED 06:38: the box was turned well over toward his shoulder; the design went on upright and more central. The model
+// gets their photo with a turned green box and the design upright - and a turned box alone does not say which edge is the
+// top. So the design goes turned to the same angle, on white, and the model sees the same tilt in both pictures. Nothing is
+// added to their words. Turned on white, trimmed, at most 1600 on its long side. Any failure sends the design as it was.
+async function turnedCopy(env, url, deg) {
+  try {
+    const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
+    deg = Math.round(((Number(deg) % 360) + 540) % 360 - 180);
+    if (!id || !Number.isFinite(deg) || Math.abs(deg) < 3) return null;
+    const was = await env.AURA_KV.get("turned:" + deg + ":" + id).catch(() => null);
+    if (was) return was;
+    const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+    if (!b64) return null;
+    let im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    const s0 = 1600 / Math.max(im.get_width(), im.get_height());
+    if (s0 < 1) { const sm = photonResize(im, Math.round(im.get_width() * s0), Math.round(im.get_height() * s0), PhotonSampling.Lanczos3); try { im.free(); } catch {} im = sm; }
+    // Turned by hand, not by Photon's rotate (tested: its result came back washed out, with a grey line where the old edge
+    // was). Each new pixel looks up where it came from in the design, blended from the four nearest; outside is white paper.
+    const sw = im.get_width(), sh = im.get_height(), sp = im.get_raw_pixels();
+    try { im.free(); } catch {}
+    const th = deg * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th);
+    const W = Math.ceil(Math.abs(sw * cs) + Math.abs(sh * sn)), H = Math.ceil(Math.abs(sw * sn) + Math.abs(sh * cs));
+    const px = new Uint8Array(W * H * 4), cx0 = sw / 2, cy0 = sh / 2, cx1 = W / 2, cy1 = H / 2;
+    let a = W, b = H, c = -1, d = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const dx = x - cx1, dy = y - cy1;
+      const sx = cs * dx + sn * dy + cx0, sy = -sn * dx + cs * dy + cy0;   // turned clockwise on screen
+      const o = (y * W + x) * 4;
+      let r = 255, g = 255, bl = 255;
+      if (sx >= 0 && sy >= 0 && sx < sw - 1 && sy < sh - 1) {
+        const x0 = Math.floor(sx), y0 = Math.floor(sy), fx = sx - x0, fy = sy - y0;
+        const i00 = (y0 * sw + x0) * 4, i10 = i00 + 4, i01 = i00 + sw * 4, i11 = i01 + 4;
+        const mix = (k) => (sp[i00 + k] * (1 - fx) + sp[i10 + k] * fx) * (1 - fy) + (sp[i01 + k] * (1 - fx) + sp[i11 + k] * fx) * fy;
+        r = Math.round(mix(0)); g = Math.round(mix(1)); bl = Math.round(mix(2));
+      }
+      px[o] = r; px[o + 1] = g; px[o + 2] = bl; px[o + 3] = 255;
+      if (r < 245 || g < 245 || bl < 245) { if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; }
+    }
+    if (c < 0) return null;
+    const pad = 24; a = Math.max(0, a - pad); b = Math.max(0, b - pad); c = Math.min(W - 1, c + pad); d = Math.min(H - 1, d + pad);
+    const cw = c - a + 1, ch = d - b + 1, dst = new Uint8Array(cw * ch * 4);
+    for (let y = 0; y < ch; y++) dst.set(px.subarray(((b + y) * W + a) * 4, ((b + y) * W + a + cw) * 4), y * cw * 4);
+    const out = new PhotonImage(dst, cw, ch);
+    const bts = out.get_bytes_jpeg(92);
+    try { out.free(); } catch {}
+    let t = "";
+    for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+    const nid = "img_t" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+    await env.AURA_KV.put("image:" + nid, btoa(t), { expirationTtl: 7 * 24 * 3600 });
+    const u = "https://" + (await imageHost(env)) + "/image/" + nid;
+    await env.AURA_KV.put("turned:" + deg + ":" + id, u, { expirationTtl: 7 * 24 * 3600 }).catch(() => {});
+    console.log("[TURNED] " + id + " turned " + deg + " degrees -> " + nid + " " + cw + "x" + ch);
+    return u;
+  } catch (e) {
+    console.log("[TURNED] failed, the design goes upright: " + String(e?.message ?? e).slice(0, 160));
+    return null;
+  }
+}
+
 async function sendCopy(env, url) {
   try {
     const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
@@ -67240,7 +67315,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           });
           let _op = null;
           let _omA = null, _omB = null;
-          if (_fixedWhy === "placed") { try { _omA = await sendCopy(env, _omRefs[0]); _omB = await sendCopy(env, _omRefs[1]); } catch {} }
+          if (_fixedWhy === "placed") { try {
+            const _turned = (opts && opts.placed_angle != null) ? await turnedCopy(env, _omRefs[0], opts.placed_angle) : null;
+            if (_turned) console.log("[TURN:ONME] the design goes turned " + Math.round(opts.placed_angle) + " degrees, the way they turned the box -> " + _turned + (me ? " · who=" + me : ""));
+            _omA = _turned || await sendCopy(env, _omRefs[0]); _omB = await sendCopy(env, _omRefs[1]); } catch {} }
           for (let _try = 0; _try < (_fixedWhy === "placed" ? 2 : 3); _try++) {
             let _om = null;
             if (_fixedWhy === "placed") {
@@ -69837,7 +69915,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, placed: !!b.placed, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -69861,7 +69939,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, placed: !!b.placed, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

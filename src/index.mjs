@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.628.0-2026-10-16-four-possibilities";
+const BUILD = "aura-core-v9.629.0-2026-10-16-possibilities-image-only";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59960,10 +59960,12 @@ async function lookCopy(env, url) {
 // top. So the design goes turned to the same angle, on white, and the model sees the same tilt in both pictures. Nothing is
 // added to their words. Turned on white, trimmed, at most 1600 on its long side. Any failure sends the design as it was.
 // ══ FOUR POSSIBILITIES AND THE CARD INFORMATION (v9.628, 2026-10-16, Aaron) ══════════════════════════════════
-// The sentence for "Imagine 4 Possibilities" (a setting overrides it: `config:frame:design:possibilities`), and the one
+// The sentence for "Imagine 4 Possibilities" (a setting overrides it: `config:frame:design:possibilities`) - v9.629: run 9 of
+// 2026-10-16 word for word (img_mvbgxcdobd4s), sent to the IMAGE MODEL ONLY with their design, as SHOW_IT does. The chat model
+// rewrote our words into its own stock picks (phoenix, crescent moon, neon, desert) on run after run. And the one
 // sentence added to every four that asks the chat model to list the cards in its written reply (`config:frame:cards:info`).
 // The image model never writes words back - the chat model does, in its reply; until now that reply was thrown away.
-const POSS_SENTENCE = "This is my tattoo design. Show me 4 possibilities for it, all in the same style and keeping what the design is. Make each possibility different from the others in one clear way. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about what makes this possibility different in white. No numbers anywhere.";
+const POSS_SENTENCE = "This is my tattoo design. Show me 4 different designs of it. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
 const CARD_INFO_ASK = "In your written reply, also list the 4 cards in order, one per line, as: TITLE | first line | second line | one sentence about the design and where on the body it would look best.";
 async function cardInfoAsk(env) {
   try { const k = String((await env.AURA_KV.get("config:frame:cards:info")) || "").trim(); if (k) return k; } catch {}
@@ -68158,6 +68160,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           let _seedNow = null, _withNow = null;   // v9.586: a fresh grid, and the grid sent with a pick
           let _canvasNow = null;                   // v9.591: the ideas picture's own canvas
           let _viaNow = null;                      // v9.596: "thread" - the ideas picture goes the chat-model way
+          let _asNow = null;                       // v9.629: the image job's dial - "show_it_cmd" for the four possibilities
           let _sizeNow = null;                     // v9.606: the four-card page's own tall size, through the thread
           // CHANGES TOO (2026-09-30, Aaron): MEASURED on pta_4e048acbadd8af04, "Adding color to the new
           // tattoo" went as typed and the model coloured the original forearm piece as well - one picture
@@ -68239,14 +68242,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               try { const _k = String((await env.AURA_KV.get("config:frame:design:possibilities")) || "").trim(); if (_k) _dg = _k; } catch {}
               _sentNow = _dg;
             } else _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
-            // THE CARD INFORMATION BACK (v9.628, Aaron: "I'd like the information back"): one sentence asks the chat model to
-            // list the four cards in its written reply - read by readSaidCards, shown under the "i". A setting.
-            _sentNow = _sentNow + " " + (await cardInfoAsk(env));
             _herAsk = null;
             _wordsFrom = "design_grid";
-            _viaNow = "thread";
             _sizeNow = "2160x3840";
             try { const _k = String((await env.AURA_KV.get("config:edit:new:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(_k)) _sizeNow = _k; } catch {}
+            if (_designWords === "__poss__") {
+              // IMAGE MODEL ONLY (v9.629, 2026-10-16, Aaron: "keep it image only"): their design and the sentence, exactly as
+              // run 9 went by SHOW_IT - same job dial (show_it_cmd), same size, nothing added (no card list: the image model
+              // writes no reply). A fresh seed every time, so "4 more" is a new sheet and not the cached one.
+              const _pm = _sizeNow.match(/^(\d{3,4})x(\d{3,4})$/);
+              _canvasNow = { width: parseInt(_pm[1], 10), height: parseInt(_pm[2], 10) };
+              _asNow = "show_it_cmd";
+              _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+            } else {
+              // THE CARD INFORMATION BACK (v9.628, Aaron: "I'd like the information back"): one sentence asks the chat model to
+              // list the four cards in its written reply - read by readSaidCards, shown under the "i". A setting.
+              _sentNow = _sentNow + " " + (await cardInfoAsk(env));
+              _viaNow = "thread";
+            }
             if (me) {
               try { await talkStatePut(env, me, "design_change", String(_designWords || "").slice(0, 600)); } catch {}
               try { await talkStatePut(env, me, "design_change_parent", String(_designParent || parentId)); } catch {}
@@ -68289,7 +68302,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           const _evolve = async (parent, ask, seed) => {
             try {
               const r = await processCommand("IMAGE EVOLVE " + parent + " " +
-                JSON.stringify({ prompt: ask, by: me, res: "2k",
+                JSON.stringify({ prompt: ask, by: me, ...(_asNow ? { as: _asNow } : { res: "2k" }),
                   ...(Number.isInteger(seed) ? { seed } : (_seedNow ? { seed: _seedNow + (seed ? 1 : 0) } : (seed ? { seed } : {}))),
                   ...(_withNow ? { with: _withNow } : {}),
                   ...(_canvasNow ? _canvasNow : {}),
@@ -68339,7 +68352,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (t && t.via === "thread") _pl("the chat model's brief: \"" + String(t.brief || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · pictures drawn " + t.pictures_drawn + " · " + t.quality + " " + t.size);
               if (t && t.via === "thread" && _designGrid) _pl("the chat model's reply: \"" + String(t.said || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · cards from it: " + (readSaidCards(t.said) ? "4" : "none"));
               if (!(t && t.cut)) _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" · picture 1: " + cur + (_viaNow ? " · via the chat model" : "") +
-                  (_withNow ? " · picture 2: " + _withNow.join(", ") : "") + (_seedNow ? " · seed " + _seedNow : "") + (_canvasNow ? " · canvas " + _canvasNow.width + "x" + _canvasNow.height : "") + " -> " + _pr(t) +
+                  (_withNow ? " · picture 2: " + _withNow.join(", ") : "") + (_seedNow ? " · seed " + _seedNow : "") + (_canvasNow ? " · canvas " + _canvasNow.width + "x" + _canvasNow.height : "") + (_asNow ? " · image model only (" + _asNow + ")" + (t && t.model ? " " + t.model : "") + (t && t.cost_usd != null ? " $" + t.cost_usd : "") : "") + " -> " + _pr(t) +
                   (t && t.image_url ? " " + t.image_url : ""));
               // A CHANGE IS NOT LOOKED AT (2026-09-20). Aaron: colour, size, a small edit comes back
               // right, and a look there costs money and adds nothing - she writes her one short line

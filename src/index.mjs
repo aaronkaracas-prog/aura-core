@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.621.0-2026-10-15-every-four-is-cut";
+const BUILD = "aura-core-v9.622.0-2026-10-16-placed-beats-pick";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66382,10 +66382,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // read as what to CHANGE - so "I like it" was a change with nothing in it. When their words on a
       // pick change nothing (they keep it, or say it is the one), it is taken exactly as it is: the same
       // path as `use` - no drawing, the artist's files from that exact picture.
-      if (opts && opts.pick && !opts.use && refUrl && me && (_saysTheOne(said) || _keepsIt(said))) {
+      // A PLACEMENT IS NEVER A PICK (v9.622, 2026-10-16, Aaron). MEASURED 20:30 (pta_ed580175b82433ba): "Here's where I want
+      // it" came with the placement AND the pick of the design chosen by Work on This; "want it" read as keeping the pick,
+      // so she asked "this is the one?" and the photo with the box never reached the image model.
+      if (opts && opts.pick && !opts.use && !opts.placed && refUrl && me && (_saysTheOne(said) || _keepsIt(said))) {
         act = "use"; console.log("[TURN:PICK] their words keep it as it is - taken as it is, nothing redrawn");
       }
-      if (opts && opts.use && refUrl && me) act = "use";
+      if (opts && opts.use && !opts.placed && refUrl && me) act = "use";
       // CHANGE SOMETHING IS A QUESTION, NOT A DRAWING (2026-10-11, v9.563, Aaron). The page's button sends this
       // one fixed sentence with the design; she looks and suggests, and nothing is drawn until they say what.
       if (opts && opts.pick && refUrl && /^\s*i want to change something\.?\s*$/i.test(String(said || "")) && act !== "none") {

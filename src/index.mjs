@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.645.0-2026-10-17-notebook-per-tattoo";
+const BUILD = "aura-core-v9.646.0-2026-10-17-a-word-is-never-an-add-on";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66049,7 +66049,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "new_start", _s.slice(0, 500)); } catch {}
           } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
-          } else if ((_newFlow || _lastDesignChange) && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
+          } else if ((_newFlow || _lastDesignChange || (opts && opts.pick && refUrl)) && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
             // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): after they choose a design, four possibilities for that
             // same design, on the same four-card sheet - the chat model reads the design, nothing is asked of her.
             _fixedWhy = "poss"; _fixedSay = await _fx("poss_coming", "Imagining 4 possibilities for your design now.");
@@ -66960,6 +66960,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if (_bodyPhoto && !["cover", "add", "rework", "from"].includes(jobNow)) {
         jobNow = "add";
         if (intent && typeof intent === "object") intent.job = "add";
+      }
+      // ══ A WORD IS NEVER AN ADD-ON (v9.646, 2026-10-17, Aaron) ═══════════════════════════════════
+      // MEASURED 08:53 and 10:58: "Let's add a sunflower" was read as job "add", so a new design took the add-on road -
+      // Imagine 4 possibilities became one plain redraw and the artist files showed "Your tattoo before". An add-on is
+      // only when they started with Add to Existing or sent a photo of their own body.
+      if (jobNow === "add" && !_bodyPhoto) {
+        let _open = /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(said || "")) ? String(said || "") : "";
+        for (let i = tnow.length - 1; !_open && i >= 0; i--) {
+          const _t = tnow[i];
+          if (_t && _t.role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(_t.said || ""))) _open = String(_t.said || "");
+        }
+        if (!/^\s*i want to add to a tattoo/i.test(_open)) {
+          jobNow = "new";
+          if (intent && typeof intent === "object") intent.job = "new";
+          console.log("[TURN:JOB] the brief said add, but they never started Add to Existing and sent no photo of their body - a new design" + (me ? " · who=" + me : ""));
+        }
       }
       // ══ THE PICTURE IS WHAT IT IS MADE FROM (2026-10-01, v9.504, Aaron) ═════════════════════════
       // MEASURED (pta_3f0500a0ac85e2f7): a photo of a park arrived and was labelled `add` - every
@@ -69984,7 +70000,7 @@ export class PublicEntry extends WorkerEntrypoint {
         if (pid) { try { const r = await talkDo(env, me, "talkProject", [pid]); pj = (r && r.ok && r.project) ? r.project : null; } catch {} }
         const _nt1 = Date.now();
         const pics = (pj && Array.isArray(pj.pictures)) ? pj.pictures.length : 0;
-        const lines = (pj && Array.isArray(pj.lines)) ? pj.lines.slice(-10).map((l) => (l.role === "them" ? "Them: " : "You: ") + String(l.said || "").replace(/\s+/g, " ").slice(0, 300)) : [];
+        const lines = (pj && Array.isArray(pj.lines)) ? pj.lines.slice(-10).map((l) => (l.role === "them" ? "Them: " : "You: ") + String(l.said || "").replace(/\s+/g, " ").replace(/^\s*i want number [1-4]\.?\s*$/i, "I choose this design").slice(0, 300)) : [];
         const where = stage === "sheet" ? "Four new designs just came back on one sheet. They have not chosen one yet."
           : stage === "poss" ? "Four possibilities of the design they chose just came back on one sheet. They have not chosen one yet."
           : stage === "change" ? "Four versions of the change they asked for, on the design they chose, just came back on one sheet. They have not chosen one yet."

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.641.0-2026-10-17-next-reply-shape-line";
+const BUILD = "aura-core-v9.642.0-2026-10-17-next-no-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69981,7 +69981,7 @@ export class PublicEntry extends WorkerEntrypoint {
         const taps = stage === "sheet" ? "Each idea is a new direction - tapping it draws four new designs of it."
           : stage === "design" ? "Each idea is something to change on this design - tapping it draws that change."
           : "Each idea is something to change on the design they chose - tapping it draws that change.";
-        const ask = "[WHERE THEY ARE: " + where + (seen ? " The picture is what is on their screen now." : "") + (cards.length ? " On it: " + cards.join(" | ") + "." : "") +
+        const ask = "[WHERE THEY ARE: " + where + (cards.length ? " On it: " + cards.join(" | ") + "." : "") +
           " Pictures made for this tattoo so far: " + pics + "." +
           (lines.length ? " The conversation so far:\n" + lines.join("\n") + "\n" : " ") +
           "Reply as you always do, with do set to none. say: one short line about what just came back and where they are. " +
@@ -69991,11 +69991,10 @@ export class PublicEntry extends WorkerEntrypoint {
           "finish it and say so in your line.]" + "\n\n(Reply with the JSON object. No prose.)";
         let say = "", ideas = [], _why = "";
         try {
-          // HER OWN NOTEBOOK, THE SMALL COPY (v9.640, 2026-10-17, Aaron): asked the way her look after a picture is asked -
-          // in her own notebook for this person, handed the small copy (lookCopy). MEASURED 02:33: a fresh notebook was sent
-          // the full 1.75 MB cut, over her 1.4 MB limit, so she got an old description, and her answer came back empty.
-          const _lookUrl = seen ? await lookCopy(env, seen) : null;
-          const q = await proxyToAgent(env, ask, false, me, _lookUrl, world);
+          // HER OWN NOTEBOOK, NO PICTURE (v9.642, 2026-10-17, Aaron): asked in her own notebook for this person, so she knows
+          // the journey. No picture - the image model drew what it was told and the card titles say what is on it; her value is
+          // reading where they are and helping them decide, not reading the picture back.
+          const q = await proxyToAgent(env, ask, false, me, null, world);
           if (q && q.reply && !q.failed) {
             const a = talkReadAct(q.reply);
             say = String((a && a.say) || "").trim().slice(0, 300);
@@ -70004,7 +70003,7 @@ export class PublicEntry extends WorkerEntrypoint {
           if (!(say || ideas.length)) _why = (q && q.failed) ? "failed: " + q.failed : "reply: " + String((q && q.reply) || "").slice(0, 300);
         } catch (e) { _why = "threw: " + String(e && e.message || e).slice(0, 200); }
         console.log("[NEXT] " + stage + " · project " + (_nt1 - _nt0) + "ms · her answer " + (Date.now() - _nt1) + "ms" +
-          " · pictures " + pics + (seen ? " · she saw " + seen.split("/").pop() : " · no picture") + " · she said: \"" + say.slice(0, 200) + "\" · ideas: " + ideas.join(" | ").slice(0, 400) + (_why ? " · EMPTY " + _why.replace(/\s+/g, " ").slice(0, 300) : "") + (me ? " · who=" + me : ""));
+          " · pictures " + pics + (seen ? " · on screen " + seen.split("/").pop() : " · no picture") + " · she said: \"" + say.slice(0, 200) + "\" · ideas: " + ideas.join(" | ").slice(0, 400) + (_why ? " · EMPTY " + _why.replace(/\s+/g, " ").slice(0, 300) : "") + (me ? " · who=" + me : ""));
         return { ok: !!(say || ideas.length), said: say || null, ideas };
       }
       if (action === "react") {

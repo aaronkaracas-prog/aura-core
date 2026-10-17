@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.638.0-2026-10-17-clean-notebook-per-question";
+const BUILD = "aura-core-v9.639.0-2026-10-17-next-logs-why-empty";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69989,7 +69989,7 @@ export class PublicEntry extends WorkerEntrypoint {
           " Keeping it, finishing it, seeing it on them and four more already have their own buttons, so never offer those." +
           " Read where they are: early on, open up new directions; when what they choose keeps landing close together, help them " +
           "finish it and say so in your line.]";
-        let say = "", ideas = [];
+        let say = "", ideas = [], _why = "";
         try {
           // A CLEAN NOTEBOOK FOR EACH QUESTION (v9.638, 2026-10-17): MEASURED 01:36-01:40 - the shared side notebook kept every
           // picture ever sent to it and re-read them all (sheets from earlier runs), so her answer took 30-36s and came back
@@ -70000,9 +70000,10 @@ export class PublicEntry extends WorkerEntrypoint {
             say = String((a && a.say) || "").trim().slice(0, 300);
             ideas = (a && Array.isArray(a.ideas)) ? a.ideas.slice(0, 3) : [];
           }
-        } catch {}
+          if (!(say || ideas.length)) _why = (q && q.failed) ? "failed: " + q.failed : "reply: " + String((q && q.reply) || "").slice(0, 300);
+        } catch (e) { _why = "threw: " + String(e && e.message || e).slice(0, 200); }
         console.log("[NEXT] " + stage + " · project " + (_nt1 - _nt0) + "ms · her answer " + (Date.now() - _nt1) + "ms" +
-          " · pictures " + pics + (seen ? " · she saw " + seen.split("/").pop() : " · no picture") + " · she said: \"" + say.slice(0, 200) + "\" · ideas: " + ideas.join(" | ").slice(0, 400) + (me ? " · who=" + me : ""));
+          " · pictures " + pics + (seen ? " · she saw " + seen.split("/").pop() : " · no picture") + " · she said: \"" + say.slice(0, 200) + "\" · ideas: " + ideas.join(" | ").slice(0, 400) + (_why ? " · EMPTY " + _why.replace(/\s+/g, " ").slice(0, 300) : "") + (me ? " · who=" + me : ""));
         return { ok: !!(say || ideas.length), said: say || null, ideas };
       }
       if (action === "react") {

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.644.0-2026-10-17-her-line-never-pushes";
+const BUILD = "aura-core-v9.645.0-2026-10-17-notebook-per-tattoo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -70009,10 +70009,10 @@ export class PublicEntry extends WorkerEntrypoint {
           "\n\n(Reply with the JSON object. No prose.)";
         let say = "", ideas = [], _why = "";
         try {
-          // HER OWN NOTEBOOK, NO PICTURE (v9.642, 2026-10-17, Aaron): asked in her own notebook for this person, so she knows
-          // the journey. No picture - the image model drew what it was told and the card titles say what is on it; her value is
-          // reading where they are and helping them decide, not reading the picture back.
-          const q = await proxyToAgent(env, ask, false, me, null, world);
+          // A NOTEBOOK PER TATTOO, NO PICTURE (v9.645, 2026-10-17, Aaron): one notebook for this tattoo, so she knows its journey.
+          // MEASURED 08:52 (pta_ed580175b82433ba): her notebook for the whole person held 17 messages from earlier tattoos and she
+          // called a rose and sunflower "the wolf and sunflower". No picture - her value is helping them decide, not reading it back.
+          const q = await proxyToAgent(env, ask, false, me + "_" + (pid || "np"), null, world);
           if (q && q.reply && !q.failed) {
             const a = talkReadAct(q.reply);
             say = String((a && a.say) || "").trim().slice(0, 300);

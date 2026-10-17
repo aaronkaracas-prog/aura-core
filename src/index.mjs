@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.635.0-2026-10-16-her-options-after-every-picture";
+const BUILD = "aura-core-v9.636.0-2026-10-17-she-sees-the-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69961,6 +69961,8 @@ export class PublicEntry extends WorkerEntrypoint {
       if (action === "next") {
         const stage = ["sheet", "poss", "change", "design"].includes(String(b.stage)) ? String(b.stage) : "design";
         const cards = (Array.isArray(b.cards) ? b.cards : []).map((x) => String(x || "").replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean).slice(0, 4);
+        // SHE SEES WHAT THEY SEE (v9.636, 2026-10-17, Aaron): the sheet when four came back, the cut design once they chose one.
+        const seen = /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.url || "")) ? String(b.url) : null;
         let pj = null;
         const pid = String(b.project || "").slice(0, 60);
         if (pid) { try { const r = await talkDo(env, me, "talkProject", [pid]); pj = (r && r.ok && r.project) ? r.project : null; } catch {} }
@@ -69970,24 +69972,28 @@ export class PublicEntry extends WorkerEntrypoint {
           : stage === "poss" ? "Four possibilities of the design they chose just came back on one sheet. They have not chosen one yet."
           : stage === "change" ? "Four versions of the change they asked for, on the design they chose, just came back on one sheet. They have not chosen one yet."
           : "One design is on their screen now - the one design they are working on.";
-        const ask = "[WHERE THEY ARE: " + where + (cards.length ? " On it: " + cards.join(" | ") + "." : "") +
+        // WHAT A TAP DOES (v9.636): her cards are drawn when tapped, so she is told what each one will draw.
+        const taps = stage === "sheet" ? "Each idea is a new direction - tapping it draws four new designs of it."
+          : stage === "design" ? "Each idea is something to change on this design - tapping it draws that change."
+          : "Each idea is something to change on the design they chose - tapping it draws that change.";
+        const ask = "[WHERE THEY ARE: " + where + (seen ? " The picture is what is on their screen now." : "") + (cards.length ? " On it: " + cards.join(" | ") + "." : "") +
           " Pictures made for this tattoo so far: " + pics + "." +
           (lines.length ? " The conversation so far:\n" + lines.join("\n") + "\n" : " ") +
           "Reply as you always do, with do set to none. say: one short line about what just came back and where they are. " +
-          "ideas: three options for the next step, each 'Short title - one short line'" +
-          (stage === "sheet" ? ", each a new direction for their idea" : ", each a change to the one design they are working on") +
-          ". Read where they are: early on, open up new directions; when what they choose keeps landing close together, help them " +
-          "finish it and say so in your line. 'This Is My Tattoo' and four more are always on their screen - never offer those as ideas.]";
+          "ideas: three options for the next step, each 'Short title - one short line'. " + taps +
+          " Keeping it, finishing it, seeing it on them and four more already have their own buttons, so never offer those." +
+          " Read where they are: early on, open up new directions; when what they choose keeps landing close together, help them " +
+          "finish it and say so in your line.]";
         let say = "", ideas = [];
         try {
-          const q = await proxyToAgent(env, ask, false, me + "_side", null, world);   // her side notebook, never the conversation
+          const q = await proxyToAgent(env, ask, false, me + "_side", seen, world);   // her side notebook, never the conversation
           if (q && q.reply && !q.failed) {
             const a = talkReadAct(q.reply);
             say = String((a && a.say) || "").trim().slice(0, 300);
             ideas = (a && Array.isArray(a.ideas)) ? a.ideas.slice(0, 3) : [];
           }
         } catch {}
-        console.log("[NEXT] " + stage + " · pictures " + pics + " · she said: \"" + say.slice(0, 200) + "\" · ideas: " + ideas.join(" | ").slice(0, 400) + (me ? " · who=" + me : ""));
+        console.log("[NEXT] " + stage + " · pictures " + pics + (seen ? " · she saw " + seen.split("/").pop() : " · no picture") + " · she said: \"" + say.slice(0, 200) + "\" · ideas: " + ideas.join(" | ").slice(0, 400) + (me ? " · who=" + me : ""));
         return { ok: !!(say || ideas.length), said: say || null, ideas };
       }
       if (action === "react") {

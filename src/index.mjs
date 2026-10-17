@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.632.0-2026-10-16-thread-effort";
+const BUILD = "aura-core-v9.633.0-2026-10-16-possibilities-chat-model";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13613,10 +13613,6 @@ async function successionGate(env) {
       // A CALLER MAY NAME ITS SIZE (v9.606): the new-tattoo four-card page is tall (config:edit:new:size); every other
       // caller names none and keeps the setting above.
       if (thP && /^(\d{3,4}x\d{3,4}|auto)$/.test(String(thP.size || ""))) thSize = String(thP.size);
-      // HOW HARD THE CHAT MODEL THINKS (v9.632, 2026-10-16, Aaron): a setting, `config:edit:thread:effort` (none / minimal / low /
-      // medium / high). Empty = nothing sent, exactly as before. OpenAI only.
-      let thEffort = "";
-      try { const _k = String((await env.AURA_KV.get("config:edit:thread:effort")) || "").trim().toLowerCase(); if (thOA && ["none", "minimal", "low", "medium", "high"].includes(_k)) thEffort = _k; } catch {}
       // MORE THAN ONE PICTURE, IN THE ORDER GIVEN (v9.615, Aaron): the way he asks ChatGPT - his tattoo, then his photo.
       const thImgs = (thP && Array.isArray(thP.images)) ? thP.images.filter((u) => /^https?:\/\//i.test(String(u || ""))).slice(0, 4) : [];
       const thTool = (action) => ({ type: "image_generation", action, ...(thOA && thSize ? { size: thSize } : {}),
@@ -13630,10 +13626,10 @@ async function successionGate(env) {
         // comes back. `tool_choice: "required"` makes the one tool offered - the image tool - mandatory.
         // THE FIRST STEP MAY BE ASKED FOR "auto" (v9.593, Aaron): OpenAI's own default, and the way ChatGPT uses the
         // tool - the model chooses to edit the photo or draw a new one. Unasked, it is still an edit, as before.
-        ? { model: thModel, tools: [thTool((thP && ["edit", "generate", "auto"].includes(String(thP.action || "").toLowerCase())) ? String(thP.action).toLowerCase() : "edit")], tool_choice: "required", ...(thEffort ? { reasoning: { effort: thEffort } } : {}),
+        ? { model: thModel, tools: [thTool((thP && ["edit", "generate", "auto"].includes(String(thP.action || "").toLowerCase())) ? String(thP.action).toLowerCase() : "edit")], tool_choice: "required",
             input: [{ role: "user", content: [{ type: "input_text", text: thAsk }].concat(
                                               (thImgs.length ? thImgs : (thNoImg ? [] : [thImg])).map((u) => ({ type: "input_image", image_url: u }))) }] }
-        : { model: thModel, tools: [thTool(thAction)], tool_choice: "required", ...(thEffort ? { reasoning: { effort: thEffort } } : {}),
+        : { model: thModel, tools: [thTool(thAction)], tool_choice: "required",
             previous_response_id: thArg, input: thAsk };
       try {
         const thR = await pfetch(env, thOA ? "openai" : "xai", "core:thread",
@@ -59969,7 +59965,7 @@ async function lookCopy(env, url) {
 // rewrote our words into its own stock picks (phoenix, crescent moon, neon, desert) on run after run. And the one
 // sentence added to every four that asks the chat model to list the cards in its written reply (`config:frame:cards:info`).
 // The image model never writes words back - the chat model does, in its reply; until now that reply was thrown away.
-const POSS_SENTENCE = "This is my tattoo design. Show me 4 different designs of it. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
+const POSS_SENTENCE = "This is my tattoo design. Show me 4 different designs of it. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them creative and amazing. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
 const CARD_INFO_ASK = "In your written reply, also list the 4 cards in order, one per line, as: TITLE | first line | second line | one sentence about the design and where on the body it would look best.";
 async function cardInfoAsk(env) {
   try { const k = String((await env.AURA_KV.get("config:frame:cards:info")) || "").trim(); if (k) return k; } catch {}
@@ -67078,7 +67074,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
           }
         }
-        if (_designGrid) console.log(_designWords === "__poss__" ? "[TURN:DESIGN] four possibilities of the chosen design, image model only" + (_designParent ? " (4 more, same design " + _designParent + ")" : "")
+        if (_designGrid) console.log(_designWords === "__poss__" ? "[TURN:DESIGN] four possibilities of the chosen design, through the chat model" + (_designParent ? " (4 more, same design " + _designParent + ")" : "")
           : "[TURN:DESIGN] four versions of their change, image model only: \"" + String(_designWords).slice(0, 200) + "\"");
       } catch {}
 
@@ -68254,7 +68250,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _wordsFrom = "design_grid";
             _sizeNow = "2160x3840";
             try { const _k = String((await env.AURA_KV.get("config:edit:new:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(_k)) _sizeNow = _k; } catch {}
-            {
+            if (_designWords === "__poss__") {
+              // FOUR POSSIBILITIES THROUGH THE CHAT MODEL (v9.633, 2026-10-16, Aaron: "we're keeping the chat model"): their
+              // design and the sentence to the chat model, which writes the image tool its brief - the tall page size, nothing added.
+              _viaNow = "thread";
+            } else {
               // IMAGE MODEL ONLY (v9.629 possibilities, v9.630 every change four, 2026-10-16, Aaron: "image model only"): their
               // design and the sentence, exactly as run 9 went by SHOW_IT - same job dial (show_it_cmd), same size, nothing added
               // (no card list: the "i" is gone). A fresh seed every time, so "4 more" is a new sheet and not the cached one.

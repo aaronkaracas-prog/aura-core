@@ -43,6 +43,13 @@ import { WorkerEntrypoint, WorkflowEntrypoint } from "cloudflare:workers";
 // VERIFIED, not assumed: a code was generated for a real shop URL, rasterised, and read
 // back with an independent decoder. Exact match.
 import QRCode from "qrcode-svg";
+// ══ ONE LINE PER CUSTOMER MESSAGE (2026-10-10, v9.554) ═══════════════════════════════════════
+// A turn can call aura-think several times (her reply, then a redo from [GO] or [LOCK]) and the
+// time was only visible by adding up log lines by hand. Each auraTalk runs inside this store and
+// proxyToAgent writes each call's duration into it, so the [TURN] line can say where the time
+// went. Concurrency-safe: every request has its own store. Logging only - changes no behaviour.
+import { AsyncLocalStorage } from "node:async_hooks";
+const _TURN_ALS = new AsyncLocalStorage();
 // ══ PHOTON — DETERMINISTIC IMAGE PROCESSING, NO MODEL ════════════════════════════════════════
 // Rust image library compiled to WebAssembly, running inside this Worker. Cloudflare's own
 // documented answer for image processing here: Sharp needs libvips and ImageMagick needs system
@@ -57,6 +64,18 @@ import { PhotonImage, crop as photonCrop, grayscale, gaussian_blur, threshold as
          grayscale_human_corrected as photonGrayHuman,
          resize as photonResize, SamplingFilter as PhotonSampling }
   from "@cf-wasm/photon";
+
+// ══ THE STENCIL TRACER (2026-10-03, v9.526, Aaron) ════════════════════════════════════════════════
+// potrace (GPL-2.0, Peter Selinger's algorithm, JS port by Iwasaki - npm `potrace` 2.1.8), bundled
+// with its image loader replaced: it takes raw RGBA from Photon, nothing else. 21KB, no node APIs.
+// WHY: one drawing is ~2,048px tall and PRINT will not print pixels under 150 DPI, so no sheet could
+// pass 13.6in - a full leg came out at 13.65in. Traced to vector, the line art is crisp at any size,
+// which is how stencil shops print large work. MEASURED on the sunflower sheet: 355ms to trace.
+// Server-side use only - nothing here is distributed.
+var __auraTracer=(()=>{var Ot=Object.defineProperty;var yr=Object.getOwnPropertyDescriptor;var dr=Object.getOwnPropertyNames;var cr=Object.prototype.hasOwnProperty;var it=(t,r)=>()=>{try{return r||t((r={exports:{}}).exports,r),r.exports}catch(a){throw r=0,a}},xr=(t,r)=>{for(var a in r)Ot(t,a,{get:r[a],enumerable:!0})},lr=(t,r,a,n)=>{if(r&&typeof r=="object"||typeof r=="function")for(let s of dr(r))!cr.call(t,s)&&s!==a&&Ot(t,s,{get:()=>r[s],enumerable:!(n=yr(r,s))||n.enumerable});return t};var mr=t=>lr(Ot({},"__esModule",{value:!0}),t);var pt=it((zr,Nt)=>{function Dt(t,r,a){this.bitmap={width:t,height:r,data:a}}Dt.prototype.scan=function(t,r,a,n,s){for(var d=r;d<r+n;d++)for(var h=t;h<t+a;h++)s.call(this,h,d,(d*this.bitmap.width+h)*4)};Nt.exports=Dt});var xt=it((Gr,Ht)=>{"use strict";function Pt(t,r){this.x=t||0,this.y=r||0}Pt.prototype={copy:function(){return new Pt(this.x,this.y)}};Ht.exports=Pt});var _t=it((Jr,St)=>{"use strict";var It=xt(),vt={};function pr(t){return vt[t]||(vt[t]=new RegExp(" "+t+'="((?:\\\\(?=")"|[^"])+)"',"i")),vt[t]}function vr(t,r,a){var n=" "+r+'="'+a+'"';return t.indexOf(" "+r+'="')===-1?t=t.replace(/<[a-z]+/i,function(s){return s+n}):t=t.replace(pr(r),n),t}function at(t){return t.toFixed(3).replace(".000","")}function wr(t,r){return t>=r?t%r:t>=0?t:r-1-(-1-t)%r}function _r(t,r){return t.x*r.y-t.y*r.x}function gr(t,r,a){return t<=a?t<=r&&r<a:t<=r||r<a}function Rt(t){return t>0?1:t<0?-1:0}function Ar(t,r){var a=new Array(3),n,s,d;for(a[0]=r.x,a[1]=r.y,a[2]=1,d=0,n=0;n<3;n++)for(s=0;s<3;s++)d+=a[n]*t.at(n,s)*a[s];return d}function br(t,r,a){var n=new It;return n.x=r.x+t*(a.x-r.x),n.y=r.y+t*(a.y-r.y),n}function Bt(t,r){var a=new It;return a.y=Rt(r.x-t.x),a.x=-Rt(r.y-t.y),a}function Tr(t,r){var a=Bt(t,r);return a.y*(r.x-t.x)-a.x*(r.y-t.y)}function Or(t,r,a){var n,s,d,h;return n=r.x-t.x,s=r.y-t.y,d=a.x-t.x,h=a.y-t.y,n*h-d*s}function wt(t,r,a,n){var s,d,h,g;return s=r.x-t.x,d=r.y-t.y,h=n.x-a.x,g=n.y-a.y,s*g-h*d}function Pr(t,r,a){var n,s,d,h;return n=r.x-t.x,s=r.y-t.y,d=a.x-t.x,h=a.y-t.y,n*d+s*h}function Rr(t,r,a,n){var s,d,h,g;return s=r.x-t.x,d=r.y-t.y,h=n.x-a.x,g=n.y-a.y,s*h+d*g}function Ir(t,r){return Math.sqrt((t.x-r.x)*(t.x-r.x)+(t.y-r.y)*(t.y-r.y))}St.exports={luminance:function(t,r,a){return Math.round(.2126*t+.7153*r+.0721*a)},between:function(t,r,a){return t>=r&&t<=a},clamp:function(t,r,a){return Math.min(a,Math.max(r,t))},isNumber:function(t){return typeof t=="number"},setHtmlAttr:vr,renderCurve:function(t,r){r=r||{x:1,y:1};var a=t.c[(t.n-1)*3+2],n=["M "+at(a.x*r.x)+" "+at(a.y*r.y)];return t.tag.forEach(function(s,d){var h=d*3,g=t.c[h],q=t.c[h+1],U=t.c[h+2];s==="CURVE"?n.push("C "+at(g.x*r.x)+" "+at(g.y*r.y)+", "+at(q.x*r.x)+" "+at(q.y*r.y)+", "+at(U.x*r.x)+" "+at(U.y*r.y)):s==="CORNER"&&n.push("L "+at(q.x*r.x)+" "+at(q.y*r.y)+" "+at(U.x*r.x)+" "+at(U.y*r.y))}),n.join(" ")},bezier:function(r,a,n,s,d){var h=1-r,g=new It;return g.x=h*h*h*a.x+3*(h*h*r)*n.x+3*(r*r*h)*s.x+r*r*r*d.x,g.y=h*h*h*a.y+3*(h*h*r)*n.y+3*(r*r*h)*s.y+r*r*r*d.y,g},tangent:function(r,a,n,s,d,h){var g,q,U,f,y,e,i,o,v,m;return g=wt(r,a,d,h),q=wt(a,n,d,h),U=wt(n,s,d,h),f=g-2*q+U,y=-2*g+2*q,e=g,i=y*y-4*f*e,f===0||i<0?-1:(o=Math.sqrt(i),v=(-y+o)/(2*f),m=(-y-o)/(2*f),v>=0&&v<=1?v:m>=0&&m<=1?m:-1)},mod:wr,xprod:_r,cyclic:gr,sign:Rt,quadform:Ar,interval:br,dorth_infty:Bt,ddenom:Tr,dpara:Or,cprod:wt,iprod:Pr,iprod1:Rr,ddist:Ir}});var Et=it((Wr,zt)=>{"use strict";var At=_t(),Ct=null;try{Ct=pt()}catch{}var Lr=kt(),X=256,gt=X-1;function nt(t,r){return X*t+r}function Lt(t,r){if(t=typeof t=="number"?At.clamp(Math.round(t),0,gt):0,r=typeof r=="number"?At.clamp(Math.round(r),0,gt):gt,t>r)throw new Error('Invalid range "'+t+"..."+r+'"');return[t,r]}function st(t,r){if(this.data=null,this.pixels=0,this._sortedIndexes=null,this._cachedStats={},this._lookupTableH=null,typeof t=="number")this._createArray(t);else if(t instanceof Lr)this._collectValuesBitmap(t);else if(Ct&&t instanceof Ct)this._collectValuesJimp(t,r);else throw new Error("Unsupported image source")}st.MODE_LUMINANCE="luminance";st.MODE_R="r";st.MODE_G="g";st.MODE_B="b";st.prototype={_createArray:function(t){var r=t<=Math.pow(2,8)?Uint8Array:t<=Math.pow(2,16)?Uint16Array:Uint32Array;return this.pixels=t,this.data=new r(X)},_collectValuesJimp:function(t,r){var a=t.bitmap.data,n=this._createArray(t.bitmap.width*t.bitmap.height);t.scan(0,0,t.bitmap.width,t.bitmap.height,function(s,d,h){var g=r===st.MODE_R?a[h]:r===st.MODE_G?a[h+1]:r===st.MODE_B?a[h+2]:At.luminance(a[h],a[h+1],a[h+2]);n[g]++})},_collectValuesBitmap:function(t){for(var r=this._createArray(t.size),a=t.data.length,n,s=0;s<a;s++)n=t.data[s],r[n]++},_getSortedIndexes:function(t){if(!t&&this._sortedIndexes)return this._sortedIndexes;var r=this.data,a=new Array(X),n=0;for(n;n<X;n++)a[n]=n;return a.sort(function(s,d){return r[s]>r[d]?1:r[s]<r[d]?-1:0}),this._sortedIndexes=a,a},_thresholdingBuildLookupTable:function(){var t=new Float64Array(X*X),r=new Float64Array(X*X),a=new Float64Array(X*X),n=this.pixels,s,d,h,g;for(s=1;s<X;++s)h=nt(s,s),g=this.data[s]/n,t[h]=g,r[h]=s*g;for(s=1;s<X-1;++s)g=this.data[s+1]/n,h=nt(1,s),t[h+1]=t[h]+g,r[h+1]=r[h]+(s+1)*g;for(s=2;s<X;s++)for(d=s+1;d<X;d++)t[nt(s,d)]=t[nt(1,d)]-t[nt(1,s-1)],r[nt(s,d)]=r[nt(1,d)]-r[nt(1,s-1)];for(s=1;s<X;++s)for(d=s+1;d<X;d++)h=nt(s,d),a[h]=t[h]!==0?r[h]*r[h]/t[h]:0;return this._lookupTableH=a},multilevelThresholding:function(t,r,a){if(r=Lt(r,a),a=r[1],r=r[0],t=Math.min(a-r-2,~~t),t<1)return[];this._lookupTableH||this._thresholdingBuildLookupTable();var n=this._lookupTableH,s=null,d=0;t>4&&console.log("[Warning]: Threshold computation for more than 5 levels may take a long time");function h(g,q,U,f){g=(g||0)+1,q=q||0,U=U||new Array(t),f=f||0;for(var y=f+1,e,i=g;i<a-t+f;i++)e=q+n[nt(g,i)],U[y-1]=i,y+1<t+1?h(i,e,U,y):(e+=n[nt(i+1,a)],d<e&&(d=e,s=U.slice()))}return h(r||0),s||[]},autoThreshold:function(t,r){var a=this.multilevelThresholding(1,t,r);return a.length?a[0]:null},getDominantColor:function(t,r,a){t=Lt(t,r),r=t[1],t=t[0],a=a||1;var n=this.data,s=-1,d=-1,h,g,q;if(t===r)return n[t]?t:-1;for(h=t;h<=r;h++){for(q=0,g=~~(a/-2);g<a;g++)q+=At.between(h+g,0,gt)?n[h+g]:0;var U=q>d,f=d===q&&(s<0||n[h]>n[s]);(U||f)&&(s=h,d=q)}return d<=0?-1:s},getStats:function(t,r,a){if(t=Lt(t,r),r=t[1],t=t[0],!a&&this._cachedStats[t+"-"+r])return this._cachedStats[t+"-"+r];var n=this.data,s=this._getSortedIndexes(),d=0,h=null,g,q,U,f,y=0,e=0,i=0,o,v,m,A=0,p=0;for(o=t;o<=r;o++)d+=n[o],i+=n[o]*o,A+=n[o]===0?0:1,p<n[o]&&(p=n[o]);for(g=i/d,U=d/(r-t),f=d/A,q=Math.floor(d/2),o=0;o<X;o++)m=s[o],v=n[m],!(m<t||m>r)&&(e+=v,y+=Math.pow(m-g,2)*v,h===null&&e>=q&&(h=m));return this._cachedStats[t+"-"+r]={levels:{mean:g,median:h,stdDev:Math.sqrt(y/d),unique:A},pixelsPerLevel:{mean:U,median:f,peak:p},pixels:d}}};zt.exports=st});var kt=it((Fr,Jt)=>{"use strict";var Gt=xt(),Ut=_t(),Cr;function qt(t,r){this._histogram=null,this.width=t,this.height=r,this.size=t*r,this.arrayBuffer=new ArrayBuffer(this.size),this.data=new Uint8Array(this.arrayBuffer)}Jt.exports=qt;Cr=Et();qt.prototype={getValueAt:function(t,r){var a=typeof t=="number"&&typeof r!="number"?t:this.pointToIndex(t,r);return this.data[a]},indexToPoint:function(t){var r=new Gt;return Ut.between(t,0,this.size)?(r.y=Math.floor(t/this.width),r.x=t-r.y*this.width):(r.x=-1,r.y=-1),r},pointToIndex:function(t,r){var a=t,n=r;return t instanceof Gt&&(a=t.x,n=t.y),!Ut.between(a,0,this.width)||!Ut.between(n,0,this.height)?-1:this.width*n+a},copy:function(t){var r=new qt(this.width,this.height),a=typeof t=="function",n;for(n=0;n<this.size;n++)r.data[n]=a?t(this.data[n],n):this.data[n];return r},histogram:function(){var t=Et();return this._histogram?this._histogram:(this._histogram=new t(this),this._histogram)}}});var Ft=it((Mr,Wt)=>{"use strict";function Er(t){this.n=t,this.tag=new Array(t),this.c=new Array(t*3),this.alphaCurve=0,this.vertex=new Array(t),this.alpha=new Array(t),this.alpha0=new Array(t),this.beta=new Array(t)}Wt.exports=Er});var Xt=it((Xr,Mt)=>{"use strict";function kr(){this.area=0,this.len=0,this.curve={},this.pt=[],this.minX=1e5,this.minY=1e5,this.maxX=-1,this.maxY=-1}Mt.exports=kr});var Zt=it((Qr,Kt)=>{"use strict";function Qt(){this.data=[0,0,0,0,0,0,0,0,0]}Qt.prototype.at=function(t,r){return this.data[t*3+r]};Kt.exports=Qt});var jt=it((Kr,$t)=>{"use strict";function Ur(t,r,a,n,s){this.x=t,this.y=r,this.xy=a,this.x2=n,this.y2=s}$t.exports=Ur});var er=it((Zr,rr)=>{"use strict";var tr=xt();function qr(){this.pen=0,this.c=[new tr,new tr],this.t=0,this.s=0,this.alpha=0}rr.exports=qr});var fr=it(($r,hr)=>{"use strict";var ar=pt(),Vr=kt(),ir=Ft(),et=xt(),Yr=Xt(),nr=Zt(),or=jt(),sr=er(),u=_t();function D(t){this._luminanceData=null,this._pathlist=[],this._imageLoadingIdentifier=null,this._imageLoaded=!1,this._processed=!1,this._params={turnPolicy:D.TURNPOLICY_MINORITY,turdSize:2,alphaMax:1,optCurve:!0,optTolerance:.2,threshold:D.THRESHOLD_AUTO,blackOnWhite:!0,color:D.COLOR_AUTO,background:D.COLOR_TRANSPARENT,width:null,height:null},t&&this.setParameters(t)}D.COLOR_AUTO="auto";D.COLOR_TRANSPARENT="transparent";D.THRESHOLD_AUTO=-1;D.TURNPOLICY_BLACK="black";D.TURNPOLICY_WHITE="white";D.TURNPOLICY_LEFT="left";D.TURNPOLICY_RIGHT="right";D.TURNPOLICY_MINORITY="minority";D.TURNPOLICY_MAJORITY="majority";var ur=[D.TURNPOLICY_BLACK,D.TURNPOLICY_WHITE,D.TURNPOLICY_LEFT,D.TURNPOLICY_RIGHT,D.TURNPOLICY_MINORITY,D.TURNPOLICY_MAJORITY];D.prototype={_bmToPathlist:function(){var t=this,r=this._params.threshold,a=this._params.blackOnWhite,n,s=new et(0,0),d;r===D.THRESHOLD_AUTO&&(r=this._luminanceData.histogram().autoThreshold()||128),n=this._luminanceData.copy(function(f){var y=a?f>r:f<r;return y?0:1});function h(f){for(var y=n.pointToIndex(f);y<n.size&&n.data[y]!==1;)y++;return y<n.size&&n.indexToPoint(y)}function g(f,y){var e,i,o;for(e=2;e<5;e++){for(o=0,i=-e+1;i<=e-1;i++)o+=n.getValueAt(f+i,y+e-1)?1:-1,o+=n.getValueAt(f+e-1,y+i-1)?1:-1,o+=n.getValueAt(f+i-1,y-e)?1:-1,o+=n.getValueAt(f-e,y+i)?1:-1;if(o>0)return 1;if(o<0)return 0}return 0}function q(f){var y=new Yr,e=f.x,i=f.y,o=0,v=1,m;for(y.sign=n.getValueAt(f.x,f.y)?"+":"-";y.pt.push(new et(e,i)),e>y.maxX&&(y.maxX=e),e<y.minX&&(y.minX=e),i>y.maxY&&(y.maxY=i),i<y.minY&&(y.minY=i),y.len++,e+=o,i+=v,y.area-=e*v,!(e===f.x&&i===f.y);){var A=n.getValueAt(e+(o+v-1)/2,i+(v-o-1)/2),p=n.getValueAt(e+(o-v-1)/2,i+(v+o-1)/2);p&&!A?t._params.turnPolicy==="right"||t._params.turnPolicy==="black"&&y.sign==="+"||t._params.turnPolicy==="white"&&y.sign==="-"||t._params.turnPolicy==="majority"&&g(e,i)||t._params.turnPolicy==="minority"&&!g(e,i)?(m=o,o=-v,v=m):(m=o,o=v,v=-m):p?(m=o,o=-v,v=m):A||(m=o,o=v,v=-m)}return y}function U(f){var y=f.pt[0].y,e=f.len,i,o,v,m,A,p,I;for(A=1;A<e;A++)if(i=f.pt[A].x,o=f.pt[A].y,o!==y){for(m=y<o?y:o,v=f.maxX,p=i;p<v;p++)I=n.pointToIndex(p,m),n.data[I]=n.data[I]?0:1;y=o}}for(this._pathlist=[];s=h(s);)d=q(s),U(d),d.area>t._params.turdSize&&this._pathlist.push(d)},_processPath:function(){var t=this;function r(f){var y,e,i;f.x0=f.pt[0].x,f.y0=f.pt[0].y,f.sums=[];var o=f.sums;for(o.push(new or(0,0,0,0,0)),y=0;y<f.len;y++)e=f.pt[y].x-f.x0,i=f.pt[y].y-f.y0,o.push(new or(o[y].x+e,o[y].y+i,o[y].xy+e*i,o[y].x2+e*e,o[y].y2+i*i))}function a(f){var y=f.len,e=f.pt,i,o=new Array(y),v=new Array(y),m=new Array(4);f.lon=new Array(y);var A=[new et,new et],p=new et,I=new et,l=new et,c,b,w,k,P,E,L,x,_=0;for(b=y-1;b>=0;b--)e[b].x!=e[_].x&&e[b].y!=e[_].y&&(_=b+1),v[b]=_;for(b=y-1;b>=0;b--){for(m[0]=m[1]=m[2]=m[3]=0,i=(3+3*(e[u.mod(b+1,y)].x-e[b].x)+(e[u.mod(b+1,y)].y-e[b].y))/2,m[i]++,A[0].x=0,A[0].y=0,A[1].x=0,A[1].y=0,_=v[b],k=b;;){if(c=0,i=(3+3*u.sign(e[_].x-e[k].x)+u.sign(e[_].y-e[k].y))/2,m[i]++,m[0]&&m[1]&&m[2]&&m[3]){o[b]=k,c=1;break}if(p.x=e[_].x-e[b].x,p.y=e[_].y-e[b].y,u.xprod(A[0],p)<0||u.xprod(A[1],p)>0||(Math.abs(p.x)<=1&&Math.abs(p.y)<=1||(I.x=p.x+(p.y>=0&&(p.y>0||p.x<0)?1:-1),I.y=p.y+(p.x<=0&&(p.x<0||p.y<0)?1:-1),u.xprod(A[0],I)>=0&&(A[0].x=I.x,A[0].y=I.y),I.x=p.x+(p.y<=0&&(p.y<0||p.x<0)?1:-1),I.y=p.y+(p.x>=0&&(p.x>0||p.y<0)?1:-1),u.xprod(A[1],I)<=0&&(A[1].x=I.x,A[1].y=I.y)),k=_,_=v[k],!u.cyclic(_,b,k)))break}c===0&&(l.x=u.sign(e[_].x-e[k].x),l.y=u.sign(e[_].y-e[k].y),p.x=e[k].x-e[b].x,p.y=e[k].y-e[b].y,P=u.xprod(A[0],p),E=u.xprod(A[0],l),L=u.xprod(A[1],p),x=u.xprod(A[1],l),w=1e7,E<0&&(w=Math.floor(P/-E)),x>0&&(w=Math.min(w,Math.floor(-L/x))),o[b]=u.mod(k+w,y))}for(w=o[y-1],f.lon[y-1]=w,b=y-2;b>=0;b--)u.cyclic(b+1,o[b],w)&&(w=o[b]),f.lon[b]=w;for(b=y-1;u.cyclic(u.mod(b+1,y),w,f.lon[b]);b--)f.lon[b]=w}function n(f){function y(E,L,x){var _=E.len,H=E.pt,C=E.sums,j,Z,V,z,B,Q,ut,K,Y,S,R,O,T,$,tt=0;return x>=_&&(x-=_,tt=1),tt===0?(j=C[x+1].x-C[L].x,Z=C[x+1].y-C[L].y,z=C[x+1].x2-C[L].x2,V=C[x+1].xy-C[L].xy,B=C[x+1].y2-C[L].y2,Q=x+1-L):(j=C[x+1].x-C[L].x+C[_].x,Z=C[x+1].y-C[L].y+C[_].y,z=C[x+1].x2-C[L].x2+C[_].x2,V=C[x+1].xy-C[L].xy+C[_].xy,B=C[x+1].y2-C[L].y2+C[_].y2,Q=x+1-L+_),R=(H[L].x+H[x].x)/2-H[0].x,O=(H[L].y+H[x].y)/2-H[0].y,$=H[x].x-H[L].x,T=-(H[x].y-H[L].y),ut=(z-2*j*R)/Q+R*R,K=(V-j*O-Z*R)/Q+R*O,Y=(B-2*Z*O)/Q+O*O,S=T*T*ut+2*T*$*K+$*$*Y,Math.sqrt(S)}var e,i,o,v,m=f.len,A=new Array(m+1),p=new Array(m+1),I=new Array(m),l=new Array(m+1),c=new Array(m+1),b=new Array(m+1),w,k,P;for(e=0;e<m;e++)P=u.mod(f.lon[u.mod(e-1,m)]-1,m),P==e&&(P=u.mod(e+1,m)),P<e?I[e]=m:I[e]=P;for(i=1,e=0;e<m;e++)for(;i<=I[e];)l[i]=e,i++;for(e=0,i=0;e<m;i++)c[i]=e,e=I[e];for(c[i]=m,o=i,e=m,i=o;i>0;i--)b[i]=e,e=l[e];for(b[0]=0,A[0]=0,i=1;i<=o;i++)for(e=b[i];e<=c[i];e++){for(k=-1,v=c[i-1];v>=l[e];v--)w=y(f,v,e)+A[v],(k<0||w<k)&&(p[e]=v,k=w);A[e]=k}for(f.m=o,f.po=new Array(o),e=m,i=o-1;e>0;i--)e=p[e],f.po[i]=e}function s(f){function y(ut,K,Y,S,R){for(var O=ut.len,T=ut.sums,$,tt,ht,ft,yt,G,N,J,W,rt,F,M=0;Y>=O;)Y-=O,M+=1;for(;K>=O;)K-=O,M-=1;for(;Y<0;)Y+=O,M-=1;for(;K<0;)K+=O,M+=1;$=T[Y+1].x-T[K].x+M*T[O].x,tt=T[Y+1].y-T[K].y+M*T[O].y,ht=T[Y+1].x2-T[K].x2+M*T[O].x2,ft=T[Y+1].xy-T[K].xy+M*T[O].xy,yt=T[Y+1].y2-T[K].y2+M*T[O].y2,G=Y+1-K+M*O,S.x=$/G,S.y=tt/G,N=(ht-$*$/G)/G,J=(ft-$*tt/G)/G,W=(yt-tt*tt/G)/G,rt=(N+W+Math.sqrt((N-W)*(N-W)+4*J*J))/2,N-=rt,W-=rt,Math.abs(N)>=Math.abs(W)?(F=Math.sqrt(N*N+J*J),F!==0&&(R.x=-J/F,R.y=N/F)):(F=Math.sqrt(W*W+J*J),F!==0&&(R.x=-W/F,R.y=J/F)),F===0&&(R.x=R.y=0)}var e=f.m,i=f.po,o=f.len,v=f.pt,m=f.x0,A=f.y0,p=new Array(e),I=new Array(e),l=new Array(e),c=new Array(3),b,w,k,P,E,L=new et;for(f.curve=new ir(e),w=0;w<e;w++)k=i[u.mod(w+1,e)],k=u.mod(k-i[w],o)+i[w],p[w]=new et,I[w]=new et,y(f,i[w],k,p[w],I[w]);for(w=0;w<e;w++)if(l[w]=new nr,b=I[w].x*I[w].x+I[w].y*I[w].y,b===0)for(k=0;k<3;k++)for(P=0;P<3;P++)l[w].data[k*3+P]=0;else for(c[0]=I[w].y,c[1]=-I[w].x,c[2]=-c[1]*p[w].y-c[0]*p[w].x,E=0;E<3;E++)for(P=0;P<3;P++)l[w].data[E*3+P]=c[E]*c[P]/b;var x,_,H,C,j,Z,V,z,B,Q;for(w=0;w<e;w++){for(x=new nr,_=new et,L.x=v[i[w]].x-m,L.y=v[i[w]].y-A,k=u.mod(w-1,e),E=0;E<3;E++)for(P=0;P<3;P++)x.data[E*3+P]=l[k].at(E,P)+l[w].at(E,P);for(;;){if(j=x.at(0,0)*x.at(1,1)-x.at(0,1)*x.at(1,0),j!==0){_.x=(-x.at(0,2)*x.at(1,1)+x.at(1,2)*x.at(0,1))/j,_.y=(x.at(0,2)*x.at(1,0)-x.at(1,2)*x.at(0,0))/j;break}for(x.at(0,0)>x.at(1,1)?(c[0]=-x.at(0,1),c[1]=x.at(0,0)):x.at(1,1)?(c[0]=-x.at(1,1),c[1]=x.at(1,0)):(c[0]=1,c[1]=0),b=c[0]*c[0]+c[1]*c[1],c[2]=-c[1]*L.y-c[0]*L.x,E=0;E<3;E++)for(P=0;P<3;P++)x.data[E*3+P]+=c[E]*c[P]/b}if(H=Math.abs(_.x-L.x),C=Math.abs(_.y-L.y),H<=.5&&C<=.5){f.curve.vertex[w]=new et(_.x+m,_.y+A);continue}if(Z=u.quadform(x,L),z=L.x,B=L.y,x.at(0,0)!==0)for(Q=0;Q<2;Q++)_.y=L.y-.5+Q,_.x=-(x.at(0,1)*_.y+x.at(0,2))/x.at(0,0),H=Math.abs(_.x-L.x),V=u.quadform(x,_),H<=.5&&V<Z&&(Z=V,z=_.x,B=_.y);if(x.at(1,1)!==0)for(Q=0;Q<2;Q++)_.x=L.x-.5+Q,_.y=-(x.at(1,0)*_.x+x.at(1,2))/x.at(1,1),C=Math.abs(_.y-L.y),V=u.quadform(x,_),C<=.5&&V<Z&&(Z=V,z=_.x,B=_.y);for(E=0;E<2;E++)for(P=0;P<2;P++)_.x=L.x-.5+E,_.y=L.y-.5+P,V=u.quadform(x,_),V<Z&&(Z=V,z=_.x,B=_.y);f.curve.vertex[w]=new et(z+m,B+A)}}function d(f){var y=f.curve,e=y.n,i=y.vertex,o,v,m;for(o=0,v=e-1;o<v;o++,v--)m=i[o],i[o]=i[v],i[v]=m}function h(f){var y=f.curve.n,e=f.curve,i,o,v,m,A,p,I,l,c;for(i=0;i<y;i++)o=u.mod(i+1,y),v=u.mod(i+2,y),c=u.interval(1/2,e.vertex[v],e.vertex[o]),A=u.ddenom(e.vertex[i],e.vertex[v]),A!==0?(m=u.dpara(e.vertex[i],e.vertex[o],e.vertex[v])/A,m=Math.abs(m),p=m>1?1-1/m:0,p=p/.75):p=4/3,e.alpha0[o]=p,p>=t._params.alphaMax?(e.tag[o]="CORNER",e.c[3*o+1]=e.vertex[o],e.c[3*o+2]=c):(p<.55?p=.55:p>1&&(p=1),I=u.interval(.5+.5*p,e.vertex[i],e.vertex[o]),l=u.interval(.5+.5*p,e.vertex[v],e.vertex[o]),e.tag[o]="CURVE",e.c[3*o+0]=I,e.c[3*o+1]=l,e.c[3*o+2]=c),e.alpha[o]=p,e.beta[o]=.5;e.alphaCurve=1}function g(f){function y(Z,V,z,B,Q,ut,K){var Y=Z.curve.n,S=Z.curve,R=S.vertex,O,T,$,tt,ht,ft,yt,G,N,J,W,rt,F,M,dt,bt,Vt,lt,ct,mt,Yt,Tt,ot;if(V==z||(O=V,ht=u.mod(V+1,Y),T=u.mod(O+1,Y),tt=ut[T],tt===0))return 1;for(G=u.ddist(R[V],R[ht]),O=T;O!=z;O=T)if(T=u.mod(O+1,Y),$=u.mod(O+2,Y),ut[T]!=tt||u.sign(u.cprod(R[V],R[ht],R[T],R[$]))!=tt||u.iprod1(R[V],R[ht],R[T],R[$])<G*u.ddist(R[T],R[$])*-.999847695156)return 1;if(W=S.c[u.mod(V,Y)*3+2].copy(),rt=R[u.mod(V+1,Y)].copy(),F=R[u.mod(z,Y)].copy(),M=S.c[u.mod(z,Y)*3+2].copy(),ft=K[z]-K[V],ft-=u.dpara(R[0],S.c[V*3+2],S.c[z*3+2])/2,V>=z&&(ft+=K[Y]),lt=u.dpara(W,rt,F),ct=u.dpara(W,rt,M),mt=u.dpara(W,F,M),Yt=lt+mt-ct,ct==lt||(ot=mt/(mt-Yt),Tt=ct/(ct-lt),bt=ct*ot/2,bt===0))return 1;for(Vt=ft/bt,yt=2-Math.sqrt(4-Vt/.3),B.c[0]=u.interval(ot*yt,W,rt),B.c[1]=u.interval(Tt*yt,M,F),B.alpha=yt,B.t=ot,B.s=Tt,rt=B.c[0].copy(),F=B.c[1].copy(),B.pen=0,O=u.mod(V+1,Y);O!=z;O=T){if(T=u.mod(O+1,Y),ot=u.tangent(W,rt,F,M,R[O],R[T]),ot<-.5||(dt=u.bezier(ot,W,rt,F,M),G=u.ddist(R[O],R[T]),G===0)||(N=u.dpara(R[O],R[T],dt)/G,Math.abs(N)>Q)||u.iprod(R[O],R[T],dt)<0||u.iprod(R[T],R[O],dt)<0)return 1;B.pen+=N*N}for(O=V;O!=z;O=T){if(T=u.mod(O+1,Y),ot=u.tangent(W,rt,F,M,S.c[O*3+2],S.c[T*3+2]),ot<-.5||(dt=u.bezier(ot,W,rt,F,M),G=u.ddist(S.c[O*3+2],S.c[T*3+2]),G===0)||(N=u.dpara(S.c[O*3+2],S.c[T*3+2],dt)/G,J=u.dpara(S.c[O*3+2],S.c[T*3+2],R[T])/G,J*=.75*S.alpha[T],J<0&&(N=-N,J=-J),N<J-Q))return 1;N<J&&(B.pen+=(N-J)*(N-J))}return 0}var e=f.curve,i=e.n,o=e.vertex,v=new Array(i+1),m=new Array(i+1),A=new Array(i+1),p=new Array(i+1),I,l,c,b,w=new sr,k,P,E,L,x,_,H,C=new Array(i),j=new Array(i+1);for(l=0;l<i;l++)e.tag[l]=="CURVE"?C[l]=u.sign(u.dpara(o[u.mod(l-1,i)],o[l],o[u.mod(l+1,i)])):C[l]=0;for(E=0,j[0]=0,k=e.vertex[0],l=0;l<i;l++)P=u.mod(l+1,i),e.tag[P]=="CURVE"&&(L=e.alpha[P],E+=.3*L*(4-L)*u.dpara(e.c[l*3+2],o[P],e.c[P*3+2])/2,E+=u.dpara(k,e.c[l*3+2],e.c[P*3+2])/2),j[l+1]=E;for(v[0]=-1,m[0]=0,A[0]=0,c=1;c<=i;c++)for(v[c]=c-1,m[c]=m[c-1],A[c]=A[c-1]+1,l=c-2;l>=0&&(b=y(f,l,u.mod(c,i),w,t._params.optTolerance,C,j),!b);l--)(A[c]>A[l]+1||A[c]==A[l]+1&&m[c]>m[l]+w.pen)&&(v[c]=l,m[c]=m[l]+w.pen,A[c]=A[l]+1,p[c]=w,w=new sr);for(I=A[i],x=new ir(I),_=new Array(I),H=new Array(I),c=i,l=I-1;l>=0;l--)v[c]==c-1?(x.tag[l]=e.tag[u.mod(c,i)],x.c[l*3+0]=e.c[u.mod(c,i)*3+0],x.c[l*3+1]=e.c[u.mod(c,i)*3+1],x.c[l*3+2]=e.c[u.mod(c,i)*3+2],x.vertex[l]=e.vertex[u.mod(c,i)],x.alpha[l]=e.alpha[u.mod(c,i)],x.alpha0[l]=e.alpha0[u.mod(c,i)],x.beta[l]=e.beta[u.mod(c,i)],_[l]=H[l]=1):(x.tag[l]="CURVE",x.c[l*3+0]=p[c].c[0],x.c[l*3+1]=p[c].c[1],x.c[l*3+2]=e.c[u.mod(c,i)*3+2],x.vertex[l]=u.interval(p[c].s,e.c[u.mod(c,i)*3+2],o[u.mod(c,i)]),x.alpha[l]=p[c].alpha,x.alpha0[l]=p[c].alpha,_[l]=p[c].s,H[l]=p[c].t),c=v[c];for(l=0;l<I;l++)P=u.mod(l+1,I),x.beta[l]=_[l]/(_[l]+H[P]);x.alphaCurve=1,f.curve=x}for(var q=0;q<this._pathlist.length;q++){var U=this._pathlist[q];r(U),a(U),n(U),s(U),U.sign==="-"&&d(U),h(U),t._params.optCurve&&g(U)}},_validateParameters:function(t){if(t&&t.turnPolicy&&ur.indexOf(t.turnPolicy)===-1){var r="'"+ur.join("', '")+"'";throw new Error("Bad turnPolicy value. Allowed values are: "+r)}if(t&&t.threshold!=null&&t.threshold!==D.THRESHOLD_AUTO&&(typeof t.threshold!="number"||!u.between(t.threshold,0,255)))throw new Error("Bad threshold value. Expected to be an integer in range 0..255");if(t&&t.optCurve!=null&&typeof t.optCurve!="boolean")throw new Error("'optCurve' must be Boolean")},_processLoadedImage:function(t){var r=new Vr(t.bitmap.width,t.bitmap.height),a=t.bitmap.data;t.scan(0,0,t.bitmap.width,t.bitmap.height,function(n,s,d){var h=a[d+3]/255,g=255+(a[d+0]-255)*h,q=255+(a[d+1]-255)*h,U=255+(a[d+2]-255)*h;r.data[d/4]=u.luminance(g,q,U)}),this._luminanceData=r,this._imageLoaded=!0},loadImage:function(t,r){var a=this,n={};this._imageLoadingIdentifier=n,this._imageLoaded=!1,t instanceof ar?(this._imageLoadingIdentifier=null,this._imageLoaded=!0,a._processLoadedImage(t),r.call(a,null)):ar.read(t,function(s,d){var h=a._imageLoadingIdentifier!==n;if(h){var g=s||new Error("Another image was loaded instead");return r.call(a,g)}a._imageLoadingIdentifier=null,a._processLoadedImage(d),r.call(a,null)})},setParameters:function(t){var r,a;this._validateParameters(t);for(r in this._params)this._params.hasOwnProperty(r)&&t.hasOwnProperty(r)&&(a=this._params[r],this._params[r]=t[r],a!==this._params[r]&&["color","background"].indexOf(r)===-1&&(this._processed=!1))},getPathTag:function(t,r){if(t=arguments.length===0?this._params.color:t,t===D.COLOR_AUTO&&(t=this._params.blackOnWhite?"black":"white"),!this._imageLoaded)throw new Error("Image should be loaded first");this._processed||(this._bmToPathlist(),this._processPath(),this._processed=!0);var a='<path d="';return a+=this._pathlist.map(function(n){return u.renderCurve(n.curve,r)}).join(" "),a+='" stroke="none" fill="'+t+'" fill-rule="evenodd"/>',a},getSymbol:function(t){return'<symbol viewBox="0 0 '+this._luminanceData.width+" "+this._luminanceData.height+'" id="'+t+'">'+this.getPathTag("")+"</symbol>"},getSVG:function(){var t=this._params.width||this._luminanceData.width,r=this._params.height||this._luminanceData.height,a={x:this._params.width?this._params.width/this._luminanceData.width:1,y:this._params.height?this._params.height/this._luminanceData.height:1};return'<svg xmlns="http://www.w3.org/2000/svg" width="'+t+'" height="'+r+'" viewBox="0 0 '+t+" "+r+`" version="1.1">
+`+(this._params.background!==D.COLOR_TRANSPARENT?'	<rect x="0" y="0" width="100%" height="100%" fill="'+this._params.background+`" />
+`:"")+"	"+this.getPathTag(this._params.color,a)+`
+</svg>`}};hr.exports=D});var Br={};xr(Br,{traceRGBA:()=>Hr});var Dr=fr(),Nr=pt();function Hr(t,r,a,n){let s=new Dr(n||{}),d=null,h=null;if(s.loadImage(new Nr(t,r,a),g=>{h=g}),h)throw h;return d=s.getSVG(),d}return mr(Br);})();
 
 // The relying party ID is the DOMAIN a passkey is bound to, and it is why passkeys are phishing-proof:
 // a credential created for homescreen.world cannot be used on homescreen-login.com, no matter how
@@ -87,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.478.0-2026-09-30-addon-one-picture";
+const BUILD = "aura-core-v9.634.0-2026-10-16-one-answer-path";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -974,6 +993,21 @@ function costTapClose(tap) {
                + "priced daily - see NEURONS. Exact for one turn at a time." };
 }
 function costTapNeuron() { for (const t of _COST_TAPS) t.neurons_calls += 1; }
+
+// $/image by model and quality - the fallback when a provider reports no usage for a picture.
+// Hoisted v9.594 so the image lane and THREAD price from the same rows (MEASURED where marked).
+const IMAGE_RATE_PER_IMAGE = {   // $/image, model -> quality. MEASURED where marked; inferred otherwise.
+  "gemini-3.1-flash-lite-image": { low: 0.045, medium: 0.045, high: 0.045 },   // inferred - Google Nano Banana 2 Lite
+  "gemini-3.1-flash-image":      { low: 0.067, medium: 0.067, high: 0.067 },   // inferred - Google Nano Banana 2
+  "gemini-3-pro-image":          { low: 0.134, medium: 0.134, high: 0.134 },   // inferred - Google Nano Banana Pro
+  "gemini-2.5-flash-image":      { low: 0.039, medium: 0.039, high: 0.039 },   // inferred - Google Nano Banana (older)
+  "grok-imagine-image-quality": { low: 0.05,  medium: 0.05,  high: 0.05  },   // INFERRED (was 0.005, same 10x) - NOT yet burned
+  "grok-imagine-image":         { low: 0.02,  medium: 0.02,  high: 0.02  },   // MEASURED 2026-07-31, 3-image burn, $0.06 drawdown
+  "gpt-image-1-mini": { low: 0.005, medium: 0.030, high: 0.052 },              // inferred
+  "gpt-image-1":      { low: 0.011, medium: 0.040, high: 0.170 },              // inferred
+  "gpt-image-1.5":    { low: 0.009, medium: 0.034, high: 0.133 },              // inferred
+  "gpt-image-2":      { low: 0.006, medium: 0.053, high: 0.211 },              // inferred
+};
 
 async function _egressCore(env, rec) {
   try {
@@ -4666,6 +4700,20 @@ function worldFor(host) {
 // on screen in ~2s against a 26.7s full turn, and the accumulated deltas reconstructing `reply`
 // exactly - which is what lets this return the usual shape instead of a second one.
 async function proxyToAgent(env, line, isOp, ptaId, image, channel, onDelta) {
+  const _st = _TURN_ALS.getStore(), _t = Date.now();
+  const _r = await _proxyToAgentInner(env, line, isOp, ptaId, image, channel, onDelta);
+  if (_st) {
+    const L = String(line || "");
+    // The FIRST call is always her reply - the reply's own prompt can carry the same not-yet words as
+    // the redo, which is how v9.554 mislabelled a plain reply "redo-notyet". Only later calls are redos.
+    const why = !_st.think.length ? "reply"
+      : /They have not asked to see it yet - nothing is drawn this turn/.test(L) ? "redo-notyet"
+      : /They have said this is the one/.test(L) ? "redo-lock" : "extra";
+    _st.think.push({ ms: Date.now() - _t, why, failed: !!(_r && _r.failed) });
+  }
+  return _r;
+}
+async function _proxyToAgentInner(env, line, isOp, ptaId, image, channel, onDelta) {
   try {
     const instance = agentInstanceFor(isOp, ptaId);
     if (!instance) return { failed: "no identity - an anonymous visitor has no agent instance of their own, so the local path answers" };
@@ -5868,6 +5916,178 @@ async function processCommand(line, env, isOp) {
 
   switch (cmd) {
 
+    // ══ LOGS ── READ THE SAVED LOGS, NO LIVE TAIL (2026-10-10, v9.553, Aaron) ═══════════════
+    // "I'm not going to dashboards... whatever we can do to pull logs from Cloudflare." Both workers
+    // already SAVE every request (aura-core [observability] since 2026-08-03, aura-think since
+    // 2026-08-14), so a phone test needs nothing running beforehand: this asks Cloudflare's
+    // Workers Observability query API for a time window and prints it in time order.
+    //   RUN "LOGS 07:12 07:20"          today, operator's local time (config:operator:tz, default LA)
+    //   RUN "LOGS 07:12 07:20 think"    one worker only (core | think)
+    //   RUN "LOGS 07:12 07:20 raw"      one raw event per worker, to see the shape
+    // Read only. Uses the cf_api_token the self-read already uses; if that token lacks the
+    // "Workers Observability" read permission, Cloudflare's own answer is returned in plain words.
+    // ══ TESTERS AND THEIR FEEDBACK (2026-10-11, v9.567, Aaron) ═══════════════════════════════════
+    // "Give their feedback and link us to our logs." People Aaron hands mytattoo to are testers: the page
+    // gives them a Feedback button and a thumbs up/down on each of Aura's replies. Every note is kept with
+    // where they were, what Aura last said, their last lines, and the exact LOGS command for their turns.
+    //   RUN "TESTER ADD someone@gmail.com"   RUN "TESTER REMOVE someone@gmail.com"   RUN "TESTER LIST"
+    //   RUN "FEEDBACK"            newest 20      RUN "FEEDBACK 50"      RUN "FEEDBACK pta_..."  one person
+    case "TESTER": {
+      if (!isOp) return { cmd: "TESTER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const [tsSub, ...tsRest] = String(rest || "").trim().split(/\s+/);
+      let list = []; try { list = JSON.parse((await env.AURA_KV.get("config:testers")) || "[]"); } catch {}
+      if (!Array.isArray(list)) list = [];
+      const who = String(tsRest.join(" ") || "").trim().toLowerCase();
+      const sub = String(tsSub || "LIST").toUpperCase();
+      if ((sub === "ADD" || sub === "REMOVE") && !/@|^pta_/.test(who))
+        return { cmd: "TESTER", payload: { ok: false, error: "Usage: TESTER ADD someone@gmail.com  |  TESTER REMOVE ...  |  TESTER LIST" } };
+      if (sub === "ADD" && !list.includes(who)) list.push(who);
+      if (sub === "REMOVE") list = list.filter((x) => x !== who);
+      if (sub === "ADD" || sub === "REMOVE") await env.AURA_KV.put("config:testers", JSON.stringify(list));
+      return { cmd: "TESTER", payload: { ok: true, testers: list, count: list.length,
+        note: "A tester sees the Feedback button and the thumbs on Aura's replies the next time the page opens." } };
+    }
+    // TEST MODE (2026-10-11, v9.569, Aaron): "put the whole entire asset in test mode". While it is ON,
+    // everyone who signs in is a tester - no emails to collect. RUN "TESTMODE ON" | "TESTMODE OFF" | "TESTMODE"
+    case "TESTMODE": {
+      if (!isOp) return { cmd: "TESTMODE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tmSub = String(rest || "").trim().toUpperCase();
+      if (tmSub === "ON" || tmSub === "OFF") await env.AURA_KV.put("config:testmode", tmSub === "ON" ? "on" : "off");
+      const tmNow = (await env.AURA_KV.get("config:testmode")) === "on";
+      return { cmd: "TESTMODE", payload: { ok: true, testmode: tmNow ? "ON" : "OFF",
+        note: tmNow ? "Everyone who signs in gets the comment button in the chat box. RUN \"TESTMODE OFF\" to end it."
+                    : "Only people on the TESTER list get the comment button." } };
+    }
+    case "FEEDBACK": {
+      if (!isOp) return { cmd: "FEEDBACK", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fbA = String(rest || "").trim().split(/\s+/).filter(Boolean);
+      const fbN = Math.min(200, Math.max(1, parseInt(fbA.find((x) => /^\d+$/.test(x)) || "20", 10)));
+      const fbWho = fbA.find((x) => /^pta_/i.test(x)) || null;
+      const fbTz = (await env.AURA_KV.get("config:operator:tz").catch(() => null)) || "America/Los_Angeles";
+      const hm = (ms) => new Intl.DateTimeFormat("en-US", { timeZone: fbTz, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
+      const day = (ms) => new Intl.DateTimeFormat("en-CA", { timeZone: fbTz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+      const out = []; let cursor = undefined;
+      while (out.length < fbN) {
+        const pg = await env.AURA_KV.list({ prefix: "fb:", limit: 200, cursor }).catch(() => null);
+        if (!pg) break;
+        for (const k of pg.keys) {
+          if (out.length >= fbN) break;
+          let it = null; try { it = JSON.parse((await env.AURA_KV.get(k.name)) || "null"); } catch {}
+          if (!it || (fbWho && it.pta !== fbWho)) continue;
+          const at = Date.parse(it.at) || Date.now();
+          out.push({ when: day(at) + " " + hm(at), who: it.name || it.email || it.pta, email: it.email || null, pta: it.pta,
+            kind: it.kind, said: it.text || null, screen: it.screen || null, aura_said: it.line || null,
+            their_last_lines: it.recent || [], screenshot: it.shot || null, project: it.project || null,
+            device: it.ua ? String(it.ua).slice(0, 90) : null,
+            // v9.570: the link carries its DATE, so it works on any later day while Cloudflare keeps the logs.
+            logs: 'RUN "LOGS ' + day(at - 10 * 60000) + " " + hm(at - 10 * 60000) + " " + hm(at + 60000) + " core turns " + it.pta + '"' });
+        }
+        if (pg.list_complete || !pg.cursor) break;
+        cursor = pg.cursor;
+      }
+      return { cmd: "FEEDBACK", payload: { ok: true, count: out.length, feedback: out } };
+    }
+    case "LOGS": {
+      const lgTok = await getSecret(env, "cf_api_token");
+      const lgAcct = (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+      if (!lgTok) return { cmd: "LOGS", payload: { ok: false, error: "NO_CF_TOKEN", say: "No cf_api_token is stored, so the logs cannot be read." } };
+      const lgTz = (await env.AURA_KV.get("config:operator:tz").catch(() => null)) || "America/Los_Angeles";
+      const lgA = args.map((x) => String(x));
+      const lgTimes = lgA.filter((x) => /^\d{1,2}:\d{2}$/.test(x));
+      const lgRaw = lgA.some((x) => /^raw$/i.test(x));
+      const lgOnly = (lgA.find((x) => /^(core|think)$/i.test(x)) || "").toLowerCase();
+      const lgAll = lgA.some((x) => /^all$/i.test(x));
+      const lgTurns = lgA.some((x) => /^turns?$/i.test(x));
+      // ONE PERSON (2026-10-11, v9.567): a pta_ id keeps only lines naming them - every [TURN] line says who=.
+      const lgWho = lgA.find((x) => /^pta_[a-z0-9]+$/i.test(x)) || null;
+      let lgNoFilter = false;
+      // Routine platform entries (storage, KV, ledger, alarms) - dropped unless "all" is asked for.
+      const lgNoise = /durable_object_storage|durable_object_subrequest|\bkv_(get|put|list|delete)\b|ledger\/record|jsRpcCall|jsrpc OK|PublicEntry\.(jsrpc|ping)|alarm OK|scheduled OK|internal\/health|\bfetch 200$|\b(GET|POST) 200$|GMT\+0000 \(Coordinated Universal Time\)/;
+      // Wall-clock time in the operator's zone -> UTC ms, using the zone's own offset today.
+      const lgParts = (d) => { const o = {}; for (const p of new Intl.DateTimeFormat("en-US", { timeZone: lgTz, hourCycle: "h23",
+        year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(d)) o[p.type] = p.value; return o; };
+      const lgNow = new Date(), lgP = lgParts(lgNow);
+      // A DATE (2026-10-12, v9.570): "LOGS 2026-10-11 11:36 11:47" reads that day. Without one the times are
+      // today's - which is why a feedback link from yesterday came back empty this morning.
+      const lgDate = lgA.find((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+      if (lgDate) { const [dy, dm, dd] = lgDate.split("-"); lgP.year = dy; lgP.month = dm; lgP.day = dd; }
+      const lgAt = (hm) => {
+        const [h, mi] = hm.split(":").map(Number);
+        const guess = Date.UTC(+lgP.year, +lgP.month - 1, +lgP.day, h, mi, 0);
+        const g = lgParts(new Date(guess));
+        const seen = Date.UTC(+g.year, +g.month - 1, +g.day, +g.hour, +g.minute, +g.second);
+        return guess - (seen - guess);
+      };
+      let lgFrom, lgTo;
+      if (lgTimes.length >= 2) { lgFrom = lgAt(lgTimes[0]); lgTo = lgAt(lgTimes[1]) + 59999; }
+      else if (lgTimes.length === 1) { lgFrom = lgAt(lgTimes[0]); lgTo = lgFrom + 10 * 60000; }
+      else { lgTo = Date.now(); lgFrom = lgTo - 10 * 60000; }
+      if (!(lgTo > lgFrom)) return { cmd: "LOGS", payload: { ok: false, error: "BAD_WINDOW", say: "Give two times like LOGS 07:12 07:20." } };
+      const lgWorkers = [["core", "aura-core-v2"], ["think", "aura-think"]].filter((w) => !lgOnly || w[0] === lgOnly);
+      const lgFmt = (ms) => { const q = lgParts(new Date(ms)); return q.hour + ":" + q.minute + ":" + q.second + "." + String(ms % 1000).padStart(3, "0"); };
+      // The events array's exact nesting is not something to guess at - find the first array of
+      // objects that carry a timestamp, wherever Cloudflare put it.
+      const lgFindEvents = (o, depth = 0) => {
+        if (!o || depth > 6) return null;
+        if (Array.isArray(o)) { if (o.length && typeof o[0] === "object" && o[0] && ("timestamp" in o[0] || "$metadata" in o[0])) return o; for (const x of o) { const r = lgFindEvents(x, depth + 1); if (r) return r; } return null; }
+        if (typeof o === "object") for (const k of Object.keys(o)) { const r = lgFindEvents(o[k], depth + 1); if (r) return r; }
+        return null;
+      };
+      const lgLines = [], lgOut = {};
+      for (const [short, script] of lgWorkers) {
+        const body = { queryId: "aura-logs-" + Date.now(), timeframe: { from: lgFrom, to: lgTo }, view: "events", limit: 1000,
+          parameters: { filters: [{ key: "$workers.scriptName", operation: "eq", type: "string", value: script }].concat(lgTurns && !lgNoFilter ? [{ key: "$metadata.message", operation: "includes", type: "string", value: "[TURN" }] : []),
+                        filterCombination: "and", calculations: [], groupBys: [], limit: 1000 } };
+        let j = null, st = 0;
+        for (let lgTry = 0; lgTry < 2; lgTry++) {
+        try {
+          const r = await fetch("https://api.cloudflare.com/client/v4/accounts/" + lgAcct + "/workers/observability/telemetry/query",
+            { method: "POST", headers: { "Authorization": "Bearer " + lgTok, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          st = r.status; j = await r.json().catch(() => null);
+        } catch (e) { j = null; st = 0; }
+        // The [TURN] filter is asked of Cloudflare so noise cannot crowd it out of the 1,000. If
+        // Cloudflare will not take that filter, ask again without it and filter here instead.
+        if (lgTurns && !lgNoFilter && (!j || j.success === false || st >= 400) && st !== 401 && st !== 403) {
+          lgNoFilter = true; body.parameters.filters = body.parameters.filters.slice(0, 1); continue; }
+        break;
+        }
+        if (!j && !st) { lgOut[short] = { ok: false, error: "FETCH_FAILED" }; continue; }
+        if (!j || j.success === false || st >= 400) {
+          const errs = (j && j.errors) || [];
+          lgOut[short] = { ok: false, status: st, errors: errs.slice(0, 3),
+            say: st === 403 || st === 401 ? "The Cloudflare token cannot read logs - it needs the Workers Observability read permission added." : "Cloudflare refused the query - errors above." };
+          continue;
+        }
+        const ev = lgFindEvents(j.result || j) || [];
+        if (lgRaw) { lgOut[short] = { ok: true, events: ev.length, sample: JSON.stringify(ev[0] || j.result || j).slice(0, 3000) }; continue; }
+        lgOut[short] = { ok: true, events: ev.length, ...(lgTurns ? { turn_filter: lgNoFilter ? "here (Cloudflare refused it)" : "at Cloudflare" } : {}),
+          ...(ev.length >= 1000 ? { capped: true, say: "Cloudflare returned its 1,000-entry limit for " + short + " - only the newest part of the window came back. Use a shorter window." } : {}) };
+        for (const e of ev) {
+          const md = e.$metadata || {}, wk = e.$workers || {}, src = e.source;
+          const ts = Number(e.timestamp || md.timestamp || 0);
+          let msg = md.message || (src && typeof src === "object" ? (src.message || src.msg) : src) || "";
+          if (typeof msg !== "string") msg = JSON.stringify(msg);
+          const ev2 = wk.event || {};
+          const url = (ev2.request && ev2.request.url) || md.url || "";
+          const wall = wk.wallTimeMs != null ? " (" + wk.wallTimeMs + "ms)" : "";
+          const lvl = md.level && md.level !== "log" && md.level !== "info" ? " [" + String(md.level).toUpperCase() + "]" : "";
+          let text = msg || (url ? String(wk.eventType || "request") + " " + url : JSON.stringify(src || md).slice(0, 200));
+          text = String(text).replace(/\s+/g, " ").slice(0, 600);
+          if (!lgAll && lgNoise.test(text)) continue;
+          // THE WHOLE STORY OF A TURN (2026-10-12, v9.578, Aaron: "set up logs so we can see everything"): the turns
+          // view keeps every [TURN...] line - the turn itself, and [TURN:PICTURE] / [TURN:GO] / [TURN:LOCK] /
+          // [TURN:IDEAS] / [TURN:PICK] for what happened inside it.
+          if (lgTurns && !/^\[TURN/.test(text)) continue;
+          if (lgWho && !text.includes(lgWho)) continue;
+          lgLines.push({ t: ts, line: lgFmt(ts) + "  " + short.padEnd(5) + lvl + " " + text + wall });
+        }
+      }
+      lgLines.sort((a, b) => a.t - b.t);
+      return { cmd: "LOGS", payload: { ok: true, zone: lgTz, from: lgFmt(lgFrom), to: lgFmt(lgTo), workers: lgOut,
+        lines: lgLines.length, log: lgLines.map((x) => x.line),
+        note: lgLines.length >= 900 ? "Many lines - narrow the window to see all of it." : undefined } };
+    }
+
     case "DEPLOY_PAGE": {
       if (!env.AURA_OPS) return jsonReply({ ok: false, error: "AURA_OPS not bound" });
       const res = await env.AURA_OPS.fetch(new Request("https://aura-ops.aaronkaracas.workers.dev/", {
@@ -7013,6 +7233,55 @@ async function processCommand(line, env, isOp) {
               "the context and render set today - the rest are untouched and cost nothing." } };
     }
 
+    // ══ NEWEST — WHAT WAS DRAWN LATELY, BY CATEGORY AND SET (2026-10-04, v9.536, Aaron) ══════
+    // "Everything I've done in the last week… it's like 100 images, 120 images. Just help me
+    // organize it." The catalogue holds thousands of older tiles and nothing showed which sets
+    // are the recent work. Reads ONLY what WALK banks (`walk:count:<cat>`.kinds - one small read
+    // per category) - draws nothing, costs nothing. A category not walked since v9.536 has no
+    // dates yet and is named under `not_dated`; `RUN "WALK ALL"` fills them.
+    //   NEWEST          -> the last 7 days
+    //   NEWEST 14       -> the last 14 days
+    case "NEWEST": {
+      const daysN = Math.max(1, Math.min(365, parseInt(String(rest || "").trim(), 10) || 7));
+      const treeN = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeN) return { cmd: "NEWEST", payload: { ok: false, error: "NO_TREE" } };
+      const cutN = new Date(Date.now() - daysN * 86400000).toISOString().slice(0, 10);
+      const catsN = Object.keys(treeN.subjects || {});
+      const rowsN = [], undated = [];
+      await Promise.all(catsN.map(async (c) => {
+        const cnt = await env.AURA_KV.get("walk:count:" + tatSlug(c), "json").catch(() => null);
+        if (!cnt || !cnt.kinds) { undated.push(c); return; }
+        for (const k of Object.keys(cnt.kinds)) {
+          const kd = cnt.kinds[k] || {};
+          const n = Object.keys(kd.days || {}).filter((d) => d >= cutN)
+            .reduce((m, d) => m + (kd.days[d] || 0), 0);
+          if (n) rowsN.push({ category: c, set: k, new: n, of: kd.tiles || 0,
+                              newest: String(kd.newest || "").slice(0, 10),
+                              walked: String(cnt.at || "").slice(0, 10) });
+        }
+      }));
+      rowsN.sort((a, b) => (b.newest.localeCompare(a.newest)) || (b.new - a.new));
+      // Trend cards with their own list of sets (`trend:<card>`), so the list and what the cards
+      // open can be read side by side.
+      let trendsN = [];
+      try {
+        const lt = await env.AURA_KV.list({ prefix: "trend:", limit: 200 });
+        trendsN = await Promise.all((lt.keys || []).map(async (k) =>
+          k.name + " = " + String((await env.AURA_KV.get(k.name).catch(() => null)) || "")));
+      } catch {}
+      const byCat = {};
+      for (const r of rowsN) byCat[r.category] = (byCat[r.category] || 0) + r.new;
+      return { cmd: "NEWEST", payload: { ok: true, days: daysN, since: cutN,
+        tiles: rowsN.reduce((n, r) => n + r.new, 0), sets: rowsN.length,
+        by_category: Object.keys(byCat).sort((a, b) => byCat[b] - byCat[a]).map((c) => c + ": " + byCat[c]),
+        list: rowsN.map((r) => r.category + " > " + r.set + "  -  " + r.new + " new of " + r.of +
+                                 ", newest " + r.newest),
+        trend_cards: trendsN,
+        ...(undated.length ? { not_dated: undated,
+          what_to_do: 'RUN "WALK ALL" - these categories have not been walked since dates were banked' } : {}),
+        note: "Read from what WALK banked; nothing drawn. A set redrawn since its category was last walked shows after the next WALK." } };
+    }
+
     case "WALK": {
       const treeW = await env.AURA_KV.get("card:tree", "json").catch(() => null);
       if (!treeW) return { cmd: "WALK", payload: { ok: false, error: "NO_TREE" } };
@@ -7093,7 +7362,8 @@ async function processCommand(line, env, isOp) {
         const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
         if (!r) return null;
         const t = Date.parse(r.at || "");
-        return { url: tatFaceUrl(r), fresh: Number.isFinite(t) && (nowW - t) < freshMs };
+        return { url: tatFaceUrl(r), fresh: Number.isFinite(t) && (nowW - t) < freshMs,
+                 at: Number.isFinite(t) ? new Date(t).toISOString() : null };
       };
       // A leaf with a tile but no wall is a dead end on the third screen. That is the single
       // most useful thing this page reports and it cannot be read from any existing command.
@@ -7281,7 +7551,7 @@ async function processCommand(line, env, isOp) {
             }
             return { key: kn, step: bits[3] || "", path: bits.slice(4).join(":") || "bare", imgs };
           }));
-          return { name: n, url, fresh: !!(face && face.fresh), walls,
+          return { name: n, url, fresh: !!(face && face.fresh), at: (face && face.url && face.at) || null, walls,
             sets: recs.filter((x) => x.imgs.length), shots: keys.length, isKind: !sub.length };
         }));
         for (const g of got) items.push(g);
@@ -7295,7 +7565,18 @@ async function processCommand(line, env, isOp) {
             kStep[st.step] = (kStep[st.step] || 0) + st.imgs.length;
           }
         }
-        secs.push({ kind: k, leaves: sub.length, items, pics: kPics, byStep: kStep });
+        // ══ WHEN EACH SET WAS DRAWN (2026-10-04, v9.536, Aaron) ═══════════════════════════
+        // "Everything I've done in the last week I want to appear in the front." Every tile record
+        // already carries the day it was drawn; this walk reads every one of them anyway, so it
+        // banks per set the newest day and how many tiles were drawn on each day. The catalogue
+        // sorts sets by `newest` and NEWEST lists the recent days - both from this one banked read.
+        let kNew = null; const kDays = {};
+        for (const it of got) {
+          if (!it.url || !it.at) continue;
+          if (!kNew || it.at > kNew) kNew = it.at;
+          const d = it.at.slice(0, 10); kDays[d] = (kDays[d] || 0) + 1;
+        }
+        secs.push({ kind: k, leaves: sub.length, items, pics: kPics, byStep: kStep, newest: kNew, days: kDays });
       }
       const missing = secs.flatMap((s) => s.items.filter((i) => !i.url).map((i) => i.name));
       const noWall = secs.flatMap((s) => s.items.filter((i) => i.url && !i.walls.length && !i.shots).map((i) => i.name));
@@ -7464,7 +7745,8 @@ async function processCommand(line, env, isOp) {
       try {
         await env.AURA_KV.put("walk:count:" + tatSlug(catW), JSON.stringify({
           at: new Date().toISOString(), pics: picTotal, things: secs.reduce((n, x) => n + x.items.length, 0),
-          no_tile: missing.length, no_wall: noWall.length, tight: tightW }));
+          no_tile: missing.length, no_wall: noWall.length, tight: tightW,
+          kinds: Object.fromEntries(secs.map((x) => [x.kind, { newest: x.newest, days: x.days, tiles: x.items.filter((i) => i.url).length }])) }));
       } catch {}
       return { cmd: "WALK", payload: { ok: true,
         url: "https://auras.guide/walk/" + tatSlug(catW),
@@ -7789,6 +8071,17 @@ async function processCommand(line, env, isOp) {
     // PTA being destroyed twice by wipes, so this clears the tattoo state and nothing else. Without
     // CONFIRM it only reports what the person holds. An email is resolved the way sign-in resolves
     // it (the hashed identity index), so nobody has to find an id.
+    case "TATTOO_FILES": {
+      // `TATTOO_FILES <pta> <prj_id>` - the tattoo as My Tattoos sees it: locked, its pictures and its artist's files
+      // (v9.604, for the PowerShell test). Reads only; the same talkProject the page's project view uses.
+      if (!isOp) return { cmd: "TATTOO_FILES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tfA = String(rest || "").trim().split(/\s+/);
+      if (!/^pta_[a-z0-9]+$/i.test(tfA[0] || "") || !/^prj_[a-z0-9]{6,40}$/i.test(tfA[1] || ""))
+        return { cmd: "TATTOO_FILES", payload: { ok: false, error: "Usage: TATTOO_FILES <pta_id> <prj_id>" } };
+      let tfR = null; try { tfR = await talkDo(env, tfA[0], "talkProject", [tfA[1]]); } catch (e) { tfR = { ok: false, error: String(e?.message ?? e).slice(0, 200) }; }
+      return { cmd: "TATTOO_FILES", payload: tfR || { ok: false, error: "NOT_FOUND" } };
+    }
+
     case "TALK_RESET": {
       if (!isOp) return { cmd: "TALK_RESET", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const trRaw = String(rest || "").trim();
@@ -7871,8 +8164,16 @@ async function processCommand(line, env, isOp) {
         known: AURA_WORLDS.map(([, w]) => w),
         what_to_do: "WORLD must be one of the declared worlds - see AURA_WORLDS in aura-core." } };
       try {
+        // THE PAGE'S TAPS, FROM A TERMINAL (2026-10-14, v9.604): FRESH, LOCK (Finish Design), USE, OWN, PICK, INSPIRE and
+        // FROM <design> are the same flags the page sends, so a PowerShell test walks exactly the path a tap does.
+        const tkFlag = (w) => new RegExp("\\b" + w + "\\b").test(tkId);
+        const tkFrom = (tkId.match(/\bFROM\s+([a-z0-9_]+)/i) || [])[1] || null;
+        const tkT0 = Date.now();
         const tkOut = await auraTalk(env, tkPta, /^pta_/.test(tkPta) ? "pta" : "contacted",
-                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef, world: tkWorld, tile: tkTile });
+                                     tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef, world: tkWorld, tile: tkTile,
+                                       fresh: tkFlag("FRESH"), lock: tkFlag("LOCK"), use: tkFlag("USE"), own: tkFlag("OWN"),
+                                       pick: tkFlag("PICK"), inspire: tkFlag("INSPIRE"), from: tkFrom });
+        if (tkOut && typeof tkOut === "object") tkOut.turn_seconds = Math.round((Date.now() - tkT0) / 100) / 10;
         return { cmd: "TALK", payload: { ...tkOut, pta: tkPta,
                  stage: /^pta_/.test(tkPta) ? "pta" : "contacted",
                  book: "closed",
@@ -9832,11 +10133,14 @@ async function processCommand(line, env, isOp) {
     // brief on their PTA, never typed - which is also how Grok's own pack was ordered.
     case "PRINT": {
       if (!isOp) return { cmd: "PRINT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const prm = String(rest || "").trim().match(/^(\S+)\s+([\d.]+)\s*(?:in|")?\s*(pta_[A-Za-z0-9]+)?$/i);
+      // `long` (2026-10-05, v9.537): the inches are the LONGEST side, not the height - the standard
+      // default. Without it, the inches are the finished height, exactly as before.
+      const prm = String(rest || "").trim().match(/^(\S+)\s+([\d.]+)\s*(?:in|")?\s*(long)?\s*(pta_[A-Za-z0-9]+)?$/i);
       if (!prm) return { cmd: "PRINT", payload: { ok: false,
-        error: 'Usage: PRINT <design or image id> <inches> [<pta>]',
+        error: 'Usage: PRINT <design or image id> <inches> [long] [<pta>]',
         note: "Inches is the FINISHED HEIGHT on the body - what the artist measured." } };
-      const pId = prm[1], pIn = parseFloat(prm[2]), pPta = prm[3] || null;
+      const pId = prm[1], pLong = !!prm[3], pPta = prm[4] || null;
+      let pIn = parseFloat(prm[2]);
       if (!(pIn > 0 && pIn <= 60)) return { cmd: "PRINT", payload: { ok: false,
         error: "inches must be between 0 and 60" } };
       if (!env.BROWSER) return { cmd: "PRINT", payload: { ok: false,
@@ -9905,7 +10209,7 @@ async function processCommand(line, env, isOp) {
       const OVERLAP_IN = 0.5;
       let STEP_IN = PAGE_IN - OVERLAP_IN;
 
-      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null, pDpi = 0, pOrient = "portrait";
+      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null, pDpi = 0, pOrient = "portrait", pVec = null, pVecW = 0, pVecPx = null;
       try {
         const srcArr = Uint8Array.from(atob(pB64), (c) => c.charCodeAt(0));
         const im0 = PhotonImage.new_from_byteslice(srcArr);
@@ -9930,6 +10234,17 @@ async function processCommand(line, env, isOp) {
         const inked = photonCrop(im0, x1, y1, x2 + 1, y2 + 1);
         try { im0.free(); } catch {}
         const W = inked.get_width(), H = inked.get_height();
+        // Longest side asked for and the piece is wider than tall: the height that makes the width it.
+        if (pLong && W > H) pIn = Math.round((pIn * H / W) * 100) / 100;
+        // VECTOR FIRST: the line art traced to outlines prints sharp at any height, so the pixel
+        // ceiling below no longer applies. If tracing fails, everything below runs as it always has.
+        try {
+          pVecW = W;
+          const _svg = __auraTracer.traceRGBA(W, H, inked.get_raw_pixels(), { threshold: 128, turdSize: 2, optTolerance: 0.2 });
+          const _inner = String(_svg || "").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
+          if (_inner && /<path/.test(_inner)) pVec = _inner;
+          console.log("[PRINT] traced to vector: " + (pVec ? pVec.length + " chars" : "nothing usable"));
+        } catch (e) { console.log("[PRINT] trace failed, printing pixels: " + String(e && e.message || e).slice(0, 160)); }
 
         const MIN_DPI = 150;   // the floor below which linework stops burning cleanly
         // THE PAGE TURNS IF THE PIECE PRINTS BIGGER THAT WAY. Portrait gives 7.5 x 10, landscape
@@ -9937,7 +10252,8 @@ async function processCommand(line, env, isOp) {
         // and the bigger of the two wins. A tall sleeve keeps portrait; a near-square back piece
         // gets landscape and three inches it was losing to the margin.
         const fitFor = (wIn, hIn) => {
-          const byDpi = H / MIN_DPI;                 // as tall as the pixels allow
+          if (pVec) return pIn;   // traced: neither the pixels nor the paper width limit it - wide pieces tile across too
+          const byDpi = pVec ? Infinity : H / MIN_DPI;   // as tall as the pixels allow - no limit once traced
           const byWide = (wIn * H) / W;              // as tall as the paper allows
           return Math.min(pIn, byDpi, byWide);
         };
@@ -9964,7 +10280,7 @@ async function processCommand(line, env, isOp) {
         // Lost when the cap block was rewritten for orientation: the reply and the job sheet both
         // printed "0 DPI". A number nobody set is worse than no number, and this file has spent a
         // day on fields that reported something other than the fact.
-        pDpi = Math.round(pxPerIn);
+        pDpi = pVec ? 0 : Math.round(pxPerIn);
         const winPx = Math.max(1, Math.round(PAGE_IN * pxPerIn));
         const stepPx = Math.max(1, Math.round(STEP_IN * pxPerIn));
         const nPages = H <= winPx ? 1 : Math.ceil((H - winPx) / stepPx) + 1;
@@ -9980,6 +10296,43 @@ async function processCommand(line, env, isOp) {
           // repeated on the sheet before it.
           if ((bot - top) / pxPerIn < OVERLAP_IN + 0.05) break;
           if (bot - top < 2) break;
+          if (pVec) {
+            // A piece wider than the paper tiles across as well as down, with the same overlap.
+            const _wWin = Math.max(1, Math.round(WIDE_IN * pxPerIn));
+            const _wStep = Math.max(1, Math.round((WIDE_IN - OVERLAP_IN) * pxPerIn));
+            const _nCols = W <= _wWin ? 1 : Math.ceil((W - _wWin) / _wStep) + 1;
+            if (!pVecPx) pVecPx = inked.get_raw_pixels();
+            // A tile with no ink is a sheet of blank paper - left out. Its neighbours still overlap it.
+            const _inked = (x0, y0, x1, y1) => {
+              for (let y = y0; y < Math.min(y1, H); y += 2)
+                for (let x = x0; x < Math.min(x1, W); x += 2) {
+                  const o = (y * W + x) * 4;
+                  if (pVecPx[o] < 128 || pVecPx[o + 1] < 128 || pVecPx[o + 2] < 128) return true;
+                }
+              return false;
+            };
+            for (let c = 0; c < _nCols; c++) {
+              const _l = Math.min(c * _wStep, Math.max(0, W - 1));
+              const _r = Math.min(_l + _wWin, W);
+              if (c > 0 && (_r - _l) / pxPerIn < OVERLAP_IN + 0.05) break;
+              if (!_inked(_l, top, _r, bot)) continue;
+              // Every tile is the full page window, blank past the edge of the art, so the sheets line
+              // up when laid edge to edge - a narrower tile would be centred and break the overlap.
+              // ══ ONE SHEET IS CENTRED (2026-10-09, Aaron) ═══════════════════════════════════════
+              // A piece that fits on one sheet was still given the full page window, so it printed
+              // against the top-left corner with the rest of the box blank. When there is only one
+              // tile, the box is the artwork itself and the sheet's flex centre puts it in the middle.
+              // More than one sheet keeps the full window, so the overlaps still line up.
+              if (nPages === 1 && _nCols === 1) {
+                pSlices.push({ vec: { x: 0, y: 0, w: W, h: H }, inches: Math.min(H / pxPerIn, PAGE_IN - 0.02),
+                               row: 1, col: 1, cols: 1 });
+                continue;
+              }
+              pSlices.push({ vec: { x: _l, y: top, w: _wWin, h: winPx }, inches: Math.min(winPx / pxPerIn, PAGE_IN - 0.02),   // a hair under the page, or rounding spills a blank sheet
+                             row: i + 1, col: c + 1, cols: _nCols });
+            }
+            continue;
+          }
           const sl = photonCrop(inked, 0, top, W, bot);
           const bts = sl.get_bytes();
           let t = "";
@@ -10012,11 +10365,14 @@ async function processCommand(line, env, isOp) {
         // what was asked for.
         row("Finished height", pTallIn.toFixed(1) + " in" +
             (pFitted ? "  (asked for " + pIn + " in - see below)" : "")) +
-        row("Resolution", pDpi + " DPI") +
+        row("Resolution", pVec ? "vector - sharp at any size" : pDpi + " DPI") +
         row("Paper", pOrient === "landscape" ? "letter, LANDSCAPE" : "letter, portrait") +
         row("Sheets", pPages > 1
-              ? pPages + ", in order after this page - overlap " + OVERLAP_IN +
-                " in, trim on the repeat and butt them together"
+              ? pPages + ", in order after this page" +
+                ((pSlices[0] && pSlices[0].cols > 1)
+                  ? " - " + pSlices[0].cols + " across each row, left to right, rows top to bottom"
+                  : "") +
+                " - overlap " + OVERLAP_IN + " in, trim on the repeat and butt them together"
               : "1") +
         (pFitted ? row("Why not " + pIn + " in", pFitted.why || pFitted.also || "") : "") +
         row("Design", pId) +
@@ -10034,8 +10390,12 @@ async function processCommand(line, env, isOp) {
         // It comes off entirely rather than moving. The artwork page carries NOTHING but artwork -
         // that is the rule this file already states, because that page goes onto transfer paper -
         // and the job sheet on page 1 already says how many sheets there are and in what order.
-        pArt += '<div class=art><img style="height:' + pSlices[i].inches.toFixed(3) +
-                'in" src="data:image/png;base64,' + pSlices[i].b64 + '"></div>';
+        pArt += pSlices[i].vec
+          ? '<div class=art><svg xmlns="http://www.w3.org/2000/svg" viewBox="' + pSlices[i].vec.x + ' ' + pSlices[i].vec.y + ' ' +
+            pSlices[i].vec.w + ' ' + pSlices[i].vec.h + '" style="height:' + pSlices[i].inches.toFixed(3) + 'in;width:' +
+            (pSlices[i].vec.w / pSlices[i].vec.h * pSlices[i].inches).toFixed(3) + 'in"><use href="#aura-art"/></svg></div>'
+          : '<div class=art><img style="height:' + pSlices[i].inches.toFixed(3) +
+            'in" src="data:image/png;base64,' + pSlices[i].b64 + '"></div>';
       }
 
       const html =
@@ -10065,7 +10425,7 @@ async function processCommand(line, env, isOp) {
         ".art { break-before:page; page-break-before:always; break-inside:avoid; " +
           "page-break-inside:avoid; height:" + PAGE_IN + "in; display:flex; " +
           "align-items:center; justify-content:center; line-height:0; }" +
-        ".art img { display:block; width:auto; margin:0; }" +
+        ".art img, .art svg { display:block; margin:0; } .art img { width:auto; }" +
         ".tag { text-align:right; font:8pt sans-serif; color:#999; }" +
         "</style></head><body>" +
         "<h1>" + esc((pB && pB.subject) || pSubject || "Tattoo design") + "</h1>" +
@@ -10073,6 +10433,9 @@ async function processCommand(line, env, isOp) {
         (pPages > 1 ? " " + pPages + " sheets, " + OVERLAP_IN +
           "in of overlap - trim on the overlap and butt them together." : "") + "</p>" +
         "<table>" + facts + "</table>" +
+        // The traced outline is written ONCE and every sheet shows its own window of it.
+        (pVec ? '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute">' +
+                '<defs><g id="aura-art">' + pVec + '</g></defs></svg>' : "") +
         pArt +
         "</body></html>";
 
@@ -10096,7 +10459,7 @@ async function processCommand(line, env, isOp) {
       const pHost = await imageHost(env);
       return { cmd: "PRINT", payload: { ok: true, doc: docId,
         pdf: "https://" + pHost + "/doc/" + docId,
-        inches: Number(pTallIn.toFixed(2)), wide_in: Number(pWideIn.toFixed(2)), dpi: pDpi,
+        inches: Number(pTallIn.toFixed(2)), wide_in: Number(pWideIn.toFixed(2)), dpi: pDpi, vector: !!pVec,
         sheets: pPages, overlap_in: pPages > 1 ? OVERLAP_IN : 0, orientation: pOrient,
         // Named for what fired. It was called `fitted_to_page_width` while the thing that
         // tripped was the DPI ceiling - a flag that misreports which limit stopped you is only
@@ -10105,7 +10468,7 @@ async function processCommand(line, env, isOp) {
         from: pId, artwork: pUrl, bytes: pdfArr.length,
         cost_usd: 0,
         note: "Page 1 is the job sheet. The artwork is on its own pages at " +
-              pTallIn.toFixed(1) + " inches at " + pDpi + " DPI - nothing else is on them, " +
+              pTallIn.toFixed(1) + " inches " + (pVec ? "as vector lines" : "at " + pDpi + " DPI") + " - nothing else is on them, " +
               "because that is what gets burned." } };
     }
 
@@ -13234,16 +13597,39 @@ async function successionGate(env) {
       if (thKey && thKey.trim().charAt(0) === String.fromCharCode(123)) { try { thKey = JSON.parse(thKey).api_key; } catch {} }
       if (!thKey) return { cmd: "THREAD", payload: { ok: false, error: "no provider key" } };
       const thImg = /^https?:\/\//i.test(thArg) ? thArg : ("https://" + (await imageHost(env)) + "/image/" + thArg);
+      // A START WITH NO PICTURE (v9.625, 2026-10-16, Aaron): a new tattoo has nothing to start from. `THREAD START NONE {...}`
+      // sends the words alone; the chat model writes its brief and draws.
+      const thNoImg = thMode === "START" && /^none$/i.test(thArg);
+      // THE SAME PICTURE SETTINGS AS THE APP (v9.594, Aaron): the first OpenAI run left quality to OpenAI and
+      // it drew at its own (higher) quality, far above the app's ~1 cent. The tool now gets the app's own
+      // image model (`config:edit:model`) and quality (`config:edit:quality`) - the dials every edit uses.
+      const thImgModel = thOA ? String((await env.AURA_KV.get("config:edit:model").catch(() => null)) || "").trim() : "";
+      const thQual = thOA ? String((await env.AURA_KV.get("config:edit:quality").catch(() => null)) || "").trim().toLowerCase() : "";
+      // ITS OWN SIZE (v9.595, Aaron): nothing named a size, so OpenAI chose 1254x1254 every time - four ideas and
+      // their captions in ~627 pixels each, too small to read. A setting, `config:edit:thread:size` (default
+      // "1920x1920": the same square shape the model picked, at the largest size `config:edit:maxpx` allows).
+      let thSize = "1920x1920";
+      try { const _k = String((await env.AURA_KV.get("config:edit:thread:size")) || "").trim(); if (/^(\d{3,4}x\d{3,4}|auto)$/.test(_k)) thSize = _k; } catch {}
+      // A CALLER MAY NAME ITS SIZE (v9.606): the new-tattoo four-card page is tall (config:edit:new:size); every other
+      // caller names none and keeps the setting above.
+      if (thP && /^(\d{3,4}x\d{3,4}|auto)$/.test(String(thP.size || ""))) thSize = String(thP.size);
+      // MORE THAN ONE PICTURE, IN THE ORDER GIVEN (v9.615, Aaron): the way he asks ChatGPT - his tattoo, then his photo.
+      const thImgs = (thP && Array.isArray(thP.images)) ? thP.images.filter((u) => /^https?:\/\//i.test(String(u || ""))).slice(0, 4) : [];
+      const thTool = (action) => ({ type: "image_generation", action, ...(thOA && thSize ? { size: thSize } : {}),
+        ...(thImgModel && /^gpt-image/i.test(thImgModel) ? { model: thImgModel } : {}),
+        ...(["low", "medium", "high", "auto"].includes(thQual) ? { quality: thQual } : {}) });
       const thBody = thMode === "START"
         // A STEP ALWAYS DRAWS (2026-09-21, design engine rule 5). MEASURED: "I'm thinking of coloring the
         // entire tattoo in" and then "I love your ideas show me what that would look like" both came
         // back as talk with no picture (`calls: 0`) - the conversation model judged for itself whether
         // to call its image tool. In this design Aura decides WHEN; once a function runs, a picture
         // comes back. `tool_choice: "required"` makes the one tool offered - the image tool - mandatory.
-        ? { model: thModel, tools: [{ type: "image_generation", action: "edit" }], tool_choice: "required",
-            input: [{ role: "user", content: [{ type: "input_text", text: thAsk },
-                                              { type: "input_image", image_url: thImg }] }] }
-        : { model: thModel, tools: [{ type: "image_generation", action: thAction }], tool_choice: "required",
+        // THE FIRST STEP MAY BE ASKED FOR "auto" (v9.593, Aaron): OpenAI's own default, and the way ChatGPT uses the
+        // tool - the model chooses to edit the photo or draw a new one. Unasked, it is still an edit, as before.
+        ? { model: thModel, tools: [thTool((thP && ["edit", "generate", "auto"].includes(String(thP.action || "").toLowerCase())) ? String(thP.action).toLowerCase() : "edit")], tool_choice: "required",
+            input: [{ role: "user", content: [{ type: "input_text", text: thAsk }].concat(
+                                              (thImgs.length ? thImgs : (thNoImg ? [] : [thImg])).map((u) => ({ type: "input_image", image_url: u }))) }] }
+        : { model: thModel, tools: [thTool(thAction)], tool_choice: "required",
             previous_response_id: thArg, input: thAsk };
       try {
         const thR = await pfetch(env, thOA ? "openai" : "xai", "core:thread",
@@ -13259,6 +13645,23 @@ async function successionGate(env) {
         const thText = thOut.filter((o) => o && o.type === "message")
           .flatMap((o) => Array.isArray(o.content) ? o.content : [])
           .map((c) => (c && (c.text || c.output_text)) || "").filter(Boolean).join("\n").trim();
+        // THE PICTURES GO ON THE METER (v9.594). OpenAI's reply carries the chat model's usage only - the image
+        // tool's charge is not in it, so the meter saw the chat step and not the picture. Each picture is priced
+        // from the shared per-image table at the quality it was drawn at, and added as cost only (pfetch has
+        // already counted the request).
+        let thImgCost = null;
+        if (thOA && thCalls.length) {
+          const _m = thImgModel || "gpt-image-2";
+          const _k = Object.keys(IMAGE_RATE_PER_IMAGE).find((k) => _m.toLowerCase().startsWith(k));
+          thImgCost = 0;
+          for (const c of thCalls) {
+            const q = String(c.quality || thQual || "medium").toLowerCase();
+            thImgCost += _k ? (IMAGE_RATE_PER_IMAGE[_k][q] ?? IMAGE_RATE_PER_IMAGE[_k].medium ?? 0) : 0;
+          }
+          thImgCost = +thImgCost.toFixed(6);
+          try { await _egressCore(env, { provider: "openai", caller: "core:thread", model: _m,
+            endpoint: "https://image/" + _m, status: 200, usage: null, cost_usd: thImgCost, cost_only: true }); } catch {}
+        }
         let thUrl = null, thId = null;
         if (thLast) {
           const b64 = String(thLast.result).replace(/^data:[^,]+,/, "");
@@ -13274,6 +13677,9 @@ async function successionGate(env) {
           tool_prompt: (thLast && (thLast.prompt || thLast.revised_prompt)) || null,
           edited: !!(thLast && /^ie_/.test(String(thLast.id || ""))), calls: thCalls.length,
           model: thModel, usage: thD.usage || null,
+          image_model: thImgModel || null, quality_asked: thQual || null,
+          quality_drawn: (thLast && thLast.quality) || null, size_drawn: (thLast && thLast.size) || null, size_asked: thOA ? thSize : null,
+          image_cost_usd: thImgCost, image_cost_source: thImgCost != null ? "per-image table at the quality drawn (inferred)" : null,
           // xAI reports its own charge in ticks of 1e-10 USD; read as dollars so a step's cost is exact.
           cost_usd: (thD.usage && thD.usage.cost_in_usd_ticks != null) ? thD.usage.cost_in_usd_ticks / 1e10 : null,
           ...(thMode === "NEXT" ? { action_asked: thAction } : {}),
@@ -13283,6 +13689,19 @@ async function successionGate(env) {
       }
     }
 
+    case "CUT_PANEL": {
+      // CUT_PANEL <picture url | img_ id | pta_ id> <1-4> - cut one design out of a four sheet (v9.617). With a pta_ id, the
+      // newest four sheet on that person's conversation is used.
+      let cpSrc = String(args[0] || "").trim(); const cpN = Number(args[1] || 0);
+      if (/^pta_[a-z0-9]+$/i.test(cpSrc)) {
+        let tl = []; try { tl = talkParse((await talkStateGet(env, cpSrc, ["timeline"])).timeline) || []; } catch {}
+        let hit = null;
+        for (let i = tl.length - 1; i >= 0; i--) { const e = tl[i]; if (e && e.role === "picture" && e.image && (e.grid === true || /2\s*(?:by|x)\s*2\s+grid/i.test(String(e.words || "")))) { hit = e; break; } }
+        if (!hit) return { cmd: "CUT_PANEL", payload: { ok: false, error: "no four sheet on " + cpSrc } };
+        cpSrc = hit.image;
+      }
+      return { cmd: "CUT_PANEL", payload: await cutPanel(env, cpSrc, cpN) };
+    }
     case "GETKV": {
       const key = args[0] || "";
       if (!key) return { cmd: "GETKV", payload: { ok: false, error: "BAD_KEY" } };
@@ -19335,6 +19754,36 @@ async function successionGate(env) {
         // A seed makes several versions of one edit distinct asks, so the image cache does not hand
         // back the same picture three times. xAI takes no seed; it is part of the cache key only.
         const evSeed = Number.isInteger(p.seed) ? p.seed : null;
+        // ══ THE CHATGPT WAY, FOR ONE CALL (2026-10-13, v9.596, Aaron) ══════════════════════════════
+        // `via: "thread"` sends the parent picture and the words to a chat model with the image tool
+        // (THREAD START - provider and model are the `config:source:image_thread:*` dials). The chat model
+        // looks at the photo and writes the image model its own brief, as ChatGPT does. PROVEN by command
+        // on the chest and the guitar (img_mv7b3ytxliyu, img_mv7bz95e6ca2): four different subjects on their
+        // own body, their tattoo kept, captions readable at 1920. The picture lands exactly where an evolve
+        // lands - a child of the parent in the Smart File graph - so everything after it works unchanged.
+        if (p.via === "thread" && parentUrl) {
+          // v9.609: a copy small enough to download in time, and one more try if the picture does not come back.
+          const _sendUrl = await sendCopy(env, parentUrl);
+          let tp = null;
+          for (let _t = 0; _t < 2; _t++) {
+            const tr = await processCommand("THREAD START " + _sendUrl + " " + JSON.stringify({ prompt: p.prompt, action: "auto",
+              ...(/^\d{3,4}x\d{3,4}$/.test(String(p.size || "")) ? { size: String(p.size) } : {}) }), env, true);
+            tp = (tr && tr.payload) ? tr.payload : tr;
+            if (tp && tp.ok && tp.image) break;
+            try { console.log("[THREAD] attempt " + (_t + 1) + " drew nothing: " + String((tp && tp.error) || "no answer").replace(/\s+/g, " ").slice(0, 200)); } catch {}
+          }
+          if (!tp || !tp.ok || !tp.image) return { cmd: "IMAGE", payload: { ok: false, error: (tp && tp.error) || "the chat model drew no picture", via: "thread" } };
+          const reg = await registerSmartFile(env, { id: tp.image_id, filetype: "image", name: String(p.prompt).slice(0, 80),
+            url: tp.image, subject: p.prompt, source: "image_thread", creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null,
+            parent: ent.id, context: p.prompt, access: "public" });
+          await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `Spawned a new version: ${p.prompt}`, kind: "spawned_child" });
+          return { cmd: "IMAGE", payload: { ok: true, parent: ent.id, child: (reg && reg.entity_id) || null, child_image_id: tp.image_id,
+            image_url: tp.image, evolved_with: p.prompt, via: "thread", brief: tp.tool_prompt || null, said: tp.said || null,
+            pictures_drawn: tp.calls, model: tp.model || null, image_model: tp.image_model || null,
+            quality: tp.quality_drawn || tp.quality_asked || null, size: tp.size_asked || null,
+            cost_usd: tp.image_cost_usd, cost_note: "picture only - the chat step is on the meter under core:thread",
+            sent_the_parent: true } };
+        }
         const r = parentUrl
           ? await showIt(p.prompt, env, { source: evAs, parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt,
@@ -19397,6 +19846,8 @@ async function successionGate(env) {
       let subject = after, ctx = null, nm = null, viaP = null, hostP = null;
       let refsP = null, rawP = false, parentP = null, creatorP = null;
       let aspP = null, resP = null, modelP = null, srcP = null, maskP = null;
+      // EXACT SIZE AND SEED (v9.605): only a caller that names them gets them - today only the new-tattoo four.
+      let wP = null, hP = null, seedP = null;
       if (/^\s*\{/.test(after)) {
         try {
           const p = JSON.parse(after);
@@ -19425,6 +19876,8 @@ async function successionGate(env) {
             // job keeps it; anything unnamed is still "show_it_cmd".
             srcP = (typeof p.source === "string" && /^[a-z_]{2,40}$/.test(p.source.trim())) ? p.source.trim() : null;
             maskP = (typeof p.mask === "string" && /^https:\/\//i.test(p.mask.trim())) ? p.mask.trim() : null;
+            if (Number.isInteger(p.width) && Number.isInteger(p.height) && p.exact_size === true) { wP = p.width; hP = p.height; }
+            if (Number.isInteger(p.seed)) seedP = p.seed;
           }
         } catch (e) {}
       }
@@ -19445,7 +19898,8 @@ async function successionGate(env) {
       const r = await showIt(subject, env, { source: srcP || "show_it_cmd", context: ctx || subject, name: nm,
         via: viaP, host: hostP, refs: refsP || undefined, raw: rawP, parent: parentP, creator: creatorP,
         ...(aspP ? { aspect: aspP } : {}), ...(resP ? { res: resP } : {}),
-        ...(modelP ? { model: modelP } : {}), ...(maskP ? { mask: maskP } : {}) });
+        ...(modelP ? { model: modelP } : {}), ...(maskP ? { mask: maskP } : {}),
+        ...(wP && hP ? { width: wP, height: hP, exactSize: true } : {}), ...(seedP != null ? { seed: seedP } : {}) });
       return { cmd: "SHOW_IT", payload: r };
     }
 
@@ -57477,15 +57931,21 @@ async function seeMedia(opts, env) {
     // parts in a messages array - a third shape again, and the reason this branching is here
     // rather than in every caller.
     // Needs a ONE-TIME licence acceptance on the account before it will answer at all.
-    if (/^@cf\/.*vision|llama-4|gemma|mistral-small|kimi/i.test(model)) {
+    // glm (her own model) is a messages-shape model too (2026-10-03, v9.519) - without it, SEE sent it
+    // the llava byte-array shape and always came back SAW_NOTHING. And always BYTES, as the note above
+    // says for every model: the link branch here was the one place a URL was still handed over.
+    if (/^@cf\/.*vision|llama-4|gemma|mistral-small|kimi|glm/i.test(model)) {
+      const _mt = (bytes[0] === 0x89 && bytes[1] === 0x50) ? "image/png" : (bytes[0] === 0xff && bytes[1] === 0xd8) ? "image/jpeg"
+               : (bytes[0] === 0x52 && bytes[1] === 0x49) ? "image/webp" : (o.media_type || "image/jpeg");
       const vr = await env.AI.run(model, { max_tokens: cap, messages: [{ role: "user", content: [
-        { type: "image_url", image_url: { url: o.url && /^https:\/\//i.test(String(o.url))
-            ? String(o.url)
-            : (() => { let bin = ""; for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
-                       return "data:" + (o.media_type || "image/jpeg") + ";base64," + btoa(bin); })() } },
+        { type: "image_url", image_url: { url: (() => { let bin = ""; for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+                       return "data:" + _mt + ";base64," + btoa(bin); })() } },
         { type: "text", text: prompt } ] }] });
-      const saw = String(vr?.response || vr?.description || "").trim();
-      if (!saw) return { ok: false, error: "SAW_NOTHING", model, bytes: bytes.length, ms: Date.now() - t0 };
+      const saw = String(vr?.response || vr?.description || vr?.choices?.[0]?.message?.content || "").trim();
+      const _u = vr?.usage || vr?.choices?.[0]?.usage || null;
+      if (saw) return { ok: true, saw, model, bytes: bytes.length, media: _mt,
+                        tokens_in: _u ? (_u.prompt_tokens ?? _u.input_tokens ?? null) : null, ms: Date.now() - t0 };
+      if (!saw) return { ok: false, error: "SAW_NOTHING", model, bytes: bytes.length, got_sample: JSON.stringify(vr || {}).slice(0, 300), ms: Date.now() - t0 };
       return { ok: true, saw, model, bytes: bytes.length, ms: Date.now() - t0 };
     }
 
@@ -58580,6 +59040,19 @@ async function tatFrameFor(env, kind, leaf, step) {
   const stripCrop = (fr) => String(fr || "").replace(
     /^,\s*(the face filling the frame[^.]*|full body|head only[^.]*|the complete figure[^.]*)\s*(?=[,.]|$)/i, "");
   const forStep = (fr) => (String(step || "") === "crop" ? (bare || stripCrop(fr)) : fr);
+  // ══ A CATEGORY MAY CARRY ITS OWN ENDING (2026-10-04, v9.535, Aaron) ═══════════════════════════
+  // Every tile ends with one fixed ending, and the shape ending says "no letters, no words" - right
+  // for a dragon, wrong for Lettering & Quotes, where the words ARE the tattoo. `frame:category:<slug>`
+  // (same `{leaf}` convention as `frame:shape`) replaces the ending for every tile under that
+  // category, whichever level the leaf sits at. Unset - every category today - nothing changes.
+  {
+    await climb();
+    for (const c of [cat, owner]) {
+      if (!c) continue;
+      const cf = await get("frame:category:" + tatSlug(c));
+      if (cf && String(cf).trim()) return forStep(String(cf).replace(/\{leaf\}/g, leaf));
+    }
+  }
   if (isRept === true || (isRept === null && (TAT_REPTILE_KIND.test(kind) || TAT_REPTILE_KIND.test(kSing))))
     return forStep(rf || TAT_FRAME_REPTILE);
   if (isPhot === true || (isPhot === null && (TAT_PHOTO_KIND.test(kind) || TAT_PHOTO_KIND.test(kSing))))
@@ -59266,6 +59739,22 @@ async function splitCardLeft(env, url, onlyWide) {
   if (onlyWide && W < H * 1.2) { try { im.free(); } catch {} return null; }
   const xmax = Math.max(1, Math.floor(W / 2) - Math.round(W * 0.01));
   const px = im.get_raw_pixels();
+  // ══ WIDE IS NOT ENOUGH - THE RIGHT HALF HAS TO BE A BODY (2026-10-07, v9.539, Aaron) ═════════
+  // MEASURED: an edit came back wide (1536x1024) as plain flat artwork, centred on white, with no
+  // body half at all. "Wide" said split, so it was cut down the middle and the artist got half a
+  // design. A real split card's right half is a photograph - skin, clothes, grey backdrop - and
+  // almost none of it is paper white. If most of the right half is white, it is not a split card.
+  if (onlyWide) {
+    const xr = Math.min(W - 1, Math.floor(W / 2) + Math.round(W * 0.01));
+    let tot = 0, wht = 0;
+    for (let y = 0; y < H; y += 4) {
+      for (let x = xr; x < W; x += 4) {
+        const o = (y * W + x) * 4; tot++;
+        if (px[o] >= 235 && px[o + 1] >= 235 && px[o + 2] >= 235) wht++;
+      }
+    }
+    if (tot && wht / tot > 0.6) { try { im.free(); } catch {} return null; }
+  }
   let x1 = xmax, y1 = H, x2 = -1, y2 = -1;
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < xmax; x++) {
@@ -59291,6 +59780,328 @@ async function splitCardLeft(env, url, onlyWide) {
   const out = "https://" + (await imageHost(env)) + "/image/" + nid;
   await env.AURA_KV.put("splitcut:" + id, out).catch(() => {});
   return out;
+}
+
+// ══ ONE OF THE FOUR, CUT BY HAND (v9.617, 2026-10-15, Aaron) ═════════════════════════════════════════════
+// "Is there a way we can manually chop the grid and just take out the piece we wanted... our grids are always identical."
+// The four come back as one 2x2 sheet; each panel is the art on white over a black strip (number, title, two lines).
+// Panel n (1-4) is cut straight out of the stored pixels in this worker - no image model, no cost, never different from
+// what they chose: its quarter with a 1.5% trim (the dividers are not exactly on the halfway lines), the art above the
+// black strip only, trimmed to the ink with a little white around it. Same tools as the split-card cut above.
+async function cutPanel(env, url, n) {
+  const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
+  if (!id || ![1, 2, 3, 4].includes(Number(n))) return { ok: false, error: "need a picture and a number 1-4" };
+  n = Number(n);
+  const was = await env.AURA_KV.get("panelcut5:" + id + ":" + n).catch(() => null);
+  if (was) { try { return JSON.parse(was); } catch {} }
+  const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+  if (!b64) return { ok: false, error: "picture not found: " + id };
+  const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+  const W = im.get_width(), H = im.get_height();
+  // Only a tall page of four phone-shaped cards (9:16) is cut; anything else is not ours to chop.
+  if (Math.abs(W / H - 0.5625) > 0.03) { try { im.free(); } catch {} return { ok: false, error: "not a four-card sheet (" + W + "x" + H + ")" }; }
+  const px = im.get_raw_pixels();
+  const col = (n - 1) % 2, row = Math.floor((n - 1) / 2), qw = W / 2, qh = H / 2;
+  // THE CARD, NOT THE STRIP (v9.619, 2026-10-15, Aaron). MEASURED 18:31 on img_mvaa8xlyn7d5: the white title and
+  // description words inside the black strip made it look like the strip ended half way, so designs 3 and 4 started
+  // in the middle of the words above them ("Futuristic chrome... liquid light portal" across the top of the bridge).
+  // Every design sits on its own white card; the words are always on black. So we find the white card and keep only
+  // what is inside it - the words can never get in, however they are laid out. Proven on that sheet: all four whole.
+  const isBlk = (o) => px[o] < 70 && px[o + 1] < 70 && px[o + 2] < 70;
+  const isWh = (o) => px[o] > 235 && px[o + 1] > 235 && px[o + 2] > 235;
+  let mid = Math.round(qw);
+  { let best = -1, bestScore = 0.6;
+    for (let x = Math.round(qw - W * 0.03); x <= Math.round(qw + W * 0.03); x++) {
+      let t = 0, nw = 0; for (let y = 0; y < H; y += 6) { const o = (y * W + x) * 4; t++; if (px[o] < 235 || px[o + 1] < 235 || px[o + 2] < 235) nw++; }
+      if (t && nw / t > bestScore) { bestScore = nw / t; best = x; } }
+    if (best >= 0) mid = best; }
+  const x0 = col === 0 ? 0 : mid + 2, x1 = col === 0 ? mid - 2 : W;
+  const frac = (y, f) => { let t = 0, d = 0; for (let x = x0; x < x1; x += 3) { t++; if (f((y * W + x) * 4)) d++; } return t ? d / t : 0; };
+  const white = (y) => frac(y, isWh), dark = (y) => frac(y, isBlk);
+  // WHERE ONE CARD ENDS AND THE NEXT BEGINS (v9.620): a line that is almost all black - the black strip of the
+  // first layout, or the thin black gap between the white cards of the second.
+  const frame = (y) => y + 4 < H && dark(y) > 0.9 && dark(y + 4) > 0.9;
+  let lo = row === 0 ? 0 : Math.round(qh - H * 0.08);
+  const hi = row === 0 ? Math.round(qh + H * 0.04) : H;
+  if (row === 1) { for (let y = lo; y < Math.round(qh + H * 0.04); y++) { if (frame(y)) { lo = y; break; } } }
+  // The card's top: the first line that is mostly white and stays white.
+  let top = -1;
+  for (let y = lo; y < hi - 12 && top < 0; y++) { let ok = true; for (let k = 0; k < 12; k += 3) if (white(y + k) <= 0.5) { ok = false; break; } if (ok) top = y; }
+  if (top < 0) top = row === 0 ? 0 : Math.round(qh);
+  // The card's bottom: the first black line in its lower half.
+  let bot = -1;
+  for (let y = top + Math.round((hi - top) * 0.5); y < hi - 4; y++) { if (frame(y)) { bot = y; break; } }
+  if (bot < 0) bot = row === 0 ? Math.round(qh) : H;
+  let band = 0; while (bot + band < H && dark(bot + band) > 0.5) band++;
+  // The card's sides: columns that are mostly white between its top and bottom.
+  let cl = x1, cr = x0;
+  for (let x = x0; x < x1; x++) { let t = 0, w = 0; for (let y = top; y < bot; y += 4) { t++; if (isWh((y * W + x) * 4)) w++; } if (t && w / t > 0.5) { if (x < cl) cl = x; if (x + 1 > cr) cr = x + 1; } }
+  if (cr <= cl) { cl = x0; cr = x1; }
+  const r = Math.round((cr - cl) * 0.03);
+  // THE WORDS ON THE CARD ARE THE EDGE (v9.620, 2026-10-15, Aaron: "if the image model is putting any text on this image
+  // it's easier for us to crop it"). When the cards sit on a thin black gap (not the old black strip), the title and two
+  // lines are printed in black under the art. Read up from the bottom: the short lines of the description, then the
+  // title - a line far taller than the ones under it. The art ends just above the title. If no title is found, the whole
+  // card is kept - nothing is ever cut off.
+  let artBot = bot - r, words = false;
+  if (band < 60) {
+    // THE WORDS ARE FOUND BY THEIR WIDTH (v9.624, 2026-10-16, Aaron). MEASURED 06:26 on img_mvb027pdffce number 3 ("Two
+    // Faces"): the spike at the bottom of the art runs into the title, so art and title were one tall band, the title was
+    // never found, and the whole card was kept - words and all. Lines of words run wide across the card; art that touches
+    // them is narrow there. Reading up from the bottom: each short, wide band is a line of words. A tall band right above
+    // them is read up row by row while it stays wide (the title's letters) - where it turns narrow, the art begins.
+    // At least two lines of words, or the whole card is kept - nothing is ever cut off.
+    const xa = cl + r, xb = cr - r, cw = xb - xa, ch = bot - top;
+    const inkAt = (o) => px[o] < 232 || px[o + 1] < 232 || px[o + 2] < 232;
+    const inkRow = (y) => { let t = 0, d = 0; for (let x = xa; x < xb; x += 2) { t++; if (inkAt((y * W + x) * 4)) d++; } return t ? d / t > 0.004 : false; };
+    const widthAt = (y) => { let lo = -1, hi = -1; for (let x = xa; x < xb; x++) { if (inkAt((y * W + x) * 4)) { if (lo < 0) lo = x; hi = x; } } return lo < 0 ? 0 : (hi - lo) / cw; };
+    const segs = []; let s0 = -1;
+    for (let y = top + r; y < bot - r; y++) { const v = inkRow(y); if (v && s0 < 0) s0 = y; if (!v && s0 >= 0) { segs.push([s0, y]); s0 = -1; } }
+    if (s0 >= 0) segs.push([s0, bot - r]);
+    const text = [];
+    for (let i = segs.length - 1; i >= 0; i--) {
+      const [ya, yb] = segs[i], h = yb - ya;
+      let wmax = 0; for (let y = ya; y < yb; y += 2) { const w = widthAt(y); if (w > wmax) wmax = w; }
+      if (h <= 0.12 * ch && wmax >= 0.3) { text.push([ya, yb]); continue; }
+      if (text.length) {
+        let narrow = 0, cut = -1;
+        for (let y = yb - 1; y > ya; y--) { if (widthAt(y) < 0.25) narrow++; else narrow = 0; if (narrow >= 8) { cut = y + 8; break; } }
+        if (cut > 0 && yb - cut >= 0.02 * ch && yb - cut <= 0.12 * ch) text.push([cut, yb]);
+      }
+      break;
+    }
+    if (text.length >= 2) { artBot = text[text.length - 1][0]; words = true; }
+  }
+  // The artwork inside the card (its rounded corners left out of the search), with a little white around it.
+  let a = cr, b = artBot, c = -1, d = -1;
+  for (let y = top + r; y < artBot; y++) {
+    for (let x = cl + r; x < cr - r; x++) {
+      const o = (y * W + x) * 4;
+      if (px[o] < 232 || px[o + 1] < 232 || px[o + 2] < 232) { if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; }
+    }
+  }
+  if (c < 0) { try { im.free(); } catch {} return { ok: false, error: "no artwork found in panel " + n }; }
+  const pad = Math.round(Math.max(qw, qh) * 0.03);
+  a = Math.max(cl, a - pad); b = Math.max(top, b - pad); c = Math.min(cr, c + 1 + pad); d = Math.min(words ? artBot - 8 : bot, d + 1 + pad);
+  const cw = c - a, ch = d - b, dst = new Uint8Array(cw * ch * 4);
+  // The card's rounded corners are painted white, so no black sliver of the sheet shows.
+  const R = Math.round((cr - cl) * 0.06), R2 = (R - 6) * (R - 6);
+  const corner = (x, y) => {
+    const cx = x < cl + R ? cl + R : x >= cr - R ? cr - R : null, cy = y < top + R ? top + R : y >= bot - R ? bot - R : null;
+    return cx !== null && cy !== null && ((x - cx) * (x - cx) + (y - cy) * (y - cy)) > R2;
+  };
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const so = ((b + y) * W + (a + x)) * 4, to = (y * cw + x) * 4;
+    if (corner(a + x, b + y)) { dst[to] = dst[to + 1] = dst[to + 2] = dst[to + 3] = 255; }
+    else { dst[to] = px[so]; dst[to + 1] = px[so + 1]; dst[to + 2] = px[so + 2]; dst[to + 3] = 255; }
+  }
+  try { im.free(); } catch {}
+  const cut = new PhotonImage(dst, cw, ch);
+  const bts = cut.get_bytes();
+  try { cut.free(); } catch {}
+  const y0 = top, y1 = hi, stripTop = words ? artBot : bot;
+  let t = "";
+  for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+  const nid = "img_p" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+  await env.AURA_KV.put("image:" + nid, btoa(t));
+  const out = { ok: true, image_url: "https://" + (await imageHost(env)) + "/image/" + nid, from: id, panel: n,
+    sheet: W + "x" + H, cut: cw + "x" + ch, cut_above_title: words, strip_found: stripTop < y1, strip_at: stripTop - y0, panel_height: y1 - y0 };
+  await env.AURA_KV.put("panelcut5:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
+  console.log("[CUT] panel " + n + " of " + id + " (" + out.sheet + ") -> " + nid + " " + out.cut + (words ? " · cut above the title" : out.strip_found ? " · strip cut off" : " · no strip found"));
+  return out;
+}
+
+// ══ A COPY SMALL ENOUGH FOR HER TO LOOK AT (2026-10-02, v9.516, Aaron) ══════════════════════════
+// MEASURED (pta_836d43e48cdff123): the lioness came back 2.8 MB. aura-think reads a picture from
+// KV and keeps it with her conversation, where Cloudflare caps one stored item at 2 MB - so it fell
+// back to the link, the look missed twice, and she praised shading she never saw. Her look gets a
+// copy at most 1024 px on the long side, as JPEG. The drawing itself is untouched - the person, the
+// artist files and everything else keep the full size. Anything that fails returns the original.
+async function lookCopy(env, url) {
+  try {
+    const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
+    if (!id) return url;
+    const was = await env.AURA_KV.get("lookcopy:" + id).catch(() => null);
+    if (was) return was;
+    const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+    if (!b64 || b64.length * 0.75 <= 1200 * 1024) return url;   // small enough as it is
+    const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    const W = im.get_width(), H = im.get_height();
+    const s = 1024 / Math.max(W, H);
+    let small = im;
+    if (s < 1) small = photonResize(im, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)), PhotonSampling.Lanczos3);
+    const bts = small.get_bytes_jpeg(85);
+    try { if (small !== im) small.free(); } catch {}
+    try { im.free(); } catch {}
+    let t = "";
+    for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+    const nid = "img_l" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
+      .map((x) => x.toString(16).padStart(2, "0")).join("");
+    await env.AURA_KV.put("image:" + nid, btoa(t), { expirationTtl: 7 * 24 * 3600 });
+    const out = "https://" + (await imageHost(env)) + "/image/" + nid;
+    await env.AURA_KV.put("lookcopy:" + id, out, { expirationTtl: 7 * 24 * 3600 }).catch(() => {});
+    console.log("[LOOKCOPY] " + id + " " + Math.round(b64.length * 0.75 / 1024) + " KB -> " + nid + " " + Math.round(bts.length / 1024) + " KB");
+    return out;
+  } catch (e) {
+    console.log("[LOOKCOPY] failed, original used: " + String(e?.message ?? e).slice(0, 160));
+    return url;
+  }
+}
+
+// ══ A COPY THE IMAGE MODEL CAN DOWNLOAD IN TIME (v9.609, 2026-10-15, Aaron) ═════════════════════
+// MEASURED 21:04 (pta_f9416356d49499dd): a change to the four failed with "Unable to download content from the
+// provided URL before the timeout" - the full 2160x3840 sheet, and our own fetch of it lost connection three times.
+// The chat-model route now sends a copy at most `config:edit:thread:send_edge` px (default 2048) on the long side,
+// as JPEG. The sheet itself is untouched; the person and the artist files keep full size. Anything that fails
+// returns the original.
+// ══ THE DESIGN, TURNED THE WAY THEY TURNED THE BOX (v9.624, 2026-10-16, Aaron) ═══════════════════════════════════
+// MEASURED 06:38: the box was turned well over toward his shoulder; the design went on upright and more central. The model
+// gets their photo with a turned green box and the design upright - and a turned box alone does not say which edge is the
+// top. So the design goes turned to the same angle, on white, and the model sees the same tilt in both pictures. Nothing is
+// added to their words. Turned on white, trimmed, at most 1600 on its long side. Any failure sends the design as it was.
+// ══ FOUR POSSIBILITIES AND THE CARD INFORMATION (v9.628, 2026-10-16, Aaron) ══════════════════════════════════
+// The sentence for "Imagine 4 Possibilities" (a setting overrides it: `config:frame:design:possibilities`) - v9.629: run 9 of
+// 2026-10-16 word for word (img_mvbgxcdobd4s), sent to the IMAGE MODEL ONLY with their design, as SHOW_IT does. The chat model
+// rewrote our words into its own stock picks (phoenix, crescent moon, neon, desert) on run after run. And the one
+// sentence added to every four that asks the chat model to list the cards in its written reply (`config:frame:cards:info`).
+// The image model never writes words back - the chat model does, in its reply; until now that reply was thrown away.
+const POSS_SENTENCE = "This is my tattoo design. Show me 4 different designs of it. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them creative and amazing. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
+const CARD_INFO_ASK = "In your written reply, also list the 4 cards in order, one per line, as: TITLE | first line | second line | one sentence about the design and where on the body it would look best.";
+async function cardInfoAsk(env) {
+  try { const k = String((await env.AURA_KV.get("config:frame:cards:info")) || "").trim(); if (k) return k; } catch {}
+  return CARD_INFO_ASK;
+}
+// Reads the four lines "TITLE | line | line | about" out of the chat model's reply. Four, or nothing.
+function readSaidCards(said) {
+  const s = String(said || ""); if (!s) return null;
+  const cards = [];
+  for (const raw of s.split(/\r?\n/)) {
+    const parts = raw.split("|").map((x) => x.trim());
+    if (parts.length < 4) continue;
+    const clean = (x) => String(x || "").replace(/^[\s>*_`#-]*(?:\d+[.):]\s*)?(?:card\s*\d+\s*[:.-]\s*)?/i, "").replace(/[*`]+/g, "").trim().replace(/^["'\u201c\u2018]+|["'\u201d\u2019]+$/g, "").trim();
+    const title = clean(parts[0]); if (!title || title.length > 60) continue;
+    if (/^title$/i.test(title)) continue;
+    cards.push({ title: title.toUpperCase(), lines: [clean(parts[1]), clean(parts[2])].filter(Boolean),
+                 about: clean(parts.slice(3).join(" | ")) || null });
+  }
+  return cards.length >= 4 ? cards.slice(0, 4) : null;
+}
+// ══ THE CARDS THE CHAT MODEL WROTE (v9.626, 2026-10-16, Aaron) ═══════════════════════════════════════════════════
+// "Utilize the information the image model is giving back." On the chat-model route its brief names every card in order -
+// the title it printed, the two lines under it, and what the design shows. Read here, kept with the sheet, and the one
+// they pick carries its own name and description everywhere after (the project, Favorites, the "i"). Proven on the wolf and
+// rose briefs: all four cards, in order, matching the print. Anything it cannot read gives nothing - never a guess.
+function readCards(brief) {
+  const s = String(brief || "");
+  if (!s) return null;
+  const qs = []; const re = /(^|[\s:(\[])'(.+?)'(?=[\s.,;:)\]]|$)/g; let m;
+  while ((m = re.exec(s))) qs.push({ text: m[2].trim(), at: m.index + m[1].length, end: m.index + m[0].length });
+  const isTitle = (t) => t.length >= 2 && t.length <= 40 && /[A-Z]/.test(t) && !/[a-z]/.test(t);
+  const cards = []; let from = 0;
+  for (let i = 0; i < qs.length && cards.length < 4; i++) {
+    if (!isTitle(qs[i].text)) continue;
+    const lines = [];
+    for (let k = i + 1; k < qs.length && lines.length < 2; k++) { if (isTitle(qs[k].text)) break; lines.push(qs[k].text); }
+    // What it shows: the words between the last card and this title, without the position or the caption instructions.
+    let about = s.slice(from, qs[i].at);
+    const mk = about.search(/\b(TOP|BOTTOM)[\s-]+(LEFT|RIGHT)\b/);
+    if (mk >= 0) about = about.slice(mk);
+    about = about.replace(/^\s*(TOP|BOTTOM)[\s-]+(LEFT|RIGHT)\b[^:]*:\s*/, "")
+                 .replace(/\s*(Caption\s+)?title[^.:']*:?\s*$/i, "").replace(/\s+/g, " ").trim().slice(0, 600);
+    cards.push({ title: qs[i].text, lines, about });
+    from = (lines.length ? qs[i + lines.length].end : qs[i].end);
+    i += lines.length;
+  }
+  return cards.length === 4 ? cards : null;
+}
+
+async function turnedCopy(env, url, deg) {
+  try {
+    const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
+    deg = Math.round(((Number(deg) % 360) + 540) % 360 - 180);
+    if (!id || !Number.isFinite(deg) || Math.abs(deg) < 3) return null;
+    const was = await env.AURA_KV.get("turned:" + deg + ":" + id).catch(() => null);
+    if (was) return was;
+    const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+    if (!b64) return null;
+    let im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    const s0 = 1600 / Math.max(im.get_width(), im.get_height());
+    if (s0 < 1) { const sm = photonResize(im, Math.round(im.get_width() * s0), Math.round(im.get_height() * s0), PhotonSampling.Lanczos3); try { im.free(); } catch {} im = sm; }
+    // Turned by hand, not by Photon's rotate (tested: its result came back washed out, with a grey line where the old edge
+    // was). Each new pixel looks up where it came from in the design, blended from the four nearest; outside is white paper.
+    const sw = im.get_width(), sh = im.get_height(), sp = im.get_raw_pixels();
+    try { im.free(); } catch {}
+    const th = deg * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th);
+    const W = Math.ceil(Math.abs(sw * cs) + Math.abs(sh * sn)), H = Math.ceil(Math.abs(sw * sn) + Math.abs(sh * cs));
+    const px = new Uint8Array(W * H * 4), cx0 = sw / 2, cy0 = sh / 2, cx1 = W / 2, cy1 = H / 2;
+    let a = W, b = H, c = -1, d = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const dx = x - cx1, dy = y - cy1;
+      const sx = cs * dx + sn * dy + cx0, sy = -sn * dx + cs * dy + cy0;   // turned clockwise on screen
+      const o = (y * W + x) * 4;
+      let r = 255, g = 255, bl = 255;
+      if (sx >= 0 && sy >= 0 && sx < sw - 1 && sy < sh - 1) {
+        const x0 = Math.floor(sx), y0 = Math.floor(sy), fx = sx - x0, fy = sy - y0;
+        const i00 = (y0 * sw + x0) * 4, i10 = i00 + 4, i01 = i00 + sw * 4, i11 = i01 + 4;
+        const mix = (k) => (sp[i00 + k] * (1 - fx) + sp[i10 + k] * fx) * (1 - fy) + (sp[i01 + k] * (1 - fx) + sp[i11 + k] * fx) * fy;
+        r = Math.round(mix(0)); g = Math.round(mix(1)); bl = Math.round(mix(2));
+      }
+      px[o] = r; px[o + 1] = g; px[o + 2] = bl; px[o + 3] = 255;
+      if (r < 245 || g < 245 || bl < 245) { if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; }
+    }
+    if (c < 0) return null;
+    const pad = 24; a = Math.max(0, a - pad); b = Math.max(0, b - pad); c = Math.min(W - 1, c + pad); d = Math.min(H - 1, d + pad);
+    const cw = c - a + 1, ch = d - b + 1, dst = new Uint8Array(cw * ch * 4);
+    for (let y = 0; y < ch; y++) dst.set(px.subarray(((b + y) * W + a) * 4, ((b + y) * W + a + cw) * 4), y * cw * 4);
+    const out = new PhotonImage(dst, cw, ch);
+    const bts = out.get_bytes_jpeg(92);
+    try { out.free(); } catch {}
+    let t = "";
+    for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+    const nid = "img_t" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+    await env.AURA_KV.put("image:" + nid, btoa(t), { expirationTtl: 7 * 24 * 3600 });
+    const u = "https://" + (await imageHost(env)) + "/image/" + nid;
+    await env.AURA_KV.put("turned:" + deg + ":" + id, u, { expirationTtl: 7 * 24 * 3600 }).catch(() => {});
+    console.log("[TURNED] " + id + " turned " + deg + " degrees -> " + nid + " " + cw + "x" + ch);
+    return u;
+  } catch (e) {
+    console.log("[TURNED] failed, the design goes upright: " + String(e?.message ?? e).slice(0, 160));
+    return null;
+  }
+}
+
+async function sendCopy(env, url) {
+  try {
+    const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
+    if (!id) return url;
+    let edge = 2048;
+    try { const k = parseInt(String((await env.AURA_KV.get("config:edit:thread:send_edge")) || ""), 10); if (k >= 512 && k <= 3840) edge = k; } catch {}
+    const was = await env.AURA_KV.get("sendcopy:" + edge + ":" + id).catch(() => null);
+    if (was) return was;
+    const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+    if (!b64 || b64.length * 0.75 <= 1500 * 1024) return url;   // small enough as it is
+    const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    const W = im.get_width(), H = im.get_height();
+    const s = edge / Math.max(W, H);
+    let small = im;
+    if (s < 1) small = photonResize(im, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)), PhotonSampling.Lanczos3);
+    const bts = small.get_bytes_jpeg(90);
+    try { if (small !== im) small.free(); } catch {}
+    try { im.free(); } catch {}
+    let t = "";
+    for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+    const nid = "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
+      .map((x) => x.toString(16).padStart(2, "0")).join("");
+    await env.AURA_KV.put("image:" + nid, btoa(t), { expirationTtl: 7 * 24 * 3600 });
+    const out = "https://" + (await imageHost(env)) + "/image/" + nid;
+    await env.AURA_KV.put("sendcopy:" + edge + ":" + id, out, { expirationTtl: 7 * 24 * 3600 }).catch(() => {});
+    console.log("[SENDCOPY] " + id + " " + W + "x" + H + " " + Math.round(b64.length * 0.75 / 1024) + " KB -> " + nid + " " +
+      Math.round(W * Math.min(1, s)) + "x" + Math.round(H * Math.min(1, s)) + " " + Math.round(bts.length / 1024) + " KB");
+    return out;
+  } catch (e) {
+    console.log("[SENDCOPY] failed, original used: " + String(e?.message ?? e).slice(0, 160));
+    return url;
+  }
 }
 
 async function tatOwnerOf(env, leaf) {
@@ -60056,6 +60867,14 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // A pin still wins for its own lane. It does not win a lane it cannot serve.
   const rawModel = (await env.AURA_KV.get(isEdit ? "config:edit:model" : "config:image:model").catch(() => null));
   const rawQuality = (await env.AURA_KV.get(isEdit ? "config:edit:quality" : "config:image:quality").catch(() => null));
+  // ══ HOW BIG AN EDIT COMES BACK - A DIAL (2026-10-01, Aaron) ══════════════════════════════════
+  // MEASURED: every edit sent `size: "auto"` and every one came back 1254x1254 - medium and low alike,
+  // and the artist files too. Aaron: "it just needs to be bigger, you can't see it." gpt-image-2 takes
+  // an explicit size (multiples of 16, up to ~8.3MP). `config:edit:size` = the long edge in pixels
+  // (default 2048), capped by `config:edit:maxpx` total pixels (default 3686400 = 2560x1440, the
+  // largest size reported as stable); "auto" goes back to the old behaviour.
+  const _editSizeRaw = isEdit ? String((await env.AURA_KV.get("config:edit:size").catch(() => null)) || "2048").trim() : "";
+  const _editMaxPxRaw = isEdit ? String((await env.AURA_KV.get("config:edit:maxpx").catch(() => null)) || "3686400").trim() : "";
   // ══ A CALLER MAY NAME THE MODEL FOR ONE CALL ═════════════════════════════════════════════
   // Above the pin, because it is narrower than the pin: this is one job saying "the configured
   // model just refused this, try the other one", not an operator changing the lane. It is used by
@@ -60128,7 +60947,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     // same picture twenty times, reported as twenty successes.
     const sig = model + "|" + quality + "|" +
                 (opts.width || 1024) + "x" + (opts.height || 1024) + "|" +
-                (opts.aspect || "") + (opts.res || "") + "|" + refs.join("|") + "|" +
+                (opts.aspect || "") + (opts.res || "") + "|" + (isEdit ? "es" + _editSizeRaw + "/" + _editMaxPxRaw + "|" : "") + refs.join("|") + "|" +
                 (opts.seed != null ? "seed" + opts.seed + "|" : "") + p;
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
     cacheKey = "imgcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -60474,7 +61293,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         // THE PHOTO'S OWN SHAPE (2026-09-24). MEASURED: every GPT edit was forced to 1024x1024, so a
         // portrait arm photo came back square - reshaped, and impossible to line up with the
         // original for the ink lock. "auto" keeps the shape of what it is editing.
-        fd.append("size", "auto");
+        // The size is set below, once the first image is read - it keeps that image's shape.
+        let _sizeSent = "auto", _firstHead = null;
         // THE INK LOCK MASK (2026-09-24): a PNG the size of the first image; see-through where the
         // model may paint (bare skin), solid where it may not (their existing ink, everything else).
         if (opts.mask) {
@@ -60525,7 +61345,39 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           fd.append(oRefs.length > 1 ? "image[]" : "image",
             new Blob([bytes], { type: "image/png" }), "parent" + i + ".png");
           attached++;
+          // ══ A CALLER MAY NAME THE CANVAS FOR ONE PICTURE (2026-10-13, v9.591, Aaron) ══════════════
+          // MEASURED: the ideas picture boxed into the photo's own shape drew four cramped ideas; with
+          // `config:edit:size` = auto it chose its own layout but came back about 1254 square - each idea
+          // about 600 wide and the words in it unreadable. The ideas picture now names its own canvas
+          // (width and height); every other edit keeps the photo's shape exactly as before.
+          const _cw = Number.isInteger(opts.width) ? opts.width : 0, _ch = Number.isInteger(opts.height) ? opts.height : 0;
+          if (attached === 1 && _cw && _ch) {
+            // A NAMED CANVAS IS HELD TO THE MODEL'S OWN LIMIT (v9.631, 2026-10-16). MEASURED 15:05 and 15:10: the possibilities
+            // asked for 2160x3840 (the same tall page the first four get) and were turned down by `config:edit:maxpx` - a cap
+            // meant for photos sized automatically - so the edit went out as size=auto and came back ~1024x1536: a shorter page
+            // the buttons did not line up on and the cut would not take. The cap still sizes every edit that names no canvas.
+            const _cMax = 8294400;
+            if (_cw % 16 === 0 && _ch % 16 === 0 && Math.max(_cw, _ch) / Math.min(_cw, _ch) <= 3 &&
+                _cw * _ch >= 655360 && _cw * _ch <= _cMax && Math.max(_cw, _ch) <= 3840) _sizeSent = _cw + "x" + _ch;
+            else console.log("[IMG-SIZE] asked for " + _cw + "x" + _ch + " - not a size the model takes (cap " + _cMax + ", setting " + _editMaxPxRaw + "), the photo's shape went instead");
+          }
+          if (attached === 1 && !/^\d+x\d+$/.test(_sizeSent)) {
+            try {
+              _firstHead = Array.from(new Uint8Array(bytes).slice(0, 16)).map((x) => x.toString(16).padStart(2, "0")).join("");
+              const _d = imageDimsOf(bytes);
+              const _long = parseInt(_editSizeRaw, 10), _maxPx = parseInt(_editMaxPxRaw, 10) || 3686400;
+              if (_d && _d.w > 0 && _d.h > 0 && Number.isFinite(_long) && _long >= 512) {
+                const _ratio = Math.max(_d.w, _d.h) / Math.min(_d.w, _d.h);
+                let _sc = Math.min(_long, 3840) / Math.max(_d.w, _d.h);
+                if (_d.w * _sc * _d.h * _sc > Math.min(_maxPx, 8294400)) _sc = Math.sqrt(Math.min(_maxPx, 8294400) / (_d.w * _d.h));
+                const _W = Math.floor((_d.w * _sc) / 16) * 16, _H = Math.floor((_d.h * _sc) / 16) * 16;
+                if (_ratio <= 3 && _W * _H >= 655360) _sizeSent = _W + "x" + _H;
+              }
+            } catch {}
+          }
         }
+        fd.append("size", _sizeSent);
+        console.log("[IMG-SIZE] edit size=" + _sizeSent + (_sizeSent === "auto" && _firstHead ? " unreadable header=" + _firstHead : ""));
         // AN EDIT WITH NO PARENT IS NOT AN EDIT. Silently sending the request anyway is how a
         // "mouse beside the cat" came back as a different cat - the failure has to be the failure.
         if (!attached) throw new Error("could not read the parent image to edit: " + oRefs[0]);
@@ -60547,6 +61399,15 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           body: JSON.stringify({ model, prompt: pOA, n: 1, quality,
             ...(_modOk ? { moderation: _modOk } : {}),
             size: (function () {
+              // AN EXACT SIZE, WHEN THE CALLER NAMES ONE (v9.605): the new-tattoo four ask for the same 1920x1920 the
+              // other grids use (config:edit:thread:size). Checked against the model's own limits; anything else keeps
+              // the old shapes below. Only a caller that sets exactSize reaches this.
+              if (opts.exactSize && opts.width && opts.height && opts.width % 16 === 0 && opts.height % 16 === 0 &&
+                  opts.width * opts.height >= 655360 && opts.width * opts.height <= 8294400 && Math.max(opts.width, opts.height) <= 3840 &&
+                  Math.max(opts.width, opts.height) / Math.min(opts.width, opts.height) <= 3) {
+                console.log("[IMG-SIZE] generate size=" + opts.width + "x" + opts.height);
+                return opts.width + "x" + opts.height;
+              }
               const a = String(opts.aspect || "");
               if (/^(9:16|3:4|2:3)$/.test(a)) return "1024x1536";
               if (/^(16:9|4:3|3:2|2:1)$/.test(a)) return "1536x1024";
@@ -60798,18 +61659,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     // TO RE-MEASURE ANY ROW: zero the lane for a day, note credits, burn a known count through the
     // real door (not a test path), read credits again, divide. Label what was measured and what was
     // only inferred - they are not the same evidence and must not look the same in this table.
-    const RATE = {   // $/image, model -> quality. MEASURED where marked; inferred otherwise.
-      "gemini-3.1-flash-lite-image": { low: 0.045, medium: 0.045, high: 0.045 },   // inferred - Google Nano Banana 2 Lite
-      "gemini-3.1-flash-image":      { low: 0.067, medium: 0.067, high: 0.067 },   // inferred - Google Nano Banana 2
-      "gemini-3-pro-image":          { low: 0.134, medium: 0.134, high: 0.134 },   // inferred - Google Nano Banana Pro
-      "gemini-2.5-flash-image":      { low: 0.039, medium: 0.039, high: 0.039 },   // inferred - Google Nano Banana (older)
-      "grok-imagine-image-quality": { low: 0.05,  medium: 0.05,  high: 0.05  },   // INFERRED (was 0.005, same 10x) - NOT yet burned
-      "grok-imagine-image":         { low: 0.02,  medium: 0.02,  high: 0.02  },   // MEASURED 2026-07-31, 3-image burn, $0.06 drawdown
-      "gpt-image-1-mini": { low: 0.005, medium: 0.030, high: 0.052 },              // inferred
-      "gpt-image-1":      { low: 0.011, medium: 0.040, high: 0.170 },              // inferred
-      "gpt-image-1.5":    { low: 0.009, medium: 0.034, high: 0.133 },              // inferred
-      "gpt-image-2":      { low: 0.006, medium: 0.053, high: 0.211 },              // inferred
-    };
+    const RATE = IMAGE_RATE_PER_IMAGE;   // one table, shared with THREAD (v9.594)
     const mkey = Object.keys(RATE).find((k) => model.toLowerCase().startsWith(k));
     if (mkey) costUsd = RATE[mkey][quality] ?? RATE[mkey].medium ?? null;
 
@@ -61059,7 +61909,7 @@ async function showIt(subject, env, opts = {}) {
   // matter which model, which quality tier or which endpoint, and `[XAI-IMG]` printed
   // `asked aspect=- res=-` the moment it was pointed at the right branch. An afternoon of
   // theories about xAI's silent fallbacks, and the parameters never left this worker.
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, mask: opts.mask || null });
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, mask: opts.mask || null, exactSize: opts.exactSize === true });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════
@@ -61306,6 +62156,24 @@ async function crawlWatchLog(env, line) {
   log.push({ at: new Date().toISOString(), ...line });
   await env.AURA_KV.put("crawl:watch:log", JSON.stringify(log.slice(-100))).catch(() => {});
 }
+// READ FOLLOWS THE CRAWL (2026-10-12, v9.570, Aaron: "go"). When a state's crawl chain ends, its read starts
+// here, watched like any other run - so the queue's next state waits until this one is crawled AND read.
+// A state with nothing left to read starts nothing.
+async function crawlStartRead(env, st, next) {
+  const cmdR = "CG_ENRICH_BATCH READ STATE " + st + " 1000";
+  let r = null;
+  try { r = await processCommand(cmdR + " NOREG", env, true); }
+  catch (e) { r = { payload: { ok: false, error: String(e?.message ?? e) } }; }
+  const p = (r && r.payload) ? r.payload : r;
+  if (p && p.ok && p.started) {
+    next.push({ id: p.started, cmd: cmdR, mode: "read", until: false, started: new Date().toISOString(), restarts: 0, chain: 1 });
+    await crawlWatchLog(env, { did: "read started", state: st, new_id: p.started, shops: p.shops });
+  } else if (p && p.ok) {
+    await crawlWatchLog(env, { did: "read skipped", state: st, why: "nothing left to read" });
+  } else {
+    await crawlWatchLog(env, { did: "read could not start", state: st, error: p && p.error });
+  }
+}
 async function watchCrawlBatches(env) {
   try {
     if (!env.GRID_CRAWL_WORKFLOW) return;
@@ -61349,6 +62217,8 @@ async function watchCrawlBatches(env) {
         await crawlWatchLog(env, { id: b.id, did: "restarted", why, new_id: p.started, shops: p.shops, cmd: b.cmd });
       } else if (p && p.ok && !p.shops) {
         await crawlWatchLog(env, { id: b.id, did: "done", why: "nothing left to do", cmd: b.cmd });
+        const doneSt = b.mode !== "read" && String(b.cmd || "").match(/\bSTATE\s+([A-Z]{2})\b/i);
+        if (doneSt) await crawlStartRead(env, doneSt[1].toUpperCase(), next);
       } else {
         next.push(b);   // could not start - try again on the next tick
         await crawlWatchLog(env, { id: b.id, did: "restart failed", why, error: p && p.error, cmd: b.cmd });
@@ -61375,6 +62245,7 @@ async function watchCrawlBatches(env) {
         } else if (pq && pq.ok && !pq.shops) {
           await env.AURA_KV.put("crawl:queue", JSON.stringify(q.slice(1))).catch(() => {});
           await crawlWatchLog(env, { did: "state skipped", state: st, why: "nothing left to crawl" });
+          await crawlStartRead(env, st, next);   // crawled before - read anything not read yet
         } else {
           await crawlWatchLog(env, { did: "state could not start", state: st, error: pq && pq.error });
         }
@@ -61557,6 +62428,10 @@ async function captureAisHistory(env) {
 //   metadata: "encrypted"
 // }
 
+// A Durable Object value may be at most 128 KiB (131,072 bytes). Kept a little under it.
+const DO_VALUE_MAX = 126000;
+function _doBytes(v) { try { return new TextEncoder().encode(typeof v === "string" ? v : JSON.stringify(v)).length; } catch { return 0; } }
+
 export class PtaDurableObject {
   state;
   storage;
@@ -61603,6 +62478,14 @@ export class PtaDurableObject {
 
   async talkPut(entries) {
     const e = (entries && typeof entries === "object") ? entries : {};
+    // ONE VALUE IS AT MOST 128 KiB (2026-10-12, v9.571). MEASURED: "Values cannot be larger than 131072 bytes"
+    // ended Aaron's turns after the work was done - the photo turn and the sunflower picture were made and
+    // saved nowhere the page could get them, so the phone said "failed". A value too big is named in the log
+    // and left out; the rest is still written.
+    for (const k of Object.keys(e)) {
+      const n = _doBytes(e[k]);
+      if (n > DO_VALUE_MAX) { console.log("[DO] too big to keep: " + k + " " + n + " bytes - left out"); delete e[k]; }
+    }
     if (Object.keys(e).length) await this.storage.put(e);
     return { ok: true };
   }
@@ -61630,24 +62513,68 @@ export class PtaDurableObject {
       }
       if (pj.pictures.length > 60) pj.pictures = pj.pictures.slice(-60);
     }
-    if (pt.title && !pj.title) pj.title = String(pt.title).slice(0, 80);
+    if (pt.title && !pj.title) pj.title = String(pt.title).slice(0, 170); // whole name (v9.561) - the talk turn already ends a long one at a word
     if (pt.came_from && !pj.came_from) pj.came_from = String(pt.came_from).slice(0, 60);
+    // HER NAME FOR IT (2026-10-10, v9.562, Aaron): at lock-in Aura names the tattoo ("California Lowrider
+    // Queen"); that name replaces the title, and the description it was named from is kept as `about`
+    // for the "i" on the page.
+    // A CARD'S NAME STANDS (v9.626): the design they picked off the four names the tattoo and its "i"; a later pick replaces
+    // it, a name made up afterwards does not.
+    if (pt.card_named && pt.name_final) { pj.card_named = true; pj.title = String(pt.name_final).slice(0, 80);
+                                          if (pt.about) pj.about = String(pt.about).slice(0, 800); }
+    else {
+    if (pt.about && !pj.about) pj.about = String(pt.about).slice(0, 800);
+    if (pt.name_final && !pj.card_named) { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
+                         pj.title = String(pt.name_final).slice(0, 80); }
+    }
     if (pt.files) { pj.files = pt.files; pj.files_failed = false; }
+    // FIELD BY FIELD (2026-10-11, v9.565): the collection (at lock-in), her colour reading (just after) and
+    // the conversation's brief (when the files finish) each fill what is still empty; the first to fill a
+    // field keeps it.
+    if (pt.details && typeof pt.details === "object") {
+      const cur = (pj.details && typeof pj.details === "object") ? pj.details : {};
+      for (const [k, v] of Object.entries(pt.details)) { if (v != null && v !== "" && (cur[k] == null || cur[k] === "")) cur[k] = v; }
+      pj.details = cur;
+    }
     if (pt.files_failed) pj.files_failed = String(pt.files_failed).slice(0, 200);
     if (pt.locked === true) { pj.locked = true; pj.locked_at = now; }
+    // Every "see it on you" of a locked-in tattoo, newest last (2026-10-07, v9.539).
+    if (pt.on_me && pt.on_me.image) {
+      if (!Array.isArray(pj.on_me)) pj.on_me = [];
+      pj.on_me.push({ image: String(pt.on_me.image).slice(0, 300), design: pt.on_me.design || null, ts: now });
+      if (pj.on_me.length > 30) pj.on_me = pj.on_me.slice(-30);
+    }
     pj.updated = now;
-    await this.storage.put(key, JSON.stringify(pj));
+    // Kept under the 128 KiB a value may be (v9.571): the oldest lines go first, then the oldest pictures.
+    let _pjs = JSON.stringify(pj);
+    while (_doBytes(_pjs) > DO_VALUE_MAX && (pj.lines.length > 10 || pj.pictures.length > 6)) {
+      if (pj.lines.length > 10) pj.lines = pj.lines.slice(Math.ceil(pj.lines.length / 4));
+      else pj.pictures = pj.pictures.slice(1);
+      _pjs = JSON.stringify(pj);
+    }
+    if (_doBytes(_pjs) > DO_VALUE_MAX) { console.log("[DO] project still too big: " + id + " " + _doBytes(_pjs) + " bytes"); pj.lines = pj.lines.slice(-4); _pjs = JSON.stringify(pj); }
+    await this.storage.put(key, _pjs);
     let idx = []; try { idx = JSON.parse((await this.storage.get("talk-proj:index")) || "[]") || []; } catch {}
     if (!Array.isArray(idx)) idx = [];
     idx = idx.filter((e) => e && e.id !== id);
     idx.unshift({ id, started: pj.started, updated: now, locked: !!pj.locked, title: pj.title,
-      cover: pj.pictures.length ? pj.pictures[pj.pictures.length - 1].image : null,
+      // The card shows the tattoo, never a look at it on them (2026-10-08, v9.544).
+      cover: (pj.pictures.filter((x) => x && !x.on_me).slice(-1)[0] || pj.pictures[pj.pictures.length - 1] || {}).image || null,
       count: pj.pictures.length, has_files: !!pj.files, files_failed: pj.files ? null : (pj.files_failed || null) });
-    await this.storage.put("talk-proj:index", JSON.stringify(idx.slice(0, 200)));
+    let _ix = idx.slice(0, 200), _ixs = JSON.stringify(_ix);
+    while (_doBytes(_ixs) > DO_VALUE_MAX && _ix.length > 20) { _ix = _ix.slice(0, _ix.length - 20); _ixs = JSON.stringify(_ix); }
+    await this.storage.put("talk-proj:index", _ixs);
     if (Array.isArray(pt.pictures) && pt.pictures.length) {
       let bd = {}; try { bd = JSON.parse((await this.storage.get("talk-proj:by-design")) || "{}") || {}; } catch {}
       for (const x of pt.pictures) if (x && x.design) bd[x.design] = id;
-      await this.storage.put("talk-proj:by-design", JSON.stringify(bd));
+      let _bds = JSON.stringify(bd);
+      if (_doBytes(_bds) > DO_VALUE_MAX) {   // oldest designs first (kept in the order they were added)
+        const ks = Object.keys(bd); const drop = Math.ceil(ks.length / 3);
+        for (const k of ks.slice(0, drop)) delete bd[k];
+        _bds = JSON.stringify(bd);
+        console.log("[DO] by-design map trimmed by " + drop + " oldest designs");
+      }
+      await this.storage.put("talk-proj:by-design", _bds);
     }
     return { ok: true, id, pictures: pj.pictures.length, locked: !!pj.locked };
   }
@@ -61681,7 +62608,13 @@ export class PtaDurableObject {
     for (const x of incoming) m.set(key(x), x);
     let all = [...m.values()].sort((a, b) => String((a && a.ts) || "").localeCompare(String((b && b.ts) || "")));
     if (all.length > 60) all = all.slice(-60);
-    await this.storage.put("talk-state:timeline", JSON.stringify(all));
+    // Under 128 KiB (v9.571): the oldest lines go first. MEASURED 131,140-131,554 bytes on Aaron's account.
+    let _ts = JSON.stringify(all);
+    const _was = all.length;
+    while (_doBytes(_ts) > DO_VALUE_MAX && all.length > 6) { all = all.slice(Math.max(1, Math.floor(all.length / 6))); _ts = JSON.stringify(all); }
+    if (all.length !== _was) console.log("[DO] timeline kept to the newest " + all.length + " lines (" + _doBytes(_ts) + " bytes)");
+    if (_doBytes(_ts) > DO_VALUE_MAX) { console.log("[DO] timeline still too big: " + _doBytes(_ts) + " bytes - not saved"); return { ok: false, error: "TOO_BIG" }; }
+    await this.storage.put("talk-state:timeline", _ts);
     return { ok: true, lines: all.length };
   }
 
@@ -61804,6 +62737,25 @@ export class PtaDurableObject {
       }
     }
     
+    // ── AND BY SIZE (2026-10-12, v9.573) ──────────────────────────────────────────────────────────
+    // MEASURED: "Values cannot be larger than 131072 bytes" after every turn on Aaron's account - the
+    // chain passed 128 KiB long before 1000 events (each turn's words ride in it), so every append failed
+    // and nothing more reached his chain. The oldest quarter moves to the same KV archive until the record
+    // fits with room to spare. Nothing is lost; it is where the count-based archive already puts it.
+    if (_doBytes(pta) > DO_VALUE_MAX * 0.85 && pta.chain.length > 20) {
+      const moved = [];
+      while (_doBytes(pta) > DO_VALUE_MAX * 0.6 && pta.chain.length > 20) moved.push(...pta.chain.splice(0, Math.ceil(pta.chain.length / 4)));
+      try {
+        const archiveIndex = (pta.chainArchiveIndex || 0);
+        await this.env.AURA_KV.put(`pta:archive:${pta.id}:${archiveIndex}`, JSON.stringify({
+          ptaId: pta.id, archiveIndex, events: moved, archivedAt: new Date().toISOString(), why: "size" }));
+        pta.chainArchiveIndex = archiveIndex + 1;
+        console.log("[PTA] " + pta.id + " archived " + moved.length + " oldest events by size; " + pta.chain.length + " kept (" + _doBytes(pta) + " bytes)");
+      } catch (e) {
+        pta.chain = moved.concat(pta.chain);   // archive failed: keep them, the write below reports the size
+        console.log("[PTA] size archive failed for " + pta.id + ": " + e.message);
+      }
+    }
     await this.storage.put("pta", pta);
     return { ok: true, chain_length: pta.chain.length, version: pta.version, archived: pta.chain.length <= threshold };
   }
@@ -62006,11 +62958,23 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
     };
     if (String(event.payload?.mode || "") === "artist_files") {
       const d = event.payload?.data || {};
-      const drew = await step.do("artist-files", { retries: { limit: 0, delay: "10 seconds" }, timeout: "15 minutes" },
-        async () => {
-          try { return (await runArtistFilesJob(this.env, d)) || { failed: true }; }
-          catch (e) { return { failed: true, error: String(e?.message ?? e).slice(0, 300) }; }
-        });
+      // ══ A CLOUDFLARE HICCUP GETS ANOTHER GO, AND A DEAD JOB STILL SAYS SO (2026-09-30) ══════════
+      // MEASURED on pta_4e048acbadd8af04 (instance 37ba8a50): the step died after 1m38s with
+      // "WorkflowInternalError: Attempt failed due to internal workflows error" - the platform, not our
+      // code (ours catches its own errors below). With no retries the job ended there, and because it
+      // ended the "record" step never ran: no files and no failure on their timeline, while she had
+      // told them the files were on the way. Two more attempts, 30s apart; if all three die, the
+      // failure is still recorded so the conversation knows.
+      let drew;
+      try {
+        drew = await step.do("artist-files", { retries: { limit: 2, delay: "30 seconds", backoff: "constant" }, timeout: "15 minutes" },
+          async () => {
+            try { return (await runArtistFilesJob(this.env, d)) || { failed: true }; }
+            catch (e) { return { failed: true, error: String(e?.message ?? e).slice(0, 300) }; }
+          });
+      } catch (e) {
+        drew = { failed: true, error: "the files job stopped: " + String(e?.message ?? e).slice(0, 240) };
+      }
       await step.do("record", async () => { await recordArtistFiles(this.env, d, drew); return true; });
       return { ok: !!(drew && drew.image && !drew.failed), me: d.me || null };
     }
@@ -62628,11 +63592,18 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
 // person straight away.
 async function makeArtistFiles(env, ctx) {
   const { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw, acted, intent,
-          useOne, _checkOn, _verdict, readAct, alreadyFlat } = ctx;
+          useOne, _checkOn, _verdict, readAct, alreadyFlat, bodyLook } = ctx;
+  const refDesign = ctx.refDesign || null;   // v9.586: their original photo, for the new-work sheet
   let drew = null;
 
         try {
           const shopParent = (useRaw.length && useOne(useRaw[0], "design")) || lastDrawn.design;
+          // THE FINISHED LOOK IS THE ONE ON THEIR BODY (2026-10-03, v9.530, Aaron). v9.529 pointed
+          // lastDrawn at the design so the files come from it - and this read the same slot, so
+          // shows_finished named the design (img_mut0o2y49cel), not the back (img_mut0ptqew5fb).
+          // v9.533 (2026-10-03, Aaron): v9.530 put bodyLook HERE, and mockUrl is also the flat sheet
+          // when the design is already flat - so the files traced the body (pta_39503f5842abc072).
+          // mockUrl is the design again; only `shows_finished` takes the look on their body.
           const mockUrl = (lastDrawn && lastDrawn.image) ||
             ("https://" + (await imageHost(env)) + "/image/" + shopParent);
           // Subtract only when there IS prior ink: an add-on with their own photograph on file.
@@ -62709,36 +63680,67 @@ async function makeArtistFiles(env, ctx) {
           // seam; told WHAT is new by name, it lifts it out. The name comes from what they asked to
           // add (saved at the first picture), put into a few words by her - the one question below.
           // Both sheets go to the artist: the whole piece always works, the new work is the stencil.
-          let _addSheets = null;
+          let _addSheets = null, _newWorkFail = null, _seeWhole = 0, _seeNew = 0, _seeRaw = null;
           if (jobNow === "add" && refUrl && !alreadyFlat) {
             const _src = /^ent_/.test(String(shopParent || "")) ? shopParent
               : ((String(mockUrl).match(/\/image\/(img_[a-z0-9]+)/i) || [])[1] || shopParent);
-            const _flat = async (prompt) => {
+            let _flatErr = null;
+            const _flat = async (prompt, base, withs) => {
               for (let tries = 0; tries < 2; tries++) {
                 try {
-                  const r = await processCommand("IMAGE EVOLVE " + _src + " " +
-                    JSON.stringify({ prompt, by: me, res: "2k", ...(tries ? { seed: "again" } : {}) }), env, true);
+                  const r = await processCommand("IMAGE EVOLVE " + (base || _src) + " " +
+                    JSON.stringify({ prompt, by: me, res: "2k", ...(tries ? { seed: 2 } : {}),
+                                     ...(withs ? { with: withs } : {}) }), env, true);
                   const p = (r && r.payload) ? r.payload : r;
                   if (p && p.ok && p.image_url) return { flat: p.image_url, id: p.child || null };
-                } catch {}
+                  _flatErr = String((p && (p.error || p.why || p.reason)) || "no image came back").slice(0, 200);
+                } catch (e) { _flatErr = String(e?.message ?? e).slice(0, 200); }
               }
               return null;
             };
             _addSheets = [];
-            const _whole = await _flat("Draw this whole tattoo flat on plain white paper, with no body and no skin.");
-            if (_whole) _addSheets.push({ panel: "Whole piece", asked: "the whole tattoo", flat: _whole.flat,
-                                          id: _whole.id, checked: null, ok: true });
+            // ══ SHE LOOKS FIRST, THEN THE SHEETS ARE DRAWN (2026-10-03, v9.526, Aaron) ═══════════════
+            // v9.525 drew a sheet per body section. MEASURED (pta_3b55a5ea041ac602): the picture model
+            // ignored "only the part on the knee" every time - four of five sheets were the same whole
+            // sunflower. One drawing per sheet again; PRINT now traces it to vector, so her measured
+            // height prints sharp at any size (see THE STENCIL TRACER).
             let _saved = null, _name = null;
             try { _saved = String((await talkStateGet(env, me, ["added"])).added || "").trim() || null; } catch {}
+            const _ok = (v) => (v >= 1 && v <= 60) ? Math.round(v * 10) / 10 : 0;   // PRINT's own ceiling
             try {
               const q = await proxyToAgent(env,
-                "[FOR YOU, NOT THEM. The artist sheet of only the NEW tattoo work is being drawn now." +
+                "[FOR YOU, NOT THEM. Their artist's sheets are being drawn now." +
                 (_saved ? " What they asked for, in their words, in order:\n" + _saved.slice(-1200) + "\n" : "") +
-                " In a few words, name only the new tattoo work that was added to the tattoo they already" +
-                " had - for example \"the dragon with storm clouds\". Reply with only those words.]",
+                // EVERYTHING NEW, NOT ONLY THE SUBJECTS (2026-10-09, v9.552, Aaron). MEASURED (pta_9e167ef2841b537c):
+                // she named "the man with the topknot and the lion in color" and the sheet came back without
+                // the flowers and leaves that were also new - the picture model drew exactly the name.
+                " Name everything that was added to the tattoo they already had - each new subject and" +
+                " everything new around it, like flowers, leaves, clouds or background - for example" +
+                " \"the dragon with storm clouds and cherry blossoms\"." +
+                " Then, on a second line, from what you see on their body in this picture, the finished" +
+                " height in inches of the whole tattoo and of only the new work, written as" +
+                " whole: N in / new: N in. Reply with only those two lines.]",
                 false, me, mockUrl, world);
               if (q && q.reply && !q.failed) {
-                _name = String(_verdict(q.reply, readAct(q.reply)) || "").trim()
+                const _ans = String(_verdict(q.reply, readAct(q.reply)) || "");
+                // ══ READ HER WHOLE REPLY, NOT ONLY HER SENTENCE (2026-10-03, v9.527) ══════════════════
+                // MEASURED twice (pta_6b0c9929696423ae, pta_b55b8d8399a11ce2): `new` came through and `whole`
+                // did not. Her channel answers in JSON, and only `say` was being read - a number she put
+                // anywhere else, or wrote as "whole tattoo: 30", was lost. The whole raw reply is searched,
+                // and what she actually sent rides with the files so a miss is never a guess again.
+                const _rawQ = String(q.reply || "");
+                _seeRaw = _rawQ.slice(0, 600);
+                const _meas = _ans + "\n" + _rawQ;
+                // MEASURED (pta_7ae5a467bd6d70d2): she wrote "28 in / new: 12 in" - the word "whole" left out.
+                // The number in front of "/ new" is the whole piece, however she labels it.
+                const _wm = _meas.match(/\bwhole\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i) ||
+                            _meas.match(/(\d+(?:\.\d+)?)\s*(?:in\b|inch\w*|")?[^0-9\n\/]{0,12}\/\s*new\b/i);
+                const _nm = _meas.match(/\bnew\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i);
+                if (_wm) _seeWhole = _ok(parseFloat(_wm[1]));
+                if (_nm) _seeNew = _ok(parseFloat(_nm[1]));
+                try { console.log("[PRINT-SIZE] she measured on their body: whole=" + (_seeWhole || "?") + "in new=" + (_seeNew || "?") + "in | she said: " + JSON.stringify(_seeRaw)); } catch {}
+                _name = (_ans.split(/\r?\n/).map((x) => x.trim()).find((x) => x && !/^(whole|new)\b/i.test(x)) || "").trim()
+                  .replace(/\s*[-,;:(]?\s*whole\b.*$/i, "")
                   .replace(/^["'\s]+|["'.\s]+$/g, "").slice(0, 120) || null;
                 // "Draw only the dragon..." is the proven sentence; her answer arrives capitalised
                 // ("The coloured dragon..."). Only a leading The / A / An goes lower-case - a name
@@ -62746,13 +63748,81 @@ async function makeArtistFiles(env, ctx) {
                 if (_name) _name = _name.replace(/^(The|A|An)\b/, (w) => w.toLowerCase());
               }
             } catch {}
-            if (_name) {
+            const _whole = await _flat("Draw this whole tattoo flat on plain white paper, with no body and no skin.");
+            if (_whole) _addSheets.push({ panel: "Whole piece", asked: "the whole tattoo", flat: _whole.flat,
+                                          id: _whole.id, seeIn: _seeWhole || 0, checked: null, ok: true });
+            // ══ THE NEW-WORK SHEET NEVER DISAPPEARS SILENTLY (2026-10-01, v9.502, Aaron) ══════════════
+            // MEASURED: on the Japanese sleeve the new-work sheet was missing three runs out of three
+            // (pta_833a8453ed00cdcb, pta_a6b5b5a0dfbebe59, pta_d17a7ead05b96ec1) and nothing said why.
+            // If her one-question answer is missing, the subject she already wrote names it instead -
+            // cut before any "matching / to match their existing..." part, which names old ink. Every
+            // step is logged, and a failure rides with the files.
+            if (_name) { try { console.log("[FILES] new work named by her: " + _name); } catch {} }
+            if (!_name) {
+              const _subj = String((intent && intent.subject) || "").trim()
+                .split(/[,;]?\s+(?:matching|to match|that matches|pairing with|to pair with)\b/i)[0]
+                .replace(/^(full colou?r\s+)?/i, "").trim();
+              if (_subj) {
+                _name = _subj.replace(/^(The|A|An)\b/, (w) => w.toLowerCase()).slice(0, 160);
+                try { console.log("[FILES] her answer was empty - new work named from her subject: " + _name); } catch {}
+              }
+            }
+            // ══ THE NEW WORK IS WHAT IS DIFFERENT BETWEEN TWO PICTURES (2026-10-13, v9.586, Aaron) ═══════════
+            // "Give both images to GPT: here's my original, here's the new look, print only the new art."
+            // The sheet below was drawn from ONE picture and a name, so the model had to guess which ink was
+            // new - and drew old ink, or missed what was new (flowers, 2026-10-09). PROVEN by command
+            // (pta_033302cc27b7eadd): their original photo, the finished look as a second picture, and one
+            // sentence gave back the two lions alone on white - no mask, no skin. Nothing has to be named.
+            // The sentence is a setting (`config:frame:addon:newwork`). The name-based sheet stays only for
+            // an add-on with no original photo on file.
+            if (refDesign && /^https?:\/\//i.test(String(mockUrl || ""))) {
+              let _nw = "The first picture is my original tattoo. The second picture is the new look. Draw only the new art - everything in the second picture that is not in the first - flat on plain white paper, with no body and no skin.";
+              try { const _k = String((await env.AURA_KV.get("config:frame:addon:newwork")) || "").trim(); if (_k) _nw = _k; } catch {}
+              const _new = await _flat(_nw, refDesign, [mockUrl]);
+              if (_new) {
+                _addSheets.push({ panel: "New work", asked: _name || "everything new", flat: _new.flat, id: _new.id,
+                                  seeIn: _seeNew || 0, checked: null, ok: true });
+                try { console.log("[FILES] new work sheet -> ok (original photo + the new look, only what is different) · picture 1: " +
+                                  refDesign + " · picture 2: " + mockUrl + " · words: \"" + _nw + "\" · came back: " + _new.flat); } catch {}
+              } else {
+                _newWorkFail = "new work sheet failed: " + (_flatErr || "no image came back");
+                try { console.log("[FILES] " + _newWorkFail); } catch {}
+              }
+            } else if (_name) {
               const _new = await _flat("Draw only " + _name + " from this picture, flat on plain white paper, " +
                                        "with no body and no skin.");
-              if (_new) _addSheets.push({ panel: "New work", asked: _name, flat: _new.flat, id: _new.id,
-                                          checked: null, ok: true });
+              if (_new) {
+                _addSheets.push({ panel: "New work", asked: _name, flat: _new.flat, id: _new.id,
+                                  seeIn: _seeNew || 0, checked: null, ok: true });
+                try { console.log("[FILES] new work sheet -> ok"); } catch {}
+              } else {
+                _newWorkFail = "new work sheet failed: " + (_flatErr || "no image came back");
+                try { console.log("[FILES] " + _newWorkFail); } catch {}
+              }
+            } else {
+              _newWorkFail = "new work sheet failed: nothing to name it from";
+              try { console.log("[FILES] " + _newWorkFail); } catch {}
             }
             if (!_addSheets.length) _addSheets = null;
+          }
+          // A design put on them (v9.529): the artwork is the design itself; how big it is comes from her
+          // look at it on their body - the same measuring an add-on gets.
+          if (bodyLook && !_seeWhole) {
+            try {
+              const q = await proxyToAgent(env,
+                "[FOR YOU, NOT THEM. Their artist's sheets are being made now from the design they chose." +
+                " From what you see on their body in this picture, the finished height in inches of the tattoo," +
+                " written as whole: N in. Reply with only that line.]",
+                false, me, bodyLook, world);
+              if (q && q.reply && !q.failed) {
+                const _a = String(_verdict(q.reply, readAct(q.reply)) || "") + "\n" + String(q.reply || "");
+                _seeRaw = String(q.reply || "").slice(0, 600);
+                const _m = _a.match(/\bwhole\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i) || _a.match(/(\d+(?:\.\d+)?)\s*(?:in\b|inch\w*|")/i);
+                const _v = _m ? parseFloat(_m[1]) : 0;
+                if (_v >= 1 && _v <= 60) _seeWhole = Math.round(_v * 10) / 10;
+              }
+              try { console.log("[PRINT-SIZE] she measured the design on their body: whole=" + (_seeWhole || "?") + "in | she said: " + JSON.stringify(_seeRaw)); } catch {}
+            } catch {}
           }
           const sheets = _addSheets || [];
           const _checkSheets = await _checkOn("sheets");
@@ -62863,7 +63933,31 @@ async function makeArtistFiles(env, ctx) {
             for (const k of Object.keys(PLACEMENT_IN)) {
               if (placeKey.includes(k) && PLACEMENT_IN[k] > inches) inches = PLACEMENT_IN[k];
             }
-            if (!inches) inches = 8;   // a hand-sized default, and PRINT reports the real figure
+            // ══ HER SIZE FIRST (2026-10-01, Aaron) ═══════════════════════════════════════════
+            // MEASURED: a small hip bouquet printed at the 8in default ("hip" is not in the list) on 4
+            // sheets, and a full back asked for 20in. A placement word is not a size. She saw the photo -
+            // how much of the body it covers - and her brief's `size` carries her estimate of the
+            // finished height in inches. The list is only the fallback.
+            {
+              const _szTxt = String((intent && intent.size) || "");
+              const _szM = _szTxt.match(/(\d+(?:\.\d+)?)\s*(cm|centimet\w*|inches|inch|in\b|")/i);
+              if (_szM) {
+                let _v = parseFloat(_szM[1]);
+                if (/^c/i.test(_szM[2])) _v = _v / 2.54;
+                if (_v >= 1 && _v <= 40) inches = Math.round(_v * 10) / 10;
+              }
+              if (!_seeWhole) try { console.log("[PRINT-SIZE] her size=" + JSON.stringify(_szTxt) + " placement=" + JSON.stringify(placeKey) + " -> " + (inches ? inches + "in" : "5in on the longest side (standard)")); } catch {}
+            }
+            if (_seeWhole) inches = _seeWhole;   // what she measured on the finished picture beats any guess
+            // ══ THE STANDARD TATTOO IS FIVE INCHES ON ITS LONGEST SIDE (2026-10-05, v9.537, Aaron) ══
+            // MEASURED: a dragon with no size and no placement printed at the old 8in default - and
+            // being square it was also 8in WIDE, past the 7.5in a letter sheet prints, so it split
+            // across 3 sheets. Aaron: a standard tattoo is "not a whole page, that's for sure"; agreed
+            // 5in. The default is now the LONGEST side (`long`), so a wide piece is not 5in tall and
+            // 9in across, and five inches always lands on one sheet. Her measured size, the size they
+            // asked for, and the placement list all still win over it.
+            let _stdLong = false;
+            if (!inches) { inches = 5; _stdLong = true; }
             // ══ A PDF PER PANEL, AND THE COUNT HAS TO ADD UP (2026-09-15) ═════════════
             // MEASURED: `panel_count: 3` and `print_sheets: 1` in the same object, because PRINT
             // ran once on `lineId` - panel one. Two of the three line arts were never in any PDF,
@@ -62877,17 +63971,21 @@ async function makeArtistFiles(env, ctx) {
               if (!sid) continue;
               // Sized per section, not once for the whole job - a forearm and a set of ribs do not
               // print at the same width, and PRINT caps to what the pixels and the paper allow.
-              let shIn = 0;
-              const shKey = String(sh.panel || placeKey).toLowerCase();
-              for (const k of Object.keys(PLACEMENT_IN)) {
+              let shIn = sh.seeIn || 0;
+              // A sheet with no name is the whole job: it prints at the size already worked out above -
+              // her size first, the placement list only as the fallback (2026-10-01, v9.505). MEASURED
+              // (pta_4432bf7fbaf420ec): "about 3-4 inches" printed at 7in because "forearm" was looked up again.
+              const shKey = String(sh.panel || "").toLowerCase();
+              if (!sh.seeIn) for (const k of Object.keys(PLACEMENT_IN)) {
                 if (shKey.includes(k) && PLACEMENT_IN[k] > shIn) shIn = PLACEMENT_IN[k];
               }
-              if (!shIn) shIn = inches;
+              let _shLong = false;
+              if (!shIn) { shIn = inches; _shLong = _stdLong; }
               try {
-                const pr2 = await processCommand("PRINT " + sid + " " + shIn + " " + me, env, true);
+                const pr2 = await processCommand("PRINT " + sid + " " + shIn + (_shLong ? " long" : "") + " " + me, env, true);
                 const pp = (pr2 && pr2.payload) ? pr2.payload : pr2;
                 if (pp && pp.ok && pp.pdf) {
-                  sh.pdf = pp.pdf; sh.sheets = pp.sheets || 1; sh.inches = pp.inches;
+                  sh.pdf = pp.pdf; sh.sheets = pp.sheets || 1; sh.inches = pp.inches; sh.vector = !!pp.vector;
                   pdfTotal += (pp.sheets || 1);
                   if (!pdfUrl) { pdfUrl = pp.pdf; pdfInches = pp.inches; }
                 }
@@ -62915,14 +64013,18 @@ async function makeArtistFiles(env, ctx) {
               // `image` is what the needle does: the line art, new ink only on an add-on.
               image: lineUrl || fp.image,
               changed: "the artist's files", from: shopParent, for_the_artist: true,
+              ...(_newWorkFail ? { new_work_failed: _newWorkFail } : {}),
               // The whole package, in the order a shop uses it.
               flat_artwork: fp.image,
-              shows_finished: mockUrl,
+              shows_finished: bodyLook || mockUrl,
               // ONE ENTRY PER PANEL, each with the section it covers, its flat artwork and the
               // line art the needle follows. `flat_artwork` above stays the first sheet so a
               // single-panel job reads exactly as it did before this existed.
+              ...(_seeRaw ? { she_measured: _seeRaw } : {}),
               ...(sheets.length > 1
                 ? { panels: sheets.map((sh) => ({ section: sh.panel, flat: sh.flat,
+                                                  inches: sh.inches || null, sheets: sh.sheets || null, vector: sh.vector === true,
+                                                  measured: sh.seeIn || null,
                                                   line: sh.line || null,
                                                   pdf: sh.pdf || null,
                                                   ok: sh.ok === true,
@@ -63015,7 +64117,12 @@ function talkReadAct(txt) {
     catch { try { o = repairJson(String(txt || "")); } catch {} }
     if (o) o = unwrapSchema(o);
     if (!o || typeof o !== "object") return null;
-    const say = typeof o.say === "string" ? o.say.trim() : "";
+    // ══ READ WHAT SHE WROTE (2026-10-01, v9.503) ═════════════════════════════════════════════
+    // MEASURED (pta_68bfa0feb3429408): twice her answer was thrown away whole - once her words came
+    // under `reply`, once she wrote no `say` at all - and the turn became "I lost my train of
+    // thought" with nothing drawn. Her words under `reply` or `message` are her words.
+    const _sayRaw = [o.say, o.reply, o.message].find((v) => typeof v === "string" && v.trim());
+    const say = _sayRaw ? String(_sayRaw).trim() : "";
     if (!say) return null;
     const act = String(o.do || "none").trim().toLowerCase();
     // ══ A FIELD SHE CAN FILL AND NOBODY READS (2026-09-10) ═════════════════════════════
@@ -63038,6 +64145,10 @@ function talkReadAct(txt) {
              // field in her contract is useless until it survives this line.
              ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 2000) : "",
              words: typeof o.words === "string" ? o.words.trim().slice(0, 2000) : "",
+             ideas: strList(o.ideas, 4, 160).map((x) => x.replace(/\*\*/g, "")),
+             // HER IDEAS AS PICTURE WORDS (2026-10-12, v9.584, Aaron): the same four, written for the picture.
+             directions: strList(o.directions, 4, 80).map((x) => x.replace(/^\s*i want it to go\s+/i, "").replace(/[.\s]+$/, "")),
+             where_to: (typeof o.where_to === "string") ? o.where_to.trim().slice(0, 160) : "",
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
              // first version of this field took that name, and the duplicate key silently lost.
              lines: Array.isArray(o.lines) ? o.lines.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
@@ -63050,8 +64161,10 @@ function talkReadAct(txt) {
              panels: strList(o.panels, 6, 200),
              // The world she is drawing in, by its exact name (2026-09-29).
              world: typeof o.world === "string" ? o.world.trim().slice(0, 80) : "",
+             // A brief written as one sentence instead of the block is kept as its paragraph.
              brief: (o.brief && typeof o.brief === "object" && !Array.isArray(o.brief))
-               ? o.brief : null };
+               ? o.brief
+               : (typeof o.brief === "string" && o.brief.trim() ? { brief: o.brief.trim().slice(0, 600) } : null) };
   }
 
 function talkUseOne(n, want, refDesign, refUrl, lastDrawn) {
@@ -63089,7 +64202,7 @@ async function talkCheckOn(env, k) {
 function artistFilesOf(drew) {
   if (!drew) return null;
   const f = {};
-  for (const k of ["flat_artwork", "image", "shows_finished", "print_pdf", "print_inches", "print_sheets"]) {
+  for (const k of ["flat_artwork", "image", "shows_finished", "print_pdf", "print_inches", "print_sheets", "new_work_failed", "she_measured"]) {
     if (drew[k] != null) f[k] = drew[k];
   }
   if (Array.isArray(drew.panels)) f.panels = drew.panels;
@@ -63109,7 +64222,7 @@ function artistFilesOf(drew) {
 const ONME_SENTENCE = "Place the tattoo design from the second image onto the skin in the first image. " +
   "Follow the contour of the body, match the lighting and perspective of the photograph, " +
   "and make the ink sit UNDER the skin like a real healed tattoo - not a sticker, not a " +
-  "flat overlay. Keep the person, the pose and the background exactly as they are.";
+  "flat overlay. Keep the design's own colors. Keep the person, the pose and the background exactly as they are.";
 
 // ══ THE IMAGES AND EXACTLY WHAT THEY ASKED FOR (2026-09-23, Aaron) ═══════════════════════════
 // "The only thing that I'm certain is going to work is if the model has the images and exactly
@@ -63125,32 +64238,16 @@ const INSPIRE_FRAME = "Take the tattoo from this picture and make it flat tattoo
 const ONME_SIDES = /\b(right|left)\b/i;
 const ONME_SIZED = /\b(small|smaller|tiny|little|mini|big|bigger|large|larger|huge|palm|hand|half|whole|full|entire|cover|covering|inch|inches|cm|size|sized|across|down to|halfway|wide|tall)\b/i;
 function onmeAsk(words) {
-  // ══ BASE BODY PHOTO + NEW TATTOO (2026-09-24, Aaron's frame) ═══════════════════════════════
-  // The operation, stated literally - which image is which, that this is an EDIT of their photo,
-  // that ink already on them is old ink that stays - with ONLY where it goes taken from them, as
-  // they said it. Same lesson as the add-on frame: the models are literal. Image 1 is the design,
-  // image 2 is their photo, and the refs are sent in that order.
-  const w = String(words || "").replace(/\s+/g, " ").trim().slice(0, 600);
-  const where = w ? "the place they asked for: \"" + w.replace(/"/g, "'") + "\"" : "the spot that suits it";
-  return [
-    "TWO-IMAGE TATTOO VISUALIZATION",
-    "",
-    "IMAGE 1 = TATTOO DESIGN SOURCE. This image supplies ONLY the tattoo artwork/design that will be applied.",
-    "IMAGE 2 = BASE BODY PHOTO. This image is the image to EDIT. It owns the person, body, pose, camera angle, crop, background, lighting, skin, existing tattoos, clothing, environment and overall composition.",
-    "",
-    "GOAL: Return IMAGE 2 with the tattoo from IMAGE 1 realistically applied to the requested body location.",
-    "THIS IS AN IMAGE EDIT, NOT A NEW IMAGE GENERATION.",
-    "",
-    "PRESERVATION RULE: Preserve IMAGE 2 as closely as possible. Do NOT recreate the person, replace the person, change the pose, change the body, change the camera angle, change the crop, change the background, change the environment, change the lighting, remove or redesign existing tattoos, invent additional tattoos, reinterpret IMAGE 2 as inspiration, or generate a new photograph resembling IMAGE 2. The only intended visual change is the addition of the tattoo design from IMAGE 1.",
-    "",
-    "TATTOO APPLICATION: Extract the tattoo artwork from IMAGE 1 and apply it to " + where + " in IMAGE 2. Adapt only what is physically necessary to make the tattoo believable on that body: scale, rotation, perspective, curvature, anatomical wrapping, skin contour, natural occlusion, local lighting, skin texture. Preserve the recognizable design, structure, subject and visual character of IMAGE 1. The tattoo must appear IN the skin rather than pasted on top of the photograph. Preserve pores, skin texture, highlights, shadows and body curvature through the tattoo.",
-    "",
-    // "must not touch or cover" (2026-09-24): MEASURED - without it, both tries covered the flowers
-    // around the empty space; with it, Grok and GPT both put the bike in the gap and kept every flower.
-    "EXISTING INK: Any tattoos already visible in IMAGE 2 are OLD/EXISTING INK. They are part of the base photograph and must remain unchanged unless the user explicitly asks to modify or cover them. The new tattoo must not touch or cover any of the existing tattoos - it goes only on bare skin. The tattoo supplied in IMAGE 1 is NEW INK. NEW INK is the only tattoo artwork being added.",
-    "",
-    "OUTPUT: Return the BASE BODY PHOTO with the NEW INK realistically visualized on the requested body location. OUTPUT = BASE BODY PHOTO + NEW TATTOO, NOT a newly generated person inspired by both images."
-  ].join("\n");
+  // ══ TWO PICTURES AND ONE PLAIN SENTENCE (2026-10-03, v9.532, Aaron) ═══════════════════════════
+  // MEASURED (pta_b5f5db1bf9210b52): a ~2,300-character page of rules went with every look-on-them -
+  // crop, camera, pores, "not a newly generated person", existing ink - most of it written for other
+  // cases and stacked one fix at a time. A brand-new design on a bare back went over the waistband
+  // and past the sides. Aaron: "that much information sent to the image model is never going to
+  // work." Now: image 1 the design, image 2 their photo, her one plain request, and the one line
+  // that keeps ink already on them safe. The add-on path is separate and unchanged.
+  const w = String(words || "").replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "").slice(0, 600);
+  return "Put the tattoo from the first image on the person in the second image" + (w ? ": " + w : "") + ". " +
+    "Keep any tattoos already on them as they are.";
 }
 
 // ══ WHAT'S HOT RIGHT NOW (2026-09-24, Aaron) ═══════════════════════════════════════════════
@@ -63303,6 +64400,53 @@ function talkShuffle(list, seedText) {
   return a;
 }
 
+// Width and height from a PNG or JPEG header - no decode. null for anything else.
+function imageDimsOf(buf) {
+  try {
+    const u = new Uint8Array(buf);
+    if (u.length > 24 && u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4E && u[3] === 0x47) {
+      const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+      return { w: dv.getUint32(16), h: dv.getUint32(20) };
+    }
+    if (u.length > 4 && u[0] === 0xFF && u[1] === 0xD8) {
+      let i = 2;
+      while (i + 9 < u.length) {
+        if (u[i] !== 0xFF) { i++; continue; }
+        const m = u[i + 1];
+        if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) {
+          return { h: (u[i + 5] << 8) | u[i + 6], w: (u[i + 7] << 8) | u[i + 8] };
+        }
+        if (m === 0xD8 || m === 0x01 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }
+        i += 2 + ((u[i + 2] << 8) | u[i + 3]);
+      }
+    }
+    // ══ WEBP, GIF, AVIF/HEIC TOO (2026-10-01, v9.506, Aaron) ═══════════════════════════════════
+    // MEASURED: the crane photo's pictures went out at `size=auto` (small) while JPEG photos went out at
+    // 1632x2048 - this only read PNG and JPEG, and websites and phones send these as well.
+    const _tag = (o) => String.fromCharCode(u[o], u[o + 1], u[o + 2], u[o + 3]);
+    if (u.length > 30 && _tag(0) === "RIFF" && _tag(8) === "WEBP") {
+      const c = _tag(12);
+      if (c === "VP8 ") return { w: (u[26] | (u[27] << 8)) & 0x3FFF, h: (u[28] | (u[29] << 8)) & 0x3FFF };
+      if (c === "VP8L") return { w: 1 + (u[21] | ((u[22] & 0x3F) << 8)),
+                                 h: 1 + ((u[22] >> 6) | (u[23] << 2) | ((u[24] & 0x0F) << 10)) };
+      if (c === "VP8X") return { w: 1 + (u[24] | (u[25] << 8) | (u[26] << 16)),
+                                 h: 1 + (u[27] | (u[28] << 8) | (u[29] << 16)) };
+    }
+    if (u.length > 10 && _tag(0) === "GIF8") return { w: u[6] | (u[7] << 8), h: u[8] | (u[9] << 8) };
+    if (u.length > 16 && _tag(4) === "ftyp") {
+      // AVIF / HEIC: the image size is in the `ispe` box near the start of the file.
+      const lim = Math.min(u.length - 16, 65536);
+      for (let j = 8; j < lim; j++) {
+        if (u[j] === 0x69 && u[j + 1] === 0x73 && u[j + 2] === 0x70 && u[j + 3] === 0x65) {
+          const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+          return { w: dv.getUint32(j + 8), h: dv.getUint32(j + 12) };
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
 async function startArtistFilesJob(env, data) {
   try {
     if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
@@ -63317,9 +64461,9 @@ async function startArtistFilesJob(env, data) {
 async function runArtistFilesJob(env, d) {
   const refDesign = d.refDesign || null, refUrl = d.refUrl || null, lastDrawn = d.lastDrawn || null;
   return await makeArtistFiles(env, {
-    me: d.me, world: d.world, seeing: !!d.seeing, jobNow: d.jobNow || null, refUrl, lastDrawn,
+    me: d.me, world: d.world, seeing: !!d.seeing, jobNow: d.jobNow || null, refUrl, refDesign, lastDrawn,
     useRaw: Array.isArray(d.useRaw) ? d.useRaw : [], acted: d.acted || {}, intent: d.intent || null,
-    alreadyFlat: !!d.alreadyFlat,
+    alreadyFlat: !!d.alreadyFlat, bodyLook: d.bodyLook || null,
     useOne: (n, want) => talkUseOne(n, want, refDesign, refUrl, lastDrawn),
     _checkOn: (k) => talkCheckOn(env, k), _verdict: talkVerdict, readAct: talkReadAct,
   });
@@ -63344,8 +64488,56 @@ async function recordArtistFiles(env, d, drew) {
   } catch (e) {
     try { console.log("[FILES] timeline write failed: " + String(e?.message ?? e).slice(0, 160)); } catch {}
   }
-  if (d.project) await projectAppend(env, me, d.project, ok ? { files: artistFilesOf(drew), locked: true }
+  // ══ THE PROJECT KEEPS ITS DETAILS (2026-10-07, v9.539, Aaron) ═══════════════════════════════
+  // My Tattoos shows style, placement, size and notes for the artist. They live in her brief,
+  // which is cleared just below - so they are copied onto the project first, as she had them.
+  let _details = null;
+  if (ok && d.project) {
+    try {
+      const _st = await talkStateGet(env, me, ["brief", "project"]);
+      const _cur = String(_st.project || "").replace(/^"|"$/g, "");
+      const _bf = talkParse(_st.brief);
+      if ((!_cur || _cur === String(d.project)) && _bf && typeof _bf === "object") {
+        // NOT THE FORM'S OWN WORDS (2026-10-11, v9.564): MEASURED - a catalogue lock-in stored "where on the body,
+        // only if they said" and "japanese | realism | fine line | ..." - the brief's field descriptions, never answers.
+        const _tmpl = (x) => /\s\|\s|only if they said|why they are getting it|who it is for/i.test(x);
+        const _s = (v, n) => { if (v == null || v === "") return null; const t = String(Array.isArray(v) ? v.join(", ") : v);
+                               return _tmpl(t) ? null : t.slice(0, n); };
+        _details = { style: _s(_bf.style, 60), placement: _s(_bf.placement, 60), size: _s(_bf.size, 40),
+                     colour: _s(_bf.colour || _bf.color, 40), notes: _s(_bf.meaning, 300), subject: _s(_bf.subject, 200),
+                     // What kind of job it was - new, add, cover, rework (2026-10-08, v9.543): only a new
+                     // tattoo is offered "see it on you"; the others were drawn on their own photo already.
+                     job: _s(_bf.job, 20) };
+        if (!Object.values(_details).some(Boolean)) _details = null;
+      }
+    } catch {}
+  }
+  if (d.project) await projectAppend(env, me, d.project, ok ? { files: artistFilesOf(drew), locked: true, ...(_details ? { details: _details } : {}) }
     : { files_failed: String((drew && (drew.failed || drew.error)) || "no files came back").slice(0, 200) });
+  // ══ LOCKED MEANS FINISHED (2026-10-02, Aaron) ══════════════════════════════════════════════
+  // MEASURED: after lock-in the locked tattoo stayed "the tattoo you are on now" - its photo, brief
+  // and last lines rode every later turn, so a new photo next visit was read as more of the old one
+  // and she suggested its flowers. Aaron: "welcome back, your last tattoo was amazing, what do you
+  // wanna do next". The files are made, so this is the same clear a fresh start already does; the
+  // locked piece then sits in THEIR EARLIER TATTOOS ("bring one up only if they do").
+  // Only if they are still on this tattoo - if they started a new one while the files were being
+  // made, that new start is theirs and is left alone.
+  if (ok && d.project) {
+    try {
+      const _cur = String((await talkStateGet(env, me, ["project"])).project || "").replace(/^"|"$/g, "");
+      if (!_cur || _cur === String(d.project)) {
+        // One direct write, the way TALK_RESET does it: the timeline's own save MERGES, so it can
+        // never empty it. Projects (My Tattoos) are NOT touched - the locked piece stays there.
+        await talkDo(env, me, "talkPut", [{
+          "talk-state:timeline": "[]", "talk-state:brief": "", "talk-state:last": "", "talk-state:ref": "",
+          "talk-state:design": "", "talk-state:onme": "", "talk-state:bad": "", "talk-state:split": "",
+          "talk-state:added": "", "talk-state:project": "" }]);
+        try { console.log("[FILES] locked in - " + d.project + " is finished; the next turn starts clean"); } catch {}
+      }
+    } catch (e) {
+      try { console.log("[FILES] clear after lock-in skipped: " + String(e?.message ?? e).slice(0, 160)); } catch {}
+    }
+  }
   if (d.stage === "pta") {
     try {
       await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
@@ -63358,6 +64550,9 @@ async function recordArtistFiles(env, d, drew) {
 }
 
 async function auraTalk(env, me, stage, saidIn, history, opts) {
+  return _TURN_ALS.run({ think: [], pics: [] }, () => _auraTalkInner(env, me, stage, saidIn, history, opts));
+}
+async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // ══ MEASURE IT, DO NOT REASON ABOUT IT (2026-09-09) ═══════════════════════════════════
       // One turn took 131 SECONDS. Typical is 26-45. Nobody waits half a minute on a phone, and
       // this file's own record of the last performance hunt is four consecutive wrong guesses
@@ -63589,7 +64784,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       }
       const _projNote = me
         ? "\n\nTHE TATTOO YOU ARE ON NOW: " +
-          (_workPj && _workPj.title ? "\"" + _workPj.title + "\"" : "a new tattoo - nothing made for it yet") +
+          (_workPj && _workPj.title ? "\"" + _workPj.title + "\"" : "nothing made yet") +
           (_workPj && _workPj.started ? " (started " + String(_workPj.started).slice(0, 10) + ")" : "") +
           (_workPj && _workPj.locked ? ", locked in - their artist's files are made" : "") + "." +
           (_earlierPjs.length
@@ -63791,7 +64986,7 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
       // becomes the subject, and the drawing is an ORIGINAL born under their PTA.
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
-let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
+let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto = false;
       // ══ A PHOTOGRAPH THAT ARRIVED IS NOT A DRAWING (2026-09-16, v9.270) ══════════════════
       // `talk:last` is written on a REF turn with `image: refUrl` so the pixels survive the turn.
       // Correct - but three readers took "lastDrawn has an image" to mean SHE DREW IT. The go-ahead
@@ -63829,7 +65024,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             context: "a reference somebody pointed at while designing a tattoo", by: me }), env, true);
           const ip = (ir && ir.payload) ? ir.payload : ir;
           if (ip?.ok) { refSaw = ip.saw || null; refUrl = ip.image_url || wantRef;
-                        refDesign = ip.entity || null; _bodyPhoto = _bodyRefNow; }
+                        refDesign = ip.entity || null; _bodyPhoto = _bodyRefNow; _freshPhoto = true; }
         } catch {}
         // ══ THE ISOLATE IS DELETED, AND IT IS NOT MOVING ANYWHERE (2026-09-13) ═════════════
         //
@@ -64016,8 +65211,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const CONTRACT =
         "\n\nANSWER WITH ONE JSON OBJECT AND NOTHING ELSE. No preamble, no markdown fence.\n" +
         "{\n" +
-        '  "say": "what you say to them - short, human, no machine words",\n' +
+        // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
+        // so the floor and her live agent cannot disagree.
+        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give the ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
+        // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
+        // as a small card under her words; a tap sends it to her as if they had typed it.
+        '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', each one bringing together everything they have told you they want, said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
+        '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go - by tapping one of your directions or in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:
@@ -64071,7 +65272,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // suggested that they did not take up is not a fact.
         '  "brief": {\n' +
         '    "subject": "what the tattoo is OF, in their words",\n' +
-        '    "job": "new | cover | add | rework",\n' +
+        '    "job": "new | cover | add | rework | from",\n' +
         '    "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
         '    "colour": "full_colour | black_and_grey | muted",\n' +
         '    "composition": "what the picture is OF - head portrait, coiled, flying, a bouquet",\n' +
@@ -64079,9 +65280,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         '    "detail": "bold | balanced | intricate | ultra",\n' +
         '    "placement": "where on the body, only if they said",\n' +
         '    "size": "how big, only if they said",\n' +
+        '    "mirror_photo": "yes | no - only when their photo of themselves is in this conversation: is it taken in a mirror (a mirror selfie)",\n' +
         '    "elements": ["cherry blossoms","waves"],\n' +
         '    "meaning": "why they are getting it - who it is for, what happened",\n' +
-        '    "brief": "one paragraph, at most 60 words, for a tattoo artist to read"\n' +
+        '    "brief": "what the picture is drawn from - everything decided so far, written the way PICTURE WORDS in your craft says: what to add, where it goes on their body, how it looks - plain words in their voice, no imagery, story or meaning, nothing that is not ink on their skin; at most 40 words. Do not describe what is already in their photo; the picture model can see it"\n' +
         "  }\n" +
         "}\n\n" +
         // ══ THE DISCUSSION DECIDES WHEN, NOT YOU (2026-09-08) ════════════════════════════════
@@ -64225,10 +65427,72 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       const _convNote = "\n\nTHE CONVERSATION, NUMBERED (\"you\" is you):\n" +
         _convLines.slice(-20).map((l) => "  " + l.n + ". " + l.who + ": " + l.said.slice(0, 500) +
           (l.now ? "   <- what they just said" : "")).join("\n");
-      const stateNote = _projNote + _convNote + (_drewNow()
+      // THEIR LANGUAGE (2026-09-30): a fact, like the time zone Claude is given - no spelling rules.
+      // From the browser through aura-host; a turn with no browser (PowerShell) is en-US.
+      const _langNote = "\n\nTheir language: " + String((opts && opts.lang) || "en-US") + ".";
+      // ══ EVERY PICTURE STARTS FROM THEIR PHOTO - SAID AS A FACT (2026-10-01, Aaron) ═══════════════
+      // MEASURED (pta_c2a1cf5410f71540, pta_40c895e602b5e608): on every change she wrote only the change
+      // ("add colour to the sun", "replace the butterflies with bees") - because this told her a piece
+      // she drew was on screen and the roster said changes start from it. On an add-on on their photo
+      // that is false: every picture starts from the photo, and the picture model has never seen one
+      // she made. So that is what she is told. The job is the one they chose (her brief on record).
+      // Not on the turn the photo arrives - then she only says what she sees and asks what they want.
+      // Cover-up and rework are on the photo chain too (2026-10-01, v9.509, Aaron) - one path for every job.
+      const _photoChain = _bodyPhoto && !!refDesign && refHeld && !(opts && opts.inspire);
+      // ONE LIST OF GO WORDS (2026-10-02, v9.514) - the draw guard below and the drawing notes read the same one.
+      const _GO_WORDS = /\b(show me|show us|let'?s see|let me see|go for it|go ahead|do it|try it|try that|draw it|draw that|see (it|what|that|how)|looks? like)\b/i;
+      // ══ A YES TO HER OFFER IS A GO (2026-10-09, v9.547, Aaron) ═══════════════════════════════
+      // MEASURED: she asked "Want me to show you four different takes on it?", they said "yes", and
+      // she answered "Let's see it then - I'll show you four" with nothing drawn. They said "go"; her
+      // last line had no question mark, so "go" did not count either, and she said "Here it comes"
+      // over nothing again. A short yes or go after she has talked about showing them - question or
+      // not - is their go, and it is the same go everywhere below.
+      const _prevAuraLine = (() => { for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") return String(tnow[i].said || ""); } return ""; })();
+      // The words that say "this is the one" - one definition, used by the lock below AND by the hold
+      // after it, so the two can never disagree (2026-10-10, v9.557).
+      const _saysTheOne = (txt) => /\b(that'?s the one|this is the one|it'?s the one|that one|i want (it|this one|that one)|i'?ll take it|lock it in|i'?m done|make (the |my )?(artist'?s? )?files|artist'?s? files|send it to (my|the) artist|ready for (my|the) artist)\b/i.test(String(txt || ""));
+      const _yesToTheOne = (txt) => /\b(the one|your tattoo)\b[^?]*\?/i.test(_prevAuraLine) &&
+        /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|love it|i (really )?(like|love) it|it'?s perfect)\b[\s.!]*$/i.test(String(txt || "").trim());
+      // A catalogue pick they are keeping as it is (2026-10-10, v9.558): words that change nothing.
+      const _keepsIt = (txt) => {
+        const t = String(txt || "").trim();
+        return /\b(keep it|keep it (exactly )?as it is|as it is|exactly as (it is|drawn)|just like (that|this|it is)|no changes?|don'?t change (it|anything)|leave it( as it is)?)\b/i.test(t) ||
+          /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|that'?s perfect|love it|i (really )?(like|love) it|it'?s perfect|i (like|love) (this|that) one)\b[\s.!]*$/i.test(t);
+      };
+      // ══ ONCE SHE HAS OFFERED, ANY ANSWER BUT NO IS A GO (2026-10-09, v9.549, Aaron) ═══════════
+      // MEASURED (pta_9a7e5339461d6ba5): she offered four takes, they answered "yees", then "Try giving
+      // me the file again", then "try again" - and every one was blocked, because a yes was a list of
+      // exact words. She wanted to draw each time. Once she has offered to show it anywhere in this
+      // conversation, any reply that is not a no means show it. Before she offers, nothing changes.
+      // SAYING SHE WILL SHOW THEM IS AN OFFER TOO (v9.623, 2026-10-16, Aaron). MEASURED 05:23 (pta_033302cc27b7eadd): she
+      // said "send me a photo of each... Once I have those I'll show you four different takes", they answered "I don't have a
+      // photo, anyone that you generate will be fine", she chose to draw - and the gate stopped her, because her line had no
+      // question mark. She asked the same question again. "I'll show you" counts the same as "want me to show you?".
+      const _offeredShow = tnow.some((e) => e && e.role === "aura" &&
+        (/\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(String(e.said || "")) ||
+         /\b(i'?ll|i will|let me|i'?m going to|i can)\s+(show|draw|sketch|make)\b/i.test(String(e.said || ""))));
+      const _saidNo = /^\s*(no|nope|nah|not (yet|now|really)|wait|hold on|hang on|don'?t|stop|never ?mind|later)\b/i.test(String(said || "").trim());
+      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo);
+      // DRAWING NOTES ONLY WHEN THEY SAID GO (2026-10-02, v9.514, Aaron): on a talking turn these sat
+      // where her ideas should be - "every picture starts from their photo", "one picture, never four" -
+      // while nothing was being drawn. The draw guard already uses these words; so do the notes.
+      // AFTER THE FIRST PICTURE, ALWAYS (2026-10-03, v9.518, Aaron). MEASURED (pta_51edcc6f272a5a85):
+      // "let's color everything in but the skull" is not a go-word, so she was told "a piece on screen
+      // you drew" and wrote only the change - but the picture is redrawn from their ORIGINAL photo, and
+      // the skull landed on the lion sleeve. Once a picture exists every change is drawn, go-word or not.
+      const _drawNotes = _photoChain && (_goSaid || _drewNow());
+      const stateNote = _langNote + _projNote + _convNote + (_drawNotes
+        ? "\n\nEVERY PICTURE STARTS FROM THEIR PHOTO. The picture model sees only their photo and the " +
+          "paragraph in your brief - it has never seen any picture you made."
+        : _drewNow()
         ? "\n\nTHERE IS A PIECE ON SCREEN that you drew for them" +
           (lastDrawn.subject ? " - " + lastDrawn.subject : "") + "."
-        : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story;
+        : "\n\nNOTHING HAS BEEN DRAWN FOR THEM YET.") + _story +
+        // ══ A FACT, NO ACTION WORDS (2026-09-30, Aaron) ═════════════════════════════════════════
+        // She kept offering "four takes" / "a few directions" on add-ons, where it is always one
+        // picture. The v9.479 note that tried to fix this told her what to OFFER ("show it on them")
+        // and steered her into the wrong action. This states only what is true of this tattoo.
+        (_drawNotes ? "\n\nTHIS IS MADE FROM THEIR OWN PHOTO: it is shown as one picture, never four." : "");
       const resetNote = (badStreak >= 2 && refDesign)
         ? "\n\nTHE LAST TWO PICTURES WERE WRONG. The next change starts again from their original " +
           "photograph: put EVERYTHING they still want into the one sentence in `prompt`."
@@ -64239,11 +65503,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // image and evolve that one rather than always the newest.
       const picNames = [];
       if (refUrl) picNames.push('  "photo" - the photograph they sent you');
-      if (_drewNow()) picNames.push('  "piece" - the last picture you drew for them');
+      // On an add-on on their photo there is nothing to choose: every picture starts from the photo.
+      if (_drewNow() && !_photoChain) picNames.push('  "piece" - the last picture you drew for them');
       const picNote = picNames.length
-        ? "\n\nTHE PICTURES ON FILE, AND WHAT TO CALL THEM IN `use`:\n" + picNames.join("\n") +
+        ? (_photoChain ? "" :
+          "\n\nTHE PICTURES ON FILE, AND WHAT TO CALL THEM IN `use`:\n" + picNames.join("\n") +
           "\nName them in the order the job needs. Leave `use` out and it starts from the last " +
-          "picture you drew." +
+          "picture you drew.") +
+          // ONLY ONCE THERE IS SOMETHING TO LOCK IN (2026-10-02, v9.513, Aaron): this paragraph rode on
+          // the very first turn - lock-in instructions while somebody was showing her a photo.
+          (!_drewNow() ? "" :
           // ══ NOBODY ASKS FOR A FLATTENED FILE (2026-09-10) ══════════════════════════════
           // Aaron: "no human's gonna say give it to me flattened so someone can print it out.
           // It's just going to be conversation - is this what you want for your tattoo art -
@@ -64256,7 +65525,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           "artwork alone with no body and no paper. `pieces` names the parts - \"the shoulder " +
           "cap\", \"the band above the elbow\", \"the forearm panel\" - one image each, because " +
           "an artist prints each one and places it on the curve of the limb. Never one sheet " +
-          "with several parts arranged on it, and never draw cut lines: the cutting is theirs."
+          "with several parts arranged on it, and never draw cut lines: the cutting is theirs.")
         : "";
 
       // ══ SAY WHAT YOU SEE BEFORE YOU ASK ANYTHING (2026-09-07) ═════════════════════════════
@@ -64270,7 +65539,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // what makes the next sentence worth trusting.
       // A photograph arrived and the eyes could not read it. Silence made her behave as though
       // nothing had been sent, which is worse than admitting it - they can see they sent it.
-      const refBlind = (refUrl && !refSaw)
+      // ══ NOT WHEN THE PHOTO IS ON HER TURN (2026-10-02, v9.513, Aaron) ══════════════════════════
+      // MEASURED with [SENT-TEXT]: "THE PHOTOGRAPH THEY JUST SENT IS ATTACHED TO THIS TURN." followed by
+      // "THEY SENT YOU A PHOTOGRAPH AND YOU COULD NOT SEE IT." `refSaw` is core's own caption reader,
+      // a different model - when it came back empty she was told she was blind while holding the photo.
+      // When the photo is a link she is handed, her own eyes decide; this is only for a photo that
+      // cannot reach her at all.
+      const refBlind = (refUrl && !refSaw && !/^https?:\/\//i.test(String(refUrl)))
         ? "\n\nTHEY SENT YOU A PHOTOGRAPH AND YOU COULD NOT SEE IT. Say so plainly and ask them " +
           "to tell you what is in it. Never pretend no picture arrived."
         : "";
@@ -64281,6 +65556,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // told what a 9B model thought is worse than nothing, because a confident wrong caption
       // ("full-back tiger", "neo-traditional") overrides her own eyes.
       const seeing = refUrl && /^https?:\/\//i.test(String(refUrl));
+      // Their photo rides on her turn until the first picture is drawn (v9.512) - known here, not only at the call.
+      // ══ READ ONCE, THEN WORK FROM WHAT SHE SAW (2026-10-02, v9.515, Aaron) ══════════════════
+      // MEASURED (pta_285e8b3ad6c294ed, "give me four different ideas"): the photo-riding turn and a
+      // blind retry with no photo gave the same kind of ideas - all lions. A second read adds nothing:
+      // she told them what it is when it arrived, and that is in the conversation. Rereading only
+      // doubled the chance of a missed read and put "attached again" against "already described".
+      // The picture model still gets the photo direct when something is drawn.
+      const _photoRides = false;
       // COVER RULES FOR COVER-UPS (2026-09-22). MEASURED: asked to colour in her healed black-and-grey
       // back piece, she said "colour can't be laid over that black shading" - the cover-up doctrine
       // ("new ink mixes with the old... warm and pale tones bleed back through dark ink") was sent on
@@ -64295,44 +65578,27 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // about a line-art tiger running down a man's stomach. The consistency was the tell; it is
         // the most likely cover-up subject, which is what a model reaches for when it has nothing.
         ? "\n\n" + (seeing
-            ? (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER is at " + refUrl + " - it is what you " +
-                         "are working on. Call `look_at_image` on it if you need to see it again."
-                       : "THE PHOTOGRAPH THEY JUST SENT IS ATTACHED TO THIS TURN. Look at it " +
-                         "and say what is actually there - what the tattoo is of, how well it is " +
-                         "done, and where on the body it sits.")
+            // THE PHOTO IS READ ONCE (2026-10-01, Aaron). It used to ride on every turn while it was in
+            // play, so she re-read the whole photograph to answer "put Nikki's name in it" - and this
+            // line pointed her at `look_at_image`, which a customer conversation does not have. What
+            // she saw is in the conversation, in her own words; the picture model gets the photo direct.
+            ? (refHeld ? (_photoRides
+                         // LOOK, DON'T WORK FROM MEMORY (2026-10-02, v9.514, Aaron): the photo is attached again,
+                         // and this told her to work from her old one-line description of it instead.
+                         ? "THEIR PHOTOGRAPH IS ATTACHED TO THIS TURN AGAIN - it is what you are working on. Look at it."
+                         : "THE PHOTOGRAPH THEY SENT EARLIER is what you are working on. You described it " +
+                           "when it arrived - work from that.")
+                       // ══ A FACT, NOT A JOB (2026-10-01, Aaron) ═══════════════════════════════════
+                       // This told her, before anyone had chosen anything, to judge how well it was
+                       // done and whether it was badly healed (the source of "healed well"), and gave
+                       // her add-on and rework thinking. Any picture: she looks, says what she sees,
+                       // and asks what they want to do with it - her guidance, ANY PICTURE THEY SEND.
+                       : "THE PHOTOGRAPH THEY JUST SENT IS ATTACHED TO THIS TURN.")
             : (refHeld ? "THE PHOTOGRAPH THEY SENT EARLIER, still what you are working on:"
                        : "THEY JUST SENT YOU A PHOTOGRAPH. This is what is in it:") + "\n  " + refSaw) +
-          // DESCRIBE IT ONCE (2026-09-21). MEASURED: on the turn after "this is my tattoo, I got it in
-          // Italy with my son Alex", she opened by describing the back piece again and saying it had
-          // "aged beautifully". Everything from here to the three jobs below was added on EVERY turn
-          // the photo was still in play, so every later turn was told to describe it again. It belongs
-          // to the turn the photo arrives; after that the photo stays in front of her to work from.
-          (refHeld ? "\n\nYou have already told them what is in it - do not describe or assess it " +
-                     "again. Work from it.\n\n" : "") +
-          (refHeld ? "" : "\n\nSAY WHAT YOU SEE FIRST, in your own words, before anything else - \"that's a " +
-          "cartoon fish with a face on it\", \"that's a full Japanese back piece, koi and " +
-          "lotus\". Plainly, like somebody looking at their arm. Never ask a question about a " +
-          "picture without first showing them you looked at it.\n" +
-          // MEASURED: the same photograph read as "a mermaid tail with a face", "a stylized face
-          // coming out of a scaled body" and "a suited male figure with light hair" on three
-          // runs. The fish went missing every time, and the fish is most of the ink.
-          "NAME EVERY PART OF IT, not just the bit that caught your eye. A fish AND a face AND " +
-          "lettering underneath is three things, and on a cover-up the one you skip is usually " +
-          "the one that makes it hard.\n" +
-          // Aaron: "she needs to say - oh this is a fish with a head on it, looks like someone
-          // did it when they were in fourth grade."
-          "AND SAY HOW WELL IT IS DONE. If it is amateur, wobbly, faded, badly healed or just " +
-          "bad, say so like a person would - kindly, but do not pretend a bad tattoo is a good " +
-          "one. They already know. Pretending otherwise is how you lose them.\n") +
-          "It is a REFERENCE or their own tattoo - never something you made, and never something " +
-          "to copy.\n\n" +
-          // The three jobs are one flow with one difference: what happens to the ink already
-          // there. `job` in the brief already carries new | cover | add | rework.
-          "IF IT IS THEIR OWN TATTOO and they want it changed:\n" +
-          (_isCover ? COVER_DOCTRINE : "") +
-          "  ADDING TO IT - the existing work is a neighbour, not a problem. Match its style and " +
-          "let the new piece flow with it.\n" +
-          "  REWORKING IT - same idea, done properly. Keep what they liked, fix what they did not.\n\n" +
+          (refHeld ? "\n\nYou have already told them what is in it - do not describe it again." : "") +
+          // Cover-up guidance only once they have chosen to cover it.
+          (_isCover ? "\n\n" + COVER_DOCTRINE + "\n" : "") +
           // MEASURED: asked to make a cover-up raven "light grey and delicate", she did it without
           // a word. That design cannot be tattooed over dark linework, and the person finds out in
           // the chair. She had the constraint in front of her, said it once, and dropped it the
@@ -64571,9 +65837,37 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         ? "\n\nTHEY CHOSE THIS DESIGN FROM OUR CATALOGUE" + (seeing ? " - it is attached to this turn" : " - it is at " + refUrl) +
           ". It is the tattoo they want, exactly as drawn - not a photograph of their skin and not inspiration. " +
           (opts.use ? "They are taking it as it is." :
-           "Their words say what to change on it; change only that, on this design. Do not describe it back to them.")
+           "Their words say what to change on it; change only that, on this design. Do not describe it back to them. " +
+           // MAKE IT MINE ASKS WHAT THEY WANT (2026-10-07, v9.539, Aaron).
+           "If they haven't said what they want yet, tell them it's a great choice and ask what they want to do with it - " +
+           "keep it exactly as it is, change a few things, or take the idea somewhere new. Don't ask where it goes or " +
+           "how big unless they bring it up. " +
+           // CHANGE SOMETHING (2026-10-11, v9.563, Aaron): the button says they want a change and not which one.
+           // ASK, DON'T SUGGEST (2026-10-14, v9.599, Aaron): "I do not want Aura recommending these type of things
+           // when they want to change something" - they say what they want, and four versions of it come back.
+           "If they say they want to change something but not what, ask in one short line what they would like to change - " +
+           "no suggestions, nothing is drawn yet.")
         : "";
-      const agentSys = shelf + found + stateNote + resetNote + picNote + (_catPick ? _pickNote : refNote) + refBlind +
+      // ══ SHE SEES WHAT SHE ALREADY SETTLED (2026-10-03, v9.520, Aaron) ═══════════════════════
+      // MEASURED (pta_f5efe21c422b830d): she rewrote her brief from cold every turn because she was
+      // never shown it - size went none -> 12in -> 10in -> 12in, style "black and grey" -> "soft
+      // realism" -> "fine line", with nobody asking for any change. Her values win the merge, so the
+      // artist's print size was whatever the last turn happened to guess. The extractor floor has
+      // always been handed this list; she never was. Read from `carriedObj` here, not the earlier
+      // rendered string, so a tapped picture that cleared the brief above shows nothing stale.
+      const _settled = (carriedObj && typeof carriedObj === "object")
+        // NOT THE SUMMARY SENTENCE (2026-10-03, v9.530, Aaron). MEASURED (pta_fb44983b5aafc5e3): turn
+        // 1's "No specific style, colour, placement, or size has been decided yet" was carried as
+        // `brief` and she was told to keep it - so it sat beside style "neo-traditional" to the end.
+        // The fields carry; the one-line summary goes stale the moment any field moves.
+        ? Object.keys(carriedObj).filter((k) => !["resolved", "missing", "brief"].includes(k) &&
+            carriedObj[k] != null && carriedObj[k] !== "" && !(Array.isArray(carriedObj[k]) && !carriedObj[k].length))
+            .map((k) => "  " + k + ": " + JSON.stringify(carriedObj[k])).join("\n")
+        : "";
+      const _settledNote = _settled
+        ? "\n\nYOUR BRIEF SO FAR - carry every one of these forward in your brief unless this message changes it:\n" + _settled
+        : "";
+      const agentSys = shelf + found + stateNote + _settledNote + resetNote + picNote + (_catPick ? _pickNote : refNote) + refBlind +
                        (_catPick ? "" : tileNote) + worldNote + trendNote;
 
       // ══ A GREETING HAS TO LOOK LIKE A GREETING (2026-09-14) ════════════════════
@@ -64617,9 +65911,48 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // rung that never calls a model. The L0/L1 acceptance below is what catches her answer, so
       // an unparseable reply on this path is expected rather than a failure.
       const SHAPE = "\n\n(Reply with the JSON object. No prose.)";
+      // ══ TOLD BEFORE SHE ANSWERS, NOT AFTER (2026-10-02 v9.517, restored 2026-10-03 v9.521, Aaron) ══
+      // MEASURED (pta_003a11d37d948c14, "give me four different ideas"): she answered with a draw, the
+      // go gate below blocked it and asked her again - and the reply they saw had no ideas in it, while
+      // her ideas sat only in the answer that was thrown away. MEASURED again (pta_9df23b45277408bf,
+      // "extend it down... I love sunflowers and butterflies"): same thing - the redo asked only "do you
+      // want to see it" and her directions were gone, at twice the cost. Rolled back on 2026-10-02 while
+      // chasing missed looks, which turned out to be Workers AI dropping pictures - never this.
+      // Same rule, same gate as a net, but she hears it first: before the first picture, when their
+      // words are not a go, nothing is drawn this turn.
+      // ══ CREATE NEW TATTOO, LOCKED (2026-10-14, v9.604, Aaron) ═══════════════════════════════════════════
+      // The person imagines, the image model makes four, the person chooses and directs, Aura keeps it moving.
+      // Their idea is the instruction: no go step, and the first four come from one fixed sentence with their own
+      // words in it - Aura does not write the drawing words. A pick is the same every round. Fenced: only a
+      // conversation started with "I want to create a new tattoo" (talk-state new_flow), never a body photo or
+      // Get Inspired - add-on, cover-up, See It On You and Get Inspired do not reach any of it.
+      let _newFlow = false, _newStyle = null;
+      if (me) {
+        try {
+          const _nf = await talkStateGet(env, me, ["new_flow", "new_style"]);
+          const _op = String(said || "").trim();
+          const _opener = /^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_op);
+          _newFlow = (_opener ? /^i want to create a new tattoo\.?$/i.test(_op) : String(_nf.new_flow || "") === "1") &&
+                     !_bodyPhoto && !(opts && opts.inspire);
+          _newStyle = _opener ? null : (String(_nf.new_style || "").trim() || null);
+        } catch {}
+      }
+      let _notYet = false;
+      try {
+        if (hasLive && !_drewNow() && !_goSaid &&
+            !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
+          let _pa = "";
+          for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _pa = String(tnow[i].said || ""); break; } }
+          const _off = _offeredShow;
+          _notYet = !(_off && !_saidNo);
+        }
+      } catch {}
       const agentLine = hasLive
         ? "[A person is designing a tattoo with you on " + world + ".world. Answer as yourself, " +
-          "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said + SHAPE
+          "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said +
+          (_notYet ? "\n\nThey have not asked to see anything yet, so nothing is drawn this turn - think with them." : "") +
+          // The other half of the same rule (v9.547): told before she answers that this IS their go.
+          ((_goSaid && !_drewNow()) ? "\n\nThey said go - draw it this turn." : "") + SHAPE
         : said;
 
       // Her own agent first - own instance, own memory, own continuity - then the local floor.
@@ -64643,6 +65976,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       let acted = null, agentVia = null, agentNote = null, _herTurn = null;
       // What she says after LOOKING at what she made (2026-09-20). See _lookAtResult.
       let _reaction = null;
+      let _herName = null;
       // What this turn costs, measured rather than estimated (2026-09-20). See costTapOpen.
       const _tap = costTapOpen();
       // Which rung answered, carried out of the block below so the extractor can see it. Null on the
@@ -64656,10 +65990,113 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // on the page. agentInstanceFor already gives any identity its own instance, and the three
       // other agent calls in this function were only ever gated on `me`. What stays PTA-only is
       // everything that WRITES a person's chain - a lead has no chain until they say who they are.
-      if (me) {
+      // ══ A TAP ON "KEEP IT LIKE THIS" IS NOT A TURN OF TALK (2026-10-10, v9.560, Aaron) ══════════
+      // MEASURED with [TURN] (15:42, 15:46): the button turn took 38-42 s, and 26-29 s of it was her
+      // full reply - which was then REPLACED by her short "it's yours, files are being made" line
+      // (`_reaction`, the USE THIS ONE branch near the end) and never shown. On `use` she is not asked
+      // to reply here; she still writes the line they see, told exactly what happened, in that
+      // later call (~6 s). Nothing else about a typed turn changes.
+      // A CONFIRMED LOCK-IN (v9.564) is a tap too: "Yes, Lock It In" on the page's card.
+      const _tapKeep = !!(me && opts && ((opts.use && refUrl) || opts.lock));
+      // ══ THE FIXED STEPS OF A NEW TATTOO DO NOT WAIT FOR HER (2026-10-14, v9.602, Aaron) ══════════════════════
+      // MEASURED 09:40-09:54: 14s, 18s, 32s, 45s and 77s of her thinking on steps whose answer is always the same -
+      // the new-tattoo opener, a style picked, Change Something, the change they then typed (it goes straight to four
+      // versions), and a number picked off those four. Each now answers with one fixed line (a setting each) and she is
+      // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
+      // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
+      let _fixedSay = null, _fixedWhy = null, _lastDesignChange = "";
+      if (me && !_tapKeep) {
         try {
+          const _s = String(said || "").trim();
+          const _fx = async (k, d) => { try { const v = String((await env.AURA_KV.get("config:say:" + k)) || "").trim(); return v || d; } catch { return d; } };
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style"]); } catch {}
+          let _stm = null;
+          // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
+          // because "design_change" from the 9:50 test was still set.
+          if (/^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_s)) {
+            try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
+                  await talkStatePut(env, me, "design_change_parent", "");
+                  // THE NEW-TATTOO FLOW MARKER (v9.604): set only by the Create New Tattoo opener, cleared by every other start.
+                  await talkStatePut(env, me, "new_flow", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : "");
+                  await talkStatePut(env, me, "new_style", ""); } catch {}
+            _ds = /^i want to create a new tattoo\.?$/i.test(_s) ? { new_flow: "1" } : {};
+          }
+          _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
+          _lastDesignChange = String(_ds.design_change || "").trim();
+          _newStyle = String(_ds.new_style || "").trim() || null;
+          let _dzP = null;
+          if (opts && opts.placed && refUrl) { try { _dzP = _pre ? await _pre.design : null; } catch {} }
+          if (opts && opts.placed && refUrl && _dzP && _dzP.image && _dzP.design && _dzP.design !== refDesign) {
+            // ══ THEY PLACED IT THEMSELVES (v9.613, 2026-10-15, Aaron) ═══════════════════════════════════════
+            // "Let the user do whatever they want with it - size it, rotate it... once they say here's where I want it the image
+            // model gets the exact spot." The page sends their photo with the design laid on it where they put it. She is not
+            // called; the picture model only makes it real ink, there.
+            _fixedWhy = "placed"; _fixedSay = await _fx("onme_coming", "Putting it on you now.");
+          } else if (/^i want to create a new tattoo\.?$/i.test(_s)) {
+            _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Let's make something that's yours. Pick a style below, or tell me your idea and we'll build it together.");
+          } else if ((_stm = _s.match(/^i like the (.+) style\.?$/i))) {
+            _fixedWhy = "style"; _fixedSay = (await _fx("style_pick", "____ - great pick. Explore the designs made in this style, or create your own with me.")).replace("____", _stm[1]);
+            if (_newFlow) { try { await talkStatePut(env, me, "new_style", String(_stm[1]).slice(0, 80)); } catch {} _newStyle = String(_stm[1]).slice(0, 80); }
+          } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {
+            _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
+          } else if (String(_ds.await_change || "") === "1" && _s && !(opts && opts.inspire) && !_bodyPhoto) {
+            _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
+          } else if ((_newFlow || _lastDesignChange) && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
+            // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): after they choose a design, four possibilities for that
+            // same design, on the same four-card sheet - the chat model reads the design, nothing is asked of her.
+            _fixedWhy = "poss"; _fixedSay = await _fx("poss_coming", "Imagining 4 possibilities for your design now.");
+          } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) {
+            // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
+            _fixedWhy = "more"; _fixedSay = await _fx("four_more", "Round two, coming right up - four more.");
+          } else if (_newFlow && _goSaid && !_saidNo && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s) || (opts && Array.isArray(opts.all_ideas) && opts.all_ideas.length))) {
+            // THEIR YES TO THE FIRST FOUR (v9.605): she offered, they said yes or tapped one of her ideas - she is not
+            // called again; the four start and this line says they are coming.
+            // ANOTHER OF HER IDEAS IS A FRESH FOUR TOO (v9.609, 2026-10-15, Aaron). MEASURED 21:04 (prj_83c97810dfe14e64):
+            // with four on screen, tapping "Chrome garden" was read as a CHANGE of the four - Aura was called (34s) and the
+            // image model was told "I want to change it: Show me: Chrome garden...". A tapped idea is a new four of that idea.
+            _fixedWhy = "four_new"; _fixedSay = await _fx("four_coming", "Here they come - four versions of that for you.");
+            if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
+          } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-4]\.?$/i.test(_s) && !_bodyPhoto) {
+            // CHOOSE, THEN THE OFFER (v9.628, 2026-10-16, Aaron): change it, imagine 4 possibilities, or finish.
+            _fixedWhy = "pick"; _fixedSay = await _fx("pick_ask", "Great choice. Want to change something on it, or should I imagine 4 possibilities for it?");
+          } else if (_s && carriedObj && carriedObj.on_me === true && refHeld && _bodyPhoto && refUrl && !_freshPhoto &&
+                     !["add", "cover", "rework"].includes(String(carriedObj.job || "").toLowerCase()) &&
+                     !/^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|no|nope|nah|thanks?( you)?)[\s.!]*$/i.test(_s) &&
+                     !/^i'?d like to see this tattoo on me/i.test(_s) && !/^i want number [1-4]/i.test(_s) &&
+                     !/^\s*imagine\s/i.test(_s) && !/^i want to (create|add|cover)/i.test(_s)) {
+            // ══ WHERE IT GOES ON THEM, WITHOUT CALLING HER (v9.611, 2026-10-15, Aaron) ═══════════════════════════
+            // MEASURED 07:06: the placement turn took 55s - 29.6s of it was her writing a reply nobody saw (the fixed
+            // line replaces it). Once they want to see a finished design on them and their photo is in, what they say
+            // next is where it goes: the picture is made from their words at once, with a fixed line.
+            let _dz = null; try { _dz = _pre ? await _pre.design : null; } catch {}
+            if (_dz && _dz.image && _dz.design && _dz.design !== refDesign) {
+              _fixedWhy = "onme"; _fixedSay = await _fx("onme_coming", "Putting it on you now.");
+            }
+          }
+          if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
+          // WHY THE PLACEMENT WAITED FOR HER (v9.612): on any turn after they asked to see it on them, each condition is logged.
+          if (_fixedWhy !== "onme" && (carriedObj && carriedObj.on_me === true || refHeld)) {
+            let _dz2 = null; try { _dz2 = _pre ? await _pre.design : null; } catch {}
+            try { console.log("[TURN:ONME-CHECK] on_me=" + !!(carriedObj && carriedObj.on_me === true) + " photo_held=" + !!refHeld +
+              " body_photo=" + !!_bodyPhoto + " photo_url=" + !!refUrl + " fresh_photo=" + !!_freshPhoto +
+              " job=" + String((carriedObj && carriedObj.job) || "-") + " design=" + !!(_dz2 && _dz2.image && _dz2.design && _dz2.design !== refDesign) +
+              " mirror=" + String((carriedObj && carriedObj.mirror_photo) || "-") + " fixed=" + (_fixedWhy || "-") + (me ? " · who=" + me : "")); } catch {}
+          }
+        } catch {}
+      }
+      if (_tapKeep) { try { console.log("[USE] a tap on Keep It Like This - her reply comes after the files start, not before"); } catch {} }
+      if (me && !_tapKeep && !_fixedSay) {
+        try {
+          // ══ SHE LOOKS AT THEIR PHOTO UNTIL THE FIRST PICTURE IS MADE (2026-10-02, Aaron) ══════════
+          // MEASURED (pta_74d9cfa0e939be8f, pta_7f46ce6197fe124a): the photo was attached only on the
+          // turn it arrived, and aura-think sends only the current turn - so when they said "yeah it's
+          // mine, i wanna add to it" she was pitching ideas from her one-line note, not the tattoo, and
+          // they came out generic twice. While it is their photo on the table and nothing has been
+          // drawn from it yet, she sees it every turn. After the first picture the look turn shows her
+          // what she made, unchanged.
+          const _photoStill = _photoRides;
           let proxied = await proxyToAgent(env, agentLine,
-            false, me, seeing ? refUrl : (_ownLook || null), world, _fwdDelta);
+            false, me, ((seeing && !refHeld) || _photoStill) ? refUrl : (_ownLook || null), world, _fwdDelta);
           // ══ HER BRAIN DROPPED THE TURN - ASK HER AGAIN, ONCE (2026-09-28) ══════════════════════
           // MEASURED twice on one test (pta_aeac9123b5e593b0, pta_c4fc584f7dba63cb), both on the photo
           // turn: aura-think answered 502 - "The brain returned an empty answer at rung L3" and "The
@@ -64670,7 +66107,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               /empty answer|interrupted|reset|isolate|http 50[0-9]/i.test(String((proxied && proxied.failed) || ""))) {
             try {
               const _again = await proxyToAgent(env, agentLine,
-                false, me, seeing ? refUrl : (_ownLook || null), world, _fwdDelta);
+                false, me, ((seeing && !refHeld) || _photoStill) ? refUrl : (_ownLook || null), world, _fwdDelta);
               if (_again && _again.reply && !_again.failed) proxied = _again;
             } catch {}
           }
@@ -64682,7 +66119,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             _herTurn = { handed_chars: String(agentLine || "").length, steps: _dr.steps ?? null,
               tokens_in: _dr.turn_tokens_in ?? null, cached_in: _dr.turn_cached_in ?? null,
               tokens_out: _dr.turn_tokens_out ?? null, calls: _dr.turn_provider_calls ?? null,
-              think_ms: proxied.think_ms ?? null, rung: proxied.rung || null };
+              think_ms: proxied.think_ms ?? null, rung: proxied.rung || null,
+              // What her turn cost, as aura-think priced it (2026-10-01, v9.507).
+              cost: _dr.turn_cost_at_door ?? null };
             acted = readAct(proxied.reply);
             // ══ THE CHEAPEST RUNG DOES NOT SPEAK JSON ══════════════════════════════════════
             // L0 is a fixed table and L1 is a cached answer - both return the sentence itself,
@@ -64753,7 +66192,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             "Return ONLY the JSON object. No preamble, no markdown fence.\n\n" +
             "{\n" +
             '  "subject": "what the tattoo is OF, in their words",\n' +
-            '  "job": "new | cover | add | rework",\n' +
+            '  "job": "new | cover | add | rework | from",\n' +
             '  "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
             '  "colour": "full_colour | black_and_grey | muted",\n' +
             '  "composition": "what the picture is OF - head portrait, coiled, flying, a bouquet",\n' +
@@ -64761,9 +66200,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             '  "detail": "bold | balanced | intricate | ultra",\n' +
             '  "placement": "where on the body, only if they said",\n' +
             '  "size": "how big, only if they said",\n' +
+            '  "mirror_photo": "yes | no - only when their photo of themselves is in this conversation: is it taken in a mirror (a mirror selfie)",\n' +
             '  "elements": ["cherry blossoms","waves"],\n' +
             '  "meaning": "why they are getting it - who it is for, what happened",\n' +
-            '  "brief": "one paragraph, at most 60 words, for a tattoo artist to read"\n' +
+            '  "brief": "what the picture is drawn from - everything decided so far, written the way PICTURE WORDS in your craft says: what to add, where it goes on their body, how it looks - plain words in their voice, no imagery, story or meaning, nothing that is not ink on their skin; at most 40 words. Do not describe what is already in their photo; the picture model can see it"\n' +
             "}\n\n" +
             (carried ? "WHAT IS ALREADY SETTLED - carry every one of these forward unless this " +
               "message CHANGES it:\n" + carried + "\n\n" : "") +
@@ -64783,6 +66223,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           max_tokens: 700
       };
 
+      // The tap (above): her words come from the line written once the files have started.
+      // THE FIXED LINE SHOWS AT ONCE (v9.607): MEASURED 18:45 - "Here they come..." was ready at the tap and reached the page
+      // only with the finished picture, 32s later. It goes out the way her streamed words do, then the work starts.
+      if (_fixedSay && !acted && onDelta) { try { await onDelta(_fixedSay); } catch {} }
+      if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : _fixedWhy === "poss" ? "change" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
+                                         prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
+      if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",
+                                        act: "none", prompt: "", use: [], brief: null };
       _tick("agent");
       const [r, iRes] = await Promise.all([
         acted ? Promise.resolve(null) : callBrain({
@@ -64836,8 +66284,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // This branch is the remaining case: no brief anywhere, so this turn had no fields to lose.
         // IF THERE IS NO CONTEXT TO DEFER INTO the await below is unchanged - the same call, the
         // same blocking behaviour, the same result. Nothing depends on the fast path existing.
-        (acted && me && _AURA_CTX && typeof _AURA_CTX.waitUntil === "function")
-          ? (_AURA_CTX.waitUntil((async () => {
+        // ══ THE PAGE'S OWN CONTEXT (2026-10-10, v9.556) ═══════════════════════════════════
+        // MEASURED with [TURN]: classify 8.6-12.1 s IN FRONT of the reply on photo turns and a new
+        // tattoo's first message. The phone arrives through PublicEntry, not fetch(), so _AURA_CTX
+        // was not this request's context and this branch fell through to the blocking call. The
+        // page door hands its own waitUntil in (`_waitUntil`, the same one the record writes use).
+        (acted && me && typeof _waitUntil === "function")
+          ? (_waitUntil((async () => {
               try {
                 const _late = await callBrain(_extractCall, env).catch(() => null);
                 if (!_late?.ok || !_late.text) return;
@@ -64869,8 +66322,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (!acted && r?.ok && r.text) acted = readAct(r.text);
       // JSON that could not be read at all still has to say something - the raw text is a worse
       // answer than a good one and a far better answer than silence.
-      if (!acted) acted = { say: String(r?.text || "").trim() || "Tell me a bit more.",
-                            act: "none", prompt: "" };
+      // NEVER RAW MACHINE TEXT (2026-10-14, v9.601): MEASURED 08:53 - "I want number 4" was answered with the provider's
+      // raw response ({"id":"chatcmpl-...) as her words. Text that is JSON is not something a person should read.
+      if (!acted) { const _t = String(r?.text || "").trim();
+                    acted = { say: (_t && !/^\s*[\x7b\x5b]/.test(_t) && !/chatcmpl-/i.test(_t)) ? _t.slice(0, 900) : "Tell me a bit more.",
+                              act: "none", prompt: "" };
+                    if (_t && /^\s*[\x7b\x5b]|chatcmpl-/i.test(_t)) console.log("[TURN] her reply was raw machine text - not shown to them"); }
 
       // ══ THE BRIEF — FACTS, NOT TURNS ═══════════════════════════════════════════════════
       // "One leg." "Green eyes." "It's for my mum." Those are FACTS about what is being made,
@@ -64947,7 +66404,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             intent = {
               // WHAT THEY ARE HERE FOR. Cover-up and add-to start from their own photo, which
               // is a different opening move, so this is worth knowing early.
-              job:         one(parsed.job, ["new", "cover", "add", "rework"]),
+              job:         one(parsed.job, ["new", "cover", "add", "rework", "from"]),
               // THE ONLY REQUIRED FIELD. Everything else is optional and she only stops for
               // what she does not already have.
               subject:     str(parsed.subject, 200),
@@ -64960,6 +66417,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               placement:   str(parsed.placement, 60),
               size:        str(parsed.size, 40),
               colour:      one(parsed.colour ?? parsed.color, ["full_colour", "full_color", "black_and_grey", "black_and_gray", "muted"]),
+              mirror_photo: one(parsed.mirror_photo, ["yes", "no"]),
               // FORM and CHARACTER are FREE STRINGS, not enums. Their vocabulary is generated
               // per subject and cached, so there is no fixed list to validate against - and a
               // person who says "head and chest" or "goofy" must have that survive verbatim.
@@ -65071,7 +66529,33 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       if (opts && opts.recolor && refUrl && me) act = "recolor";
       // USE THIS ONE (2026-09-26, Aaron): a catalogue design taken exactly as it is, straight to the
       // artist's files. Nothing is drawn. Resolved to "artist" below, once the picture is theirs.
-      if (opts && opts.use && refUrl && me) act = "use";
+      // ══ KEEPING A PICK IS TAKING IT AS IT IS (2026-10-10, v9.558, Aaron) ═══════════════════════
+      // MEASURED (11:01): Make It Mine -> she asked "keep it, change a few things, or somewhere new?" ->
+      // "I like it" -> act=change, a 30 s redraw of the same wildflower, then "is this the one?" again.
+      // The page sends `pick` with every message until a picture is made, and on a pick their words are
+      // read as what to CHANGE - so "I like it" was a change with nothing in it. When their words on a
+      // pick change nothing (they keep it, or say it is the one), it is taken exactly as it is: the same
+      // path as `use` - no drawing, the artist's files from that exact picture.
+      // A PLACEMENT IS NEVER A PICK (v9.622, 2026-10-16, Aaron). MEASURED 20:30 (pta_ed580175b82433ba): "Here's where I want
+      // it" came with the placement AND the pick of the design chosen by Work on This; "want it" read as keeping the pick,
+      // so she asked "this is the one?" and the photo with the box never reached the image model.
+      if (opts && opts.pick && !opts.use && !opts.placed && refUrl && me && (_saysTheOne(said) || _keepsIt(said))) {
+        act = "use"; console.log("[TURN:PICK] their words keep it as it is - taken as it is, nothing redrawn");
+      }
+      if (opts && opts.use && !opts.placed && refUrl && me) act = "use";
+      // CHANGE SOMETHING IS A QUESTION, NOT A DRAWING (2026-10-11, v9.563, Aaron). The page's button sends this
+      // one fixed sentence with the design; she looks and suggests, and nothing is drawn until they say what.
+      if (opts && opts.pick && refUrl && /^\s*i want to change something\.?\s*$/i.test(String(said || "")) && act !== "none") {
+        console.log("[TURN:PICK] Change Something - she asks what; nothing drawn (her act was " + act + ")"); act = "none";
+      }
+      // WHATEVER HER ACT WAS (v9.600): MEASURED 08:24 - she had already chosen to talk (act none), so the branch above was
+      // skipped and the flag that makes their next words the change was never set; "I would like to have two roses" then
+      // drew nothing. The button's sentence alone decides it now: no suggestion cards, and their next words are the change.
+      if (me && /^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
+        if (acted) acted.ideas = [];
+        try { await talkStatePut(env, me, "await_change", "1"); } catch {}
+        console.log("[TURN:DESIGN] Change Something - their next words are the change");
+      }
       if (act === "change" && !hasParent) act = "draw";
       // Nothing on screen is nothing to send an artist.
       if (act === "artist" && !hasParent) act = "none";
@@ -65138,13 +66622,231 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // she SAYS and what her action field says disagree, what she says wins. Only a question
       // about showing or drawing counts; "want to lock it in, or change something?" is her
       // close-out and never stops anything.
-      if (act === "draw" || act === "change") {
+      // ══ THEIR GO WINS (2026-10-01, v9.510, Aaron) ═════════════════════════════════════════════
+      // MEASURED (pta_7aa422680cc9169d): "Let's see your Japanese idea" - a go - and she wrote "Here it
+      // is ... Want to see it on you, or change something first?" Her close-out had the word "see", so
+      // this read it as her asking first and drew nothing, while she said "here it is" over nothing.
+      // When THEIR words this turn are a go, her wording never stops the picture.
+      // ══ PICKING A NUMBER OFF THE FOUR IS THEIR GO (2026-10-03, v9.531, Aaron) ═══════════════════
+      // MEASURED: "I love number 3" with the four-panel grid on screen. pta_fb44983b5aafc5e3 - she
+      // closed with "lock it in, or change something?" and #3 was drawn. pta_2adb554da417105a - same
+      // words, she closed with "Want to see it on its own, full detail?", [ASKFIRST] read her question
+      // as asking first, and nothing was drawn; "i love it" then locked the grid itself. Their pick
+      // is their decision, whatever her closing line says. Same test the pick sentence uses below:
+      // the picture on screen is a four-direction grid and their line names one number.
+      // ══ SHOW ME SOME IDEAS / IMAGINE 4 MORE (2026-10-13, v9.586, Aaron) ═══════════════════════════════
+      // The page's buttons send exactly these lines. "Imagine 4 more" names a number, so it is read here,
+      // before the pick test below, and never mistaken for picking number 4.
+      const _ideasLine = /^\s*(?:give|show) me some ideas\.?\s*$/i.test(String(said || "").trim()) ||
+                         /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(String(said || "").trim());
+      // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): the button under a chosen design. It names a number,
+      // so it is read here and never mistaken for picking number 4.
+      const _possLine = /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(String(said || "").trim());
+      // A tapped direction ("I want it to go down my spine...") answers where - it is never a yes to lock in.
+      const _dirLine = /^\s*i want it to go\s/i.test(String(said || ""));
+      let _pickGo = false, _pickN = 0, _pickGridImg = null;
+      try {
+        if (lastDrawn && lastDrawn.design && !_ideasLine && !_possLine) {
+          let _gp = null;
+          for (let i = tline.length - 1; i >= 0; i--) {
+            const e = tline[i];
+            if (e && e.role === "picture" && e.design === lastDrawn.design) { _gp = e; break; }
+          }
+          if (_gp && (_gp.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_gp.words || "")))) {
+            const _l = String(said || "").toLowerCase();
+            const _wn = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
+            const _ns = new Set();
+            for (const m of _l.matchAll(/\b([1-4])(?:st|nd|rd|th)?\b|(?:(?:number|image|picture|option|pic)\s+)(one)\b|\b(first|two|second|three|third|four|fourth)\b/g)) {
+              _ns.add(m[1] ? Number(m[1]) : _wn[m[2] || m[3]]);
+            }
+            if (_ns.size === 1) {
+              _pickGo = true;
+              _pickN = [..._ns][0];
+              _pickGridImg = _gp.image || null;
+              if (act === "none") act = "change";
+              console.log("[TURN:PICK] they picked number " + [..._ns][0] + " off the four - their go");
+            }
+          }
+        }
+      } catch {}
+      // THEIR IDEA IS THE INSTRUCTION (v9.604, v9.605): a typed change needs no "go" once a design exists.
+      // v9.605: she talks and offers first - the first four need their yes or a tapped idea; once a design exists, a
+      // typed change draws at once.
+      const _theirGo = _goSaid || _pickGo || (_newFlow && _drewNow());
+      if ((act === "draw" || act === "change") && !_theirGo) {
         const _sayNow = String(acted.say || said || "").trim();
         const _lastQ = (_sayNow.match(/[^.!?]*\?\s*$/) || [""])[0];
         if (_lastQ && /\b(show|draw|sketch|see|mock it up|picture it)\b/i.test(_lastQ)) {
           act = "none";
           console.log("[ASKFIRST] she asked to show it - nothing drawn until they say go");
         }
+      }
+
+      // ══ NOTHING IS DRAWN UNTIL THEY SAY GO - A GUARANTEE (2026-10-01, Aaron) ═════════════════
+      // "There's no maybe show it sometimes - we don't, with any tattoo, until someone says go. It's a
+      // rule." MEASURED the same morning, same guidance, same words from the person: she waited on
+      // some runs and drew on the next, and on two she said "here it is" over nothing. Her guidance
+      // says it five ways; a model still slips. So the FIRST picture of a conversation is checked
+      // against the person's own words: a go phrase (Aaron's list - show me, let's see, go for it,
+      // do it, try that, what it looks like), or a yes right after she offered to show it.
+      // Buttons (a pick, use, inspire, recolor, a tile) are their own go and are not checked.
+      // After the first picture nothing is checked: "once they have said yes, stop asking".
+      // When it blocks, her reply is redone ONCE with that fact, so she never says "here it is"
+      // over nothing - her own words, made true, never ours.
+      let _goBlocked = false;
+      // ASKING FOR IDEAS IS NOT A YES (2026-10-12, v9.576, Aaron: "she should have given ideas first then draw").
+      // MEASURED 09:14: "Give me some ideas" passed as a yes to her offer and she drew the first one. The page's
+      // button sends this exact sentence; she answers with her ideas and nothing is drawn.
+      const _askIdeas = _ideasLine;
+      if (_askIdeas && _fixedWhy !== "more" && (act === "draw" || act === "change" || act === "onme")) {
+        console.log("[TURN:IDEAS] they asked for ideas - she gives them, nothing drawn (her act was " + act + ")"); act = "none";
+      }
+      if ((act === "draw" || act === "change") && !_drewNow() &&
+          !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
+        const _them = String(said || "").trim();
+        let _prevAura = "";
+        for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _prevAura = String(tnow[i].said || ""); break; } }
+        const _offered = _offeredShow;
+        const _goWords = _theirGo;
+        if (!(_goWords || (_offered && !_saidNo))) {
+          act = "none"; _goBlocked = true;
+          console.log("[TURN:GO] no go-ahead in their words - nothing drawn" + (_offered ? " (she had offered; their reply was not a yes)" : ""));
+        }
+      }
+      if (_goBlocked && typeof agentLine === "string" && agentLine) {
+        try {
+          const _shape = "\n\n(Reply with the JSON object. No prose.)";
+          const _base = agentLine.endsWith(_shape) ? agentLine.slice(0, -_shape.length) : agentLine;
+          // Her own add-on rule ("until then, talk"), at the moment she decides. MEASURED (v9.489): the
+          // first wording, "NOTHING WAS DRAWN THIS TURN", read as "so draw it now" - she picked draw
+          // again and wrote "here it is" again.
+          const _redo = await proxyToAgent(env, _base + "\n\nThey have not asked to see it yet - nothing is drawn this turn. " +
+            "Talk with them and ask if they want to see it." + _shape,
+            false, me, null, world, null);
+          const _ra = (_redo && _redo.reply && !_redo.failed) ? readAct(_redo.reply) : null;
+          console.log("[TURN:GO] redo: " + (_ra ? ("do=" + (_ra.act || "?") + " say=" + String(_ra.say || "").slice(0, 120))
+            : ("unreadable" + (_redo && _redo.failed ? " - " + String(_redo.failed).slice(0, 120) : ""))));
+          if (_ra && _ra.say) {
+            acted.say = _ra.say;
+            if (_ra.ideas && _ra.ideas.length) acted.ideas = _ra.ideas;   // her ideas from the redo (v9.573)
+            for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(_ra.say).slice(0, 600); break; } }
+            if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
+          }
+        } catch (e) { console.log("[TURN:GO] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
+      }
+      // THE LAST SAFETY NET: nothing was drawn, so a sentence claiming a picture is not true. That
+      // sentence alone comes out - nothing is added, her other words stand.
+      if (_goBlocked || _askIdeas) {
+        const _claim = /(^|[.!?]\s+)[^.!?]*\b(here it is|here's (it|your|the)|here you go|take a look|check it out|have a look)\b[^.!?]*[.!?]?/gi;
+        const _before = String(acted.say || "");
+        const _after = _before.replace(_claim, "$1").replace(/\s{2,}/g, " ").trim();
+        if (_after !== _before.trim() && _after) {
+          console.log("[TURN:GO] removed a claim of a picture that was not made");
+          acted.say = _after;
+          for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = _after.slice(0, 600); break; } }
+          if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
+        }
+      }
+
+      // ══ THEIR WORDS LOCK IT IN (2026-10-09, v9.548, Aaron) ═══════════════════════════════════
+      // MEASURED (pta_0c1219df91ba274d, and the run before it): "i like it" after her "is this the one?",
+      // then "i want it", then "make artist files" - she answered with talk every time, and on the last
+      // one told them the files were coming while nothing was made. Nothing in core blocked her; the
+      // files have only ever started when SHE chose `artist`. Same rule as a number off the four: when a
+      // finished picture is on screen (not the unpicked grid) and their words say it is the one, it is
+      // the one. Only overrides "none" - if she is changing the picture, their words were a change.
+      let _lockedByWords = false;
+      try {
+        if (me && hasParent && act === "none" && !_usedPick &&
+            !(opts && (opts.touch || opts.recolor || opts.use || opts.inspire || opts.pick))) {
+          let _lp = null;
+          for (let i = tline.length - 1; i >= 0; i--) {
+            const e = tline[i];
+            if (e && e.role === "picture" && e.design === lastDrawn.design) { _lp = e; break; }
+          }
+          const _grid = !!(_lp && (_lp.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_lp.words || ""))));
+          const _t = String(said || "").trim();
+          const _clear = _saysTheOne(_t);
+          const _askedOne = /\b(the one|your tattoo)\b[^?]*\?/i.test(_prevAuraLine);
+          const _shortYes = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|absolutely|definitely|of course|perfect|love it|i (really )?(like|love) it|it'?s perfect)\b[\s.!]*$/i.test(_t);
+          // MEASURED (pta_6301c17bf1a3ae07, v9.588): the tapped direction "I want it to go down my spine..." read as
+          // "it is the one" against their own photo, and the Lock It In card came up before anything was drawn.
+          // Only a picture that was made (a timeline picture) can be the one, and a direction or an ideas line never is.
+          if (_lp && !_grid && !_dirLine && !_ideasLine && (_clear || (_askedOne && _shortYes))) {
+            act = "artist"; _lockedByWords = true;
+            console.log("[TURN:LOCK] their words say it is the one - artist files" + (_clear ? "" : " (a yes to her 'is this the one?')"));
+          }
+        }
+      } catch (e) { console.log("[TURN:LOCK] check failed: " + String(e?.message ?? e).slice(0, 160)); }
+      // ══ LOCKING IN IS THEIRS TO SAY (2026-10-10, v9.557, Aaron) ═══════════════════════════════
+      // MEASURED (10:46, Roses "Make It Mine"): "I want to make this one mine" - her own act was
+      // `artist`, no [LOCK] line, and the files were made on the first message. The page's own rule
+      // for that button (2026-09-26): "I like this one asks first - she says it is a great pick and
+      // asks whether they want it as it is or changed." Locking in finishes the tattoo, so it stands
+      // only when THEIR words say it is the one (the same test the lock above uses) - never on her
+      // reading of a first look. Held, she is asked to reply again without locking anything in.
+      // ══ "YES, LOCK IT IN" (2026-10-11, v9.564, Aaron) ════════════════════════════════════════
+      // The page asked first (the card below); this is their yes. A drawn design on screen is locked in.
+      if (opts && opts.lock && !opts.use && me && hasParent && act !== "artist") {
+        act = "artist"; _lockedByWords = true;
+        console.log("[TURN:LOCK] they confirmed on the card - artist files");
+      }
+      let _heldArtist = false;
+      try {
+        if (act === "artist" && !_lockedByWords && !(opts && opts.use) && !_saysTheOne(said) && !_yesToTheOne(said)) {
+          act = "none"; _heldArtist = true;
+          console.log("[TURN:LOCK] held - she chose the artist's files but their words do not say it is the one; she asks first");
+        }
+      } catch (e) { console.log("[TURN:LOCK] hold check failed: " + String(e?.message ?? e).slice(0, 160)); }
+      if (_heldArtist && typeof agentLine === "string" && agentLine) {
+        try {
+          const _shape2 = "\n\n(Reply with the JSON object. No prose.)";
+          const _base2 = agentLine.endsWith(_shape2) ? agentLine.slice(0, -_shape2.length) : agentLine;
+          const _hx = await proxyToAgent(env, _base2 + "\n\nNothing is locked in and no artist's files are being made - they have not said this is the one yet. " +
+            "Reply without promising files: say what you think of it and ask whether they want it exactly as it is or changed." + _shape2,
+            false, me, null, world, null);
+          const _ha = (_hx && _hx.reply && !_hx.failed) ? readAct(_hx.reply) : null;
+          console.log("[TURN:LOCK] hold redo: " + (_ha ? ("say=" + String(_ha.say || "").slice(0, 120)) : "unreadable"));
+          if (_ha && _ha.say) { acted.say = _ha.say; if (_ha.ideas && _ha.ideas.length) acted.ideas = _ha.ideas; }
+          else acted.say = String(acted.say || "").split(/(?<=[.!?])\s+/).filter((x) => !/\b(files?|artist)\b/i.test(x)).join(" ").trim() || "Great pick. Do you want it exactly as it is, or would you like to change something?";
+          for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(acted.say || "").slice(0, 600); break; } }
+          if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
+        } catch (e) { console.log("[TURN:LOCK] hold redo failed: " + String(e?.message ?? e).slice(0, 160)); }
+      }
+      // Her line was written for a turn of talk - usually a question. It is redone once, knowing the
+      // files are being made, so she closes it out in her own words instead of asking again.
+      // ══ ASK BEFORE LOCKING IN (2026-10-11, v9.564, Aaron) ═══════════════════════════════════
+      // MEASURED on the phone: "That's very pretty I like that one" - she answered "So is this the one?" while
+      // the files were already being made, and then the screen moved away. Locking in ends the design
+      // session for that tattoo, so nothing locks until they say yes on the page's card ("Ready to make it
+      // yours?"). Their words or her choice that it is the one bring the card up instead of the files.
+      let _confirmLock = null;
+      // HELD IS THE CARD TOO (2026-10-12, v9.571, Aaron: "the Lock It In card every time - no word locks it on its
+      // own"). MEASURED 05:55: "Go" - she chose the files, core held them and she was asked again in words, but no
+      // card came. When she thinks it is the one and they have not said so, they get the card.
+      if (_heldArtist && me && !(opts && opts.lock)) _confirmLock = (_usedPick || (opts && opts.pick)) ? "pick" : "design";
+      if (act === "artist" && me && !(opts && opts.lock)) {
+        _confirmLock = (_usedPick || (opts && opts.pick)) ? "pick" : "design";
+        act = "none"; _lockedByWords = false; _usedPick = false;
+        acted.say = "I love this one.";
+        for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = acted.say; break; } }
+        if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
+        console.log("[TURN:LOCK] asking them first - the card, not the files (" + _confirmLock + ")");
+      }
+      if (_lockedByWords && !(opts && opts.lock) && typeof agentLine === "string" && agentLine) {
+        try {
+          const _shape = "\n\n(Reply with the JSON object. No prose.)";
+          const _base = agentLine.endsWith(_shape) ? agentLine.slice(0, -_shape.length) : agentLine;
+          const _redo = await proxyToAgent(env, _base + "\n\nThey have said this is the one. It is saved in My Tattoos and their artist's files are being made now. " +
+            "Close it out in one warm line - no question, nothing offered." + _shape,
+            false, me, null, world, null);
+          const _ra = (_redo && _redo.reply && !_redo.failed) ? readAct(_redo.reply) : null;
+          console.log("[TURN:LOCK] redo: " + (_ra ? ("say=" + String(_ra.say || "").slice(0, 120)) : "unreadable"));
+          if (_ra && _ra.say && !/\?\s*$/.test(String(_ra.say).trim())) acted.say = _ra.say;
+          else acted.say = String(acted.say || "").split(/(?<=[.!])\s+/).filter((x) => !/\?\s*$/.test(x)).join(" ").trim() || acted.say;
+          for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "aura") { tline[i].said = String(acted.say || "").slice(0, 600); break; } }
+          if (me) { try { await talkStatePut(env, me, "timeline", JSON.stringify(tline)); } catch {} }
+        } catch (e) { console.log("[TURN:LOCK] redo failed: " + String(e?.message ?? e).slice(0, 160)); }
       }
 
       // ══ A GO-AHEAD IS NOT A SECOND REQUEST (2026-09-16) ══════════════════════════════════
@@ -65204,7 +66906,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // design). A photo is a canvas only for add / cover / rework (below) and for put-it-on-me.
       let _herDesign = null; try { _herDesign = _pre ? await _pre.design : null; } catch {}
       const _isHerDrawing = !!(lastDrawn && lastDrawn.design && _herDesign && _herDesign.design === lastDrawn.design);
-      if (act === "draw" && hasParent) {
+      // IMAGINE 4 MORE IS A FRESH FOUR, NOT A CHANGE (v9.608). MEASURED 20:03: the fixed "more" turn drew, then this rule
+      // turned it into a change of the four on screen - the grid was EDITED with the words "Imagine 4 more" (numbered 5-8,
+      // old grid layout) and she was asked to look at it (49s). A fresh four of the same idea is a new drawing.
+      // v9.609: the same for a tapped idea (four_new) with four already on screen.
+      if (act === "draw" && hasParent && _fixedWhy !== "more" && _fixedWhy !== "four_new") {
         const namedParent = useRaw.length ? useOne(useRaw[0], "design") : null;
         const wasSubj = String((lastDrawn && lastDrawn.subject) || "").trim().toLowerCase();
         const nowSubj = String((intent && intent.subject) || "").trim().toLowerCase();
@@ -65238,10 +66944,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // it needs to come back on the body." When the photo in this tattoo is of them (not a catalogue
       // pick, an inspiration card or a tile), it is an add-on - unless she said cover-up or rework.
       // One picture on their photo, their words, then changes, then off the body for the artist.
-      if (_bodyPhoto && !["cover", "add", "rework"].includes(jobNow)) {
+      // ══ RESTORED (2026-10-01, v9.498, Aaron) ═════════════════════════════════════════════════
+      // v9.493 removed this so "the person chooses the job". MEASURED (pta_437d980b756d2c92): "a full
+      // sleeve on my other arm... same vibe" - she understood it perfectly and wrote job "new", and that
+      // one word sent their photo to four-on-white. A label must never move a photo of their body off
+      // the body; what they want goes in her sentence. Cover-up and rework stay as she says.
+      if (_bodyPhoto && !["cover", "add", "rework", "from"].includes(jobNow)) {
         jobNow = "add";
         if (intent && typeof intent === "object") intent.job = "add";
       }
+      // ══ THE PICTURE IS WHAT IT IS MADE FROM (2026-10-01, v9.504, Aaron) ═════════════════════════
+      // MEASURED (pta_3f0500a0ac85e2f7): a photo of a park arrived and was labelled `add` - every
+      // picture is treated as their body, so "turn it into a tattoo" would have been drawn ON the park.
+      // Aaron: whatever they send - a golf ball, a freeway, a child - she says what she sees and asks
+      // what they want to turn it into. Only she can tell a canvas from a subject, so she says so with
+      // job `from`: the picture is what the tattoo is made from, not where it goes. Then every picture
+      // starts from that original photo with one fixed opening and her brief, and comes back flat on
+      // white - off the body. Add, cover-up and rework on their photo are unchanged.
+      const _fromPic = jobNow === "from" && !!refDesign && !(opts && opts.inspire);
       // ══ ONLY THE FIRST ONE STARTS FROM THE PHOTOGRAPH (2026-09-08) ════════════════════════
       // MEASURED: the T-rex cover came out right, and then "make it stepping on a police car"
       // drew a WOMAN crouching on a car - no dinosaur at all. `from` was the same entity on both
@@ -65263,6 +66983,100 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         act = "change";
         lastDrawn = { design: refDesign, subject: (intent && intent.subject) || null };
       }
+      // ══ AN ADD-ON ON THEIR PHOTO NEVER LEAVES THE PHOTO (2026-10-01, v9.500, Aaron) ═══════════════
+      // MEASURED (pta_24c181a44ea0f7de): after the first picture she chose `draw` for "show me" on two
+      // more bouquets; the subject had changed, so the rule above did not apply and it went to a fresh
+      // drawing off their body, with the new-design frame added. On an add-on on their photo every
+      // picture is a change on their original photo (the parent is forced to it further down).
+      if (act === "draw" && refDesign && _bodyPhoto && ["add", "cover", "rework"].includes(jobNow) && !(opts && opts.inspire)) {
+        act = "change";
+      }
+      // A picture made FROM their photo is also a change on that photo, every time (v9.504).
+      if (act === "draw" && _fromPic) act = "change";
+      // ══ THE IDEAS ARE A PICTURE (2026-10-12, v9.584, Aaron) ═══════════════════════════════════════════
+      // "They don't have to read anything - they can visually see what's going on." On an add-on, "Give me
+      // some ideas" draws her four ideas as one 2 by 2 grid on their own photo, numbered 1 to 4. PROVEN by
+      // command the same day (img_mv5v3s71iija, $0.0197): one edit call made four numbered versions of
+      // the photo. The words are a fixed opening (a setting, `config:frame:addon:grid`) and her four
+      // picture-word lines. Picking one and changes after it come next; this is the four showing up.
+      // ══ THE PICTURE MODEL IMAGINES, SHE READS (2026-10-12, v9.585, Aaron) ═══════════════════════════
+      // "The model can do it and the visual gives people the options." MEASURED the same evening: her four
+      // written lines came back as four timid accessories (G5, G6); their photo and ONE plain sentence of
+      // creative permission came back as four different futures - five different tattoos, $0.09 for all
+      // five (S1-S5, img_mv5z7ogg7cn3 .. img_mv5zd5qywyxq), the old ink kept every time. So the grid is
+      // drawn from their photo and that one sentence alone (a setting, `config:frame:addon:grid`), and she
+      // does what she is good at: she reads what came back and talks about it. Her idea lines are not sent.
+      // ══ WHERE IT GOES (2026-10-13, v9.587, Aaron) ═══════════════════════════════════════════════════
+      // "Any add-on that comes in, we have to establish intent - where they want to put it - and send that
+      // established placement to the image model." PROVEN by command (pta of the lion-arm test, 08:38): the same
+      // grid sentence with "I want it to continue down my arm to my wrist." ran all four down to the wrist; without
+      // it all four stayed on the upper arm. She reads where it can grow and offers those as buttons; a tapped
+      // one arrives as "I want it to go <where>", or she writes it in `placement` when they say it in their own
+      // words. It is kept for this tattoo and a new photo clears it. Nothing is forced: no placement, nothing added.
+      let _placeNow = "";
+      const _dirTap = String(said || "").trim().match(/^i want it to go\s+(.{3,160}?)[.!\s]*$/i);
+      if (me) {
+        try {
+          _placeNow = _freshPhoto ? "" : String((await talkStateGet(env, me, ["placement"])).placement || "").trim();
+          const _herPl = String((acted && acted.where_to) || "").trim().replace(/^i want it to go\s+/i, "").replace(/[.!\s]+$/, "");
+          const _newPl = _dirTap ? _dirTap[1].trim() : _herPl;
+          if (_freshPhoto || (_newPl && _newPl !== _placeNow)) {
+            if (_newPl || _freshPhoto) _placeNow = _newPl || "";
+            await talkStatePut(env, me, "placement", _placeNow);
+            console.log("[TURN:PLACE] " + (_placeNow ? "where it goes: \"" + _placeNow + "\"" + (_dirTap ? " (they tapped it)" : " (she heard it)") : "a new photo - no placement yet"));
+          }
+        } catch {}
+      }
+      // A tapped direction answers her question - it is not a request to draw yet.
+      if (_dirTap && (act === "draw" || act === "change" || act === "onme")) {
+        console.log("[TURN:PLACE] they said where - nothing drawn yet (her act was " + act + ")"); act = "none";
+      }
+      let _ideasGrid = false;
+      if (_askIdeas && jobNow === "add" && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
+        act = "change"; _ideasGrid = true;
+        console.log("[TURN:IDEAS] four ideas drawn as one grid on their photo, from the one fixed sentence");
+      }
+      // ══ A CHANGE TO A DESIGN COMES BACK AS FOUR VERSIONS (2026-10-14, v9.599, Aaron) ═══════════════════
+      // "When they tell us what they want ... four different versions." On a new tattoo (not add / cover / rework),
+      // a change to the design is sent the ChatGPT way - the chat model reads the design and their words - and comes
+      // back as four versions in a numbered 2x2 on white, in the design's own style. PROVEN by command on the tribal
+      // butterfly (img_mv88a12rku5n). After "I want to change something" their next words are that change. Picking a
+      // number is the existing grid pick, untouched. "Imagine 4 more" on such a grid redoes the same change.
+      let _designGrid = false, _designWords = null, _designParent = null;
+      try {
+        const _newJob = !["add", "cover", "rework"].includes(String(jobNow || ""));
+        let _await = false, _lastChange = null, _lastParent = null;
+        if (me && _newJob) {
+          const _ds = await talkStateGet(env, me, ["await_change", "design_change", "design_change_parent"]);
+          _await = String(_ds.await_change || "") === "1";
+          _lastChange = String(_ds.design_change || "").trim() || null;
+          _lastParent = String(_ds.design_change_parent || "").trim() || null;
+        }
+        if (me && _await && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
+          try { await talkStatePut(env, me, "await_change", ""); } catch {}
+        }
+        if (_newJob && (hasParent || refDesign) && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo) {
+          if (_fixedWhy === "poss") {
+            // FOUR POSSIBILITIES OF THE CHOSEN DESIGN (v9.628): the first time, the design on screen; "4 more" keeps the same
+            // design they chose, not the sheet of possibilities.
+            act = "change"; _designGrid = true; _designWords = "__poss__";
+            _designParent = (/\bmore\b/i.test(String(said || "")) && _lastChange === "__poss__" && _lastParent) ? _lastParent : null;
+          } else if (_ideasLine && _lastChange && _lastParent) {
+            act = "change"; _designGrid = true; _designWords = _lastChange; _designParent = _lastParent;
+          } else if (!_ideasLine && String(said || "").trim() && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
+            // A BARE YES IS NEVER A CHANGE (v9.605). MEASURED 16:44 and 17:17: "Go" became "I want to change it: Go." and
+            // the chat model made four guesses at an alteration nobody asked for. Nothing is drawn on a bare yes here.
+            const _bareYes = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i.test(String(said || ""));
+            if (_bareYes) { if (act === "change" || act === "draw") { console.log("[TURN:DESIGN] a bare yes is not a change - nothing drawn"); act = "none"; } }
+            else {
+              if (_await && act !== "artist" && act !== "use") act = "change";
+              if (act === "change") { _designGrid = true; _designWords = String(said || "").trim().replace(/^show me:\s*/i, "").slice(0, 600); }
+            }
+          }
+        }
+        if (_designGrid) console.log(_designWords === "__poss__" ? "[TURN:DESIGN] four possibilities of the chosen design, through the chat model" + (_designParent ? " (4 more, same design " + _designParent + ")" : "")
+          : "[TURN:DESIGN] four versions of their change, image model only: \"" + String(_designWords).slice(0, 200) + "\"");
+      } catch {}
 
       // ══ THE ARTIST'S SHEET - THE OPERATION, NOT A DESCRIPTION (2026-09-10) ═══════════════
       // Everything that failed at this job failed the same way: a model was asked to AUTHOR the
@@ -65302,7 +67116,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // AND SHE KNOWS WHAT IT IS. A fixed sequence is a fact she can state when somebody asks
       // what happens next. A sentence she improvises each time is not.
       if (onStage && me && (act === "draw" || act === "change" || act === "onme" || act === "artist")) {
-        try { await onStage(act === "artist" ? "files" : "drawing"); } catch {}
+        // WHAT IT IS GOES WITH IT (2026-10-09, v9.550, Aaron): the page's picture card says what she is
+        // making - "Imagining your cat and butterfly tattoo" - from the subject in her brief.
+        let _what = "";
+        try { _what = String((intent && intent.subject) || (carriedObj && carriedObj.subject) || "").slice(0, 80); } catch {}
+        try { await onStage(act === "artist" ? "files" : "drawing", _what); } catch {}
       }
       // ══ WHICH PROJECT THIS TURN BELONGS TO (2026-09-23) ══════════════════════════════════════
       // Carrying on from a picture (the page sends it as `from`) continues that picture's project.
@@ -65351,6 +67169,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // said last: the newest line she points at, or what they said this turn.
         const _newest = _ptd.slice().sort((a, b) => (b.n || 0) - (a.n || 0))[0];
         _onmeWords = _newest ? String(_newest.said).trim() : String(said || "").trim();
+        // v9.611: when she was not called (fixed placement turn), what they said this turn is where it goes.
+        if (_fixedWhy === "onme") _onmeWords = String(said || "").trim();
       }
       // ══ FIND - REAL TATTOOS FOR INSPIRATION (2026-09-24, Aaron) ═══════════════════════════
       // Get Inspired: the wall (unchanged, shared) finds real tattoos of what they described, she
@@ -65516,11 +67336,98 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       }
       if (act === "onme" && me) {
         try {
-          const _om = await processCommand("SHOW_IT " + JSON.stringify({
-            subject: onmeAsk(_onmeWords), context: "seeing a tattoo on their own body", name: "on me",
-            raw: true, refs: [_onmeDesign.image, refUrl], source: "onme", parent: _onmeDesign.design
-          }), env, true);
-          const _op = (_om && _om.payload) ? _om.payload : _om;
+          // ══ IT JUST RUNS (2026-10-08, v9.545, Aaron) ═════════════════════════════════════════
+          // MEASURED: "Place it on my chest" came back "it didn't come out this time"; "try again"
+          // worked with the same words and the same two pictures. Nobody should see that - the same
+          // request is tried again, up to twice more, before anything is said.
+          // THEIR WORDS, NEVER HERS (v9.609, 2026-10-15, Aaron). MEASURED 21:17 (prj_83c97810dfe14e64): the locked design -
+          // a colour biomech head with sunflowers and bees - came back on her shoulder as a small black fine-line sunflower
+          // and bee matching the ink already there. Her own brief went first in this sentence ("dainty like the lotus
+          // piece..."), so the model drew her description, not the picture. Only the person's placement words go in now.
+          let _omWords = String(_onmeWords || "").trim().replace(/^show me:\s*/i, "");
+          // ══ "TRY AGAIN" IS NOT A PLACE (v9.612, 2026-10-15, Aaron) ═══════════════════════════════════════════
+          // MEASURED 08:02: after a failed "on my right thigh", "Try again" was sent as where it goes - the model chose her
+          // stomach. A retry or a bare yes reuses the last place they named (talk-state `onme_words`).
+          const _retryRx = /^\s*(try (it |that )?again|again|retry|one more time|redo( it)?|do it again|yes|yeah|yep|ok|okay|sure|go|go ahead|go for it|do it|please)[\s.!]*$/i;
+          if (me && _fixedWhy !== "placed") {
+            try {
+              if (!_omWords || _retryRx.test(_omWords)) {
+                const _prevW = String((await talkStateGet(env, me, ["onme_words"])).onme_words || "").trim();
+                if (_prevW) { try { console.log("[TURN:ONME] \"" + (_omWords || "(nothing)") + "\" is not a place - using the last one: \"" + _prevW + "\""); } catch {} _omWords = _prevW; }
+              } else {
+                await talkStatePut(env, me, "onme_words", _omWords.slice(0, 400));
+              }
+            } catch {}
+          }
+          // ══ THEIR RIGHT AND LEFT, IN THE PICTURE'S TERMS (v9.611, 2026-10-15, Aaron) ══════════════════════════
+          // MEASURED 07:06: "my right chest" came back in the middle of the chest. In a normal photo their right is the
+          // LEFT of the picture; in a mirror photo it is the right. She records whether their photo is a mirror shot when
+          // she sees it (`mirror_photo` in her brief); the sentence then says which side of the picture that is.
+          const _mir = String((intent && intent.mirror_photo) || (carriedObj && carriedObj.mirror_photo) || "").toLowerCase();
+          const _sideR = /\bright\b/i.test(_omWords), _sideL = /\bleft\b/i.test(_omWords);
+          let _sideNote = "";
+          if (_sideR || _sideL) {
+            const _flip = _mir === "no", _same = _mir === "yes";
+            if (_flip || _same) {
+              const _parts = [];
+              if (_sideR) _parts.push("their right side is on the " + (_flip ? "left" : "right") + " side of the picture");
+              if (_sideL) _parts.push("their left side is on the " + (_flip ? "right" : "left") + " side of the picture");
+              _sideNote = (_same ? "This photo is taken in a mirror: " : "") + _parts.join(" and ") + ".";
+              _sideNote = _sideNote.charAt(0).toUpperCase() + _sideNote.slice(1);
+            } else _sideNote = "Right and left mean the person's own right and left.";
+          }
+          let _omSubject = onmeAsk(_omWords) + (_sideNote ? " " + _sideNote : "");
+          let _omRefs = [_onmeDesign.image, refUrl];
+          if (_fixedWhy === "placed") {
+            // The first picture is their photo with the design laid where they put it; the second is the design itself.
+            // THE GREEN BOX (v9.614, 2026-10-15, Aaron). MEASURED 08:46 and 08:59: their photo with the design laid on it was
+            // refused as [sexual] twice, with either wording - the pasted-on picture was the trouble, and the words were confusing
+            // it. Now their photo is sent untouched except for a green box drawn where they placed it, with the design.
+            _omSubject = "Here's the tattoo I want to get here's where I want it placed on me. Can you show me what that would look like as a real tattoo?";
+            try { const _k = String((await env.AURA_KV.get("config:frame:onme:placed")) || "").trim(); if (_k) _omSubject = _k; } catch {}
+            // THE CHATGPT WAY (v9.615, 2026-10-15, Aaron). MEASURED 09:09: the same two pictures and these words in the ChatGPT
+            // app came back as a real tattoo on her; sent straight to the image model they were refused [sexual]. In the app a
+            // chat model reads the pictures and asks its image tool itself - the THREAD route already does that. Same order as
+            // the app: his tattoo first, then his photo with the green box.
+            _omRefs = [_onmeDesign.image, refUrl];
+          }
+          if (_sideNote) { try { console.log("[TURN:ONME] sides - mirror photo: " + (_mir || "not known") + " · added: \"" + _sideNote + "\""); } catch {} }
+          const _omReq = "SHOW_IT " + JSON.stringify({
+            subject: _omSubject, context: "seeing a tattoo on their own body", name: "on me",
+            raw: true, refs: _omRefs, source: "onme", parent: _onmeDesign.design
+          });
+          let _op = null;
+          let _omA = null, _omB = null;
+          if (_fixedWhy === "placed") { try {
+            const _turned = (opts && opts.placed_angle != null) ? await turnedCopy(env, _omRefs[0], opts.placed_angle) : null;
+            if (_turned) console.log("[TURN:ONME] the design goes turned " + Math.round(opts.placed_angle) + " degrees, the way they turned the box -> " + _turned + (me ? " · who=" + me : ""));
+            _omA = _turned || await sendCopy(env, _omRefs[0]); _omB = await sendCopy(env, _omRefs[1]); } catch {} }
+          for (let _try = 0; _try < (_fixedWhy === "placed" ? 2 : 3); _try++) {
+            let _om = null;
+            if (_fixedWhy === "placed") {
+              const _tr = await processCommand("THREAD START " + (_omB || _omRefs[1]) + " " + JSON.stringify({ prompt: _omSubject, action: "auto",
+                size: "auto", images: [_omA || _omRefs[0], _omB || _omRefs[1]] }), env, true);
+              const _tp = (_tr && _tr.payload) ? _tr.payload : _tr;
+              if (_tp && _tp.ok && _tp.image) {
+                let _reg = null;
+                try { _reg = await registerSmartFile(env, { id: _tp.image_id, filetype: "image", name: "on me", url: _tp.image,
+                  subject: _omSubject, source: "onme", creator: me, parent: _onmeDesign.design, context: "seeing a tattoo on their own body", access: "public" }); } catch {}
+                _om = { ok: true, image_url: _tp.image, entity_id: (_reg && _reg.entity_id) || null };
+                try { console.log("[TURN:ONME] the chat model asked its image tool: \"" + String(_tp.tool_prompt || "").replace(/\s+/g, " ").slice(0, 600) + "\" · drawn " + (_tp.size_drawn || "?")); } catch {}
+              } else _om = { ok: false, error: String((_tp && (_tp.error || (_tp.said ? "no picture - it said: " + _tp.said : ""))) || "no picture").slice(0, 300) };
+            } else _om = await processCommand(_omReq, env, true);
+            _op = (_om && _om.payload) ? _om.payload : _om;
+            if (_op && _op.ok && _op.image_url) break;
+            try { console.log("[ONME] attempt " + (_try + 1) + " failed: " + String((_op && _op.error) || "no answer").slice(0, 200)); } catch {}
+          }
+          // EVERY LOOK ON THEM IS LOGGED (v9.609): the design picture, their photo, every word sent and what came back -
+          // this step logged only failures, so the wrong result at 21:17 could not be traced.
+          try { console.log("[TURN:ONME] sent: \"" + _omSubject + "\" · picture 1: " + _omRefs[0] +
+            " · picture 2: " + _omRefs[1] + " · design " + (_onmeDesign.design || "?") + (_fixedWhy === "placed" ? " · placed by hand" : "") + " -> " +
+            ((_op && _op.image_url) || ("not made: " + String((_op && _op.error) || "?").slice(0, 200))) + (me ? " · who=" + me : "")); } catch {}
+          try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: "put on their photo", words: _omSubject,
+            picture_in: _omRefs[0], second_picture: [_omRefs[1]], made: (_op && _op.image_url) || null,
+            failed: (_op && _op.image_url) ? null : String((_op && _op.error) || "?").slice(0, 200) }); } catch {}
           drew = (_op && _op.ok && _op.image_url)
             ? { design: _op.entity_id || null, image: _op.image_url, on_me: true, from: _onmeDesign.design,
                 asked: "the design on screen, on their photo", their_words: _onmeWords }
@@ -65536,7 +67443,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // piece on screen", and the files were made from that. The files now start from the design
       // she drew - or, when she has put that design on them since, from that look, which is the
       // mockup the files have always been made from. A photo never.
-      let _filesFlat = false;
+      let _filesFlat = false, _bodyLook = null;
+      // ══ A KEPT CATALOGUE DESIGN IS ALREADY THE ARTWORK (2026-10-10, v9.559, Aaron) ════════════
+      // MEASURED on the site: a Chicano design - a woman with cash and roses - "Keep It Like This"
+      // (the button, `use`); "Flat artwork" came back as the cash, roses and lettering with NO WOMAN,
+      // and the line art was made from that. The geisha fix (THE APPROVED PICTURE IS THE ARTWORK,
+      // below) covered a pick locked in by words, but `use` skips that whole block, so the picture
+      // went through the "no body, no skin" conversion and the person in the design was removed.
+      // A catalogue design kept as it is goes to the artist exactly as chosen. A split card was
+      // already cut to its left half when it was picked (opts.name).
+      if (act === "artist" && _usedPick) _filesFlat = true;
       if (act === "artist" && me && !_usedPick) {
         let _dRec = null, _oRec = null;
         try { _dRec = await _pre.design; } catch {}
@@ -65576,6 +67492,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         // the artist files at the end". When this tattoo came from a split card and the approved
         // picture is still split-shaped, the same pixel cut runs here; the files are made from the
         // design half. The pictures in the conversation are left as they are.
+        // ══ A DESIGN PUT ON THEM: THE FILES ARE THE DESIGN (2026-10-03, v9.529, Aaron) ═════════════════
+        // MEASURED (pta_57a6dd5b0285bea0): number 3 - teal, gold, a yellow cab - was put on a bare back and
+        // came back sepia; the files were redrawn from that preview (sepia again) and, because a body
+        // photo makes the job "add", a "new work" sheet invented a different cab. Aaron: "see it on me
+        // is once they've already chosen the image - it's got to work off of that final version."
+        // The picture they chose IS the artwork, used as it is; the look on their body only tells her
+        // how big it is. Only when the look on them was made from this same design - an add-on on their
+        // own tattoo never makes one, so nothing about add-ons changes here.
+        if (_oRec && _oRec.image && _dRec && _dRec.image && _dRec.design && _oRec.from === _dRec.design && !_keepPicked) {
+          lastDrawn = { design: _dRec.design, image: _dRec.image, subject: (lastDrawn && lastDrawn.subject) || null };
+          _filesFlat = true;
+          _bodyLook = _oRec.image;
+          try { console.log("[FILES] a design put on them - files from the design " + _dRec.design + ", size from the look on them"); } catch {}
+        }
         if (_filesFlat) {
           let _wasSplit = null;
           try { _wasSplit = await _pre.split; } catch {}
@@ -65588,32 +67518,44 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         }
       }
       if (act === "artist" && me) {
+        // ══ THE FILES GET EVERYTHING DECIDED, NOT THIS TURN'S SLICE (2026-10-01, v9.501, Aaron) ═════
+        // MEASURED (pta_1c5dcf9da1de80fd): her running brief said "about 5 inches tall", but on the
+        // lock-in turn she did not restate it, and the gaps are only filled from the running brief at
+        // the END of the turn - after this job starts. The files got `size: ""` and printed at the 8in
+        // default ([PRINT-SIZE] her size="" placement="hip"). So the job gets the running brief with
+        // this turn's answers on top.
+        const _intentFull = Object.assign({}, carriedObj || {});
+        if (intent && typeof intent === "object") {
+          for (const k of Object.keys(intent)) {
+            const v = intent[k];
+            if (v == null || v === "" || (Array.isArray(v) && !v.length)) continue;
+            _intentFull[k] = v;
+          }
+        }
+        intent = (intent || carriedObj) ? _intentFull : intent;
         const _job = await startArtistFilesJob(env, {
           project: _pid,
-          me, world, stage, seeing: !!seeing, jobNow: jobNow || null, refUrl: refUrl || null,
+          // AN ADD-ON NEEDS THEIR OWN PHOTO (2026-10-14, v9.603): MEASURED 10:33 - a catalogue jellyfish they changed ("it would
+          // be fun to ADD that finding Nemo fish") was read as job "add" and got the add-on files (whole piece + new work, 3.4 min).
+          // Without a photo of their own body there is nothing old to keep apart - it is a new tattoo's files.
+          me, world, stage, seeing: !!seeing,
+          jobNow: (_bodyLook || (["add", "cover", "rework"].includes(String(jobNow || "")) && !_bodyPhoto)) ? "new" : (jobNow || null),
+          refUrl: (_bodyLook || (["add", "cover", "rework"].includes(String(jobNow || "")) && !_bodyPhoto)) ? null : (refUrl || null),
           refDesign: refDesign || null, lastDrawn: lastDrawn || null,
           useRaw: Array.isArray(useRaw) ? useRaw : [], acted, intent: intent || null,
-          alreadyFlat: _filesFlat });
+          alreadyFlat: _filesFlat, bodyLook: _bodyLook });
         drew = _job
           ? { for_the_artist: true, pending: true, job: _job, from: (lastDrawn && lastDrawn.design) || null }
-          : await makeArtistFiles(env, { me, world, seeing, jobNow, refUrl, lastDrawn, useRaw,
+          : await makeArtistFiles(env, { me, world, seeing, jobNow: _bodyLook ? "new" : jobNow,
+                                         refUrl: _bodyLook ? null : refUrl, refDesign: _bodyLook ? null : (refDesign || null), lastDrawn, useRaw,
                                          acted, intent, useOne, _checkOn, _verdict, readAct,
-                                         alreadyFlat: _filesFlat });
+                                         alreadyFlat: _filesFlat, bodyLook: _bodyLook });
       }
-      if (_usedPick && drew && !drew.failed) {
-        drew.used = true;
-        try {
-          const _ux = await proxyToAgent(env,
-            "[They chose a design from our catalogue and are taking it exactly as it is - \"" +
-            String(said || "").slice(0, 120) + "\". It is saved in My Tattoos and their artist's files are " +
-            "being made from it now; they land there in a few minutes. In one or two short lines, tell them.]",
-            false, me, null, world);
-          if (_ux && _ux.reply && !_ux.failed) {
-            const _t = _verdict(_ux.reply, readAct(_ux.reply)).trim();
-            if (_t) _reaction = _t.slice(0, 400);
-          }
-        } catch {}
-      }
+      // ══ THE CLOSING LINE IS SAID AT ONCE (2026-10-11, v9.565, Aaron) ═══════════════════════════
+      // Her closing call took 6-13 s in front of the reply on every kept pick. The closing line is now the
+      // page's own fixed handoff (below, LOCKED_LINE), and her part - naming it and reading its colour -
+      // runs behind the reply, where nobody waits for it.
+      if (_usedPick && drew && !drew.failed) drew.used = true;
 
       // ══ SOMEBODY HAS TO LOOK AT THE MOCKUP (2026-09-15) ═══════════════════════════════════
       // FIVE RUNS, FIVE PLACEMENT FAILURES, AND NOTHING EVER LOOKED: the dragon on the wrong side,
@@ -65642,8 +67584,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // the placement verdict off. A look that fails never costs them the picture.
       // Set when the picture being looked at carries the add-on's red marker line (AN ADD-ON MARKS
       // WHAT IS NEW). Her check and her reaction are told it is a marker, not ink.
-      const _lookAtResult = async (url, onBody, where, isGrid) => {
+      const _lookAtResult = async (url, onBody, where, isGrid, flat) => {
         if (!url || !me) return null;
+        url = await lookCopy(env, url);   // v9.516: a copy she can be handed; the drawing stays full size
         const body = !!(onBody && seeing && (await _checkOn("mockup")));
         const talk = await _checkOn("react");
         if (!body && !talk) return null;
@@ -65680,11 +67623,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             const rx = await proxyToAgent(env,
               (isGrid
                 ? "[This is the picture you just made for them: four numbered directions for their tattoo. " +
-                  "Look at it. In one or two short lines, say what makes each direction different, then ask " +
-                  "which number grabs them - in your own words. Do not offer to lock anything in yet."
+                  "Look at it. In one or two short lines, say what makes each direction different" + (flat ? "" : " and where on their body it goes") + ", then ask " +
+                  "which number grabs them, or whether you should imagine 4 more - in your own words. Do not offer to lock anything in yet."
                 : "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
-                  "in one warm line, then ask whether they are happy to go with it or want to change " +
-                  "something - in your own words, different each time.") +
+                  "in one warm line, then ask whether this is the one - their tattoo - or whether they want to " +
+                  "change something, in your own words, different each time. Never say 'lock it in'.") +
               // THE THIRD DOOR SURVIVES THE LOOK (2026-09-24). MEASURED on the site: they came in through
               // See It On You, she said so herself, and after the drawing this line - the only close-out
               // she gets after a look - offered two doors. Her guidance decides who gets the third; this
@@ -65708,9 +67651,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // reply - "Let me put the circus clown on your chest... What do you think?" - was written
       // before the picture existed. A drawing and a change have always ended with her looking at
       // what came out; put-it-on-me never did. Same look, same body check, same place in her reply.
+      // ══ NO LOOK AFTER IT IS ON THEM - ONE FIXED LINE (v9.609b, 2026-10-15, Aaron) ════════════════════════════
+      // MEASURED 06:23 (prj_1a86117b30cc401a): the wizard went on his forearm correctly, and her look said "the shark
+      // under it is reading pretty dark... bring that shark out?" - the sharks are the print on his swim shorts. Same
+      // rule as the four and the pick: no look, no read-back after a picture. `config:say:onme_done` is the line; the
+      // page adds "your artist will make any final changes" under it for a finished tattoo.
       if (act === "onme" && drew && drew.on_me && drew.image && !drew.failed) {
-        const _lkOn = await _lookAtResult(drew.image, true, _onmeWords || null);
-        if (_lkOn && _lkOn.say) _reaction = _lkOn.say;
+        let _lkOn = null;
+        _reaction = "Your tattoo, on you.";
+        try { const _k = String((await env.AURA_KV.get("config:say:onme_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
+        try { console.log("[TURN:ONME] no look - fixed line: \"" + _reaction + "\"" + (me ? " · who=" + me : "")); } catch {}
         if (me) {
           try {
             await talkStatePut(env, me, "onme",
@@ -65737,7 +67687,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // hand a customer is worse than untidy - it is another shop's name on our work.
           const fromRef = !!(refDesign && lastDrawn.design === refDesign);
           const onTheirSkin = fromRef && ["cover", "add", "rework"].includes(jobNow);
-          const cleanUp = (!fromRef || (opts && opts.pick)) ? ""
+          const cleanUp = (!fromRef || (opts && opts.pick) || _fromPic) ? ""
             : onTheirSkin
               // Their own arm. The body stays exactly as it is - same limb, same skin, same
               // surrounding ink - and only the piece changes. For an add-on especially: the
@@ -65793,8 +67743,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // MEASURED: "without the mask" was drawn from the original photo again, not from the flat
           // design on screen - the words sent carried the lift-off sentence a second time. The streak
           // below had reached two because the body check (next) marks every flat picture WRONG.
-          const _resetToPhoto = badStreak >= 2 && !!refDesign && !(opts && opts.inspire);
-          const parentId = (_drewNow() && !_resetToPhoto) ? lastDrawn.design : (refDesign || lastDrawn.design);
+          const _resetToPhoto = badStreak >= 2 && !!refDesign && !(opts && opts.inspire) && !_fromPic;
+          // ══ AN ADD-ON ALWAYS STARTS FROM THEIR PHOTO (2026-10-01, Aaron) ═══════════════════════
+          // "If we keep working on revisions we'll never know what was done." Stacking edits carried
+          // every drift forward - a garment, a wrong size, a touched original - and "make it that big"
+          // reached the model with no where or what. Every add-on picture now starts from the photo
+          // they sent, and the words are her ONE description of everything they want now (the change
+          // folded in). This was tried before (v9.271 reversed it) when a change sent only the delta;
+          // the difference now is the whole description rides every time.
+          // Cover-up and rework start from their photo every time too (2026-10-01, v9.509, Aaron).
+          const _addOnPhoto = ["add", "cover", "rework"].includes(String(jobNow || "")) && _bodyPhoto && !!refDesign && !(opts && opts.inspire);
+          const parentId = (_addOnPhoto || _fromPic) ? refDesign
+            : ((_drewNow() && !_resetToPhoto) ? lastDrawn.design : (refDesign || lastDrawn.design));
           const alsoRefs = [];
           // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════
           // Added this morning to give an artist one file per element. Every run produced
@@ -65916,7 +67876,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // that copy, "touch" 2 of 3. "Cover" still allows placing new work in the old ink's
             // place; "touch" rules that out. General, not tied to any photo - and a setting
             // (config:frame:add) if another tattoo shows a better word.
-            add: "This is my existing tattoo. Show me what it would look like if I ____, flowing with the current tattoo, matching its line weight, framing it so it reads as one piece. All new artwork should not touch any of the current tattoo.",
+            add: "This is my tattoo. Show me what it would look like if I ____.",
             change: "This is my tattoo. Show me what it would look like if I ____. Don't change anything else.",
             cover: "This is my existing tattoo. Show me what it would look like if I cover it with ____.",
             rework: "This is my existing tattoo. Show me what it would look like if I ____.",
@@ -66060,7 +68020,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             const _atMs = _refAt ? Date.parse(_refAt) : NaN;
             let _lastPicI = -1;
             for (let i = tline.length - 1; i >= 0; i--) { if (tline[i] && tline[i].role === "picture") { _lastPicI = i; break; } }
-            const _picAfterPhoto = _lastPicI >= 0 &&
+            // Every add-on picture starts from the photo (above), so when her description is missing
+            // the words are ALL their lines since the photo - never only the latest change.
+            const _picAfterPhoto = false && _lastPicI >= 0 &&
               (!isFinite(_atMs) || Date.parse(String(tline[_lastPicI].ts || "")) >= _atMs);
             const _theirs = [];
             tline.forEach((e, i) => {
@@ -66137,14 +68099,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // picture being changed is a four-direction grid and their line names one number, the model
           // gets exactly the pick sentence (a setting, `config:frame:pick`, {n} = the number). If they
           // asked for something more in the same line ("number 2 but in colour"), their line follows.
-          let _gridPick = null;
+          let _gridPick = null, _gridPickCut = null;
           try {
             let _pic = null;
             for (let i = tline.length - 1; i >= 0; i--) {
               const e = tline[i];
               if (e && e.role === "picture" && e.design === parentId) { _pic = e; break; }
             }
-            if (_pic && (_pic.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_pic.words || "")))) {
+            if (_pic && !_ideasLine && (_pic.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_pic.words || "")))) {
               const _line = String(said || "").toLowerCase();
               const _w = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
               const _nums = new Set();
@@ -66161,13 +68123,23 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 const _rest = _line.replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean)
                   .filter((t) => !_filler.test(t) && !/^([1-4])(st|nd|rd|th)?$/.test(t) && !(t in _w));
                 _gridPick = n;
+                // A PICK OFF THE FOUR IS CUT, NOT REDRAWN (v9.618, Aaron): "this saves a call to the image model and it will
+                // never fluctuate." The phone-panel sheets (new four and change grids) are cut by hand; any other grid keeps the
+                // image-model pick.
+                // ANY FOUR SHEET IS CUT, NOT REDRAWN (v9.621, 2026-10-15, Aaron: "we just redrew the card"). MEASURED 19:57
+                // (pta_ed580175b82433ba): the new four is saved with empty words, so the "phone screen" test never matched and
+                // number 3 went back to the image model (img_mvadmt76nhgz, 21.8s). The cut now tries every four sheet; it
+                // refuses a page that is not phone-shaped (old square grids), and only then does the image model draw it.
+                if (_pic.image) _gridPickCut = { img: _pic.image, n, card: (Array.isArray(_pic.cards) && _pic.cards[n - 1]) || null };
                 _sentNow = _rest.length ? (_fixed + " " + String(said || "").trim()).slice(0, 900) : _fixed;
                 _wordsFrom = "grid_pick";
               }
             }
           } catch {}
+          // Not on the ideas grid (v9.585): "Give me some ideas" is not something they want added, and it
+          // would name the new-work sheet.
           if (String(jobNow || "") === "add" && refDesign && parentId === refDesign && _sentNow &&
-              !(opts && opts.inspire) && me) {
+              !_ideasGrid && !(opts && opts.inspire) && me) {
             try { await talkStatePut(env, me, "added", String(_sentNow).slice(0, 600)); } catch {}
           } else if (String(jobNow || "") === "add" && refDesign && parentId !== refDesign && _sentNow &&
                      !_gridPick && !(opts && opts.inspire) && me) {
@@ -66180,15 +68152,170 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
               }
             } catch {}
           }
+          // ══ ON AN ADD-ON, SHE SAYS WHAT THEY WANT - PLAINLY (2026-09-30, Aaron) ═════════════════════
+          // MEASURED three times on the forearm photo: she understood "the other arm" and said so, but
+          // only their typed words reached the picture ("similar style of my opposite arm on my
+          // shoulder"), and it landed on the same arm twice. ChatGPT's one plain sentence of the same
+          // request landed on the right arm. She is the tattoo artist: on the first picture on their own
+          // photo her `ask` - their request the way they would say it to a tattoo artist - goes, with
+          // their photo and nothing added. Only if it is short and not a question; otherwise their own
+          // lines go, as before. Every change after the first picture is unchanged.
+          let _herAsk = null;
+          let _seedNow = null, _withNow = null;   // v9.586: a fresh grid, and the grid sent with a pick
+          let _canvasNow = null;                   // v9.591: the ideas picture's own canvas
+          let _viaNow = null;                      // v9.596: "thread" - the ideas picture goes the chat-model way
+          let _asNow = null;                       // v9.629: the image job's dial - "show_it_cmd" for the four possibilities
+          let _sizeNow = null;                     // v9.606: the four-card page's own tall size, through the thread
+          // CHANGES TOO (2026-09-30, Aaron): MEASURED on pta_4e048acbadd8af04, "Adding color to the new
+          // tattoo" went as typed and the model coloured the original forearm piece as well - one picture
+          // of a tattooed arm does not say which part is new. She knew ("while the original forearm tattoo
+          // stays black and grey"), so every add-on picture takes her sentence, not only the first.
+          if (["add", "cover", "rework"].includes(String(jobNow || "")) && _bodyPhoto && refDesign &&
+              !_gridPick && !(opts && opts.inspire)) {
+            // ══ HER BRIEF, ALWAYS (2026-10-01, v9.499, Aaron) ═════════════════════════════════════
+            // MEASURED (pta_cecb3d1218d48755): on a change she left `ask` empty, was asked again, and left
+            // it empty again - so their raw lines went ("...thats sick. can we add a samurai guy...") and
+            // the existing sleeve was painted over. Her brief that same turn had it exactly: the sleeve on
+            // the other arm, the dragon, the samurai, the koi. Aaron: their lines never go to the model;
+            // what they want does, and she already understands it - the brief is that understanding,
+            // rewritten every turn with everything decided so far. So the picture is their photo, the
+            // fixed opening (`config:frame:addon:brief`, "____" is her brief) and her brief. Nothing else.
+            // ══ ONE OPENING PER JOB, EACH ITS OWN SETTING (2026-10-01, v9.509, Aaron) ══════════════════
+            // Cover-up and rework now go the add-on way: their photo, the job's opening, her brief.
+            const _jobK = String(jobNow || "");
+            const _openDefault = _jobK === "cover" ? "This is my tattoo. Show me it covered up with: ____"
+                               : _jobK === "rework" ? "This is my tattoo. Show me it reworked: ____"
+                               : "This is my tattoo. Show me: ____";
+            const _openKey = _jobK === "cover" ? "config:frame:cover:brief"
+                           : _jobK === "rework" ? "config:frame:rework:brief" : "config:frame:addon:brief";
+            let _open = _openDefault;
+            try { const _k = String((await env.AURA_KV.get(_openKey)) || "").trim(); if (_k.includes("____")) _open = _k; } catch {}
+            // She sometimes copies the opening into her paragraph ("This is my tattoo. Show me: ...").
+            const _b = String(brief || "").trim()
+              .replace(/^\s*this is my (existing |current |original )?tattoo\.?\s*(show me:?\s*)?/i, "").trim();
+            const _her = _b || String(acted.ask || "").trim() || String(acted.prompt || "").trim();
+            if (_her) {
+              _sentNow = _open.replace("____", _her.replace(/[\s]+$/, ""));
+              _herAsk = _her;
+              _wordsFrom = _b ? "her_brief" : (acted.ask ? "her_ask" : "her_prompt");
+            }
+          }
+          // The four ideas as one grid on their photo (v9.585): the one sentence, nothing added. The setting
+          // is the whole sentence; a value still holding "____" is the old opening-plus-her-lines shape
+          // and is not used.
+          if (_ideasGrid && parentId === refDesign) {
+            let _go = "This is my existing tattoo. I want to add to it. Show me 4 different possibilities in a numbered 2x2 grid. 1. Show me a beautiful natural continuation of the tattoo I already have. Keep its existing visual language and imagine how the same tattoo could continue into the visible bare skin. For 2, 3 and 4, explore genuinely different artistic possibilities. You have creative freedom to change the subject, style, technique, composition, color, scale or visual language. Show me possibilities I may not have thought of rather than three variations of the same idea. Work with the body and bare skin that are actually visible in this photo. Do not invent body areas outside the image. All four should work with the tattoo I already have, but they do not all need to match it. Keep my existing tattoo exactly as it is.";
+            let _goFrom = "default";
+            try {
+              const _k = String((await env.AURA_KV.get("config:frame:addon:grid")) || "").trim();
+              if (_k && !_k.includes("____")) { _go = _k; _goFrom = "setting"; }
+              else if (_k) console.log("[TURN:IDEAS] config:frame:addon:grid still holds the old ____ shape - not used, the default went");
+            } catch {}
+            if (_placeNow) {
+              const _ps = "I want it to go " + _placeNow + ".";
+              _go = _go.includes("I want to add to it.") ? _go.replace("I want to add to it.", "I want to add to it. " + _ps) : (_ps + " " + _go);
+              _goFrom += "+placement";
+            }
+            _sentNow = _go;
+            _herAsk = null;
+            _wordsFrom = "ideas_grid_" + _goFrom;
+            // A FRESH FOUR EVERY TIME (v9.586): the image cache is keyed on the photo and the words, so the
+            // same sentence on the same photo would hand back the same grid. A seed makes it a new ask.
+            _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+            // THE CHATGPT WAY (v9.596, Aaron): the photo and the sentence go to the chat model, which writes the brief.
+            _viaNow = "thread";
+            // THE PHOTO'S OWN SHAPE (v9.592, Aaron): a fixed tall canvas (v9.591, 1536x2048) made every idea taller
+            // than the photo, and the model stretched the arm to fill it - a forearm grew past the wrist. ChatGPT and
+            // the control test (img_mv77tclz9ahs) kept the photo's shape and the arm stayed the arm. A canvas is used
+            // only when `config:edit:grid:size` names one ("1536x2048"); unset means the photo's shape.
+            try {
+              const _k = String((await env.AURA_KV.get("config:edit:grid:size")) || "").trim();
+              const _gm = _k.match(/^(\d{3,4})x(\d{3,4})$/);
+              if (_gm) _canvasNow = { width: parseInt(_gm[1], 10), height: parseInt(_gm[2], 10) };
+            } catch {}
+          }
+          // THE FOUR VERSIONS OF A CHANGE (v9.599): their words inside one fixed sentence (`config:frame:design:grid`,
+          // "____" is their words), sent with the design to the chat model. Not when this turn is a pick off a grid.
+          if (_designGrid && _gridPick) _designGrid = false;
+          if (_designGrid) {
+            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about what you changed and why in white. No numbers anywhere.";
+            try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
+            if (_designWords === "__poss__") {
+              // FOUR POSSIBILITIES (v9.628, Aaron): its own sentence, a setting (`config:frame:design:possibilities`).
+              _dg = POSS_SENTENCE;
+              try { const _k = String((await env.AURA_KV.get("config:frame:design:possibilities")) || "").trim(); if (_k) _dg = _k; } catch {}
+              _sentNow = _dg;
+            } else _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
+            _herAsk = null;
+            _wordsFrom = "design_grid";
+            _sizeNow = "2160x3840";
+            try { const _k = String((await env.AURA_KV.get("config:edit:new:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(_k)) _sizeNow = _k; } catch {}
+            if (_designWords === "__poss__") {
+              // FOUR POSSIBILITIES THROUGH THE CHAT MODEL (v9.633, 2026-10-16, Aaron: "we're keeping the chat model"): their
+              // design and the sentence to the chat model, which writes the image tool its brief - the tall page size, nothing added.
+              _viaNow = "thread";
+            } else {
+              // IMAGE MODEL ONLY (v9.629 possibilities, v9.630 every change four, 2026-10-16, Aaron: "image model only"): their
+              // design and the sentence, exactly as run 9 went by SHOW_IT - same job dial (show_it_cmd), same size, nothing added
+              // (no card list: the "i" is gone). A fresh seed every time, so "4 more" is a new sheet and not the cached one.
+              const _pm = _sizeNow.match(/^(\d{3,4})x(\d{3,4})$/);
+              _canvasNow = { width: parseInt(_pm[1], 10), height: parseInt(_pm[2], 10) };
+              _asNow = "show_it_cmd";
+              _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+            }
+            if (me) {
+              try { await talkStatePut(env, me, "design_change", String(_designWords || "").slice(0, 600)); } catch {}
+              try { await talkStatePut(env, me, "design_change_parent", String(_designParent || parentId)); } catch {}
+            }
+          }
+          // ══ PICKING A NUMBER ON AN ADD-ON: THEIR PHOTO, AND THE GRID AS THE SECOND PICTURE (2026-10-13, v9.586) ══
+          // MEASURED (pta_033302cc27b7eadd): "I want number 3" sent their photo and her one-line description
+          // of number 3 - the model never saw the lions they picked and drew different ones. PROVEN by
+          // command the same morning (img_mv6s3844w7bm, $0.026): their original photo, the grid as a second
+          // picture, and one sentence gave back number 3 as drawn, with their own ink untouched. The
+          // sentence is a setting (`config:frame:addon:pick`, {n} = the number). If they asked for more in
+          // the same line ("3 but in black and grey"), their line follows it.
+          if (String(jobNow || "") === "add" && _pickN && _pickGridImg && parentId === refDesign && !_ideasGrid) {
+            let _pk = "This is my tattoo. Add the new work from number {n} in the second picture. Keep my existing tattoo exactly as it is.";
+            try { const _k = String((await env.AURA_KV.get("config:frame:addon:pick")) || "").trim(); if (_k.includes("{n}")) _pk = _k; } catch {}
+            const _line = String(said || "").toLowerCase();
+            const _w2 = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
+            const _fill = /^(i|i'?m|love|like|want|wanna|the|a|one|number|image|picture|pic|option|go|going|with|let'?s|lets|do|that|this|it|is|please|pick|choose|take|best|most|grabs|me|yeah|yes|yep|ok|okay|really|definitely|def|my|favorite|favourite|for|sure|has|to|be|gotta|think|and|so|oh|wow|nice|cool|awesome|perfect|one'?s|#|no|keep)$/;
+            const _more = _line.replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean)
+              .filter((t) => !_fill.test(t) && !/^([1-4])(st|nd|rd|th)?$/.test(t) && !(t in _w2));
+            _sentNow = _pk.replace(/\{n\}/g, String(_pickN)) + (_more.length ? " " + String(said || "").trim().slice(0, 300) : "");
+            _withNow = [_pickGridImg];
+            _herAsk = null;
+            _wordsFrom = "addon_grid_pick";
+            console.log("[TURN:PICK] number " + _pickN + " drawn on their own photo, the grid sent as the second picture");
+          }
+          // ══ MADE FROM THE PICTURE: THE PHOTO, ONE OPENING, HER BRIEF (2026-10-01, v9.504, Aaron) ═══
+          // The opening is a setting (`config:frame:from`, "____" is her brief). Their lines never go.
+          if (_fromPic && parentId === refDesign && !_gridPick && !_designGrid) {
+            let _openF = "Make this into tattoo artwork on its own, on a plain white background: ____";
+            try { const _k = String((await env.AURA_KV.get("config:frame:from")) || "").trim(); if (_k.includes("____")) _openF = _k; } catch {}
+            const _herF = String(brief || "").trim() || String(acted.ask || "").trim() || String(acted.prompt || "").trim();
+            if (_herF) {
+              _sentNow = _openF.replace("____", _herF.replace(/[\s]+$/, ""));
+              _herAsk = _herF;
+              _wordsFrom = String(brief || "").trim() ? "her_brief" : (acted.ask ? "her_ask" : "her_prompt");
+            }
+          }
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {
             try {
               const r = await processCommand("IMAGE EVOLVE " + parent + " " +
-                JSON.stringify({ prompt: ask, by: me, res: "2k", ...(seed ? { seed } : {}) }), env, true);
+                JSON.stringify({ prompt: ask, by: me, ...(_asNow ? { as: _asNow } : { res: "2k" }),
+                  ...(Number.isInteger(seed) ? { seed } : (_seedNow ? { seed: _seedNow + (seed ? 1 : 0) } : (seed ? { seed } : {}))),
+                  ...(_withNow ? { with: _withNow } : {}),
+                  ...(_canvasNow ? _canvasNow : {}),
+                  // THE IDEAS PICTURE GOES THE CHATGPT WAY (v9.596): a chat model reads their photo and writes the brief.
+                  ...(_viaNow ? { via: _viaNow } : {}),
+                  ...(_sizeNow ? { size: _sizeNow } : {}) }), env, true);
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
           };
-          let cur = parentId, cp = null, _mockNote = null;
+          let cur = (_designGrid && _designParent) ? _designParent : parentId, cp = null, _mockNote = null;
           const _stepLog = [];
           let _retried = null;
           for (let si = 0; si < _asks.length; si++) {
@@ -66197,8 +68324,39 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // ONE VERSION PER DRAWING (Aaron, 2026-09-17): the person works from the one picture
             // on screen and evolves it. Three at once broke the link between what they approved
             // and what the files were made from - measured on pta_4c414b2a09ddab6a.
+            const _pl = (m) => { try { console.log("[TURN:PICTURE] " + m + (me ? " · who=" + me : "")); } catch {} };
+            const _pr = (t) => (t && t.ok && t.image_url) ? "made" : ("not made: " + String((t && t.error) || "no picture").replace(/\s+/g, " ").slice(0, 160));
             {
-              const t = await _evolve(cur, ask, null);
+              let t = null;
+              if (_gridPickCut) {
+                try {
+                  const _c = await cutPanel(env, _gridPickCut.img, _gridPickCut.n);
+                  if (_c && _c.ok && _c.image_url) {
+                    const _cid = (String(_c.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1] || null;
+                    const _cardT = _gridPickCut.card && _gridPickCut.card.title ? String(_gridPickCut.card.title) : null;
+                    const _reg = await registerSmartFile(env, { id: _cid, filetype: "image", name: _cardT || ("number " + _gridPickCut.n + " of the four"),
+                      url: _c.image_url, subject: "number " + _gridPickCut.n + ", cut from the four", source: "panel_cut", creator: me || null,
+                      parent: cur, context: "they chose number " + _gridPickCut.n + " - cut from the sheet, nothing redrawn", access: "public" });
+                    t = { ok: true, image_url: _c.image_url, child: (_reg && _reg.entity_id) || null, cut: true,
+                          ...(_gridPickCut.card ? { card: _gridPickCut.card } : {}) };
+                    _pl("number " + _gridPickCut.n + " cut from the sheet by hand - no image model, nothing redrawn -> " + _c.image_url + " (" + _c.cut + (_c.strip_found ? ", strip cut off" : "") + ")");
+                  } else _pl("the cut did not work (" + String((_c && _c.error) || "?") + ") - the image model picks it instead");
+                } catch (e) { _pl("the cut failed (" + String(e?.message ?? e).slice(0, 120) + ") - the image model picks it instead"); }
+              }
+              if (!t) t = await _evolve(cur, ask, null);
+              // EVERY WORD THE IMAGE MODEL GOT (v9.604) - handed back with the turn, never cut.
+              try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: (t && t.cut) ? "cut from the sheet - no image model" : _viaNow === "thread" ? "chat model, then image model" : "changed",
+                      words: String(ask), ...(t && t.brief ? { chat_model_brief: String(t.brief) } : {}), picture_in: cur,
+                      ...(_withNow ? { second_picture: _withNow } : {}), made: (t && t.image_url) || null,
+                      failed: (t && !t.ok) ? (t.error || "not made") : null,
+                      ...(t && (t.cost_usd ?? t.image_cost_usd) != null ? { picture_cost_usd: (t.cost_usd ?? t.image_cost_usd) } : {}) }); } catch {}
+              // EVERY PICTURE SENT IS NAMED (2026-10-13, v9.588, Aaron): which picture it was drawn on, and the second
+              // picture when one went with it - so a result can be checked against exactly what the model was given.
+              if (t && t.via === "thread") _pl("the chat model's brief: \"" + String(t.brief || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · pictures drawn " + t.pictures_drawn + " · " + t.quality + " " + t.size);
+              if (t && t.via === "thread" && _designGrid) _pl("the chat model's reply: \"" + String(t.said || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · cards from it: " + (readSaidCards(t.said) ? "4" : "none"));
+              if (!(t && t.cut)) _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" · picture 1: " + cur + (_viaNow ? " · via the chat model" : "") +
+                  (_withNow ? " · picture 2: " + _withNow.join(", ") : "") + (_seedNow ? " · seed " + _seedNow : "") + (_canvasNow ? " · canvas " + _canvasNow.width + "x" + _canvasNow.height : "") + (_asNow ? " · image model only (" + _asNow + ")" + (t && t.model ? " " + t.model : "") + (t && t.cost_usd != null ? " $" + t.cost_usd : "") : "") + " -> " + _pr(t) +
+                  (t && t.image_url ? " " + t.image_url : ""));
               // A CHANGE IS NOT LOOKED AT (2026-09-20). Aaron: colour, size, a small edit comes back
               // right, and a look there costs money and adds nothing - she writes her one short line
               // with the instruction. New drawings are looked at; see the draw path below.
@@ -66212,6 +68370,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             if (!(got && got.ok && got.image_url) &&
                 /safety system|safety_violations|content policy|moderation|rejected/i.test(String(got?.error || ""))) {
               const tAgain = await _evolve(cur, ask, "again");
+              _pl("refused - the same words sent once more -> " + _pr(tAgain));
               if (tAgain && tAgain.ok && tAgain.image_url) got = tAgain;
             }
             // A REFUSAL COMES BACK TO HER (2026-09-21). MEASURED on the same back-piece conversation:
@@ -66249,10 +68408,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                 const _orig = _wd(ask), _new = new Set(_wd(ask2));
                 const _kept = _orig.length ? _orig.filter((w) => _new.has(w)).length / _orig.length : 0;
                 const _closeEnough = _kept >= 0.7 && ask2.length <= Math.max(ask.length * 1.3, ask.length + 40);
+                _pl("refused again - she changed the words to: \"" + String(ask2 || "(nothing)").replace(/\s+/g, " ").slice(0, 400) + "\"" +
+                    (!_closeEnough && ask2 ? " -> not used (she rewrote more than the refused words)" : ""));
                 if (!_closeEnough && ask2) _retried = { refused: _why ? _why[1] : "refused", rewrote: ask2.slice(0, 900),
                                                        ok: false, rejected: "rewrote more than the refused words" };
                 if (_closeEnough && ask2.length >= 20 && ask2 !== ask) {
                   const t2 = await _evolve(cur, ask2.slice(0, 900), null);
+                  _pl("her changed words -> " + _pr(t2));
                   _retried = { refused: _why ? _why[1] : "refused", rewrote: ask2.slice(0, 900),
                                ok: !!(t2 && t2.ok && t2.image_url) };
                   if (t2 && t2.ok && t2.image_url) { got = t2; _asks[si] = ask2.slice(0, 900); }
@@ -66274,9 +68436,35 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           if (me && cp && cp.ok && cp.image_url) {
             // A picture made from an inspiration photo is flat artwork, not their body - the check
             // "is every bit of the new ink on their skin" can only answer WRONG there (2026-09-26).
-            const _lkC = await _lookAtResult(cp.image_url, !(opts && opts.inspire));
-            if (_lkC && _lkC.verdict) _mockNote = _lkC.verdict;
-            if (_lkC && _lkC.say) _reaction = _lkC.say;
+            // A grid of four is not one mock-up on them - no body check; her reaction asks which number (v9.584).
+            // SHE DOES NOT READ THE IDEAS PICTURE (2026-10-14, v9.597, Aaron): "Aura does not need to read an image that
+            // we already have every piece of information on" - each idea's title and lines are written into the picture by
+            // the chat model that designed it. Her look cost ~24s and repeated the captions. One short line instead
+            // (a setting, `config:say:ideas_done`).
+            if (_designGrid) {
+              // FOUR VERSIONS OF A CHANGE (v9.605, Aaron): her own words to their change stay - she was called before it
+              // was drawn - and the same fixed line as the first four follows. No look: the titles are in the picture.
+              let _done = "Here are your four - tap Choose on the one you like, or I can imagine four more.";
+              try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              if (_designWords === "__poss__") {
+                _done = "Here are 4 possibilities for your design. Tap Choose This One on the one you like, or I can imagine 4 more.";
+                try { const _k = String((await env.AURA_KV.get("config:say:poss_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              }
+              const _hers = (!_fixedSay && acted && acted.say) ? String(acted.say).trim() : "";
+              _reaction = _hers ? (_hers + "\n\n" + _done) : _done;
+            } else if (_ideasGrid) {
+              let _done = "Here are four ideas. Tap the one you want to work on, or I can imagine four more.";
+              try { const _k = String((await env.AURA_KV.get("config:say:ideas_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              _reaction = _done;
+            } else if (_fixedWhy === "pick") {
+              _reaction = _fixedSay;   // v9.602 / v9.605: the picked version, no look - the fixed line stands, every round
+            } else {
+              // A NEW TATTOO'S PICK IS LOOKED AT, EVERY ROUND THE SAME (v9.604): she was not called before it was drawn;
+              // she looks at the one they picked and says something short about it. Flat artwork, not a body.
+              const _lkC = await _lookAtResult(cp.image_url, !(opts && opts.inspire) && !_fromPic && !_newFlow, null, false);
+              if (_lkC && _lkC.verdict) _mockNote = _lkC.verdict;
+              if (_lkC && _lkC.say) _reaction = _lkC.say;
+            }
           }
           if (me && cp && cp.ok) {
             const _bad = !!(_mockNote && /^\s*WRONG\b/i.test(_mockNote));
@@ -66287,6 +68475,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
+                ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { panels: true } : {}),
+                ...(_designGrid && (readSaidCards(cp.said) || (cp.brief && readCards(cp.brief))) ? { cards: readSaidCards(cp.said) || readCards(cp.brief) } : {}),
+                ...(_designGrid && _designWords === "__poss__" ? { possibilities: true } : {}),
+                ...(cp.card ? { card: cp.card } : {}), ...(cp.cut ? { cut: true } : {}),
+                ...((acted.ask && !_herAsk && String(jobNow || "") === "add") ? { her_ask_not_used: String(acted.ask).slice(0, 400) } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),
                 ...(_wordsFrom !== "copied" && _copied ? { she_offered: _copied } : {}),
                 from: parentId,
@@ -66307,7 +68500,71 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // 2000, not 900 (2026-09-29): MEASURED on the hummingbird grid, her four directions ran past
           // 900 and the cut took "2 by 2 grid" with it - so the grid frame never applied and a pick
           // on it could never have been read. The image model takes far more; the cap was ours.
-          const askLine = String(acted.prompt || said).trim().slice(0, 2000);
+          let askLine = String(acted.prompt || said).trim().slice(0, 2000);
+          // ══ THE FIRST FOUR OF A NEW TATTOO: ONE FIXED SENTENCE, THEIR WORDS (2026-10-14, v9.604, Aaron) ══════════
+          // "The person's idea is the instruction" and "it should not depend on Aura remembering to write make a 2x2
+          // grid". Their own lines since Create New Tattoo (the taps and bare yeses left out) fill ____, the style they
+          // tapped fills {style}. Nothing of hers goes in. Settings: config:frame:new:grid, config:frame:new:grid:style.
+          let _newSentence = false, _nameHint = null;
+          if (_newFlow) {
+            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four) more|i want number [1-4])\.?\s*$/i;
+            const _bare = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
+            const _mine = [];
+            let _start = 0;
+            for (let i = tnow.length - 1; i >= 0; i--) {
+              if (tnow[i] && tnow[i].role === "them" && /^\s*i want to create a new tattoo/i.test(String(tnow[i].said || ""))) { _start = i + 1; break; }
+            }
+            // ONE TAPPED IDEA AT A TIME (v9.609): their own typed lines all go in, but of her idea cards only the newest tap -
+            // tapping "Chrome garden" after "Torn skin" is a new choice, not both at once.
+            let _lastTap = null;
+            for (let i = _start; i < tnow.length; i++) {
+              const e = tnow[i]; const raw = String((e && e.role === "them" && e.said) || "").trim();
+              const t = raw.replace(/^show me:\s*/i, "");
+              if (!t || _tap.test(t) || _bare.test(t)) continue;
+              if (/^show me:/i.test(raw)) _lastTap = t; else _mine.push(t);
+            }
+            // A tapped idea arrives as "Show me: <idea>" - the two tap words are not theirs and do not go in (v9.605).
+            const _rawNow = String(said || "").trim();
+            const _now = _rawNow.replace(/^show me:\s*/i, "");
+            if (_now && !_tap.test(_now) && !_bare.test(_now)) {
+              if (/^show me:/i.test(_rawNow)) _lastTap = _now;
+              else if (_mine[_mine.length - 1] !== _now) _mine.push(_now);
+            }
+            if (_lastTap) _mine.push(_lastTap);
+            // ITS NAME IS THEIRS, NEVER OUR SENTENCE (v9.623, 2026-10-16, Aaron). MEASURED 05:26: the project was titled "This
+            // is my tattoo idea: I like surfing and golden retrievers I wanna m" - the first words sent to the image model.
+            // The title of the idea card they tapped ("Surfing retriever"), else their own first line.
+            _nameHint = _lastTap ? String(_lastTap).split(/\s+[-\u2013\u2014:]\s+/)[0].trim().slice(0, 60)
+                                 : (_mine[0] ? String(_mine[0]).replace(/[\s.]+$/, "").slice(0, 70) : null);
+            const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
+            if (_words) {
+              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
+              let _st = ", all in the {name} style";
+              try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
+              try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
+              askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : "");
+              // ══ ALL OF HER IDEAS AT ONCE (v9.627, 2026-10-16, Aaron: "let me see all 4 absolutely") ══════════════════════
+              // "Show me all of them" under her idea cards: one sheet, each card one of her ideas, in her order - instead of four
+              // versions of one. Their own words stay the idea; only the "4 different designs of it" clause changes.
+              const _allIdeas = (opts && Array.isArray(opts.all_ideas)) ? opts.all_ideas.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4) : [];
+              if (_allIdeas.length) {
+                const _list = _allIdeas.concat(_allIdeas.length < 4 ? ["one more idea of your own"] : []).slice(0, 4)
+                  .map((x, i) => (i + 1) + ". " + x.replace(/[\s.]+$/, "")).join(". ") + ".";
+                let _ac = "Show me these 4 ideas for it{style}, one on each card, in this order: {ideas}";
+                try { const _k = String((await env.AURA_KV.get("config:frame:new:all")) || "").trim(); if (_k.includes("{ideas}")) _ac = _k; } catch {}
+                const _clause = _ac.replace("{ideas}", _list).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : "");
+                const _mineOnly = _mine.filter((x) => x !== _lastTap).map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200) || _words;
+                const _base = _ng.replace("____", _mineOnly);
+                const _from = _base.search(/Show me 4 different designs of it/i), _to = _base.search(/Make them in colour/i);
+                askLine = (_from >= 0 && _to > _from) ? (_base.slice(0, _from) + _clause + " " + _base.slice(_to)) : (askLine + " " + _clause);
+                console.log("[TURN:NEW] all of her ideas, one per card: " + _allIdeas.length + (me ? " · who=" + me : ""));
+              }
+              _newSentence = true;
+              console.log("[TURN:NEW] the first four from the fixed sentence - their words: \"" + _words.slice(0, 300) + "\"" + (_newStyle ? " · style: " + _newStyle : ""));
+            }
+            // Her own drawing words never stand in for theirs: no idea of theirs yet, nothing is drawn.
+            if (!_newSentence) { console.log("[TURN:NEW] no idea of theirs yet - nothing drawn"); throw { __skip: true }; }
+          }
           // ══ THE HOUSE REGISTER, AND IT IS A DIAL ═══════════════════════════════════════
           // `tatBuildAsk` ends every prompt with TAT_FRAME_INK - "flat tattoo artwork on white
           // paper, like a design sheet in a studio". Correct for the catalogue, where a flash
@@ -66361,7 +68618,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           // directions for the idea and asks for the grid in her own words (her mytattoo contract).
           // The single-picture frame ("the artwork alone, centred, nothing else in frame") would
           // fight a grid, so a grid gets the same rule said for each of the four.
-          const _grid = /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(askLine);
+          // The four stacked cards are a set of four exactly as the 2x2 grid was (v9.606) - same pick, same Keep.
+          const _grid = _newSentence || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(askLine);
           // Four on the body was tried for add-ons (v9.476-477) and taken out (2026-09-30, Aaron): an
           // add-on is one picture on their photo. Four directions are for new tattoos, on white.
           const frm = _grid
@@ -66377,11 +68635,55 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                "skin, not on a person, not a photograph of a tattoo.");
           // 2k because the first drawing is the ceiling for every later version, and a tattoo is
           // taller than it is wide. If the lane ignores either, the [XAI-IMG] line says so.
-          const dr = await processCommand("SHOW_IT " + JSON.stringify({
-            aspect: _grid ? "1:1" : "3:4", res: "2k",
-            subject: askLine + ". " + reg + " " + frm +
+          // PHONE-SHAPED PANELS (v9.607, Aaron): config:edit:new:size, default 2160x3840 - the model's largest page (8.29M px);
+          // four 1080x1920 panels, each the shape of a phone screen, art 1080x1600 + a 1080x320 black strip.
+          let _newSize = { width: 2160, height: 3840, exact_size: true };
+          if (_newSentence) { try { const _k = String((await env.AURA_KV.get("config:edit:new:size")) || "").trim(); const _m = _k.match(/^(\d{3,4})x(\d{3,4})$/);
+            if (_m) _newSize = { width: parseInt(_m[1], 10), height: parseInt(_m[2], 10), exact_size: true }; } catch {} }
+          // The new-tattoo sentence goes alone (v9.604): it already says flat, on white, numbered, a 2x2 grid.
+          const _subjectSent = _newSentence ? askLine : (askLine + ". " + reg + " " + frm +
               (refUrl ? " Take the STYLE and FEELING of the reference - the linework, the shading, " +
-                        "the way it sits." : ""),
+                        "the way it sits." : ""));
+          // ══ THE NEW FOUR GO THROUGH THE CHAT MODEL (v9.625, 2026-10-16, Aaron) ═══════════════════════════════
+          // "We thought we were sending everything through the chat model now - it always works better and it's cheaper."
+          // The change-a-design four already did; the new four went straight to the image model. Now both go the same way:
+          // our sentence to the chat model, which writes its brief (a title and two lines for every card, in order) and draws.
+          // Measured 08:02: the chat-model route drew the sheet for $0.006 against $0.012. If it draws nothing twice, the
+          // straight route below draws it, as before.
+          let _thNew = null;
+          // IMAGE MODEL ONLY (v9.630, 2026-10-16, Aaron: "image model only and the i information - that's gone"). The chat-model
+          // route below is kept but never taken: every sheet it drew pushed its own stock picks (phoenix, crescent moon, neon,
+          // desert) - Bay Phoenix at 14:32 on a San Francisco idea. The sentence goes straight to the image model, as run 9 did.
+          if (_newSentence && false) {
+            for (let _t = 0; _t < 2 && !_thNew; _t++) {
+              try {
+                const _tr = await processCommand("THREAD START NONE " + JSON.stringify({ prompt: askLine + " " + (await cardInfoAsk(env)), action: "generate",
+                  size: _newSize.width + "x" + _newSize.height }), env, true);
+                const _tp = (_tr && _tr.payload) ? _tr.payload : _tr;
+                if (_tp && _tp.ok && _tp.image) {
+                  let _reg = null;
+                  try { _reg = await registerSmartFile(env, { id: _tp.image_id, filetype: "image", name: askLine.slice(0, 60), url: _tp.image,
+                    subject: askLine, source: "image_thread", creator: me || null, parent: null,
+                    context: "a tattoo somebody is designing for themselves: " + askLine, access: "public" }); } catch {}
+                  _thNew = { ok: true, image_url: _tp.image, id: _tp.image_id, entity_id: (_reg && _reg.entity_id) || null,
+                    model: "chat model " + (_tp.model || "?") + ", image tool " + (_tp.image_model || "?"), brief: _tp.tool_prompt || null, said: _tp.said || null,
+                    cost_usd: _tp.image_cost_usd != null ? _tp.image_cost_usd : null };
+                  try { console.log("[TURN:NEW] the chat model's brief: \"" + String(_tp.tool_prompt || "").replace(/\s+/g, " ").slice(0, 1500) + "\"" + (me ? " · who=" + me : "")); } catch {}
+                  try { console.log("[TURN:NEW] the chat model's reply: \"" + String(_tp.said || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · cards from it: " + (readSaidCards(_tp.said) ? "4" : "none")); } catch {}
+                } else { try { console.log("[TURN:NEW] chat model try " + (_t + 1) + " drew nothing: " + String((_tp && _tp.error) || "no answer").replace(/\s+/g, " ").slice(0, 200)); } catch {} }
+              } catch (e) { try { console.log("[TURN:NEW] chat model try " + (_t + 1) + " failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+            }
+          }
+          const dr = _thNew ? { payload: _thNew } : await processCommand("SHOW_IT " + JSON.stringify({
+            // The new four name their own size below and nothing else, exactly as run 9 went (no aspect, no res).
+            ...(_newSentence ? {} : { aspect: _grid ? "1:1" : "3:4", res: "2k" }),
+            subject: _subjectSent,
+            // Nothing appended (v9.604): without raw, showIt adds "High quality, visually striking..." to the words.
+            ...(_newSentence ? { raw: true } : {}),
+            // THE SAME SIZE AS THE OTHER GRIDS (v9.605): config:edit:thread:size, default 1920x1920; and Imagine 4 more
+            // gets a new seed - the same words would otherwise hand back the same cached picture.
+            ...(_newSentence ? _newSize : {}),
+            ...(_newSentence && _fixedWhy === "more" ? { seed: 1 + Math.floor(Math.random() * 2000000000) } : {}),
             context: "a tattoo somebody is designing for themselves: " + askLine,
             name: askLine.slice(0, 60),
             ...(refUrl ? { refs: [refUrl] } : {}),
@@ -66399,11 +68701,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             // white was checked as "the mock-up on their own body" and came back "RIGHT: the original
             // forearm tattoo is untouched... all the new ink is on the skin" - there was no forearm and
             // no skin. Told it was looking at a body, the check found one.
-            const _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid);
+            // NO LOOK AT THE NEW FOUR (v9.605, Aaron): the titles and lines are printed in the picture already - her
+            // reading them back added ~20s and told them nothing new. One fixed line instead (config:say:four_done).
+            let _lk2 = null;
+            if (_newSentence) {
+              _reaction = "Here are your four - tap Choose on the one you like, or I can imagine four more.";
+              try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
+            } else {
+              _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);
+              _reaction = (_lk2 && _lk2.say) || null;
+            }
             const _mockNote2 = _lk2 && _lk2.verdict;
-            _reaction = (_lk2 && _lk2.say) || null;
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
-                     asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}),
+                     asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}), ...(_newSentence ? { panels: true } : {}),
+                     ...(_newSentence && _nameHint ? { name_hint: _nameHint } : {}),
+                     ...(_newSentence && (readSaidCards(dp.said) || (dp.brief && readCards(dp.brief))) ? { cards: readSaidCards(dp.said) || readCards(dp.brief) } : {}),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
                      ...(_twist ? { world: "twist" } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,
@@ -66416,7 +68728,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
           } else {
             drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
           }
-        } catch (e) { drew = { failed: String(e?.message ?? e).slice(0, 160) }; }
+          if (_newSentence) { try { console.log("[TURN:NEW] sent to the image model only: \"" + String(_subjectSent).replace(/\s+/g, " ").slice(0, 1500) + "\"" + (dp && dp.cost_usd != null ? " · $" + dp.cost_usd : "")); } catch {} }
+          if (_newSentence) { try { console.log("[TURN:NEW] drawn by " + ((dp && dp.model) || "?") + " · asked " + (_newSize.width + "x" + _newSize.height) +
+            (_fixedWhy === "more" ? " · a fresh four (new seed)" : "") + " -> " + ((dp && dp.image_url) || ("not made: " + ((dp && dp.error) || "?"))) + (me ? " · who=" + me : "")); } catch {} }
+          // EVERY WORD THE IMAGE MODEL GOT (v9.604) - handed back with the turn, never cut.
+          try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: "drawn new", words: _subjectSent,
+                  aspect: _grid ? "1:1" : "3:4", made: (dp && dp.image_url) || null, failed: (dp && !dp.ok) ? (dp.error || "not made") : null,
+                  model: (dp && (dp.model || dp.provider)) || null, cached: !!(dp && dp.cached) }); } catch {}
+        } catch (e) { drew = (e && e.__skip) ? null : { failed: String(e?.message ?? e).slice(0, 160) }; }
       }
 
       // ══ THEIR MOMENT, IN THEIR OWN INDEX (2026-09-08) ═════════════════════════════════════
@@ -66568,7 +68887,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
       // Banked so the next turn amends it instead of reading the conversation cold. Merged, not
       // replaced: a turn that mentions nothing about colour must not erase the colour they chose
       // three turns ago. Only a field this turn actually filled overwrites what was there.
-      if (me && intent && typeof intent === "object") {
+      // A FAILED PICTURE CHANGES NOTHING ON FILE (v9.609, 2026-10-15, Aaron). MEASURED (prj_83c97810dfe14e64): the
+      // "Chrome garden" tap failed to draw, yet her notes from that turn saved style "liquid chrome" - and the artist's
+      // files were made under it for a design that is not chrome. A turn whose picture failed keeps the brief as it was.
+      const _drawFailed = !!(drew && drew.failed);
+      if (_drawFailed) { try { console.log("[BRIEF] the picture failed - nothing from this turn is saved to the brief"); } catch {} }
+      if (_freshPhoto) { try { console.log("[BRIEF] their photo arrived - mirror photo, as she read it: " + String((intent && intent.mirror_photo) || "not given") + (me ? " · who=" + me : "")); } catch {} }
+      if (me && intent && typeof intent === "object" && !_drawFailed) {
         try {
           const merged = Object.assign({}, carriedObj || {});
           for (const k of Object.keys(intent)) {
@@ -66577,6 +68902,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
             merged[k] = v;
           }
           delete merged.resolved; delete merged.missing;
+          // HER BRIEF THIS TURN IS THE SUMMARY ON FILE (2026-10-03, v9.530, Aaron). MEASURED
+          // (pta_fb44983b5aafc5e3): turn 1's summary "No specific style ... decided yet" was never
+          // replaced - she writes her summary as `brief`, not inside `intent` - so it stayed on the
+          // record beside style "neo-traditional" to the lock-in. When she wrote one, it is the one.
+          if (typeof brief === "string" && brief.trim()) merged.brief = brief.trim();
           await talkStatePut(env, me, "brief", JSON.stringify(merged));
           // ══ A PTA KEEPS THINGS. A CACHE DOES NOT (2026-09-10) ══════════════════════════
           // Aaron: "everything's within a PTA, and if we're using a PTA to manage everything
@@ -66636,6 +68966,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         _said = (acted.act === "artist" || _usedPick)
           ? "I went to make your artist files, but they didn't come out this time - nothing was made yet."
           : "I went to make that picture, but it didn't come out this time - nothing new was made yet.";
+        // SAY WHEN IT WAS BLOCKED (v9.612, 2026-10-15, Aaron). MEASURED 08:01: "on my right thigh" was refused by the image
+        // model's safety system three times, and they were told only "it didn't come out". A refusal is not a glitch - trying
+        // the same thing again will not help, so they are told plainly (`config:say:blocked`).
+        if (!(acted.act === "artist" || _usedPick) && /safety system|rejected|moderation|content polic/i.test(String(drew.error || ""))) {
+          _said = "That one got blocked by the image filter - try a different spot or a different photo.";
+          try { const _k = String((await env.AURA_KV.get("config:say:blocked")) || "").trim(); if (_k) _said = _k; } catch {}
+          try { console.log("[TURN] the picture was blocked by the image model's safety filter - told them so"); } catch {}
+        }
+      } else if (act === "artist" && drew && drew.for_the_artist) {
+        // AURA CLOSES THE SESSION (2026-10-11, v9.565, Aaron + GPT): one handoff line, said at once.
+        _said = "It's locked in. I'm making everything your artist needs now \u2013 your artwork, linework and print file. " +
+                "I saved the whole project in My Tattoos, so you can always come back to it.";
       } else if (drew && drew.used && _reaction) {
         // USE THIS ONE: her line about the design they took, not what she said before it was theirs.
         _said = _reaction;
@@ -66660,6 +69002,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                          ...(drew.image ? { image: drew.image, design: drew.design || null } : { failed: true }),
                          words: String(drew.changed || acted.prompt || "").slice(0, 600),
                          ...(drew.four_directions ? { grid: true } : {}),
+                         ...(Array.isArray(drew.cards) ? { cards: drew.cards } : {}),
                          ...(drew.for_the_artist ? { artist_files: true, files: artistFilesOf(drew) } : {}) });
           }
           if (tline.length > 60) tline = tline.slice(-60);
@@ -66681,21 +69024,86 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                        words: String((opts && opts.name) || "their catalogue pick").slice(0, 300) }] : []),
                 ...((drew && drew.image && !drew.failed && !drew.for_the_artist)
                   ? [{ ts: _atP, image: drew.image, design: drew.design || null,
-                       words: String(drew.changed || drew.asked || "").slice(0, 300) }] : []) ],
+                       words: String(drew.changed || drew.asked || "").slice(0, 300),
+                       // A look at it on them is not a new version of the design (2026-10-08, v9.544).
+                       ...(drew.on_me ? { on_me: true } : {}) }] : []) ],
               // Named from its first picture - the words it was drawn from, up to the first comma.
               // A catalogue pick is named after the design they chose ("Micro-Real Lion").
               // Her brief's subject when she has one ("geisha with hannya mask") - the words a picture
               // was drawn from can be a fixed instruction, and a card titled "Take the tattoo from
               // this picture..." names nothing (2026-09-26).
-              title: (opts && opts.name) ? String(opts.name).slice(0, 70)
+              title: (opts && opts.name) ? (function (n) {
+                  // THE WHOLE NAME (2026-10-10, v9.559, Aaron): "A beautiful female portrait is almost
+                  // entirely black and grey except f" - cut at 70 letters mid-word. Kept whole; past
+                  // 160 letters it ends at a word, with an ellipsis.
+                  n = String(n).trim(); if (n.length <= 160) return n;
+                  return n.slice(0, 160).replace(/\s+\S*$/, "").replace(/[\s,;:.-]+$/, "") + "\u2026";
+                })(opts.name)
+                : (drew && drew.name_hint) ? String(drew.name_hint)
                 : (intent && intent.subject) ? String(intent.subject).slice(0, 70)
                 : (drew && drew.image && !drew.failed && !drew.for_the_artist)
                 ? (String(drew.asked || drew.changed || "").split(",")[0].trim().slice(0, 70) || null) : null,
               came_from: _cameFrom ? _cameFrom.id : null,
+              ...(_herName ? { name_final: _herName } : {}),
+              // THE ONE THEY PICKED NAMES THE TATTOO (v9.626): its card's title, and its two lines and what it shows as the "i".
+              ...((drew && drew.card && drew.card.title) ? { card_named: true,
+                  name_final: String(drew.card.title).toLowerCase().replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()),
+                  about: [Array.isArray(drew.card.lines) ? drew.card.lines.join(" ") : "", drew.card.about || ""].filter(Boolean).join(" \u2014 ") } : {}),
+              ...((opts && opts.name && String(opts.name).length > 60) ? { about: String(opts.name).slice(0, 800) } : {}),
               ...(act === "artist" ? { locked: true } : {}),
               ...((drew && drew.for_the_artist && !drew.pending && drew.image) ? { files: artistFilesOf(drew) } : {}),
             });
             await talkStatePut(env, me, "project", _pid);
+            // A LOCK-IN BY WORDS IS NAMED TOO (v9.562): the tap names it in her closing line; a typed
+            // "this is the one" has no such call, so she names it behind the reply - nobody waits.
+            // THE COLLECTION IS ITS STYLE (2026-10-11, v9.565, Aaron): a catalogue design's style is the
+            // collection they found it in ("Chicano", "Sketch") - the page sends it with the lock-in.
+            if (act === "artist" && opts && opts.cat) {
+              await projectAppend(env, me, _pid, { details: { style: String(opts.cat).slice(0, 60) } });
+            }
+            // ALWAYS NAMED (2026-10-14, v9.598, Aaron): MEASURED - two tattoos locked in (17:43 and 05:51) kept a paragraph
+            // as their title and no [NAME] line was written at all: the step needed `lastDrawn.image`, and after a pick
+            // or a change the last drawing is known only by its design id. The picture is now found from that id; and
+            // when it cannot be, the log says so instead of skipping in silence.
+            let _imgForName = (lastDrawn && lastDrawn.image) || (drew && drew.image && !drew.for_the_artist ? drew.image : null);
+            if (act === "artist" && !_herName && !_imgForName && lastDrawn && lastDrawn.design) {
+              try { const _lf = await processCommand("IMAGE LIFE " + lastDrawn.design, env, true);
+                    const _lp = (_lf && _lf.payload) ? _lf.payload : _lf;
+                    _imgForName = (_lp && _lp.image && _lp.image.image_url) || null; } catch {}
+            }
+            if (act === "artist" && !_herName && !_imgForName) console.log("[NAME] not named: no picture of the locked design could be found");
+            if (act === "artist" && !_herName && typeof _waitUntil === "function" && _imgForName) {
+              const _pidN = _pid, _imgN = _imgForName;
+              const _descN = (opts && opts.name) ? String(opts.name).slice(0, 400) : "";
+              _waitUntil((async () => {
+                try {
+                  // SHE NAMES IT AND READS ITS COLOUR (v9.565) - behind the reply, nobody waits.
+                  const q = await proxyToAgent(env, "[FOR YOU, NOT THEM. They just locked in the tattoo in this picture." +
+                    (_descN ? " It is described as: \"" + _descN + "\"." : "") +
+                    " Reply with exactly two lines. NAME: a name for it, two to five words, the way a person would name it." +
+                    " COLOUR: its colour treatment in a few words, as you see it (for example black and grey, full colour," +
+                    " black and grey with red accents).]",
+                    // HER SIDE NOTEBOOK (2026-10-12, v9.573): MEASURED 07:08 - this request sat in her conversation,
+                    // and her next chat reply to a photo was "NAME: Blush Floral Arm Sleeve COLOUR: ...". Side jobs
+                    // go to her own second instance, never into the conversation with them.
+                    false, me + "_side", _imgN, world);
+                  const raw = (q && q.reply && !q.failed) ? String(q.reply) + "\n" + String(_verdict(q.reply, readAct(q.reply)) || "") : "";
+                  const clean = (x) => String(x || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 60);
+                  let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
+                  const c = clean((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,60})/i) || [])[1]);
+                  if (n && n.split(/\s+/).length > 7) n = "";
+                  // NOT A STATUS AS A NAME (2026-10-11, v9.566): MEASURED - a tattoo was titled "Locked In". A name
+                  // is what the tattoo is, never what just happened to it.
+                  if (n && /^(locked( in)?|your tattoo|tattoo|untitled|name|none|n\/a)$/i.test(n.trim())) n = "";
+                  if (n || c) {
+                    await projectAppend(env, me, _pidN, { ...(n ? { name_final: n } : {}), ...(c ? { details: { colour: c } } : {}) });
+                  }
+                  console.log("[NAME] she named it (behind the reply): " + (n || "?") + " | colour: " + (c || "?"));
+                  // WHY NO NAME (v9.605): MEASURED 17:00:37 "named it: ?" - her answer is logged whole when no name is read.
+                  if (!n) console.log("[NAME] no name read from her answer: \"" + String((q && (q.reply || q.failed)) || "(nothing)").replace(/\s+/g, " ").slice(0, 400) + "\"");
+                } catch (e) { try { console.log("[NAME] naming failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+              })());
+            }
           }
           if (stage === "pta") {
             const _cmdAura = "PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
@@ -66714,7 +69122,44 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
         } catch {}
       }
       const spent = costTapClose(_tap);
-      return { ok: true, said: _said, act: acted.act, phase_ms, world, spent,
+      // `act` is what was DONE this turn (2026-09-30). It reported her field, so a turn stopped by the
+      // ask-first guard said "draw" with nothing drawn. Her field is kept beside it when they differ.
+      try {
+        const _st = _TURN_ALS.getStore() || { think: [] };
+        const _sec = (ms) => (Math.round((ms || 0) / 100) / 10) + "s";
+        const _thk = _st.think.reduce((n, x) => n + x.ms, 0);
+        const _ph = Object.entries(phase_ms).filter(([k, v]) => k !== "total" && v >= 300).map(([k, v]) => k + " " + _sec(v)).join(", ");
+        console.log("[TURN] " + _sec(phase_ms.total) + " · think " + _sec(_thk) + " x" + _st.think.length +
+          (_st.think.length ? " (" + _st.think.map((x) => x.why + " " + _sec(x.ms) + (x.failed ? " FAILED" : "")).join(", ") + ")" : "") +
+          " · " + _ph + " · act=" + act + " · drew=" + (drew ? (drew.failed ? "failed" : drew.for_the_artist ? ("artist-files" + (drew.pending ? " (being made)" : "")) : drew.image ? "yes" : "no") : "no") +
+          (act === "artist" ? " · LOCKED" : "") + " · ideas=" + ((acted && acted.ideas && acted.ideas.length) || 0) +
+          " · she: \"" + String((acted && acted.say) || "").slice(0, 50).replace(/\s+/g, " ") + "\"" +
+          (me ? " · who=" + me : "") + " · said: " + (String(saidIn || "").trim() ? "\"" + String(saidIn).slice(0, 60).replace(/\s+/g, " ") + "\"" : "(no words" + ((opts && opts.ref) ? ", a photo" : "") + ")"));
+        // EVERY WORD, BOTH WAYS (2026-10-14, v9.602, Aaron: "I want you to see all information"): the line above cuts both
+        // at 50-60 letters; this one does not.
+        console.log("[TURN:WORDS] they said: \"" + String(saidIn || "").replace(/\s+/g, " ").slice(0, 2000) + "\" · shown to them: \"" +
+          String(_said || (acted && acted.say) || "").replace(/\s+/g, " ").slice(0, 2000) + "\"" + (_fixedWhy ? " · fixed (" + _fixedWhy + ")" : "") + (me ? " · who=" + me : ""));
+      } catch {}
+      // THE LAST TURN, KEPT FOR A PAGE THAT LOST THE CONNECTION (2026-10-12, v9.572). MEASURED 06:45: a 128s turn
+      // drew the picture and the phone showed "I could not answer that". The page asks for this by its turn id.
+      if (me && opts && opts.tid) {
+        try {
+          await talkStatePut(env, me, "lastturn", JSON.stringify({ tid: String(opts.tid).slice(0, 40), at: new Date().toISOString(),
+            ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
+            ideas: (acted.ideas && acted.ideas.length) ? acted.ideas : null,
+            brief: (brief && brief.subject) ? { subject: brief.subject } : null,
+            // THE SAME ANSWER EITHER WAY (v9.634, 2026-10-16, Aaron: "there should not be two paths"): the whole `drew` as it
+            // went live - a hand-picked part dropped `cut`, `possibilities` and `cards`, so a recovered pick showed the wrong buttons.
+            drew: drew || null }));
+        } catch {}
+      }
+      // WHAT HAPPENED, FOR THE TEST (v9.604): who answered, and every word the image model got, never cut.
+      let _picsGot = []; try { _picsGot = (_TURN_ALS.getStore() || {}).pics || []; } catch {}
+      return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,
+               answered_by: _fixedWhy ? ("fixed line (" + _fixedWhy + ")" + (_reaction && _reaction !== _fixedSay ? " + her look" : "")) : (_tapKeep ? "tap (her short line after)" : "Aura"),
+               ...(_picsGot.length ? { image_model_got: _picsGot } : {}),
+               ...(_newFlow ? { flow: "new tattoo" } : {}),
+               ...((acted.ideas && acted.ideas.length) ? { ideas: acted.ideas } : {}),
                ...(_herTurn ? { her_turn: _herTurn } : {}),
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),
@@ -66731,6 +69176,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false;
                ...(agentNote && !agentVia ? { agent_note: agentNote } : {}),
                remembering: me ? tline.length : 0,
                ...(_hotPicks ? { hot: _hotPicks } : {}),
+               ...(_confirmLock ? { confirm_lock: _confirmLock } : {}),
                ...(_cameFrom ? { came_from: _cameFrom.id } : {}),
                ...(_pid ? { project: _pid } : {}),
                kept: stage === "pta",
@@ -67354,10 +69800,17 @@ export class PublicEntry extends WorkerEntrypoint {
   // The hostname is known by aura-host, which is the only thing that cannot be lied to about it, so
   // it crosses the binding as its own argument. Optional: an older caller passing two arguments
   // resolves to null and falls back exactly as before.
-  async design(action, body, host) {
+  async design(action, body, host, from) {
     const b = body || {};
     const env = this.env;
     const world = worldFor(host);
+    // ══ THEIR LANGUAGE COMES FROM THE DOORWAY (2026-09-30, Aaron) ══════════════════════════════
+    // She wrote "colour" back to a person who typed "color" - she was never told who she was
+    // talking to, and the guidance she reads is written in British spelling. Agents are handed the
+    // person's locale as a FACT (the browser's own language tag), never spelling rules. aura-host
+    // reads it off the request and passes it beside `host`, outside `body`, like the world.
+    const lang = (from && typeof from.lang === "string" && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(from.lang.trim()))
+      ? from.lang.trim() : null;
     try {
       // ══ WHO IS THIS (2026-08-24) ═══════════════════════════════════════════════════════════
       // Every action except `hello` needs a person, because everything they do belongs to somebody:
@@ -67371,10 +69824,10 @@ export class PublicEntry extends WorkerEntrypoint {
       // Only a PTA counts. An old guest session from `hello` (an ent_ lead) is not signed in.
       // PUBLIC is what the page SHOWS - the catalogue, its tiles, the list of styles. Everything that
       // DOES something - talk, a photo, a drawing, a style, saving - needs the person.
-      let me = null;
+      let me = null, meWho = null;
       if (b.session) {
         const who = await this._whoIs(String(b.session));
-        if (who?.pta && /^pta_/.test(who.pta) && !isFallbackIdentity(who)) me = who.pta;
+        if (who?.pta && /^pta_/.test(who.pta) && !isFallbackIdentity(who)) { me = who.pta; meWho = who; }
       }
       const stage = me ? "pta" : null;
       const PUBLIC = new Set(["catalog", "finishes", "tiles", "row"]);
@@ -67446,6 +69899,105 @@ export class PublicEntry extends WorkerEntrypoint {
         return (r && r.ok && r.project) ? { ok: true, project: r.project } : { ok: false, error: "NOT_FOUND" };
       }
 
+      // ══ FAVORITES (2026-10-07, Aaron) ════════════════════════════════════════════════════════
+      // A heart on every catalogue design made big. The list lives with the person - their own
+      // Durable Object, beside their conversation - so it follows them to every device they sign in
+      // on. Newest first. Each one is what the page needs to open it big again: the picture, its
+      // words, its group and its category. Draws nothing, calls no model.
+      // ══ SHE SEES WHAT THEY CHOSE (2026-10-11, v9.565, Aaron + GPT) ═══════════════════════════
+      // "Choose This Design" shows its two buttons at once; this is her line about THAT design, which the
+      // page puts above them when it arrives. She looks at the picture; nothing is drawn or saved.
+      // ══ TESTERS (2026-10-11, v9.567, Aaron) - see TESTER / FEEDBACK. ═══════════════════════════════
+      const _email = (meWho && /^email:/i.test(String(meWho.identity || ""))) ? String(meWho.identity).slice(6).toLowerCase() : null;
+      if (action === "tester") {
+        let list = []; try { list = JSON.parse((await env.AURA_KV.get("config:testers")) || "[]"); } catch {}
+        if (!Array.isArray(list)) list = [];
+        // v9.569: identities are stored hashed (h:v2:...), so an email on the list can never match a sign-in
+        // (MEASURED 2026-10-11) - the v9.568 identity-index lookup is removed. TEST MODE ON makes everyone a tester;
+        // otherwise the list is matched by PTA.
+        const testmode = (await env.AURA_KV.get("config:testmode")) === "on";
+        const hit = testmode || list.includes(String(me).toLowerCase()) || (!!_email && list.includes(_email));
+        console.log("[TESTER] " + me + " -> " + (hit ? (testmode ? "tester (test mode)" : "tester") : "not a tester"));
+        return { ok: true, tester: hit };
+      }
+      if (action === "feedback") {
+        const kind = ["note", "up", "down"].includes(String(b.kind)) ? String(b.kind) : "note";
+        const text = String(b.text || "").trim().slice(0, 3000);
+        if (kind === "note" && !text && !b.shot) return { ok: false, error: "EMPTY" };
+        let shot = null;
+        if (/^data:image\//i.test(String(b.shot || ""))) {
+          const b64 = String(b.shot).replace(/^data:[^,]+,/, "");
+          if (b64.length * 0.75 <= 6 * 1024 * 1024) {
+            const id = "img_fb" + Array.from(crypto.getRandomValues(new Uint8Array(9))).map((x) => x.toString(16).padStart(2, "0")).join("");
+            await env.AURA_KV.put("image:" + id, b64, { expirationTtl: 180 * 86400 });
+            shot = "https://" + (await imageHost(env)) + "/image/" + id;
+          }
+        }
+        const recent = (Array.isArray(b.recent) ? b.recent : []).slice(-10)
+          .map((x) => (x && x.who ? String(x.who) : "?") + ": " + String((x && x.said) || "").slice(0, 300));
+        const now = Date.now();
+        const key = "fb:" + String(9999999999999 - now).padStart(13, "0") + ":" + Math.random().toString(36).slice(2, 8);
+        await env.AURA_KV.put(key, JSON.stringify({ at: new Date(now).toISOString(), pta: me, email: _email,
+          name: (meWho && meWho.name) || null, kind, text: text || null, screen: String(b.screen || "").slice(0, 120) || null,
+          project: String(b.project || "").slice(0, 60) || null, line: String(b.line || "").slice(0, 800) || null,
+          recent, shot, ua: String(b.ua || "").slice(0, 200) || null, ver: String(b.ver || "").slice(0, 40) || null }));
+        console.log("[FEEDBACK] " + kind + " from " + (_email || me) + (text ? ": " + text.slice(0, 160) : ""));
+        return { ok: true };
+      }
+      // A TURN THE PAGE LOST (v9.572): the finished turn, by the id the page sent with it.
+      if (action === "talklast") {
+        const tid = String(b.tid || "").slice(0, 40);
+        let lt = null; try { lt = talkParse((await talkStateGet(env, me, ["lastturn"])).lastturn); } catch {}
+        if (tid && lt && lt.tid === tid) return { ok: true, done: true, turn: lt };
+        return { ok: true, done: false };
+      }
+      if (action === "react") {
+        const url = String(b.url || "").trim().slice(0, 300);
+        if (!/^https:\/\//i.test(url)) return { ok: false, error: "BAD_URL" };
+        const desc = String(b.label || "").slice(0, 400);
+        let line = "";
+        try {
+          const q = await proxyToAgent(env, "[They just chose this tattoo design from our catalogue" +
+            (desc ? " - it is described as: \"" + desc + "\"" : "") + ". Reply with ONE short sentence that starts with" +
+            " \"Great choice\" and names one thing you genuinely love in it, something you can see. Nothing else.]",
+            false, me + "_side", url, world);   // her side notebook (v9.573), never the conversation
+          if (q && q.reply && !q.failed) line = String(talkVerdict(q.reply, talkReadAct(q.reply)) || "").split(/\r?\n/)[0].trim().slice(0, 240);
+        } catch {}
+        if (!/^great choice/i.test(line)) line = "";
+        return { ok: !!line, said: line || null };
+      }
+      // THE PAGE CUTS ONE OF THE FOUR (v9.618): for the heart and "Work on this" on one design of a four sheet.
+      if (action === "cut") {
+        return await cutPanel(env, String(b.url || "").slice(0, 300), Number(b.n));
+      }
+      if (action === "favs" || action === "fav") {
+        let list = [];
+        try { list = talkParse((await talkStateGet(env, me, ["favorites"])).favorites) || []; } catch {}
+        if (!Array.isArray(list)) list = [];
+        if (action === "fav") {
+          const it = (b.item && typeof b.item === "object") ? b.item : {};
+          const url = String(it.url || "").trim().slice(0, 300);
+          if (!/^https:\/\//i.test(url)) return { ok: false, error: "BAD_URL" };
+          // ONE OF THE FOUR (v9.616, 2026-10-15, Aaron): a heart on one design of a four-panel sheet keeps the sheet's own
+          // picture and which of the four (1-4) - nothing new is drawn or saved; the page shows only that quarter. Each of the
+          // four is its own favourite.
+          const q = [1, 2, 3, 4].includes(Number(it.q)) ? Number(it.q) : null;
+          const at = list.findIndex((x) => x && x.url === url && (Number(x.q) || null) === q);
+          const on = (b.on === undefined) ? at < 0 : !!b.on;
+          if (at >= 0) list.splice(at, 1);
+          if (on) list.unshift({ url, label: String(it.label || "").slice(0, 300),
+            kind: it.kind ? String(it.kind).slice(0, 120) : null,
+            category: it.category ? String(it.category).slice(0, 120) : null,
+            trend: !!it.trend, ...(q ? { q } : {}),
+            ...(/^https:\/\//i.test(String(it.from || "")) ? { from: String(it.from).slice(0, 300) } : {}),
+            // What the design is, from the card the chat model wrote (v9.626) - for its "i".
+            ...(it.about ? { about: String(it.about).slice(0, 800) } : {}), ts: Date.now() });
+          list = list.slice(0, 1000);
+          await talkStatePut(env, me, "favorites", JSON.stringify(list));
+        }
+        return { ok: true, favorites: list, count: list.length };
+      }
+
       if (action === "talk") {
         // The conversation itself lives in `auraTalk` so the TALK command and this door run the
         // same code. See the note above that function.
@@ -67495,8 +70047,42 @@ export class PublicEntry extends WorkerEntrypoint {
           await env.AURA_KV.put("image:" + _tmp, _b64, b.recolor ? {} : { expirationTtl: 2 * 3600 });
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
         }
+        // ══ SEE IT ON YOU, AFTER LOCK-IN, THROUGH HER (2026-10-08, v9.544, Aaron) ═══════════════
+        // "It has to be a discussion... Aura has to look at the image like she does already." The
+        // put-it-on-them step already works in the conversation (the "See It On You" card): she asks
+        // for a photo, looks at it, talks it through and places it. Lock-in clears the conversation,
+        // so the design on screen is gone. When My Tattoos sends `onme_project`, this one turn puts
+        // the locked tattoo back: its clean flat artwork as the design on screen, the conversation
+        // tied to that tattoo, and her brief saying they want to see it on them. Nothing else about
+        // her changes - the rest is the step that already works. New tattoos only.
+        const _onmeP = String(b.onme_project || "").trim();
+        if (_onmeP && me && /^prj_[a-z0-9]{6,40}$/i.test(_onmeP)) {
+          try {
+            const _pr = await talkDo(env, me, "talkProject", [_onmeP]);
+            const _pj = _pr && _pr.ok ? _pr.project : null;
+            const _jobP = String((_pj && _pj.details && _pj.details.job) || "").toLowerCase();
+            const _f = _pj && _pj.files;
+            const _flat = _f ? (_f.flat_artwork || (Array.isArray(_f.panels) && _f.panels[0] && _f.panels[0].flat) || null) : null;
+            if (_pj && _pj.locked && _flat && !["add", "cover", "rework"].includes(_jobP)) {
+              const _locked = (_pj.pictures || []).filter((x) => x && x.image && !x.on_me).slice(-1)[0] || null;
+              const _d = _pj.details || {};
+              const _now = new Date().toISOString();
+              const _rec = JSON.stringify({ design: (_locked && _locked.design) || null, image: _flat, at: _now });
+              const _brief = { on_me: true, job: "new" };
+              for (const k of ["subject", "style", "placement", "size"]) if (_d[k]) _brief[k] = _d[k];
+              if (!_brief.subject && _pj.title) _brief.subject = String(_pj.title).slice(0, 200);
+              await talkDo(env, me, "talkPut", [{
+                "talk-state:design": _rec,
+                "talk-state:last": JSON.stringify({ design: (_locked && _locked.design) || null, image: _flat,
+                                                   subject: _brief.subject || null, at: _now }),
+                "talk-state:brief": JSON.stringify(_brief),
+                "talk-state:project": _onmeP,
+                "talk-state:onme": "", "talk-state:ref": "", "talk-state:bad": "", "talk-state:split": "" }]);
+            }
+          } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+        }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { from: b.from || null, world, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -67507,6 +70093,10 @@ export class PublicEntry extends WorkerEntrypoint {
         const _w = writable.getWriter();
         const _enc = new TextEncoder();
         const _send = async (frame) => { try { await _w.write(_enc.encode(frame)); } catch { /* reader gone */ } };
+        // NEVER QUIET FOR LONG (2026-10-12, v9.572). MEASURED 06:45: 96s of drawing with nothing sent, and the
+        // connection was dropped at about 100s of silence. A comment line every 15s keeps it open; the page
+        // ignores it.
+        const _hb = setInterval(() => { _send(": still working\n\n"); }, 15000);
         const _pump = (async () => {
           let out;
           try {
@@ -67515,10 +70105,11 @@ export class PublicEntry extends WorkerEntrypoint {
             // it, exactly as it does today. A second conversation path that agrees on a Tuesday is
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
-              from: b.from || null, world, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, use: !!b.use, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 80) : null, inspire: !!b.inspire,
+              tid: b.tid ? String(b.tid).slice(0, 40) : null,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
-              onStage: async (st) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st }) + "\n\n"); },
+              onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },
             });
           } catch (e) {
             out = { ok: false, error: "TALK_THREW", detail: String(e && e.message || e).slice(0, 300) };
@@ -67527,6 +70118,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // field the page acts on - intent, brief, ready_to_draw, show_me, the drawn image - rides
           // here, so a page that missed every delta still behaves exactly as it does today.
           if (_ref && out && typeof out === "object") out = { ...out, ref: _ref };
+          clearInterval(_hb);
           await _send("event: final\ndata: " + JSON.stringify(out || { ok: false }) + "\n\n");
           try { await _w.close(); } catch { /* already closed */ }
         })();
@@ -68400,10 +70992,22 @@ export class PublicEntry extends WorkerEntrypoint {
           const hit = Object.keys(spec).find((x) => tatSlug(x) === tatSlug(k));
           return hit ? (spec[hit] || []) : [];
         };
+        // ══ NEWEST FIRST (2026-10-04, v9.536, Aaron) ═══════════════════════════════════════
+        // "The newer stuff we've done I want to appear in the front." Every tile record carries
+        // the day it was drawn and this door already reads the record to get its picture - so the
+        // day is kept on the way past and every list below sorts by it. No extra reads. Anything
+        // without a date keeps its old place, after the dated ones.
+        const faceAt = {};
         const faceOf = async (n) => {
           const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
-          return r ? tatFaceUrl(r) : null;
+          const u = r ? tatFaceUrl(r) : null;
+          if (u && r.at) faceAt[tatSlug(n)] = String(r.at);
+          return u;
         };
+        const newestFirst = (arr, at) => arr
+          .map((x, i) => ({ x, i, t: at(x) || "" }))
+          .sort((a, b2) => (b2.t > a.t ? 1 : b2.t < a.t ? -1 : a.i - b2.i))
+          .map((o) => o.x);
 
         // ══ SHE CAN FIND THINGS NOW (2026-09-06) ══════════════════════════════════════════
         // `talk` already returns `show_me` - two to five words naming a subject somebody wants to
@@ -68558,8 +71162,156 @@ export class PublicEntry extends WorkerEntrypoint {
               value: tatSlug(lf), label: String(lf), image: await faceOf(lf), own: _own })));
             items.push(...part);
           }
-          return { ok: true, type: "row", kind: kindName, label: kindName, items, own: _own,
+          return { ok: true, type: "row", kind: kindName, label: kindName,
+                   items: newestFirst(items, (x) => faceAt[x.value]), own: _own,
                    pictures: items.filter((x) => x.image).length };
+        }
+
+        // ══ A TREND CARD OPENS THE SETS IT NAMES, WHEREVER THEY LIVE (2026-10-04, v9.536) ═══
+        // Aaron: "the trend cards need to point towards Get Inspired or all the new stuff too."
+        // A trend card used to open only the catalogue category whose NAME matched it, so "Body
+        // Jewelry Tattoos" landed on the old flat designs while 131 new body jewelry pictures sat
+        // in Get Inspired. `trend:<card>` in KV is a comma list of set names from ANY category; the
+        // card opens exactly those, newest first, each carrying the category it lives in so the
+        // page keeps a Get Inspired picture on the inspiration path. No list -> NO_TREND, and the
+        // page falls back to today's name match. Draws nothing.
+        //   { trend }            -> the sets, each with a cover
+        //   { trend, all:true }  -> every design in those sets
+        const askTrend = String(b.trend || "").trim();
+        if (askTrend) {
+          const rawT = await env.AURA_KV.get("trend:" + tatSlug(askTrend)).catch(() => null);
+          const namesT = String(rawT || "").split(",").map((x) => x.trim()).filter(Boolean);
+          // ══ A SUBJECT CARD IS A LIST OF DESIGNS FROM ANYWHERE (2026-10-08, v9.540, Aaron) ═══════
+          // "Imagine It": Roses opens every rose in the catalogue, whatever style it is in. The list
+          // is built once from the catalogue and stored as `subject:<slug>` - [[design, set, category],
+          // ...]. Each design keeps its own set and category, so a pick still knows where it lives.
+          // No trend list and no subject list -> NO_TREND as before. Draws nothing.
+          if (!namesT.length) {
+            let subjL = null;
+            try { subjL = await env.AURA_KV.get("subject:" + tatSlug(askTrend), "json"); } catch {}
+            if (Array.isArray(subjL) && subjL.length) {
+              const rows = subjL.filter((x) => Array.isArray(x) && x[0]).map((x) => ({ leaf: String(x[0]), kind: String(x[1] || ""), cat: String(x[2] || "") }));
+              if (!b.all) {
+                // The card itself: its name and one picture to show on it.
+                // ══ THE COVER IS A SPLIT CARD (2026-10-08, v9.541, Aaron) ═══════════════════════
+                // MEASURED: the first drawn design was taken, and for Birds and Animals that was a
+                // body-only photo. The cover is now the newest design whose picture is wide (three
+                // by two - the design on white beside it on a body), read from the picture's own
+                // size, found once and kept as `subject-cover:<slug>`.
+                let cover = null, coverCat = null;
+                const _ck = "subject-cover:" + tatSlug(askTrend);
+                try { const kept = await env.AURA_KV.get(_ck, "json"); if (kept && kept.url) { cover = kept.url; coverCat = kept.cat || null; } } catch {}
+                if (!cover) {
+                  const cand = [];
+                  for (const x of rows.slice(0, 80)) { const f = await faceOf(x.leaf); if (f) cand.push({ f, cat: x.cat, at: faceAt[tatSlug(x.leaf)] || "" }); }
+                  cand.sort((a, b2) => (b2.at > a.at ? 1 : b2.at < a.at ? -1 : 0));
+                  let tries = 0;
+                  for (const c of cand) {
+                    if (++tries > 25) break;
+                    const id = (String(c.f).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                    if (!id) continue;
+                    let wide = false;
+                    try {
+                      const b64 = await env.AURA_KV.get("image:" + id);
+                      if (b64) {
+                        const head = Uint8Array.from(atob(String(b64).replace(/^data:[^,]+,/, "").slice(0, 40000)), (ch) => ch.charCodeAt(0));
+                        let W = 0, H = 0;
+                        if (head[1] === 0x50 && head[2] === 0x4E && head[3] === 0x47) {          // PNG
+                          W = (head[16] << 24) | (head[17] << 16) | (head[18] << 8) | head[19];
+                          H = (head[20] << 24) | (head[21] << 16) | (head[22] << 8) | head[23];
+                        } else if (head[0] === 0xFF && head[1] === 0xD8) {                       // JPEG
+                          for (let q = 2; q + 9 < head.length; ) {
+                            if (head[q] !== 0xFF) { q++; continue; }
+                            const mk = head[q + 1];
+                            if (mk >= 0xC0 && mk <= 0xCF && mk !== 0xC4 && mk !== 0xC8 && mk !== 0xCC) {
+                              H = (head[q + 5] << 8) | head[q + 6]; W = (head[q + 7] << 8) | head[q + 8]; break; }
+                            q += 2 + ((head[q + 2] << 8) | head[q + 3]);
+                          }
+                        } else if (head[0] === 0x52 && head[8] === 0x57) {                       // WEBP (VP8X)
+                          if (head[12] === 0x56 && head[15] === 0x58) { W = 1 + (head[24] | (head[25] << 8) | (head[26] << 16)); H = 1 + (head[27] | (head[28] << 8) | (head[29] << 16)); }
+                        }
+                        wide = W > 0 && H > 0 && W >= H * 1.3;
+                        // Wide is not enough - a body-only photo can be wide too. A split card's left
+                        // half is the design on white paper; its right half is a photograph.
+                        if (wide) {
+                          const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(String(b64).replace(/^data:[^,]+,/, "")), (ch) => ch.charCodeAt(0)));
+                          const IW = im.get_width(), IH = im.get_height(), px = im.get_raw_pixels();
+                          try { im.free(); } catch {}
+                          let lw = 0, lt = 0, rw = 0, rt = 0;
+                          for (let y = 0; y < IH; y += 8) for (let x = 0; x < IW; x += 8) {
+                            const o = (y * IW + x) * 4, wt = px[o] >= 235 && px[o + 1] >= 235 && px[o + 2] >= 235;
+                            if (x < IW * 0.45) { lt++; if (wt) lw++; } else if (x > IW * 0.55) { rt++; if (wt) rw++; }
+                          }
+                          wide = lt > 0 && rt > 0 && lw / lt > 0.45 && rw / rt < 0.5;
+                        }
+                      }
+                    } catch {}
+                    if (wide) { cover = c.f; coverCat = c.cat; break; }
+                  }
+                  if (cover) { try { await env.AURA_KV.put(_ck, JSON.stringify({ url: cover, cat: coverCat })); } catch {} }
+                  else if (cand.length) { cover = cand[0].f; coverCat = cand[0].cat; }
+                }
+                return { ok: true, type: "row", trend: true, subject: true, category: askTrend, label: askTrend,
+                         items: [{ value: tatSlug(askTrend), label: askTrend, image: cover, category: coverCat }],
+                         cover, things: rows.length };
+              }
+              const itemsS = [];
+              for (let i = 0; i < rows.length; i += 40) {
+                itemsS.push(...await Promise.all(rows.slice(i, i + 40).map(async (x) => ({
+                  value: tatSlug(x.leaf), label: x.leaf, kind: x.kind, category: x.cat,
+                  image: await faceOf(x.leaf), own: false }))));
+              }
+              return { ok: true, type: "row", trend: true, subject: true, category: askTrend, label: askTrend, all: true,
+                       items: newestFirst(itemsS, (x) => faceAt[x.value]), things: itemsS.length,
+                       pictures: itemsS.filter((x) => x.image).length };
+            }
+            return { ok: false, error: "NO_TREND", trend: askTrend };
+          }
+          const homeOf = {};
+          for (const c of Object.keys(subj)) for (const k of (subj[c] || [])) homeOf[tatSlug(k)] = { kind: k, cat: c };
+          const setsT = [], missingT = [];
+          for (const n of namesT) {
+            const h = homeOf[tatSlug(n)];
+            if (h && !setsT.some((x) => x.kind === h.kind)) setsT.push(h); else if (!h) missingT.push(n);
+          }
+          const cntT = {};
+          for (const c of new Set(setsT.map((x) => x.cat))) {
+            cntT[c] = await env.AURA_KV.get("walk:count:" + tatSlug(c), "json").catch(() => null);
+          }
+          const newestOfT = (x) => { const kk = cntT[x.cat] && cntT[x.cat].kinds && cntT[x.cat].kinds[x.kind];
+                                     return (kk && kk.newest) || ""; };
+          if (b.all) {
+            const flatT = [];
+            for (const x of setsT) {
+              const lv = leavesOf(x.kind);
+              for (const lf of (lv.length ? lv : [x.kind])) flatT.push({ leaf: lf, kind: x.kind, cat: x.cat });
+            }
+            const ownT = {};
+            for (const x of setsT) ownT[x.kind] = String((await env.AURA_KV.get("own:" + tatSlug(x.kind)).catch(() => null)) || "").trim() === "1";
+            const itemsT = [];
+            for (let i = 0; i < flatT.length; i += 40) {
+              itemsT.push(...await Promise.all(flatT.slice(i, i + 40).map(async (x) => ({
+                value: tatSlug(x.leaf), label: String(x.leaf), kind: String(x.kind), category: x.cat,
+                image: await faceOf(x.leaf), own: !!ownT[x.kind] }))));
+            }
+            return { ok: true, type: "row", trend: true, category: askTrend, label: askTrend, all: true,
+                     items: newestFirst(itemsT, (x) => faceAt[x.value]), things: itemsT.length,
+                     pictures: itemsT.filter((x) => x.image).length,
+                     ...(missingT.length ? { missing: missingT } : {}) };
+          }
+          const itemsT = await Promise.all(setsT.map(async (x) => {
+            const lv = leavesOf(x.kind);
+            let image = null;
+            for (const lf of (lv.length ? lv : [x.kind]).slice(0, COVER_TRIES)) { image = await faceOf(lf); if (image) break; }
+            return { value: tatSlug(x.kind), label: String(x.kind), category: x.cat, image,
+                     things: lv.length || 1, self: !lv.length, _new: newestOfT(x) };
+          }));
+          const sortedT = newestFirst(itemsT, (x) => x._new).map((x) => { const { _new, ...y } = x; return y; });
+          return { ok: true, type: "row", trend: true, category: askTrend, label: askTrend,
+                   items: sortedT, kinds: sortedT.length,
+                   things: sortedT.reduce((n, x) => n + x.things, 0), banked: null,
+                   pictures: sortedT.filter((x) => x.image).length,
+                   ...(missingT.length ? { missing: missingT } : {}) };
         }
 
         // ── one category: its kinds, each with a cover ─────────────────────────────────────
@@ -68592,7 +71344,7 @@ export class PublicEntry extends WorkerEntrypoint {
               items.push(...part);
             }
             return { ok: true, type: "row", category: catName, label: catName, all: true,
-                     items, things: items.length,
+                     items: newestFirst(items, (x) => faceAt[x.value]), things: items.length,
                      pictures: items.filter((x) => x.image).length };
           }
           const kinds = subj[catName] || [];
@@ -68617,7 +71369,11 @@ export class PublicEntry extends WorkerEntrypoint {
           // slightly stale. That is the right trade - a stale number that MATCHES the walk page
           // is checkable; a live number that disagrees with it is two sources of truth.
           const cnt = await env.AURA_KV.get("walk:count:" + tatSlug(catName), "json").catch(() => null);
-          return { ok: true, type: "row", category: catName, label: catName, items,
+          // Sets with the newest tiles first, from the day WALK banked for each set. A category not
+          // walked since v9.536 has no days and keeps its old order until it is.
+          const kNew = (cnt && cnt.kinds) || {};
+          return { ok: true, type: "row", category: catName, label: catName,
+                   items: newestFirst(items, (x) => (kNew[x.label] && kNew[x.label].newest) || ""),
                    kinds: items.length,
                    things: items.reduce((n, x) => n + x.things, 0),
                    banked: cnt ? { pictures: cnt.pics, things: cnt.things,
@@ -68853,19 +71609,46 @@ export class PublicEntry extends WorkerEntrypoint {
       // what lets xAI fetch it, and it is worth saying plainly rather than dressing up.
       // It is deleted as soon as the composite exists. The design is permanent; the body is not.
       if (action === "onme") {
-        const id = String(b.design || "").trim();
+        // ══ SEE IT ON YOU - ONLY ONCE IT IS LOCKED IN (2026-10-07, v9.539, Aaron) ═════════════
+        // "once it's locked in ... they can see it on them if they choose to." Called with a
+        // PROJECT, the design is that project's own clean flat artwork from its artist's files -
+        // never a picture the caller names - and only when the project is locked in with files.
+        // So the image model only ever gets two things: the clean locked design and their photo.
+        // Every look is kept on the project, so they can try it as many times as they like.
+        const projId = String(b.project || "").trim();
+        let id = String(b.design || "").trim(), designUrl = null;
+        if (projId) {
+          if (!me) return { ok: false, error: "NEED_SESSION" };
+          if (!/^prj_[a-z0-9]{6,40}$/i.test(projId)) return { ok: false, error: "BAD_PROJECT_ID" };
+          let pr = null; try { pr = await talkDo(env, me, "talkProject", [projId]); } catch {}
+          const pj = pr && pr.ok ? pr.project : null;
+          if (!pj) return { ok: false, error: "NOT_FOUND" };
+          if (!pj.locked || !pj.files) return { ok: false, error: "NOT_LOCKED",
+            say: "Lock it in first - then you can see it on you." };
+          // ONLY A NEW TATTOO (2026-10-08, v9.543, Aaron): an add-on, a cover-up or a rework was made on
+          // their own photo - they have already seen it on them.
+          const _job = String((pj.details && pj.details.job) || "").toLowerCase();
+          if (["add", "cover", "rework"].includes(_job)) return { ok: false, error: "ALREADY_ON_YOU",
+            say: "This one was made on your own photo, so you have already seen it on you." };
+          const f = pj.files;
+          designUrl = f.flat_artwork || (Array.isArray(f.panels) && f.panels[0] && f.panels[0].flat) || null;
+          if (!designUrl) return { ok: false, error: "DESIGN_HAS_NO_IMAGE" };
+          id = id || projId;
+        }
         if (!id) return { ok: false, error: "NEED_DESIGN" };
         const raw = String(b.photo || "");
         if (!raw) return { ok: false, error: "NEED_PHOTO",
           say: "Take a photo of where you want it - the arm, the shoulder, wherever." };
+        if (!designUrl) {
         // The design's own image, from the graph rather than from the caller - so nobody can ask
         // for a composite of an image they did not make.
         const dRow = await env.AURA_MEMORY.prepare(
           "SELECT metadata FROM pta_entities WHERE id = ? AND type IN ('file','image')").bind(id).first();
         if (!dRow) return { ok: false, error: "NO_SUCH_DESIGN" };
         let dMeta = {}; try { dMeta = JSON.parse(dRow.metadata || "{}"); } catch {}
-        const designUrl = dMeta.url || dMeta.image_url || null;
+        designUrl = dMeta.url || dMeta.image_url || null;
         if (!designUrl) return { ok: false, error: "DESIGN_HAS_NO_IMAGE" };
+        }
 
         let bytes;
         try {
@@ -68889,7 +71672,20 @@ export class PublicEntry extends WorkerEntrypoint {
 
         // Two references: the body first, the design second. xAI takes up to three, so a style
         // reference could join them later without changing this shape.
-        const r = await processCommand("SHOW_IT " + JSON.stringify({
+        // ══ SEE IT ON YOU ASKS WHERE (2026-10-08, v9.542, Aaron) ═════════════════════════════
+        // From My Tattoos the page asks "Where do you want it?" and sends their own words as
+        // `where`. That uses the same one plain sentence the conversation uses (onmeAsk): image 1
+        // the clean locked design, image 2 their photo, their words. MEASURED: without it a selfie
+        // got the rose on the chest - the model had to guess where it went.
+        const _where = projId ? String(b.where || "").trim().slice(0, 200) : "";
+        const r = await processCommand("SHOW_IT " + JSON.stringify(projId ? {
+          subject: onmeAsk(_where),
+          context: "seeing a tattoo on their own body",
+          name: "on me",
+          raw: true,
+          refs: [designUrl, bodyUrl],
+          source: "onme"
+        } : {
           subject: ONME_SENTENCE,
           context: "seeing a tattoo on their own body",
           name: "on me",
@@ -68899,13 +71695,18 @@ export class PublicEntry extends WorkerEntrypoint {
           // them, their pose and their background - which only a model that can edit will do.
           // Left unsaid it would fall through to a generation and redraw the person.
           source: "onme",
-          parent: id
+          ...(projId ? {} : { parent: id })
         }), env, true);
         const p2 = (r && r.payload) ? r.payload : r;
         // The photo goes as soon as it has been used, whether or not the composite worked.
         try { await env.AURA_KV.delete("image:" + bodyId); } catch {}
-        if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_PLACE",
-          say: "That did not come out. Try a clearer photo of the area, in good light." };
+        if (!p2?.ok) {
+          try { console.log("[ONME] failed: " + String(p2?.error || "no answer").slice(0, 300)); } catch {}
+          return { ok: false, error: String(p2?.error || "COULD_NOT_PLACE").slice(0, 300),
+            say: "That did not come out. Try a clearer photo of the area, in good light." };
+        }
+        if (projId && p2.image_url) await projectAppend(env, me, projId,
+          { on_me: { image: p2.image_url, design: p2.entity_id || null } });
         return { ok: true, on_me: p2.entity_id, image: p2.image_url, design: id,
           note: "Your photo was used to make this and then deleted. Only the picture remains, and " +
             "it is yours." };
@@ -71797,6 +74598,9 @@ function openAlbum(idx){
       const db = Uint8Array.from(atob(b64d), (c) => c.charCodeAt(0));
       return new Response(db, { headers: { "content-type": "application/pdf",
         "content-disposition": 'inline; filename="' + did + '.pdf"',
+        // THE PAGE CAN SAVE IT (2026-10-09, v9.551, Aaron): mytattoo.world fetches the print file from
+        // here to save it, and without this the browser refuses to hand the bytes to the page.
+        "access-control-allow-origin": "*",
         "cache-control": "public, max-age=31536000" } });
     }
 

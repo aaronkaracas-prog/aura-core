@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.634.0-2026-10-16-one-answer-path";
+const BUILD = "aura-core-v9.635.0-2026-10-16-her-options-after-every-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66039,7 +66039,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_newFlow) { try { await talkStatePut(env, me, "new_style", String(_stm[1]).slice(0, 80)); } catch {} _newStyle = String(_stm[1]).slice(0, 80); }
           } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {
             _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
-          } else if (String(_ds.await_change || "") === "1" && _s && !(opts && opts.inspire) && !_bodyPhoto) {
+          } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
           } else if ((_newFlow || _lastDesignChange) && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
             // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): after they choose a design, four possibilities for that
@@ -67048,7 +67048,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         let _await = false, _lastChange = null, _lastParent = null;
         if (me && _newJob) {
           const _ds = await talkStateGet(env, me, ["await_change", "design_change", "design_change_parent"]);
-          _await = String(_ds.await_change || "") === "1";
+          _await = String(_ds.await_change || "") === "1" || !!(opts && opts.change_now);
           _lastChange = String(_ds.design_change || "").trim() || null;
           _lastParent = String(_ds.design_change_parent || "").trim() || null;
         }
@@ -67071,6 +67071,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             else {
               if (_await && act !== "artist" && act !== "use") act = "change";
               if (act === "change") { _designGrid = true; _designWords = String(said || "").trim().replace(/^show me:\s*/i, "").slice(0, 600); }
+              // ONE OF HER CHANGE IDEAS, TAPPED (v9.635, 2026-10-16, Aaron): it changes the one design they are working on - the
+              // page names it - not the sheet that happens to be on screen.
+              if (_designGrid && opts && opts.change_now && opts.change_of) _designParent = opts.change_of;
             }
           }
         }
@@ -69951,6 +69954,42 @@ export class PublicEntry extends WorkerEntrypoint {
         if (tid && lt && lt.tid === tid) return { ok: true, done: true, turn: lt };
         return { ok: true, done: false };
       }
+      // ══ HER OPTIONS AFTER EVERY PICTURE (v9.635, 2026-10-16, Aaron) ══════════════════════════════════════════════════
+      // "She sees what's going on better than they do and she can be there and advise." After a sheet or a single design the
+      // page shows the picture at once, then asks her this: where they are, the titles on the sheet, how many pictures so
+      // far and the conversation. She answers with one line and three options. She is not shown the picture - it is fast.
+      if (action === "next") {
+        const stage = ["sheet", "poss", "change", "design"].includes(String(b.stage)) ? String(b.stage) : "design";
+        const cards = (Array.isArray(b.cards) ? b.cards : []).map((x) => String(x || "").replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean).slice(0, 4);
+        let pj = null;
+        const pid = String(b.project || "").slice(0, 60);
+        if (pid) { try { const r = await talkDo(env, me, "talkProject", [pid]); pj = (r && r.ok && r.project) ? r.project : null; } catch {} }
+        const pics = (pj && Array.isArray(pj.pictures)) ? pj.pictures.length : 0;
+        const lines = (pj && Array.isArray(pj.lines)) ? pj.lines.slice(-10).map((l) => (l.role === "them" ? "Them: " : "You: ") + String(l.said || "").replace(/\s+/g, " ").slice(0, 300)) : [];
+        const where = stage === "sheet" ? "Four new designs just came back on one sheet. They have not chosen one yet."
+          : stage === "poss" ? "Four possibilities of the design they chose just came back on one sheet. They have not chosen one yet."
+          : stage === "change" ? "Four versions of the change they asked for, on the design they chose, just came back on one sheet. They have not chosen one yet."
+          : "One design is on their screen now - the one design they are working on.";
+        const ask = "[WHERE THEY ARE: " + where + (cards.length ? " On it: " + cards.join(" | ") + "." : "") +
+          " Pictures made for this tattoo so far: " + pics + "." +
+          (lines.length ? " The conversation so far:\n" + lines.join("\n") + "\n" : " ") +
+          "Reply as you always do, with do set to none. say: one short line about what just came back and where they are. " +
+          "ideas: three options for the next step, each 'Short title - one short line'" +
+          (stage === "sheet" ? ", each a new direction for their idea" : ", each a change to the one design they are working on") +
+          ". Read where they are: early on, open up new directions; when what they choose keeps landing close together, help them " +
+          "finish it and say so in your line. 'This Is My Tattoo' and four more are always on their screen - never offer those as ideas.]";
+        let say = "", ideas = [];
+        try {
+          const q = await proxyToAgent(env, ask, false, me + "_side", null, world);   // her side notebook, never the conversation
+          if (q && q.reply && !q.failed) {
+            const a = talkReadAct(q.reply);
+            say = String((a && a.say) || "").trim().slice(0, 300);
+            ideas = (a && Array.isArray(a.ideas)) ? a.ideas.slice(0, 3) : [];
+          }
+        } catch {}
+        console.log("[NEXT] " + stage + " · pictures " + pics + " · she said: \"" + say.slice(0, 200) + "\" · ideas: " + ideas.join(" | ").slice(0, 400) + (me ? " · who=" + me : ""));
+        return { ok: !!(say || ideas.length), said: say || null, ideas };
+      }
       if (action === "react") {
         const url = String(b.url || "").trim().slice(0, 300);
         if (!/^https:\/\//i.test(url)) return { ok: false, error: "BAD_URL" };
@@ -70082,7 +70121,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -70106,7 +70145,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

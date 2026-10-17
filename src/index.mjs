@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.631.0-2026-10-16-tall-page-edits";
+const BUILD = "aura-core-v9.632.0-2026-10-16-thread-effort";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13613,6 +13613,10 @@ async function successionGate(env) {
       // A CALLER MAY NAME ITS SIZE (v9.606): the new-tattoo four-card page is tall (config:edit:new:size); every other
       // caller names none and keeps the setting above.
       if (thP && /^(\d{3,4}x\d{3,4}|auto)$/.test(String(thP.size || ""))) thSize = String(thP.size);
+      // HOW HARD THE CHAT MODEL THINKS (v9.632, 2026-10-16, Aaron): a setting, `config:edit:thread:effort` (none / minimal / low /
+      // medium / high). Empty = nothing sent, exactly as before. OpenAI only.
+      let thEffort = "";
+      try { const _k = String((await env.AURA_KV.get("config:edit:thread:effort")) || "").trim().toLowerCase(); if (thOA && ["none", "minimal", "low", "medium", "high"].includes(_k)) thEffort = _k; } catch {}
       // MORE THAN ONE PICTURE, IN THE ORDER GIVEN (v9.615, Aaron): the way he asks ChatGPT - his tattoo, then his photo.
       const thImgs = (thP && Array.isArray(thP.images)) ? thP.images.filter((u) => /^https?:\/\//i.test(String(u || ""))).slice(0, 4) : [];
       const thTool = (action) => ({ type: "image_generation", action, ...(thOA && thSize ? { size: thSize } : {}),
@@ -13626,10 +13630,10 @@ async function successionGate(env) {
         // comes back. `tool_choice: "required"` makes the one tool offered - the image tool - mandatory.
         // THE FIRST STEP MAY BE ASKED FOR "auto" (v9.593, Aaron): OpenAI's own default, and the way ChatGPT uses the
         // tool - the model chooses to edit the photo or draw a new one. Unasked, it is still an edit, as before.
-        ? { model: thModel, tools: [thTool((thP && ["edit", "generate", "auto"].includes(String(thP.action || "").toLowerCase())) ? String(thP.action).toLowerCase() : "edit")], tool_choice: "required",
+        ? { model: thModel, tools: [thTool((thP && ["edit", "generate", "auto"].includes(String(thP.action || "").toLowerCase())) ? String(thP.action).toLowerCase() : "edit")], tool_choice: "required", ...(thEffort ? { reasoning: { effort: thEffort } } : {}),
             input: [{ role: "user", content: [{ type: "input_text", text: thAsk }].concat(
                                               (thImgs.length ? thImgs : (thNoImg ? [] : [thImg])).map((u) => ({ type: "input_image", image_url: u }))) }] }
-        : { model: thModel, tools: [thTool(thAction)], tool_choice: "required",
+        : { model: thModel, tools: [thTool(thAction)], tool_choice: "required", ...(thEffort ? { reasoning: { effort: thEffort } } : {}),
             previous_response_id: thArg, input: thAsk };
       try {
         const thR = await pfetch(env, thOA ? "openai" : "xai", "core:thread",

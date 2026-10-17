@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.633.0-2026-10-16-possibilities-chat-model";
+const BUILD = "aura-core-v9.634.0-2026-10-16-one-answer-path";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69148,9 +69148,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
             ideas: (acted.ideas && acted.ideas.length) ? acted.ideas : null,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
-            drew: drew ? { image: drew.image || null, design: drew.design || null, changed: drew.changed || null,
-              for_the_artist: !!drew.for_the_artist, pending: !!drew.pending, four_directions: !!drew.four_directions,
-              on_me: !!drew.on_me, failed: !!drew.failed, panels: !!drew.panels } : null }));
+            // THE SAME ANSWER EITHER WAY (v9.634, 2026-10-16, Aaron: "there should not be two paths"): the whole `drew` as it
+            // went live - a hand-picked part dropped `cut`, `possibilities` and `cards`, so a recovered pick showed the wrong buttons.
+            drew: drew || null }));
         } catch {}
       }
       // WHAT HAPPENED, FOR THE TEST (v9.604): who answered, and every word the image model got, never cut.

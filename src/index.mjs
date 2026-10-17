@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.643.0-2026-10-17-fine-tune-imagine-new";
+const BUILD = "aura-core-v9.644.0-2026-10-17-her-line-never-pushes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -70005,7 +70005,7 @@ export class PublicEntry extends WorkerEntrypoint {
             : stage === "new"
             ? "Reply as you always do, with do set to none and no ideas. say: one or two short lines in your own words - name what you have made together so far and ask where they want to go now with a whole new idea.]"
             : "Reply as you always do, with do set to none and no ideas. say: one short line about what just came back and where they are." +
-              " Read where they are: when what they choose keeps landing close together, help them finish it and say so in your line.]") +
+              " Read where they are. Keep them excited about what they're making. Only when what they choose keeps landing close together, you can mention lightly that This Is My Tattoo is there whenever they're ready - never push them to finish.]") +
           "\n\n(Reply with the JSON object. No prose.)";
         let say = "", ideas = [], _why = "";
         try {

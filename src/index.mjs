@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.636.0-2026-10-17-she-sees-the-picture";
+const BUILD = "aura-core-v9.637.0-2026-10-17-sheet-waits-for-cuts";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69959,6 +69959,10 @@ export class PublicEntry extends WorkerEntrypoint {
       // page shows the picture at once, then asks her this: where they are, the titles on the sheet, how many pictures so
       // far and the conversation. She answers with one line and three options. She is not shown the picture - it is fast.
       if (action === "next") {
+        // WHERE THE TIME GOES (v9.637, 2026-10-17): MEASURED 01:18:47-01:19:20 - her options came 33s after the pick and nothing
+        // in the log said why. Each step is timed: when the call arrived, reading the project, and her answer.
+        const _nt0 = Date.now();
+        console.log("[NEXT] asked · " + String(b.stage || "") + (me ? " · who=" + me : ""));
         const stage = ["sheet", "poss", "change", "design"].includes(String(b.stage)) ? String(b.stage) : "design";
         const cards = (Array.isArray(b.cards) ? b.cards : []).map((x) => String(x || "").replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean).slice(0, 4);
         // SHE SEES WHAT THEY SEE (v9.636, 2026-10-17, Aaron): the sheet when four came back, the cut design once they chose one.
@@ -69966,6 +69970,7 @@ export class PublicEntry extends WorkerEntrypoint {
         let pj = null;
         const pid = String(b.project || "").slice(0, 60);
         if (pid) { try { const r = await talkDo(env, me, "talkProject", [pid]); pj = (r && r.ok && r.project) ? r.project : null; } catch {} }
+        const _nt1 = Date.now();
         const pics = (pj && Array.isArray(pj.pictures)) ? pj.pictures.length : 0;
         const lines = (pj && Array.isArray(pj.lines)) ? pj.lines.slice(-10).map((l) => (l.role === "them" ? "Them: " : "You: ") + String(l.said || "").replace(/\s+/g, " ").slice(0, 300)) : [];
         const where = stage === "sheet" ? "Four new designs just came back on one sheet. They have not chosen one yet."
@@ -69993,7 +69998,8 @@ export class PublicEntry extends WorkerEntrypoint {
             ideas = (a && Array.isArray(a.ideas)) ? a.ideas.slice(0, 3) : [];
           }
         } catch {}
-        console.log("[NEXT] " + stage + " · pictures " + pics + (seen ? " · she saw " + seen.split("/").pop() : " · no picture") + " · she said: \"" + say.slice(0, 200) + "\" · ideas: " + ideas.join(" | ").slice(0, 400) + (me ? " · who=" + me : ""));
+        console.log("[NEXT] " + stage + " · project " + (_nt1 - _nt0) + "ms · her answer " + (Date.now() - _nt1) + "ms" +
+          " · pictures " + pics + (seen ? " · she saw " + seen.split("/").pop() : " · no picture") + " · she said: \"" + say.slice(0, 200) + "\" · ideas: " + ideas.join(" | ").slice(0, 400) + (me ? " · who=" + me : ""));
         return { ok: !!(say || ideas.length), said: say || null, ideas };
       }
       if (action === "react") {

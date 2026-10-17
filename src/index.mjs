@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.642.0-2026-10-17-next-no-picture";
+const BUILD = "aura-core-v9.643.0-2026-10-17-fine-tune-imagine-new";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66018,7 +66018,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   await talkStatePut(env, me, "design_change_parent", "");
                   // THE NEW-TATTOO FLOW MARKER (v9.604): set only by the Create New Tattoo opener, cleared by every other start.
                   await talkStatePut(env, me, "new_flow", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : "");
-                  await talkStatePut(env, me, "new_style", ""); } catch {}
+                  await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "new_start", ""); } catch {}
             _ds = /^i want to create a new tattoo\.?$/i.test(_s) ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
@@ -66039,6 +66039,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_newFlow) { try { await talkStatePut(env, me, "new_style", String(_stm[1]).slice(0, 80)); } catch {} _newStyle = String(_stm[1]).slice(0, 80); }
           } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {
             _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
+          } else if (opts && opts.new_now && _s && !(opts && opts.inspire) && !_bodyPhoto) {
+            // IMAGINE SOMETHING NEW (v9.643, 2026-10-17, Aaron): they tapped Imagine something new and she asked where they want
+            // to go - their answer is a fresh four of the new idea, not a change of the design on screen. The words start over here.
+            _fixedWhy = "four_new"; _fixedSay = await _fx("four_coming", "Here they come - four versions of that for you.");
+            _newFlow = true; _lastDesignChange = ""; _newStyle = null;
+            try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
+                  await talkStatePut(env, me, "design_change_parent", ""); await talkStatePut(env, me, "new_flow", "1");
+                  await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "new_start", _s.slice(0, 500)); } catch {}
           } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
           } else if ((_newFlow || _lastDesignChange) && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
@@ -68514,9 +68522,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const _bare = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
             const _mine = [];
             let _start = 0;
+            // IMAGINE SOMETHING NEW (v9.643): the words start at their new idea, not at Create New Tattoo.
+            let _ns = ""; try { const _x = await talkStateGet(env, me, ["new_start"]); _ns = String((_x && _x.new_start) || "").trim(); } catch {}
             for (let i = tnow.length - 1; i >= 0; i--) {
               if (tnow[i] && tnow[i].role === "them" && /^\s*i want to create a new tattoo/i.test(String(tnow[i].said || ""))) { _start = i + 1; break; }
+              if (_ns && tnow[i] && tnow[i].role === "them" && String(tnow[i].said || "").trim() === _ns) { _start = i; break; }
             }
+            if (opts && opts.new_now) _start = tnow.length;
             // ONE TAPPED IDEA AT A TIME (v9.609): their own typed lines all go in, but of her idea cards only the newest tap -
             // tapping "Chrome garden" after "Torn skin" is a new choice, not both at once.
             let _lastTap = null;
@@ -69963,7 +69975,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // in the log said why. Each step is timed: when the call arrived, reading the project, and her answer.
         const _nt0 = Date.now();
         console.log("[NEXT] asked · " + String(b.stage || "") + (me ? " · who=" + me : ""));
-        const stage = ["sheet", "poss", "change", "design"].includes(String(b.stage)) ? String(b.stage) : "design";
+        const stage = ["sheet", "poss", "change", "design", "finetune", "new"].includes(String(b.stage)) ? String(b.stage) : "design";
         const cards = (Array.isArray(b.cards) ? b.cards : []).map((x) => String(x || "").replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean).slice(0, 4);
         // SHE SEES WHAT THEY SEE (v9.636, 2026-10-17, Aaron): the sheet when four came back, the cut design once they chose one.
         const seen = /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.url || "")) ? String(b.url) : null;
@@ -69976,6 +69988,8 @@ export class PublicEntry extends WorkerEntrypoint {
         const where = stage === "sheet" ? "Four new designs just came back on one sheet. They have not chosen one yet."
           : stage === "poss" ? "Four possibilities of the design they chose just came back on one sheet. They have not chosen one yet."
           : stage === "change" ? "Four versions of the change they asked for, on the design they chose, just came back on one sheet. They have not chosen one yet."
+          : stage === "finetune" ? "They tapped Fine-tune it on the one design they are working on - they want to change something on it."
+          : stage === "new" ? "They tapped Imagine something new - they want to leave this design and imagine a whole new idea."
           : "One design is on their screen now - the one design they are working on.";
         // WHAT A TAP DOES (v9.636): her cards are drawn when tapped, so she is told what each one will draw.
         const taps = stage === "sheet" ? "Each idea is a new direction - tapping it draws four new designs of it."
@@ -69984,11 +69998,15 @@ export class PublicEntry extends WorkerEntrypoint {
         const ask = "[WHERE THEY ARE: " + where + (cards.length ? " On it: " + cards.join(" | ") + "." : "") +
           " Pictures made for this tattoo so far: " + pics + "." +
           (lines.length ? " The conversation so far:\n" + lines.join("\n") + "\n" : " ") +
-          "Reply as you always do, with do set to none. say: one short line about what just came back and where they are. " +
-          "ideas: three options for the next step, each 'Short title - one short line'. " + taps +
-          " Keeping it, finishing it, seeing it on them and four more already have their own buttons, so never offer those." +
-          " Read where they are: early on, open up new directions; when what they choose keeps landing close together, help them " +
-          "finish it and say so in your line.]" + "\n\n(Reply with the JSON object. No prose.)";
+          // HER LINE, NO IDEAS (v9.643, 2026-10-17, Aaron): the buttons are the choices; she says where they are, and when they
+          // tap Fine-tune it or Imagine something new she names what you made together and asks the question.
+          (stage === "finetune"
+            ? "Reply as you always do, with do set to none and no ideas. say: one or two short lines in your own words - name what you have made together so far and ask what they want to fine-tune on it.]"
+            : stage === "new"
+            ? "Reply as you always do, with do set to none and no ideas. say: one or two short lines in your own words - name what you have made together so far and ask where they want to go now with a whole new idea.]"
+            : "Reply as you always do, with do set to none and no ideas. say: one short line about what just came back and where they are." +
+              " Read where they are: when what they choose keeps landing close together, help them finish it and say so in your line.]") +
+          "\n\n(Reply with the JSON object. No prose.)";
         let say = "", ideas = [], _why = "";
         try {
           // HER OWN NOTEBOOK, NO PICTURE (v9.642, 2026-10-17, Aaron): asked in her own notebook for this person, so she knows
@@ -70137,7 +70155,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -70161,7 +70179,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

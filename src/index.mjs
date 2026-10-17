@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.646.0-2026-10-17-a-word-is-never-an-add-on";
+const BUILD = "aura-core-v9.647.0-2026-10-17-split-card-cut-by-the-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65001,19 +65001,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       const _bodyRefNow = !(opts && (opts.pick || opts.use || opts.inspire || opts.name || opts.tile));
       let _bodyPhoto = false;
       // ══ A SPLIT CARD IS WORKED ON BY ITS LEFT HALF (2026-09-26, Aaron) ══════════════════════
-      // Sets marked `split:<set>` are drawn as one picture: the design alone on white on the LEFT,
-      // the same design on a body on the RIGHT. The card shows both; a pick works only from the
-      // design - the left half, trimmed to the ink. A pixel cut, no model, so nothing is redrawn.
-      if (wantRef && me && opts && opts.name) {
+      // A split card is one picture: the design alone on white on the LEFT, the same design on a body on the
+      // RIGHT. A pick works only from the design - the left half, trimmed to the ink. A pixel cut, no model.
+      // THE PICTURE DECIDES, NOT A TAG (v9.647, 2026-10-17, Aaron): this looked for a `split:<set>` key that nothing ever
+      // wrote (the cards are tagged `shape:<set>`), so it never ran and the body went in with the design. The cutter's own
+      // test decides: wide, with a photograph (not paper) on the right. A design with no body is left whole.
+      if (wantRef && me && opts && (opts.pick || opts.use || opts.name)) {
         try {
-          const _sOwn = await tatOwnerOf(env, String(opts.name));
-          const _sOn = _sOwn ? await env.AURA_KV.get("split:" + tatSlug(_sOwn)).catch(() => null) : null;
-          if (_sOn) { const _cut = await splitCardLeft(env, wantRef); if (_cut) wantRef = _cut; }
-          // Remembered for the lock-in: edits of a split pick redraw the whole split picture (the
-          // body half with the change - Aaron likes that), so the files must cut it again at the end.
-          // A pick from a set that is not split clears it.
-          await talkStatePut(env, me, "split", _sOn ? "yes" : "");
-        } catch {}
+          const _cut = await splitCardLeft(env, wantRef, true);
+          console.log("[SPLIT] " + (_cut ? "a split card - the design cut from its left half, no model -> " + _cut : "not a split card - used whole") + (me ? " · who=" + me : ""));
+          if (_cut) wantRef = _cut;
+          await talkStatePut(env, me, "split", _cut ? "yes" : "");
+        } catch (e) { console.log("[SPLIT] cut failed, used whole: " + String(e && e.message || e).slice(0, 160)); }
       }
       if (wantRef && me && /^https?:\/\//i.test(wantRef)) {
         try {

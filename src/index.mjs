@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.639.0-2026-10-17-next-logs-why-empty";
+const BUILD = "aura-core-v9.640.0-2026-10-17-next-her-own-notebook-small-copy";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69991,10 +69991,11 @@ export class PublicEntry extends WorkerEntrypoint {
           "finish it and say so in your line.]";
         let say = "", ideas = [], _why = "";
         try {
-          // A CLEAN NOTEBOOK FOR EACH QUESTION (v9.638, 2026-10-17): MEASURED 01:36-01:40 - the shared side notebook kept every
-          // picture ever sent to it and re-read them all (sheets from earlier runs), so her answer took 30-36s and came back
-          // empty, or never. Everything she needs is in this question, so each one starts with nothing behind it.
-          const q = await proxyToAgent(env, ask, false, me + "_n" + Date.now().toString(36), seen, world);
+          // HER OWN NOTEBOOK, THE SMALL COPY (v9.640, 2026-10-17, Aaron): asked the way her look after a picture is asked -
+          // in her own notebook for this person, handed the small copy (lookCopy). MEASURED 02:33: a fresh notebook was sent
+          // the full 1.75 MB cut, over her 1.4 MB limit, so she got an old description, and her answer came back empty.
+          const _lookUrl = seen ? await lookCopy(env, seen) : null;
+          const q = await proxyToAgent(env, ask, false, me, _lookUrl, world);
           if (q && q.reply && !q.failed) {
             const a = talkReadAct(q.reply);
             say = String((a && a.say) || "").trim().slice(0, 300);

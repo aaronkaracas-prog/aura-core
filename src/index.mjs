@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.640.0-2026-10-17-next-her-own-notebook-small-copy";
+const BUILD = "aura-core-v9.641.0-2026-10-17-next-reply-shape-line";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69988,7 +69988,7 @@ export class PublicEntry extends WorkerEntrypoint {
           "ideas: three options for the next step, each 'Short title - one short line'. " + taps +
           " Keeping it, finishing it, seeing it on them and four more already have their own buttons, so never offer those." +
           " Read where they are: early on, open up new directions; when what they choose keeps landing close together, help them " +
-          "finish it and say so in your line.]";
+          "finish it and say so in your line.]" + "\n\n(Reply with the JSON object. No prose.)";
         let say = "", ideas = [], _why = "";
         try {
           // HER OWN NOTEBOOK, THE SMALL COPY (v9.640, 2026-10-17, Aaron): asked the way her look after a picture is asked -

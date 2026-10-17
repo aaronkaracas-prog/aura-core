@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.647.0-2026-10-17-split-card-cut-by-the-picture";
+const BUILD = "aura-core-v9.648.0-2026-10-17-cut-the-card-when-chosen";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -70056,6 +70056,13 @@ export class PublicEntry extends WorkerEntrypoint {
       }
       // THE PAGE CUTS ONE OF THE FOUR (v9.618): for the heart and "Work on this" on one design of a four sheet.
       if (action === "cut") {
+        // A SPLIT CARD, CUT WHEN IT IS CHOSEN (v9.648, 2026-10-17, Aaron): the page asks for the design half the moment they
+        // choose a card - the same pixel cut, no model. A picture that is not a split card comes back as null and is used whole.
+        if (b.split) {
+          const _su = await splitCardLeft(env, String(b.url || "").slice(0, 300), true).catch(() => null);
+          console.log("[SPLIT] chosen card " + (_su ? "cut to its design -> " + _su : "is not a split card - used whole"));
+          return { ok: true, image_url: _su || null, split: !!_su };
+        }
         return await cutPanel(env, String(b.url || "").slice(0, 300), Number(b.n));
       }
       if (action === "favs" || action === "fav") {

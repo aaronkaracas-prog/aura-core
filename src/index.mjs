@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.654.0-2026-10-17-artist-pdf-named-files-folded";
+const BUILD = "aura-core-v9.655.0-2026-10-18-addon-places-it-could-go";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65470,11 +65470,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         "{\n" +
         // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
         // so the floor and her live agent cannot disagree.
-        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give the ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
+        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give the ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'. When they are adding to a tattoo they have, read the whole picture - what is already inked, what skin is open, and what the photo cuts off - and put the places it could go in directions.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
         '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', each one bringing together everything they have told you they want, said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
+        // THE PLACES IT COULD GO (2026-10-18, v9.655, Aaron) - the same words as aura-think's reply format.
+        '  "directions": ["only when they are adding to a tattoo they have, on their photo: up to 4 places they could take it, a few everyday words each, written to finish \'I want it to go ___\' - first where this tattoo would naturally grow, including onto parts of their body past the edge of the photo, then somewhere else on their body where the same style would work"],\n' +
         '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go - by tapping one of your directions or in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
@@ -66987,7 +66989,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // ASKING FOR IDEAS IS NOT A YES (2026-10-12, v9.576, Aaron: "she should have given ideas first then draw").
       // MEASURED 09:14: "Give me some ideas" passed as a yes to her offer and she drew the first one. The page's
       // button sends this exact sentence; she answers with her ideas and nothing is drawn.
-      const _askIdeas = _ideasLine;
+      // A TAPPED PLACE DRAWS THE FOUR (v9.655, 2026-10-18, Aaron): on an add-on her places are buttons; a tap ("I want it to go
+      // down to my wrist") sets where it goes and draws the four-directions sheet with it - no second tap.
+      // (The add-on test is where the four are drawn, below: jobNow add, their photo held - it is not known yet here.)
+      const _placeTap = /^\s*i want it to go\s+\S/i.test(String(said || ""));
+      const _askIdeas = _ideasLine || _placeTap;
       if (_askIdeas && _fixedWhy !== "more" && (act === "draw" || act === "change" || act === "onme")) {
         console.log("[TURN:IDEAS] they asked for ideas - she gives them, nothing drawn (her act was " + act + ")"); act = "none";
       }
@@ -67324,7 +67330,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if (me) {
         try {
           _placeNow = _freshPhoto ? "" : String((await talkStateGet(env, me, ["placement"])).placement || "").trim();
-          const _herPl = String((acted && acted.where_to) || "").trim().replace(/^i want it to go\s+/i, "").replace(/[.!\s]+$/, "");
+          // A BARE "I want it to go" IS NO PLACE (v9.655): MEASURED 04:38 - her where_to was those words alone and the grid
+          // was sent "I want it to go I want it to go." The phrase comes off with or without words after it; nothing left, nothing kept.
+          const _herPl = String((acted && acted.where_to) || "").trim().replace(/^i want it to go\b\s*/i, "").replace(/[.!\s]+$/, "");
           const _newPl = _dirTap ? _dirTap[1].trim() : _herPl;
           if (_freshPhoto || (_newPl && _newPl !== _placeNow)) {
             if (_newPl || _freshPhoto) _placeNow = _newPl || "";
@@ -69476,6 +69484,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           await talkStatePut(env, me, "lastturn", JSON.stringify({ tid: String(opts.tid).slice(0, 40), at: new Date().toISOString(),
             ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
             ideas: (acted.ideas && acted.ideas.length) ? acted.ideas : null,
+            directions: (Array.isArray(acted.directions) && acted.directions.length) ? acted.directions : null,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
             // THE SAME ANSWER EITHER WAY (v9.634, 2026-10-16, Aaron: "there should not be two paths"): the whole `drew` as it
             // went live - a hand-picked part dropped `cut`, `possibilities` and `cards`, so a recovered pick showed the wrong buttons.
@@ -69489,6 +69498,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                ...(_picsGot.length ? { image_model_got: _picsGot } : {}),
                ...(_newFlow ? { flow: "new tattoo" } : {}),
                ...((acted.ideas && acted.ideas.length) ? { ideas: acted.ideas } : {}),
+               // HER PLACES (v9.655): on an add-on photo, the page shows each as a button.
+               ...((Array.isArray(acted.directions) && acted.directions.length) ? { directions: acted.directions } : {}),
                ...(_herTurn ? { her_turn: _herTurn } : {}),
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),

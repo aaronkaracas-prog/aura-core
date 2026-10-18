@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.657.0-2026-10-18-obvious-directions";
+const BUILD = "aura-core-v9.659.0-2026-10-18-she-reads-no-places";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65470,14 +65470,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         "{\n" +
         // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
         // so the floor and her live agent cannot disagree.
-        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give design ideas yet. When they are adding to a tattoo they have, read the whole picture - what is already inked and what skin is open - and always put the places it could go in directions; places are not ideas. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
+        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give design ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
         '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', each one bringing together everything they have told you they want, said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
         // THE PLACES IT COULD GO (2026-10-18, v9.655, Aaron) - the same words as aura-think's reply format.
-        '  "directions": ["only when they are adding to a tattoo they have, on their photo: up to 4 obvious directions this tattoo could grow, a few everyday words each, written to finish \'I want it to go ___\'"],\n' +
-        '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go - by tapping one of your directions or in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
+        '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go, in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:
@@ -68522,7 +68521,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // is the whole sentence; a value still holding "____" is the old opening-plus-her-lines shape
           // and is not used.
           if (_ideasGrid && parentId === refDesign) {
-            let _go = "This is my existing tattoo. I want to add to it. Show me 4 different possibilities in a numbered 2x2 grid. 1. Show me a beautiful natural continuation of the tattoo I already have. Keep its existing visual language and imagine how the same tattoo could continue into the visible bare skin. For 2, 3 and 4, explore genuinely different artistic possibilities. You have creative freedom to change the subject, style, technique, composition, color, scale or visual language. Show me possibilities I may not have thought of rather than three variations of the same idea. Work with the body and bare skin that are actually visible in this photo. Do not invent body areas outside the image. All four should work with the tattoo I already have, but they do not all need to match it. Keep my existing tattoo exactly as it is.";
+            let _go = "This is my current tattoo. Show me 4 different ideas for extending it into a bigger piece, each one growing it the way a tattoo artist naturally would. Zoom out to show more of my body than this photo does, so the whole extended piece is visible. Keep my existing tattoo exactly as it is. Show all 4 in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you added.";
             let _goFrom = "default";
             try {
               const _k = String((await env.AURA_KV.get("config:frame:addon:grid")) || "").trim();
@@ -68531,7 +68530,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             } catch {}
             if (_placeNow) {
               const _ps = "I want it to go " + _placeNow + ".";
-              _go = _go.includes("I want to add to it.") ? _go.replace("I want to add to it.", "I want to add to it. " + _ps) : (_ps + " " + _go);
+              // HER PLACE AFTER THE FIRST SENTENCE (v9.658, 2026-10-18, Aaron): MEASURED 06:25 img_mvduysnr6lhq - "This is my current
+              // tattoo. I want it to go down the forearm to the wrist. Show me 4..." came back right. The sentence that worked has no
+              // "I want to add to it.", so the place went in front of everything; it now goes where it was tested.
+              const _first = _go.match(/^[^.!?]*[.!?]\s*/);
+              _go = _go.includes("I want to add to it.") ? _go.replace("I want to add to it.", "I want to add to it. " + _ps)
+                  : _first ? (_first[0].trimEnd() + " " + _ps + " " + _go.slice(_first[0].length)) : (_ps + " " + _go);
               _goFrom += "+placement";
             }
             _sentNow = _go;
@@ -69477,11 +69481,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         console.log("[TURN:WORDS] they said: \"" + String(saidIn || "").replace(/\s+/g, " ").slice(0, 2000) + "\" · shown to them: \"" +
           String(_said || (acted && acted.say) || "").replace(/\s+/g, " ").slice(0, 2000) + "\"" + (_fixedWhy ? " · fixed (" + _fixedWhy + ")" : "") + (me ? " · who=" + me : ""));
       } catch {}
-      // HER PLACES, SEEN (v9.656): on every add-on turn, the places she offered or "none" - measured 05:25, ideas=0 and no way to see why.
-      try { if (_bodyPhoto && (jobNow === "add" || _freshPhoto)) {
-        const _pl = (acted && Array.isArray(acted.directions)) ? acted.directions : [];
-        console.log("[TURN:PLACES] she offered: " + (_pl.length ? _pl.map((x) => "\"" + x + "\"").join(" | ") : "none"));
-      } } catch {}
       // THE LAST TURN, KEPT FOR A PAGE THAT LOST THE CONNECTION (2026-10-12, v9.572). MEASURED 06:45: a 128s turn
       // drew the picture and the phone showed "I could not answer that". The page asks for this by its turn id.
       if (me && opts && opts.tid) {

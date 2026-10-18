@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.672.0-2026-10-18-cover-styles-first";
+const BUILD = "aura-core-v9.673.0-2026-10-18-one-button-vocabulary";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64841,6 +64841,10 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
   return _TURN_ALS.run({ think: [], pics: [] }, () => _auraTalkInner(env, me, stage, saidIn, history, opts));
 }
 async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
+      // ONE BUTTON VOCABULARY (v9.673, 2026-10-18, Aaron: "there's just no consistency in the wording on every button"). The chat now
+      // shows the button's own words; these mean exactly what the old fixed lines meant, so every road reads them as before.
+      if (/^\s*imagine\s+(?:4|four)\s+(?:ideas|cover-?ups|cover ups|directions|in this style)\.?\s*$/i.test(String(saidIn || ""))) saidIn = "Show me some ideas";
+      else if (/^\s*fine-?\s?tune it\.?\s*$/i.test(String(saidIn || ""))) saidIn = "I want to change something";
       // ══ MEASURE IT, DO NOT REASON ABOUT IT (2026-09-09) ═══════════════════════════════════
       // One turn took 131 SECONDS. Typical is 26-45. Nobody waits half a minute on a phone, and
       // this file's own record of the last performance hunt is four consecutive wrong guesses

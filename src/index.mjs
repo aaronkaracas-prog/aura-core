@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.653.0-2026-10-17-artist-files-every-stencil-one-pdf";
+const BUILD = "aura-core-v9.654.0-2026-10-17-artist-pdf-named-files-folded";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64203,11 +64203,18 @@ async function makeArtistFiles(env, ctx) {
             // cannot be made, each panel gets its own line-art PDF exactly as before - nothing is ever skipped.
             let _one = null;
             try {
+              // THE TATTOO'S OWN NAME AND DETAILS (v9.653): MEASURED 21:04 (Ribcage Tower) - the sheet read "Tattoo design"
+              // with only a date and a PTA id, while My Tattoos had the name, style and colour. They are read from the tattoo.
+              let _pj = null;
+              if (ctx.project) { try { const _r = await talkDo(env, me, "talkProject", [ctx.project]); _pj = (_r && _r.ok && _r.project) ? _r.project : null; } catch {} }
+              const _dt = (_pj && _pj.details) || {};
+              const _tv = (v) => (v && !/\s\|\s|only if they said|why they are getting it|who it is for/i.test(String(v))) ? String(v).replace(/_/g, " ") : null;
+              const _t0 = String((_pj && _pj.title) || (intent && (intent.name || intent.subject)) || "Tattoo design");
               _one = await artistPdf(env, {
-                title: String((intent && (intent.name || intent.subject)) || "Tattoo design").slice(0, 120),
-                rows: [["Style", intent && intent.style], ["Placement", intent && intent.placement],
-                       ["Colour", intent && String(intent.colour || "").replace(/_/g, " ")], ["Detail", intent && intent.detail],
-                       ["Made", new Date().toISOString().slice(0, 10)], ["For", me]],
+                title: (_t0.charAt(0).toUpperCase() + _t0.slice(1)).slice(0, 120),
+                rows: [["Style", _tv(_dt.style) || (intent && intent.style)], ["Colour", _tv(_dt.colour) || (intent && _tv(intent.colour))],
+                       ["Size", _tv(_dt.size)], ["Placement", _tv(_dt.placement) || (intent && intent.placement) || "Finalize with your artist"],
+                       ["Notes", _tv(_dt.notes)], ["Made", new Date().toISOString().slice(0, 10)]],
                 panels: _sizes.map((z) => ({ name: z.sh.panel || "", inches: z.inches, long: z.long, colour: z.sh.flat,
                   stencils: [{ label: "Linework stencil", url: z.sh.line }, { label: "Shading-guide stencil", url: z.sh.shade },
                              { label: "Realism stencil", url: z.sh.real }] }))
@@ -64707,7 +64714,7 @@ async function startArtistFilesJob(env, data) {
 async function runArtistFilesJob(env, d) {
   const refDesign = d.refDesign || null, refUrl = d.refUrl || null, lastDrawn = d.lastDrawn || null;
   return await makeArtistFiles(env, {
-    me: d.me, world: d.world, seeing: !!d.seeing, jobNow: d.jobNow || null, refUrl, refDesign, lastDrawn,
+    me: d.me, world: d.world, seeing: !!d.seeing, project: d.project || null, jobNow: d.jobNow || null, refUrl, refDesign, lastDrawn,
     useRaw: Array.isArray(d.useRaw) ? d.useRaw : [], acted: d.acted || {}, intent: d.intent || null,
     alreadyFlat: !!d.alreadyFlat, bodyLook: d.bodyLook || null,
     useOne: (n, want) => talkUseOne(n, want, refDesign, refUrl, lastDrawn),
@@ -67849,7 +67856,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           alreadyFlat: _filesFlat, bodyLook: _bodyLook });
         drew = _job
           ? { for_the_artist: true, pending: true, job: _job, from: (lastDrawn && lastDrawn.design) || null }
-          : await makeArtistFiles(env, { me, world, seeing, jobNow: _bodyLook ? "new" : jobNow,
+          : await makeArtistFiles(env, { me, world, seeing, project: _pid || null, jobNow: _bodyLook ? "new" : jobNow,
                                          refUrl: _bodyLook ? null : refUrl, refDesign: _bodyLook ? null : (refDesign || null), lastDrawn, useRaw,
                                          acted, intent, useOne, _checkOn, _verdict, readAct,
                                          alreadyFlat: _filesFlat, bodyLook: _bodyLook });

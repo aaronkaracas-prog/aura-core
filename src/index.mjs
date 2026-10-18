@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.664.0-2026-10-18-why-you-are-here-go";
+const BUILD = "aura-core-v9.665.0-2026-10-18-addon-change-four";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66296,7 +66296,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // versions), and a number picked off those four. Each now answers with one fixed line (a setting each) and she is
       // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
-      let _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null;
+      let _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -66352,6 +66352,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
                   await talkStatePut(env, me, "design_change_parent", ""); await talkStatePut(env, me, "new_flow", "1");
                   await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "new_start", _s.slice(0, 500)); } catch {}
+          } else if (_bodyPhoto && _s && !!(opts && opts.change_now) && !(opts && opts.inspire) && await (async () => {
+                       // ONE WAY FOR EVERY PICTURE (v9.665, 2026-10-18, Aaron: "it's literally the same for every image - here's the
+                       // image, here's what I want to do with it, show me 4 versions"). MEASURED 10:56: Fine-tune on a chosen add-on sent
+                       // only their original photo and her one-line brief for one picture - the chosen design was never seen and the
+                       // original moon was coloured. PROVEN 11:02 by command (img_mve4uek69hdp): their photo, the design they chose, their
+                       // words in one sentence (`config:frame:addon:change`), four versions at the possibilities quality.
+                       try {
+                         const _tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || [];
+                         for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i];
+                           if (e && e.role === "picture") { const _id = (String(e.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                             if (_id && await env.AURA_KV.get("bodycut:" + _id)) { _addonPossCard = String(e.image); return true; }
+                             return false; } }
+                       } catch {}
+                       return false; })()) {
+            _fixedWhy = "addon_change"; _addonChangeWords = _s;
+            _fixedSay = await _fx("addon_change", "Here they come - four versions of that on you.");
           } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
           } else if (_bodyPhoto && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s) && await (async () => {
@@ -68615,6 +68631,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               let _ap = "The first picture is my tattoo as it is today. The second picture is the design I chose for adding to it. Show me 4 different versions of what I'm adding, on my body. Make number 1 the closest to the design I chose. For 2, 3 and 4, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is. Keep the same view of my body as the second picture. Show all 4 in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you changed.";
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:poss")) || "").trim(); if (_k) _ap = _k; } catch {}
               _sentNow = _ap; _wordsFrom = "addon_poss";
+              if (_addonChangeWords) {
+                // THEIR CHANGE, FOUR VERSIONS (v9.665): word for word the 11:02 command; "____" is their words as they typed them.
+                let _ac = "The first picture is my tattoo as it is today. The second picture is the design I chose for adding to it. I want to change it: ____. Show me 4 different versions of that change, on my body. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is. Keep the same view of my body as the second picture. Show all 4 in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you changed.";
+                try { const _k = String((await env.AURA_KV.get("config:frame:addon:change")) || "").trim(); if (_k.includes("____")) _ac = _k; } catch {}
+                _sentNow = _ac.replace("____", String(_addonChangeWords).replace(/[\s.]+$/, "").slice(0, 600)); _wordsFrom = "addon_poss_change";
+              }
               _withNow = [_addonPossCard];
               _qualNow = "medium";
               try { const _k = String((await env.AURA_KV.get("config:edit:addon_poss:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(_k)) _qualNow = _k; } catch {}
@@ -68867,7 +68889,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             } else if (_ideasGrid) {
               let _done = "Here are four ideas. Tap the one you want to work on, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:ideas_done")) || "").trim(); if (_k) _done = _k; } catch {}
-              if (_addonPoss) {
+              if (_addonPoss && _addonChangeWords) {
+                _done = "Here are 4 versions of that on you. Tap the one you like.";
+                try { const _k = String((await env.AURA_KV.get("config:say:addon_change_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              } else if (_addonPoss) {
                 _done = "Here are 4 possibilities on you. Tap the one you like, or I can imagine 4 more.";
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_poss_done")) || "").trim(); if (_k) _done = _k; } catch {}
               }

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.662.0-2026-10-18-artist-pdf-one-page-each-name-read";
+const BUILD = "aura-core-v9.663.0-2026-10-18-colour-whole";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69515,7 +69515,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   const raw = (q && q.reply && !q.failed) ? (_sayTxt ? _sayTxt + "\n" : "") + String(q.reply) + "\n" + String(_verdict(q.reply, readAct(q.reply)) || "") : "";
                   const clean = (x) => String(x || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 60);
                   let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
-                  const c = clean((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,60})/i) || [])[1]);
+                  // THE COLOUR WHOLE (v9.663, 2026-10-18): MEASURED - "bold red, gold and teal-green American traditi" on the job
+                  // sheet; it was read to 60 letters and cut mid-word. Read to 120; if that is where it stops, it ends at a word.
+                  let c = String((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,120})/i) || [])[1] || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "");
+                  if (c.length >= 118) c = c.replace(/\s+\S*$/, "").replace(/[\s,;:.-]+$/, "");
                   if (n && n.split(/\s+/).length > 7) n = "";
                   // NOT A STATUS AS A NAME (2026-10-11, v9.566): MEASURED - a tattoo was titled "Locked In". A name
                   // is what the tattoo is, never what just happened to it.

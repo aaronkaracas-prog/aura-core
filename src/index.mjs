@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.651.0-2026-10-17-addon-four-cut-not-redrawn";
+const BUILD = "aura-core-v9.653.0-2026-10-17-artist-files-every-stencil-one-pdf";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -9943,7 +9943,7 @@ async function processCommand(line, env, isOp) {
       const fnParts = rest.trim().split(/\s+/);
       const fnId = String(fnParts[0] || "").trim();
       if (!fnId) return { cmd: "FINAL", payload: { ok: false,
-        error: 'Usage: FINAL <image url or id> [ADDED <original url>] [STENCIL|LINEART]' } };
+        error: 'Usage: FINAL <image url or id> [ADDED <original url>] [STENCIL|LINEART|SHADING|REALISM]' } };
       // ══ TWO WORDS, TWO MECHANISMS, AND THEY ARE NOT INTERCHANGEABLE (2026-09-09) ═════════
       // STENCIL is a PIXEL OPERATION - greyscale, blur, threshold. Free, instant, and the geometry
       // cannot move because it is the same pixels. Perfect on flat linework; on a full-colour
@@ -9990,8 +9990,12 @@ async function processCommand(line, env, isOp) {
       const fnWas = fnAddedAt > 0 ? String(fnParts[fnAddedAt + 1] || "").trim() : "";
       const fnMode = String(
         (fnAddedAt > 0 ? fnParts[fnAddedAt + 2] : fnParts[1]) || "").toUpperCase();
+      // THE TWO NEW STENCILS (v9.653, 2026-10-17, Aaron: "we give them every version"): a shading guide (`style:stencil-shading`)
+      // and a realism map (`style:stencil-realism`) - settings, proven by command on the calla lily and the War Paint Warrior.
       const fnCardName = fnMode === "STENCIL" ? "stencil"
                        : (fnMode === "LINEART" || fnMode === "LINE") ? "line art"
+                       : fnMode === "SHADING" ? "stencil shading"
+                       : fnMode === "REALISM" ? "stencil realism"
                        : "flat artwork";
       const fnStencil = fnCardName !== "flat artwork";
       const SCF = await tatStyleCards(env);
@@ -10203,146 +10207,11 @@ async function processCommand(line, env, isOp) {
       // edge instead of losing three inches of size for nothing.
       // CHOSEN BY THE ARTWORK, not by a flag: whichever orientation lets the piece print bigger
       // wins, and the job sheet says which way to feed the printer.
-      const landscape = true;   // decided below, once the ink box is known
-      let PAGE_IN = 10.0;       // letter, less the half-inch margins
-      let WIDE_IN = 7.5;
-      const OVERLAP_IN = 0.5;
-      let STEP_IN = PAGE_IN - OVERLAP_IN;
-
-      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null, pDpi = 0, pOrient = "portrait", pVec = null, pVecW = 0, pVecPx = null;
+      let pSlices, pTallIn, pWideIn, pFitted, pDpi, pOrient, pVec, PAGE_IN, WIDE_IN, OVERLAP_IN, STEP_IN;
       try {
-        const srcArr = Uint8Array.from(atob(pB64), (c) => c.charCodeAt(0));
-        const im0 = PhotonImage.new_from_byteslice(srcArr);
-        const W0 = im0.get_width(), H0 = im0.get_height();
-        const px = im0.get_raw_pixels();
-        let x1 = W0, y1 = H0, x2 = -1, y2 = -1;
-        for (let y = 0; y < H0; y++) {
-          for (let x = 0; x < W0; x++) {
-            const o = (y * W0 + x) * 4;
-            if (px[o] < 235 || px[o + 1] < 235 || px[o + 2] < 235) {
-              if (x < x1) x1 = x;
-              if (x > x2) x2 = x;
-              if (y < y1) y1 = y;
-              if (y > y2) y2 = y;
-            }
-          }
-        }
-        if (x2 < 0) { x1 = 0; y1 = 0; x2 = W0 - 1; y2 = H0 - 1; }
-        const pad = Math.round(Math.max(W0, H0) * 0.01);
-        x1 = Math.max(0, x1 - pad); y1 = Math.max(0, y1 - pad);
-        x2 = Math.min(W0 - 1, x2 + pad); y2 = Math.min(H0 - 1, y2 + pad);
-        const inked = photonCrop(im0, x1, y1, x2 + 1, y2 + 1);
-        try { im0.free(); } catch {}
-        const W = inked.get_width(), H = inked.get_height();
-        // Longest side asked for and the piece is wider than tall: the height that makes the width it.
-        if (pLong && W > H) pIn = Math.round((pIn * H / W) * 100) / 100;
-        // VECTOR FIRST: the line art traced to outlines prints sharp at any height, so the pixel
-        // ceiling below no longer applies. If tracing fails, everything below runs as it always has.
-        try {
-          pVecW = W;
-          const _svg = __auraTracer.traceRGBA(W, H, inked.get_raw_pixels(), { threshold: 128, turdSize: 2, optTolerance: 0.2 });
-          const _inner = String(_svg || "").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
-          if (_inner && /<path/.test(_inner)) pVec = _inner;
-          console.log("[PRINT] traced to vector: " + (pVec ? pVec.length + " chars" : "nothing usable"));
-        } catch (e) { console.log("[PRINT] trace failed, printing pixels: " + String(e && e.message || e).slice(0, 160)); }
-
-        const MIN_DPI = 150;   // the floor below which linework stops burning cleanly
-        // THE PAGE TURNS IF THE PIECE PRINTS BIGGER THAT WAY. Portrait gives 7.5 x 10, landscape
-        // gives 10 x 7.5. For each, the size is whatever fits both the width and the DPI floor,
-        // and the bigger of the two wins. A tall sleeve keeps portrait; a near-square back piece
-        // gets landscape and three inches it was losing to the margin.
-        const fitFor = (wIn, hIn) => {
-          if (pVec) return pIn;   // traced: neither the pixels nor the paper width limit it - wide pieces tile across too
-          const byDpi = pVec ? Infinity : H / MIN_DPI;   // as tall as the pixels allow - no limit once traced
-          const byWide = (wIn * H) / W;              // as tall as the paper allows
-          return Math.min(pIn, byDpi, byWide);
-        };
-        const tallPortrait = fitFor(7.5, 10.0);
-        const tallLandscape = fitFor(10.0, 7.5);
-        const useLandscape = tallLandscape > tallPortrait + 0.01;
-        if (useLandscape) { PAGE_IN = 7.5; WIDE_IN = 10.0; STEP_IN = PAGE_IN - OVERLAP_IN; }
-        pTallIn = Math.min(pIn, useLandscape ? tallLandscape : tallPortrait);
-        pWideIn = (W / H) * pTallIn;
-        pOrient = useLandscape ? "landscape" : "portrait";
-        if (pTallIn < pIn - 0.01) {
-          pFitted = { asked_in: pIn, ink_px: H, min_dpi: MIN_DPI, orientation: pOrient,
-                      limit: (H / MIN_DPI) <= ((WIDE_IN * H) / W) ? "resolution" : "page width",
-                      why: (H / MIN_DPI) <= ((WIDE_IN * H) / W)
-                        ? ("the artwork holds " + H + " pixels of ink - printing it taller than " +
-                           (H / MIN_DPI).toFixed(1) + "in would fall under " + MIN_DPI +
-                           " DPI and stop being a usable stencil. Flatten the design larger to " +
-                           "print it bigger.")
-                        : ("the piece is " + (W / H).toFixed(2) + " times as wide as it is tall, " +
-                           "so it runs out of paper before it runs out of pixels - printed on " +
-                           pOrient + " letter it fits " + pTallIn.toFixed(1) + "in tall.") };
-        }
-        const pxPerIn = H / pTallIn;
-        // Lost when the cap block was rewritten for orientation: the reply and the job sheet both
-        // printed "0 DPI". A number nobody set is worse than no number, and this file has spent a
-        // day on fields that reported something other than the fact.
-        pDpi = pVec ? 0 : Math.round(pxPerIn);
-        const winPx = Math.max(1, Math.round(PAGE_IN * pxPerIn));
-        const stepPx = Math.max(1, Math.round(STEP_IN * pxPerIn));
-        const nPages = H <= winPx ? 1 : Math.ceil((H - winPx) / stepPx) + 1;
-
-        for (let i = 0; i < nPages; i++) {
-          const top = Math.min(i * stepPx, Math.max(0, H - 1));
-          const bot = Math.min(top + winPx, H);
-          // ══ A SLIVER IS A BLANK PAGE (2026-09-11) ════════════════════════════════════════
-          // MEASURED: 13.3in of artwork on 7.5in landscape pages left a final slice 0.3in tall -
-          // a strip of white the artist prints for nothing. The overlap already covers it; that
-          // last third of an inch is inside the previous sheet.
-          // Half an inch is the floor because that IS the overlap: anything shorter is entirely
-          // repeated on the sheet before it.
-          if ((bot - top) / pxPerIn < OVERLAP_IN + 0.05) break;
-          if (bot - top < 2) break;
-          if (pVec) {
-            // A piece wider than the paper tiles across as well as down, with the same overlap.
-            const _wWin = Math.max(1, Math.round(WIDE_IN * pxPerIn));
-            const _wStep = Math.max(1, Math.round((WIDE_IN - OVERLAP_IN) * pxPerIn));
-            const _nCols = W <= _wWin ? 1 : Math.ceil((W - _wWin) / _wStep) + 1;
-            if (!pVecPx) pVecPx = inked.get_raw_pixels();
-            // A tile with no ink is a sheet of blank paper - left out. Its neighbours still overlap it.
-            const _inked = (x0, y0, x1, y1) => {
-              for (let y = y0; y < Math.min(y1, H); y += 2)
-                for (let x = x0; x < Math.min(x1, W); x += 2) {
-                  const o = (y * W + x) * 4;
-                  if (pVecPx[o] < 128 || pVecPx[o + 1] < 128 || pVecPx[o + 2] < 128) return true;
-                }
-              return false;
-            };
-            for (let c = 0; c < _nCols; c++) {
-              const _l = Math.min(c * _wStep, Math.max(0, W - 1));
-              const _r = Math.min(_l + _wWin, W);
-              if (c > 0 && (_r - _l) / pxPerIn < OVERLAP_IN + 0.05) break;
-              if (!_inked(_l, top, _r, bot)) continue;
-              // Every tile is the full page window, blank past the edge of the art, so the sheets line
-              // up when laid edge to edge - a narrower tile would be centred and break the overlap.
-              // ══ ONE SHEET IS CENTRED (2026-10-09, Aaron) ═══════════════════════════════════════
-              // A piece that fits on one sheet was still given the full page window, so it printed
-              // against the top-left corner with the rest of the box blank. When there is only one
-              // tile, the box is the artwork itself and the sheet's flex centre puts it in the middle.
-              // More than one sheet keeps the full window, so the overlaps still line up.
-              if (nPages === 1 && _nCols === 1) {
-                pSlices.push({ vec: { x: 0, y: 0, w: W, h: H }, inches: Math.min(H / pxPerIn, PAGE_IN - 0.02),
-                               row: 1, col: 1, cols: 1 });
-                continue;
-              }
-              pSlices.push({ vec: { x: _l, y: top, w: _wWin, h: winPx }, inches: Math.min(winPx / pxPerIn, PAGE_IN - 0.02),   // a hair under the page, or rounding spills a blank sheet
-                             row: i + 1, col: c + 1, cols: _nCols });
-            }
-            continue;
-          }
-          const sl = photonCrop(inked, 0, top, W, bot);
-          const bts = sl.get_bytes();
-          let t = "";
-          for (let k = 0; k < bts.length; k += 8192) {
-            t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
-          }
-          pSlices.push({ b64: btoa(t), inches: (bot - top) / pxPerIn });
-          try { sl.free(); } catch {}
-        }
-        try { inked.free(); } catch {}
+        const _L = printLayout(pB64, pIn, pLong, {});
+        ({ pSlices, pTallIn, pWideIn, pFitted, pDpi, pOrient, pVec, PAGE_IN, WIDE_IN, OVERLAP_IN, STEP_IN } = _L);
+        pIn = _L.pIn;
       } catch (e) {
         return { cmd: "PRINT", payload: { ok: false, error: "COULD_NOT_SLICE",
           why: String(e && e.message || e).slice(0, 200) } };
@@ -10395,7 +10264,7 @@ async function processCommand(line, env, isOp) {
             pSlices[i].vec.w + ' ' + pSlices[i].vec.h + '" style="height:' + pSlices[i].inches.toFixed(3) + 'in;width:' +
             (pSlices[i].vec.w / pSlices[i].vec.h * pSlices[i].inches).toFixed(3) + 'in"><use href="#aura-art"/></svg></div>'
           : '<div class=art><img style="height:' + pSlices[i].inches.toFixed(3) +
-            'in" src="data:image/png;base64,' + pSlices[i].b64 + '"></div>';
+            'in" src="data:image/' + (pSlices[i].mime || "png") + ';base64,' + pSlices[i].b64 + '"></div>';
       }
 
       const html =
@@ -13689,6 +13558,20 @@ async function successionGate(env) {
       }
     }
 
+    case "ARTIST_PDF": {
+      // ARTIST_PDF <colour> <linework> <shading> <realism> <inches> [pta] (v9.653) - the artist's one PDF from four pictures
+      // (img_ ids or urls), exactly as the artist files make it: colour design, three stencils, three mirrored. The back-end test.
+      const ap = String(rest || "").trim().split(/\s+/);
+      const apHost = await imageHost(env);
+      const apU = (x) => /^https?:\/\//i.test(x || "") ? x : (/^img_/.test(x || "") ? "https://" + apHost + "/image/" + x : null);
+      const apIn = parseFloat(ap[4]);
+      if (ap.length < 5 || !(apIn > 0 && apIn <= 60)) return { cmd: "ARTIST_PDF", payload: { ok: false,
+        error: "Usage: ARTIST_PDF <colour> <linework> <shading> <realism> <inches> [pta]" } };
+      const [c0, l0, s0, r0] = [apU(ap[0]), apU(ap[1]), apU(ap[2]), apU(ap[3])];
+      return { cmd: "ARTIST_PDF", payload: await artistPdf(env, { title: "Test - every version", rows: [["Made", new Date().toISOString().slice(0, 10)], ["For", ap[5] || null]],
+        panels: [{ name: "", inches: apIn, long: true, colour: c0,
+          stencils: [{ label: "Linework stencil", url: l0 }, { label: "Shading-guide stencil", url: s0 }, { label: "Realism stencil", url: r0 }] }] }) };
+    }
     case "CUT_PANEL": {
       // CUT_PANEL <picture url | img_ id | pta_ id> <1-4> - cut one design out of a four sheet (v9.617). With a pta_ id, the
       // newest four sheet on that person's conversation is used.
@@ -59918,6 +59801,249 @@ async function cutPanel(env, url, n) {
   return out;
 }
 
+// ══ THE PRINT LAYOUT, ONE COPY (v9.653, 2026-10-17) ═══════════════════════════════════════════════
+// PRINT's geometry - crop to the ink, trace to vector, pick the page orientation, slice into sheets - lifted
+// out unchanged so the artist's one PDF (artistPdf) lays out every page the same way PRINT always has.
+// `opts.trace: false` keeps a picture as pixels (the colour reference); `opts.jpeg` sends those pixels as JPEG.
+function printLayout(pB64, pIn, pLong, opts) {
+  opts = opts || {};
+      const landscape = true;   // decided below, once the ink box is known
+      let PAGE_IN = 10.0;       // letter, less the half-inch margins
+      let WIDE_IN = 7.5;
+      const OVERLAP_IN = 0.5;
+      let STEP_IN = PAGE_IN - OVERLAP_IN;
+
+      let pSlices = [], pTallIn = pIn, pWideIn = 0, pFitted = null, pDpi = 0, pOrient = "portrait", pVec = null, pVecW = 0, pVecPx = null;
+      try {
+        const srcArr = Uint8Array.from(atob(pB64), (c) => c.charCodeAt(0));
+        const im0 = PhotonImage.new_from_byteslice(srcArr);
+        const W0 = im0.get_width(), H0 = im0.get_height();
+        const px = im0.get_raw_pixels();
+        let x1 = W0, y1 = H0, x2 = -1, y2 = -1;
+        for (let y = 0; y < H0; y++) {
+          for (let x = 0; x < W0; x++) {
+            const o = (y * W0 + x) * 4;
+            if (px[o] < 235 || px[o + 1] < 235 || px[o + 2] < 235) {
+              if (x < x1) x1 = x;
+              if (x > x2) x2 = x;
+              if (y < y1) y1 = y;
+              if (y > y2) y2 = y;
+            }
+          }
+        }
+        if (x2 < 0) { x1 = 0; y1 = 0; x2 = W0 - 1; y2 = H0 - 1; }
+        const pad = Math.round(Math.max(W0, H0) * 0.01);
+        x1 = Math.max(0, x1 - pad); y1 = Math.max(0, y1 - pad);
+        x2 = Math.min(W0 - 1, x2 + pad); y2 = Math.min(H0 - 1, y2 + pad);
+        const inked = photonCrop(im0, x1, y1, x2 + 1, y2 + 1);
+        try { im0.free(); } catch {}
+        const W = inked.get_width(), H = inked.get_height();
+        // Longest side asked for and the piece is wider than tall: the height that makes the width it.
+        if (pLong && W > H) pIn = Math.round((pIn * H / W) * 100) / 100;
+        // VECTOR FIRST: the line art traced to outlines prints sharp at any height, so the pixel
+        // ceiling below no longer applies. If tracing fails, everything below runs as it always has.
+        if (opts.trace !== false) try {
+          pVecW = W;
+          const _svg = __auraTracer.traceRGBA(W, H, inked.get_raw_pixels(), { threshold: 128, turdSize: 2, optTolerance: 0.2 });
+          const _inner = String(_svg || "").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
+          if (_inner && /<path/.test(_inner)) pVec = _inner;
+          console.log("[PRINT] traced to vector: " + (pVec ? pVec.length + " chars" : "nothing usable"));
+        } catch (e) { console.log("[PRINT] trace failed, printing pixels: " + String(e && e.message || e).slice(0, 160)); }
+
+        const MIN_DPI = 150;   // the floor below which linework stops burning cleanly
+        // THE PAGE TURNS IF THE PIECE PRINTS BIGGER THAT WAY. Portrait gives 7.5 x 10, landscape
+        // gives 10 x 7.5. For each, the size is whatever fits both the width and the DPI floor,
+        // and the bigger of the two wins. A tall sleeve keeps portrait; a near-square back piece
+        // gets landscape and three inches it was losing to the margin.
+        const fitFor = (wIn, hIn) => {
+          if (pVec) return pIn;   // traced: neither the pixels nor the paper width limit it - wide pieces tile across too
+          const byDpi = pVec ? Infinity : H / MIN_DPI;   // as tall as the pixels allow - no limit once traced
+          const byWide = (wIn * H) / W;              // as tall as the paper allows
+          return Math.min(pIn, byDpi, byWide);
+        };
+        const tallPortrait = fitFor(7.5, 10.0);
+        const tallLandscape = fitFor(10.0, 7.5);
+        const useLandscape = tallLandscape > tallPortrait + 0.01;
+        if (useLandscape) { PAGE_IN = 7.5; WIDE_IN = 10.0; STEP_IN = PAGE_IN - OVERLAP_IN; }
+        pTallIn = Math.min(pIn, useLandscape ? tallLandscape : tallPortrait);
+        pWideIn = (W / H) * pTallIn;
+        pOrient = useLandscape ? "landscape" : "portrait";
+        if (pTallIn < pIn - 0.01) {
+          pFitted = { asked_in: pIn, ink_px: H, min_dpi: MIN_DPI, orientation: pOrient,
+                      limit: (H / MIN_DPI) <= ((WIDE_IN * H) / W) ? "resolution" : "page width",
+                      why: (H / MIN_DPI) <= ((WIDE_IN * H) / W)
+                        ? ("the artwork holds " + H + " pixels of ink - printing it taller than " +
+                           (H / MIN_DPI).toFixed(1) + "in would fall under " + MIN_DPI +
+                           " DPI and stop being a usable stencil. Flatten the design larger to " +
+                           "print it bigger.")
+                        : ("the piece is " + (W / H).toFixed(2) + " times as wide as it is tall, " +
+                           "so it runs out of paper before it runs out of pixels - printed on " +
+                           pOrient + " letter it fits " + pTallIn.toFixed(1) + "in tall.") };
+        }
+        const pxPerIn = H / pTallIn;
+        // Lost when the cap block was rewritten for orientation: the reply and the job sheet both
+        // printed "0 DPI". A number nobody set is worse than no number, and this file has spent a
+        // day on fields that reported something other than the fact.
+        pDpi = pVec ? 0 : Math.round(pxPerIn);
+        const winPx = Math.max(1, Math.round(PAGE_IN * pxPerIn));
+        const stepPx = Math.max(1, Math.round(STEP_IN * pxPerIn));
+        const nPages = H <= winPx ? 1 : Math.ceil((H - winPx) / stepPx) + 1;
+
+        for (let i = 0; i < nPages; i++) {
+          const top = Math.min(i * stepPx, Math.max(0, H - 1));
+          const bot = Math.min(top + winPx, H);
+          // ══ A SLIVER IS A BLANK PAGE (2026-09-11) ════════════════════════════════════════
+          // MEASURED: 13.3in of artwork on 7.5in landscape pages left a final slice 0.3in tall -
+          // a strip of white the artist prints for nothing. The overlap already covers it; that
+          // last third of an inch is inside the previous sheet.
+          // Half an inch is the floor because that IS the overlap: anything shorter is entirely
+          // repeated on the sheet before it.
+          if ((bot - top) / pxPerIn < OVERLAP_IN + 0.05) break;
+          if (bot - top < 2) break;
+          if (pVec) {
+            // A piece wider than the paper tiles across as well as down, with the same overlap.
+            const _wWin = Math.max(1, Math.round(WIDE_IN * pxPerIn));
+            const _wStep = Math.max(1, Math.round((WIDE_IN - OVERLAP_IN) * pxPerIn));
+            const _nCols = W <= _wWin ? 1 : Math.ceil((W - _wWin) / _wStep) + 1;
+            if (!pVecPx) pVecPx = inked.get_raw_pixels();
+            // A tile with no ink is a sheet of blank paper - left out. Its neighbours still overlap it.
+            const _inked = (x0, y0, x1, y1) => {
+              for (let y = y0; y < Math.min(y1, H); y += 2)
+                for (let x = x0; x < Math.min(x1, W); x += 2) {
+                  const o = (y * W + x) * 4;
+                  if (pVecPx[o] < 128 || pVecPx[o + 1] < 128 || pVecPx[o + 2] < 128) return true;
+                }
+              return false;
+            };
+            for (let c = 0; c < _nCols; c++) {
+              const _l = Math.min(c * _wStep, Math.max(0, W - 1));
+              const _r = Math.min(_l + _wWin, W);
+              if (c > 0 && (_r - _l) / pxPerIn < OVERLAP_IN + 0.05) break;
+              if (!_inked(_l, top, _r, bot)) continue;
+              // Every tile is the full page window, blank past the edge of the art, so the sheets line
+              // up when laid edge to edge - a narrower tile would be centred and break the overlap.
+              // ══ ONE SHEET IS CENTRED (2026-10-09, Aaron) ═══════════════════════════════════════
+              // A piece that fits on one sheet was still given the full page window, so it printed
+              // against the top-left corner with the rest of the box blank. When there is only one
+              // tile, the box is the artwork itself and the sheet's flex centre puts it in the middle.
+              // More than one sheet keeps the full window, so the overlaps still line up.
+              if (nPages === 1 && _nCols === 1) {
+                pSlices.push({ vec: { x: 0, y: 0, w: W, h: H }, inches: Math.min(H / pxPerIn, PAGE_IN - 0.02),
+                               row: 1, col: 1, cols: 1 });
+                continue;
+              }
+              pSlices.push({ vec: { x: _l, y: top, w: _wWin, h: winPx }, inches: Math.min(winPx / pxPerIn, PAGE_IN - 0.02),   // a hair under the page, or rounding spills a blank sheet
+                             row: i + 1, col: c + 1, cols: _nCols });
+            }
+            continue;
+          }
+          const sl = photonCrop(inked, 0, top, W, bot);
+          const bts = opts.jpeg ? sl.get_bytes_jpeg(90) : sl.get_bytes();
+          let t = "";
+          for (let k = 0; k < bts.length; k += 8192) {
+            t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+          }
+          pSlices.push({ b64: btoa(t), mime: opts.jpeg ? "jpeg" : "png", inches: (bot - top) / pxPerIn });
+          try { sl.free(); } catch {}
+        }
+        try { inked.free(); } catch {}
+      } catch (e) {
+        throw new Error(String(e && e.message || e).slice(0, 200));
+      }
+  return { pSlices, pTallIn, pWideIn, pFitted, pDpi, pOrient, pVec, PAGE_IN, WIDE_IN, OVERLAP_IN, STEP_IN, pIn };
+}
+
+// ══ THE ARTIST'S ONE PDF - EVERY VERSION IN ONE FILE (v9.653, 2026-10-17, Aaron) ══════════════════════
+// "We give them every version... everything in the 1 file." Researched first: a stencil depends on the style - bold
+// linework for traditional work, linework plus a hatching/stipple shading guide for illustrative and black-and-grey,
+// and for realism a few hard-edge lines with dotted borders around the shadows; the artist also keeps the full shaded
+// design to work from, and a thermal printer may or may not mirror. So the artist gets all of it, laid out by PRINT's
+// own geometry (printLayout): page 1 the job sheet, then per panel the colour design at size (the finished look), the
+// three stencils at size, and the same three mirrored. Stencil pages carry nothing but the artwork - what is on them is
+// what gets burned - so the job sheet says which page is which.
+// o = { title, rows: [[label, value]], panels: [{ name, inches, long, colour, stencils: [{ label, url }] }] }
+async function artistPdf(env, o) {
+  const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const bytesOf = async (url) => {
+    const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
+    return id ? await env.AURA_KV.get("image:" + id).catch(() => null) : null;
+  };
+  let defs = "", body = "", page = 2, vecN = 0, first = null, anyVec = false;
+  const guide = [], perPanel = [];
+  for (const pn of (o.panels || [])) {
+    const items = [], _p0 = page;
+    let _tall = null;
+    if (pn.colour) items.push({ label: "Colour design - the finished look", url: pn.colour, colour: true });
+    for (const s of (pn.stencils || [])) if (s && s.url) items.push({ label: s.label, url: s.url });
+    for (const s of (pn.stencils || [])) if (s && s.url) items.push({ label: s.label + " - MIRRORED", url: s.url, mirror: true });
+    const laid = {};
+    for (const it of items) {
+      let L = laid[it.url];
+      if (!L) {
+        const b64 = await bytesOf(it.url);
+        if (!b64) { guide.push([(pn.name ? pn.name + " - " : "") + it.label, "not available"]); continue; }
+        try { L = printLayout(b64, pn.inches, !!pn.long, it.colour ? { trace: false, jpeg: true } : {}); }
+        catch (e) { guide.push([(pn.name ? pn.name + " - " : "") + it.label, "could not be laid out"]); continue; }
+        if (L.pVec) { L.gid = "a" + (vecN++); defs += '<g id="' + L.gid + '">' + L.pVec + "</g>"; anyVec = true; }
+        laid[it.url] = L;
+      }
+      if (!it.colour && !first) first = L;
+      if (!it.colour && _tall == null) _tall = Number(L.pTallIn.toFixed(2));
+      const land = L.pOrient === "landscape", flip = it.mirror ? "transform:scaleX(-1);" : "";
+      const start = page;
+      // A mirrored piece wider than the paper: its columns run right to left, so they still join on the overlap.
+      const sl = it.mirror ? L.pSlices.slice().sort((a, b) => ((a.row || 1) - (b.row || 1)) || ((b.col || 1) - (a.col || 1))) : L.pSlices;
+      for (const s of sl) {
+        body += '<div class="art' + (land ? " L" : "") + '" style="height:' + L.PAGE_IN + 'in">' + (s.vec
+          ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + s.vec.x + " " + s.vec.y + " " + s.vec.w + " " + s.vec.h + '" style="' + flip +
+            "height:" + s.inches.toFixed(3) + "in;width:" + (s.vec.w / s.vec.h * s.inches).toFixed(3) + 'in"><use href="#' + L.gid + '"/></svg>'
+          : '<img style="' + flip + "height:" + s.inches.toFixed(3) + 'in" src="data:image/' + (s.mime || "png") + ";base64," + s.b64 + '">') + "</div>";
+        page++;
+      }
+      const n = page - start;
+      guide.push([(pn.name ? pn.name + " - " : "") + it.label,
+        "page " + start + (n > 1 ? "-" + (page - 1) + " (" + n + " sheets, " + L.OVERLAP_IN + " in overlap)" : "") + " - " +
+        L.pTallIn.toFixed(1) + " in tall" + (land ? ", landscape" : "")]);
+    }
+    perPanel.push({ inches: _tall, sheets: page - _p0 });
+  }
+  if (page === 2) return { ok: false, error: "NOTHING_TO_PRINT" };
+  const row = (k, v) => v ? "<tr><td>" + esc(k) + "</td><td>" + esc(v) + "</td></tr>" : "";
+  const html = "<!doctype html><html><head><meta charset=utf-8><style>" +
+    "@page { size: 8.5in 11in; margin: 0.5in; } @page land { size: 11in 8.5in; margin: 0.5in; }" +
+    "html,body { margin:0; padding:0; font:12pt/1.5 Georgia,serif; color:#000; }" +
+    "h1 { font-size:20pt; margin:0 0 .2in 0; } h2 { font-size:13pt; margin:.3in 0 .1in 0; }" +
+    ".sub { color:#444; font-size:10pt; margin:0 0 .3in 0; }" +
+    "table { border-collapse:collapse; width:100%; } td { padding:.05in .12in; border-bottom:1px solid #ddd; vertical-align:top; }" +
+    "td:first-child { width:3.2in; color:#555; }" +
+    ".art { break-before:page; page-break-before:always; break-inside:avoid; page-break-inside:avoid; display:flex; " +
+    "align-items:center; justify-content:center; line-height:0; } .art.L { page: land; }" +
+    ".art img, .art svg { display:block; margin:0; } .art img { width:auto; }" +
+    "</style></head><body>" +
+    "<h1>" + esc(o.title || "Tattoo design") + "</h1>" +
+    "<p class=sub>Print at 100%. Do not use Fit to Page - it changes the size. Every stencil is here three ways - linework, " +
+    "with a shading guide, and as a realism map - and each again mirrored, for printers that do not flip it themselves.</p>" +
+    "<table>" + (o.rows || []).map((r) => row(r[0], r[1])).join("") + "</table>" +
+    "<h2>What is on each page</h2><table>" + guide.map((g) => row(g[0], g[1])).join("") + "</table>" +
+    (defs ? '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute"><defs>' + defs + "</defs></svg>" : "") +
+    body + "</body></html>";
+  let pdfBytes = null, br = null;
+  try {
+    br = await puppeteer.launch(env.BROWSER);
+    const pg = await br.newPage();
+    await pg.setContent(html, { waitUntil: "networkidle0" });
+    pdfBytes = await pg.pdf({ printBackground: true, preferCSSPageSize: true });
+  } catch (e) { return { ok: false, error: "COULD_NOT_RENDER", why: String(e && e.message || e).slice(0, 200) }; }
+  finally { if (br) { try { await br.close(); } catch {} } }
+  const arr = new Uint8Array(pdfBytes);
+  let pb = ""; for (let i = 0; i < arr.length; i += 8192) pb += String.fromCharCode.apply(null, arr.subarray(i, i + 8192));
+  const docId = "doc_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  await env.AURA_KV.put("doc:" + docId, btoa(pb)).catch(() => {});
+  console.log("[ARTIST-PDF] " + docId + " · " + (page - 2) + " pages after the job sheet · " + guide.map((g) => g[0] + ": " + g[1]).join(" | ").slice(0, 900));
+  return { ok: true, doc: docId, pdf: "https://" + (await imageHost(env)) + "/doc/" + docId, pages: page - 1, sheets: page - 2,
+           inches: first ? Number(first.pTallIn.toFixed(2)) : null, vector: anyVec, guide, panels: perPanel };
+}
+
 // ══ ONE OF THE FOUR ON THEIR BODY, CUT BY HAND (v9.651, 2026-10-17, Aaron) ════════════════════════════════
 // "We crop it - that's the one they're working on." The add-on four come back as one 2x2 sheet in the shape of their photo:
 // each quarter is their body with the new work, over a white strip with the title and two lines. MEASURED 18:53
@@ -63989,12 +64115,22 @@ async function makeArtistFiles(env, ctx) {
             // a panel the shop cannot use - but a failure on one must not lose the others, which
             // is why each is caught on its own.
             let lineUrl = null, lineId = null;
-            for (const sh of sheets) {
+            // EVERY STENCIL, NOT ONE (v9.653, 2026-10-17, Aaron: "we give them every version"): the linework, the shading
+            // guide and the realism map are made side by side from the same flat artwork, each caught on its own.
+            const _fin = async (flat, mode) => {
               try {
-                const lr = await processCommand("FINAL " + sh.flat + " LINEART", env, true);
-                const lp = (lr && lr.payload) ? lr.payload : lr;
-                if (lp && lp.ok && lp.image) { sh.line = lp.image; sh.lineId = lp.design || null; }
-              } catch {}
+                const r = await processCommand("FINAL " + flat + " " + mode, env, true);
+                const q = (r && r.payload) ? r.payload : r;
+                if (q && q.ok && q.image) return q;
+                console.log("[ARTIST] " + mode + " stencil not made: " + String((q && q.error) || "?").slice(0, 160));
+              } catch (e) { console.log("[ARTIST] " + mode + " stencil failed: " + String(e?.message ?? e).slice(0, 160)); }
+              return null;
+            };
+            for (const sh of sheets) {
+              const [lp, sp, rp] = await Promise.all([_fin(sh.flat, "LINEART"), _fin(sh.flat, "SHADING"), _fin(sh.flat, "REALISM")]);
+              if (lp) { sh.line = lp.image; sh.lineId = lp.design || null; }
+              if (sp) sh.shade = sp.image;
+              if (rp) sh.real = rp.image;
             }
             lineUrl = sheets[0].line || null; lineId = sheets[0].lineId || null;
 
@@ -64044,6 +64180,7 @@ async function makeArtistFiles(env, ctx) {
             // `print_pdf` stays the first so a single-panel job is unchanged; `print_sheets` is now
             // the real total across all of them and can no longer disagree with `panel_count`.
             let pdfTotal = 0;
+            const _sizes = [];
             for (const sh of sheets) {
               const sid = sh.lineId || sh.id;
               if (!sid) continue;
@@ -64059,6 +64196,32 @@ async function makeArtistFiles(env, ctx) {
               }
               let _shLong = false;
               if (!shIn) { shIn = inches; _shLong = _stdLong; }
+              _sizes.push({ sh, inches: shIn, long: _shLong });
+            }
+            // ══ ONE FILE WITH EVERY VERSION (v9.653, 2026-10-17, Aaron: "everything in the 1 file every version the colored
+            // PDF"): the colour design, the three stencils and the three mirrored, every panel, in one PDF (artistPdf). If it
+            // cannot be made, each panel gets its own line-art PDF exactly as before - nothing is ever skipped.
+            let _one = null;
+            try {
+              _one = await artistPdf(env, {
+                title: String((intent && (intent.name || intent.subject)) || "Tattoo design").slice(0, 120),
+                rows: [["Style", intent && intent.style], ["Placement", intent && intent.placement],
+                       ["Colour", intent && String(intent.colour || "").replace(/_/g, " ")], ["Detail", intent && intent.detail],
+                       ["Made", new Date().toISOString().slice(0, 10)], ["For", me]],
+                panels: _sizes.map((z) => ({ name: z.sh.panel || "", inches: z.inches, long: z.long, colour: z.sh.flat,
+                  stencils: [{ label: "Linework stencil", url: z.sh.line }, { label: "Shading-guide stencil", url: z.sh.shade },
+                             { label: "Realism stencil", url: z.sh.real }] }))
+              });
+            } catch (e) { _one = { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
+            if (_one && _one.ok) {
+              _sizes.forEach((z, i) => { const pp = (_one.panels || [])[i] || {};
+                z.sh.pdf = _one.pdf; z.sh.vector = !!_one.vector; z.sh.inches = pp.inches || _one.inches; z.sh.sheets = pp.sheets || null; });
+              pdfTotal = _one.sheets || 0;
+              pdfUrl = _one.pdf; pdfInches = _one.inches;
+            } else console.log("[ARTIST] the one PDF was not made (" + String((_one && (_one.error || _one.why)) || "?") + ") - a line-art PDF per panel instead");
+            for (const z of (_one && _one.ok) ? [] : _sizes) {
+              const sh = z.sh, sid = sh.lineId || sh.id, shIn = z.inches, _shLong = z.long;
+              if (!sid) continue;
               try {
                 const pr2 = await processCommand("PRINT " + sid + " " + shIn + (_shLong ? " long" : "") + " " + me, env, true);
                 const pp = (pr2 && pr2.payload) ? pr2.payload : pr2;
@@ -64094,6 +64257,9 @@ async function makeArtistFiles(env, ctx) {
               ...(_newWorkFail ? { new_work_failed: _newWorkFail } : {}),
               // The whole package, in the order a shop uses it.
               flat_artwork: fp.image,
+              // THE TWO NEW STENCILS (v9.653): the shading guide and the realism map, beside the line art in `image`.
+              ...(sheets[0] && sheets[0].shade ? { stencil_shading: sheets[0].shade } : {}),
+              ...(sheets[0] && sheets[0].real ? { stencil_realism: sheets[0].real } : {}),
               shows_finished: bodyLook || mockUrl,
               // ONE ENTRY PER PANEL, each with the section it covers, its flat artwork and the
               // line art the needle follows. `flat_artwork` above stays the first sheet so a
@@ -64104,6 +64270,7 @@ async function makeArtistFiles(env, ctx) {
                                                   inches: sh.inches || null, sheets: sh.sheets || null, vector: sh.vector === true,
                                                   measured: sh.seeIn || null,
                                                   line: sh.line || null,
+                                                  shade: sh.shade || null, real: sh.real || null,
                                                   pdf: sh.pdf || null,
                                                   ok: sh.ok === true,
                                                   // Her verdict on THIS sheet. A panel whose
@@ -64114,6 +64281,7 @@ async function makeArtistFiles(env, ctx) {
                 : {}),
               ...(pdfUrl ? { print_pdf: pdfUrl, print_inches: pdfInches,
                              print_sheets: pdfSheets } : {}),
+              ...(_one && _one.ok ? { print_every_version: true } : {}),
               // ══ THE FLAG SAYS WHAT WAS ASKED, NOT WHAT CAME BACK (2026-09-14) ═════════
               // `existing_ink_left_out: true` was set from `priorInk` being non-null - it reported
               // that the subtraction was REQUESTED. MEASURED twice: sheets that still contained
@@ -64280,7 +64448,7 @@ async function talkCheckOn(env, k) {
 function artistFilesOf(drew) {
   if (!drew) return null;
   const f = {};
-  for (const k of ["flat_artwork", "image", "shows_finished", "print_pdf", "print_inches", "print_sheets", "new_work_failed", "she_measured"]) {
+  for (const k of ["flat_artwork", "image", "stencil_shading", "stencil_realism", "print_every_version", "shows_finished", "print_pdf", "print_inches", "print_sheets", "new_work_failed", "she_measured"]) {
     if (drew[k] != null) f[k] = drew[k];
   }
   if (Array.isArray(drew.panels)) f.panels = drew.panels;
@@ -64619,7 +64787,12 @@ async function recordArtistFiles(env, d, drew) {
   if (d.stage === "pta") {
     try {
       await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({
-        said: ok ? "Artist files made: the flat artwork, the line art and a print PDF."
+        // SHE KNOWS WHAT THE ARTIST GETS (v9.653): what was actually made, read off the files - never a fixed list.
+        said: ok ? "Artist files made: the flat artwork" +
+                   (drew.image && drew.image !== drew.flat_artwork ? ", the linework stencil" : "") +
+                   (drew.stencil_shading || (Array.isArray(drew.panels) && drew.panels.some((p) => p && p.shade)) ? ", a shading-guide stencil" : "") +
+                   (drew.stencil_realism || (Array.isArray(drew.panels) && drew.panels.some((p) => p && p.real)) ? ", a realism stencil" : "") +
+                   (drew.print_pdf ? (drew.print_every_version ? " and one print PDF with the colour design and every stencil, each also mirrored" : " and a print PDF of the linework") : "") + "."
                   : "Artist files failed - nothing was made.",
         who: "picture", channel: "chat", mode: "tattoo", at: new Date().toISOString(),
         ...(ok ? { image: drew.image } : {}) }), env, true);
@@ -66081,7 +66254,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // versions), and a number picked off those four. Each now answers with one fixed line (a setting each) and she is
       // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
-      let _fixedSay = null, _fixedWhy = null, _lastDesignChange = "";
+      let _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -66154,6 +66327,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // image model was told "I want to change it: Show me: Chrome garden...". A tapped idea is a new four of that idea.
             _fixedWhy = "four_new"; _fixedSay = await _fx("four_coming", "Here they come - four versions of that for you.");
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
+          } else if (/^i want number [1-4]\.?$/i.test(_s) && _bodyPhoto && await (async () => {
+                       // THE ADD-ON PICK IS A CUT, SO SHE IS NOT CALLED (v9.652, 2026-10-17, Aaron). MEASURED 19:43 (pta_15fa057112170b60):
+                       // the cut took 2s, but she was asked first (15.6s) and looked at the cut after (15.6s) - 35s for a picture that
+                       // was already made. Only when the last picture is a marked add-on sheet (bodysheet:), so the cut is certain.
+                       try {
+                         const _tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || [];
+                         for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i];
+                           if (e && e.role === "picture") { const _id = (String(e.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                             return !!(e.grid === true && _id && await env.AURA_KV.get("bodysheet:" + _id)); } }
+                       } catch {}
+                       return false; })()) {
+            _fixedWhy = "pick"; _cutPick = true; _fixedSay = await _fx("addon_pick", "Here it is.");
           } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-4]\.?$/i.test(_s) && !_bodyPhoto) {
             // CHOOSE, THEN THE OFFER (v9.628, 2026-10-16, Aaron): change it, imagine 4 possibilities, or finish.
             _fixedWhy = "pick"; _fixedSay = await _fx("pick_ask", "Great choice. Want to change something on it, or should I imagine 4 possibilities for it?");
@@ -67232,7 +67417,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       //   4. THE PDF - PRINT at the placement size, so the shop prints at 100%.
       // AND SHE KNOWS WHAT IT IS. A fixed sequence is a fact she can state when somebody asks
       // what happens next. A sentence she improvises each time is not.
-      if (onStage && me && (act === "draw" || act === "change" || act === "onme" || act === "artist")) {
+      // A CUT IS NOT A DRAWING (v9.652): the add-on pick does not bring up the picture-making card.
+      if (onStage && me && !_cutPick && (act === "draw" || act === "change" || act === "onme" || act === "artist")) {
         // WHAT IT IS GOES WITH IT (2026-10-09, v9.550, Aaron): the page's picture card says what she is
         // making - "Imagining your cat and butterfly tattoo" - from the subject in her brief.
         let _what = "";

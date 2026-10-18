@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.669.0-2026-10-18-cover-her-line";
+const BUILD = "aura-core-v9.670.0-2026-10-18-cover-style";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65886,6 +65886,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           (refHeld ? "\n\nYou have already told them what is in it - do not describe it again." : "") +
           // Cover-up guidance only once they have chosen to cover it.
           (_isCover ? "\n\n" + COVER_DOCTRINE + "\n" : "") +
+          // THE STYLE THEY CHOSE (v9.670, 2026-10-18, Aaron): on Cover Up they can pick a style card first. She is told,
+          // so what she says about covering it is in that style.
+          (_isCover && opts && opts.cover_style ? "\n\nTHEY CHOSE THE " + String(opts.cover_style).toUpperCase() + " STYLE for this cover-up - talk about covering it in that style.\n" : "") +
           // MEASURED: asked to make a cover-up raven "light grey and delicate", she did it without
           // a word. That design cannot be tattooed over dark linework, and the person finds out in
           // the chair. She had the constraint in front of her, said it once, and dropped it the
@@ -68643,6 +68646,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               _goFrom = "cover";
               try { const _k = String((await env.AURA_KV.get("config:frame:cover:grid")) || "").trim(); if (_k && !_k.includes("____")) { _go = _k; _goFrom = "cover_setting"; } } catch {}
             }
+            // THE STYLE CARD THEY PICKED (v9.670, 2026-10-18, Aaron: "nothing changes except getting a style reference"). PROVEN
+            // 13:59 by command (img_mveb5nw75j1e): "I want to cover it up in the Japanese style." - four Japanese cover-ups.
+            const _coverStyle = _coverNow && opts && opts.cover_style ? String(opts.cover_style) : "";
+            if (_coverStyle) {
+              if (_go.includes("I want to cover it up.")) { _go = _go.replace("I want to cover it up.", "I want to cover it up in the " + _coverStyle + " style."); _goFrom += "+style"; }
+              else console.log("[TURN:IDEAS] cover style " + _coverStyle + " not added - the sentence has no \"I want to cover it up.\"");
+            }
             if (_placeNow && !_coverNow) {
               const _ps = "I want it to go " + _placeNow + ".";
               // HER PLACE AFTER THE FIRST SENTENCE (v9.658, 2026-10-18, Aaron): MEASURED 06:25 img_mvduysnr6lhq - "This is my current
@@ -68662,7 +68672,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 _ow = "This is my current tattoo. I want to cover it up with: ____. Show me 4 different cover-up designs of that, each one in the same place as my tattoo and only as big as it needs to be to fully hide it, the way a tattoo artist would cover it. None of my old tattoo should show through. Use colour wherever it works with the design. Keep the same view of my body as this photo. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about the design.";
                 try { const _k = String((await env.AURA_KV.get("config:frame:cover:own")) || "").trim(); if (_k.includes("____")) _ow = _k; } catch {}
               }
-              _go = _ow.replace("____", _addonOwnWords.replace(/[\s.]+$/, "").slice(0, 600)); _goFrom = _coverNow ? "cover_own" : "own";
+              _go = _ow.replace("____", _addonOwnWords.replace(/[\s.]+$/, "").slice(0, 600) + (_coverStyle ? ", in the " + _coverStyle + " style" : "")); _goFrom = _coverNow ? "cover_own" + (_coverStyle ? "+style" : "") : "own";
             }
             _sentNow = _go;
             _herAsk = null;
@@ -70679,7 +70689,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -70703,7 +70713,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.649.0-2026-10-17-she-greets-them-by-name";
+const BUILD = "aura-core-v9.650.0-2026-10-17-styles-above-her-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66032,14 +66032,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // called; the picture model only makes it real ink, there.
             _fixedWhy = "placed"; _fixedSay = await _fx("onme_coming", "Putting it on you now.");
           } else if (/^i want to create a new tattoo\.?$/i.test(_s)) {
-            _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Let's make something that's yours. Pick a style below, or tell me your idea and we'll build it together.");
+            _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Let's make something that's yours. Pick a style above, or tell me your idea and we'll build it together.");
             // HER OWN GREETING, BY NAME (v9.649, 2026-10-17, Aaron): "it'll be hi Aaron awesome let's create a new tattoo - acknowledging
             // the human by what information we have". Her words replace the fixed line; if she does not answer, the fixed line stands.
             try {
               const _fn = String((opts && opts.first) || "").replace(/[^A-Za-z\u00C0-\u00FF' -]/g, "").trim().slice(0, 30);
               const _gq = await proxyToAgent(env, "[THEY JUST TAPPED CREATE NEW TATTOO." + (_fn ? " Their first name is " + _fn + "." : "") + "] " +
                 "Reply as you always do, with do set to none. say: greet them" + (_fn ? " by name" : "") + " in one or two warm, short lines and invite them " +
-                "to share what they're imagining - a story, a memory, a feeling, or just a picture in their head - or to pick a style below. " +
+                "to share what they're imagining - a story, a memory, a feeling, or just a picture in their head - or to pick a style above. " +
                 "Do not draw anything yet.\n\n(Reply with the JSON object. No prose.)", false, me + "_hello", null, world);
               const _ga = (_gq && _gq.reply && !_gq.failed) ? talkReadAct(_gq.reply) : null;
               const _gs = String((_ga && _ga.say) || "").trim();

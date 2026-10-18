@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.659.0-2026-10-18-she-reads-no-places";
+const BUILD = "aura-core-v9.660.0-2026-10-18-addon-ideas-without-her";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66335,6 +66335,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // image model was told "I want to change it: Show me: Chrome garden...". A tapped idea is a new four of that idea.
             _fixedWhy = "four_new"; _fixedSay = await _fx("four_coming", "Here they come - four versions of that for you.");
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
+          } else if (_bodyPhoto && (/^\s*(?:give|show) me some ideas\.?\s*$/i.test(_s) || /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) && (() => {
+                       // ADD-ON IDEAS DRAW AT ONCE (v9.660, 2026-10-18, Aaron: "take her off the drawing ... she can read it when it
+                       // comes back"). MEASURED 07:15 (pta_eb938501011c73f8): 103.5s - she took 45.8s, her words were replaced by the
+                       // fixed line and her four ideas thrown away; the image model got the one setting sentence either way. Only when
+                       // they started with Add to Existing - a cover-up keeps her.
+                       for (let i = tnow.length - 1; i >= 0; i--) { const _t = tnow[i];
+                         if (_t && _t.role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(_t.said || "")))
+                           return /^\s*i want to add to a tattoo/i.test(String(_t.said || "")); }
+                       return false; })()) {
+            _fixedWhy = "addon_ideas"; _fixedSay = await _fx("addon_ideas", "Here they come - four ways your tattoo could grow.");
           } else if (/^i want number [1-4]\.?$/i.test(_s) && _bodyPhoto && await (async () => {
                        // THE ADD-ON PICK IS A CUT, SO SHE IS NOT CALLED (v9.652, 2026-10-17, Aaron). MEASURED 19:43 (pta_15fa057112170b60):
                        // the cut took 2s, but she was asked first (15.6s) and looked at the cut after (15.6s) - 35s for a picture that

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.666.0-2026-10-18-title-is-a-name";
+const BUILD = "aura-core-v9.667.0-2026-10-18-their-words-four-too";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67425,13 +67425,29 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if (_dirTap && (act === "draw" || act === "change" || act === "onme")) {
         console.log("[TURN:PLACE] they said where - nothing drawn yet (her act was " + act + ")"); act = "none";
       }
-      let _ideasGrid = false, _addonPoss = false;
+      let _ideasGrid = false, _addonPoss = false, _addonOwnWords = null;
       if (_addonPossCard && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true; _addonPoss = true;
         console.log("[TURN:IDEAS] four possibilities of the chosen add-on, on their photo: " + _addonPossCard);
       } else if (_askIdeas && jobNow === "add" && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true;
         console.log("[TURN:IDEAS] four ideas drawn as one grid on their photo, from the one fixed sentence");
+      } else if (jobNow === "add" && refDesign && _bodyPhoto && !(opts && opts.inspire) && (act === "draw" || act === "change") &&
+                 !_pickGo && !_cutPick && _fixedWhy !== "pick" && String(said || "").trim()) {
+        // THEIR OWN WORDS COME BACK AS FOUR TOO (v9.667, 2026-10-18, Aaron: "I gave a tattoo my idea before suggestions - 4 style
+        // cards ... this is the main feature"). MEASURED 11:43: "I really love this style and the vibe I wanna Do a full sleeve" drew
+        // ONE picture from her description. Every add-on drawing turn that is not a pick is four: on the design they chose (their
+        // photo, the card, their words - as Fine-tune), or before any choice, their photo and their words in one sentence.
+        try {
+          const _tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || [];
+          for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i];
+            if (e && e.role === "picture") { const _id = (String(e.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+              if (_id && await env.AURA_KV.get("bodycut:" + _id)) _addonPossCard = String(e.image);
+              break; } }
+        } catch {}
+        act = "change"; _ideasGrid = true;
+        if (_addonPossCard) { _addonPoss = true; _addonChangeWords = String(said).trim(); console.log("[TURN:IDEAS] their change, four versions on the design they chose: " + _addonPossCard); }
+        else { _addonOwnWords = String(said).trim(); console.log("[TURN:IDEAS] their own idea, four versions on their photo"); }
       }
       // ══ A CHANGE TO A DESIGN COMES BACK AS FOUR VERSIONS (2026-10-14, v9.599, Aaron) ═══════════════════
       // "When they tell us what they want ... four different versions." On a new tattoo (not add / cover / rework),
@@ -68622,6 +68638,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               _go = _go.includes("I want to add to it.") ? _go.replace("I want to add to it.", "I want to add to it. " + _ps)
                   : _first ? (_first[0].trimEnd() + " " + _ps + " " + _go.slice(_first[0].length)) : (_ps + " " + _go);
               _goFrom += "+placement";
+            }
+            if (_addonOwnWords) {
+              // THEIR IDEA, FOUR VERSIONS (v9.667): the 11:52 sentence word for word, their words as they typed them.
+              let _ow = "This is my current tattoo. I want to add to it: ____. Show me 4 different versions of that, each one growing it the way a tattoo artist naturally would. Zoom out to show more of my body than this photo does, so the whole extended piece is visible. Keep my existing tattoo exactly as it is. Show all 4 in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you added.";
+              try { const _k = String((await env.AURA_KV.get("config:frame:addon:own")) || "").trim(); if (_k.includes("____")) _ow = _k; } catch {}
+              _go = _ow.replace("____", _addonOwnWords.replace(/[\s.]+$/, "").slice(0, 600)); _goFrom = "own";
             }
             _sentNow = _go;
             _herAsk = null;

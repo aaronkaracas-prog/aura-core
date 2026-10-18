@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.661.0-2026-10-18-addon-four-possibilities";
+const BUILD = "aura-core-v9.662.0-2026-10-18-artist-pdf-one-page-each-name-read";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59848,6 +59848,11 @@ function printLayout(pB64, pIn, pLong, opts) {
         const W = inked.get_width(), H = inked.get_height();
         // Longest side asked for and the piece is wider than tall: the height that makes the width it.
         if (pLong && W > H) pIn = Math.round((pIn * H / W) * 100) / 100;
+        // ONE PAGE, THE WHOLE DESIGN (v9.662, 2026-10-18, Aaron): the artist sizes it in their own stencil app; the page holds
+        // the whole piece as big as the paper allows, portrait or landscape, whichever is bigger.
+        let _fitLand = null;
+        if (opts.fit) { const _pt = Math.min(9.98, 7.48 * H / W), _ls = Math.min(7.48, 9.98 * H / W);
+                        _fitLand = _ls > _pt + 0.01; pIn = Math.max(_pt, _ls); }
         // VECTOR FIRST: the line art traced to outlines prints sharp at any height, so the pixel
         // ceiling below no longer applies. If tracing fails, everything below runs as it always has.
         if (opts.trace !== false) try {
@@ -59865,13 +59870,13 @@ function printLayout(pB64, pIn, pLong, opts) {
         // gets landscape and three inches it was losing to the margin.
         const fitFor = (wIn, hIn) => {
           if (pVec) return pIn;   // traced: neither the pixels nor the paper width limit it - wide pieces tile across too
-          const byDpi = pVec ? Infinity : H / MIN_DPI;   // as tall as the pixels allow - no limit once traced
+          const byDpi = (pVec || opts.fit) ? Infinity : H / MIN_DPI;   // as tall as the pixels allow - no limit once traced, or on a fitted page
           const byWide = (wIn * H) / W;              // as tall as the paper allows
           return Math.min(pIn, byDpi, byWide);
         };
         const tallPortrait = fitFor(7.5, 10.0);
         const tallLandscape = fitFor(10.0, 7.5);
-        const useLandscape = tallLandscape > tallPortrait + 0.01;
+        const useLandscape = _fitLand != null ? _fitLand : tallLandscape > tallPortrait + 0.01;
         if (useLandscape) { PAGE_IN = 7.5; WIDE_IN = 10.0; STEP_IN = PAGE_IN - OVERLAP_IN; }
         pTallIn = Math.min(pIn, useLandscape ? tallLandscape : tallPortrait);
         pWideIn = (W / H) * pTallIn;
@@ -59976,7 +59981,7 @@ async function artistPdf(env, o) {
     const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
     return id ? await env.AURA_KV.get("image:" + id).catch(() => null) : null;
   };
-  let defs = "", body = "", page = 2, vecN = 0, first = null, anyVec = false;
+  let defs = "", body = "", page = 3, vecN = 0, first = null, anyVec = false;   // page 1 the job sheet, page 2 how to use them
   const guide = [], perPanel = [];
   for (const pn of (o.panels || [])) {
     const items = [], _p0 = page;
@@ -59990,13 +59995,13 @@ async function artistPdf(env, o) {
       if (!L) {
         const b64 = await bytesOf(it.url);
         if (!b64) { guide.push([(pn.name ? pn.name + " - " : "") + it.label, "not available"]); continue; }
-        try { L = printLayout(b64, pn.inches, !!pn.long, it.colour ? { trace: false, jpeg: true } : {}); }
+        try { L = printLayout(b64, pn.inches, !!pn.long, it.colour ? { trace: false, jpeg: true, fit: true } : { fit: true }); }
         catch (e) { guide.push([(pn.name ? pn.name + " - " : "") + it.label, "could not be laid out"]); continue; }
         if (L.pVec) { L.gid = "a" + (vecN++); defs += '<g id="' + L.gid + '">' + L.pVec + "</g>"; anyVec = true; }
         laid[it.url] = L;
       }
       if (!it.colour && !first) first = L;
-      if (!it.colour && _tall == null) _tall = Number(L.pTallIn.toFixed(2));
+      if (!it.colour && _tall == null) _tall = Number(pn.inches) || null;
       const land = L.pOrient === "landscape", flip = it.mirror ? "transform:scaleX(-1);" : "";
       const start = page;
       // A mirrored piece wider than the paper: its columns run right to left, so they still join on the overlap.
@@ -60010,12 +60015,12 @@ async function artistPdf(env, o) {
       }
       const n = page - start;
       guide.push([(pn.name ? pn.name + " - " : "") + it.label,
-        "page " + start + (n > 1 ? "-" + (page - 1) + " (" + n + " sheets, " + L.OVERLAP_IN + " in overlap)" : "") + " - " +
-        L.pTallIn.toFixed(1) + " in tall" + (land ? ", landscape" : "")]);
+        "page " + start + (n > 1 ? "-" + (page - 1) : "") + (land ? ", landscape" : "") +
+        (it.colour ? " - for reference" : (Number(pn.inches) ? " - planned at about " + Number(pn.inches).toFixed(0) + " in" + (pn.long ? " on its longest side" : " tall") : ""))]);
     }
     perPanel.push({ inches: _tall, sheets: page - _p0 });
   }
-  if (page === 2) return { ok: false, error: "NOTHING_TO_PRINT" };
+  if (page === 3) return { ok: false, error: "NOTHING_TO_PRINT" };
   const row = (k, v) => v ? "<tr><td>" + esc(k) + "</td><td>" + esc(v) + "</td></tr>" : "";
   const html = "<!doctype html><html><head><meta charset=utf-8><style>" +
     "@page { size: 8.5in 11in; margin: 0.5in; } @page land { size: 11in 8.5in; margin: 0.5in; }" +
@@ -60027,12 +60032,21 @@ async function artistPdf(env, o) {
     ".art { break-before:page; page-break-before:always; break-inside:avoid; page-break-inside:avoid; display:flex; " +
     "align-items:center; justify-content:center; line-height:0; } .art.L { page: land; }" +
     ".art img, .art svg { display:block; margin:0; } .art img { width:auto; }" +
+    ".how { break-before:page; page-break-before:always; } .how li { margin:0 0 .15in 0; }" +
     "</style></head><body>" +
     "<h1>" + esc(o.title || "Tattoo design") + "</h1>" +
-    "<p class=sub>Print at 100%. Do not use Fit to Page - it changes the size. Every stencil is here three ways - linework, " +
-    "with a shading guide, and as a realism map - and each again mirrored, for printers that do not flip it themselves.</p>" +
+    "<p class=sub>Every stencil is here three ways - linework, with a shading guide, and as a realism map - and each again " +
+    "mirrored, for printers that do not flip it themselves. How to use them is on the next page.</p>" +
     "<table>" + (o.rows || []).map((r) => row(r[0], r[1])).join("") + "</table>" +
     "<h2>What is on each page</h2><table>" + guide.map((g) => row(g[0], g[1])).join("") + "</table>" +
+    // HOW TO USE THESE FILES (v9.662, 2026-10-18, Aaron: "a little bit of directions included in every artist file"). Researched:
+    // artists size the design in their stencil printer's app, which also splits a large design into sections with guides.
+    "<div class=how><h1>How to use these files</h1><ol>" +
+    "<li>Each stencil is on its own page, fitted to the page. The planned size is written on the first page as a guide - you and your client decide the final size.</li>" +
+    "<li>To print at your size, load the stencil image (in the client's artist files) into your stencil printer's app, or open this PDF in your own software. The stencils are drawn as lines, so they stay sharp at any size.</li>" +
+    "<li>Too big for one sheet? Most stencil printer apps split a large design into sections and print alignment guides, or use an A3 / large-format stencil printer.</li>" +
+    "<li>Mirrored versions are included for printers that don't flip the design themselves. If your app or printer flips it, use the normal version.</li>" +
+    "<li>The colour page shows the finished look. It is for reference, not for making a stencil.</li></ol></div>" +
     (defs ? '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute"><defs>' + defs + "</defs></svg>" : "") +
     body + "</body></html>";
   let pdfBytes = null, br = null;
@@ -60047,9 +60061,9 @@ async function artistPdf(env, o) {
   let pb = ""; for (let i = 0; i < arr.length; i += 8192) pb += String.fromCharCode.apply(null, arr.subarray(i, i + 8192));
   const docId = "doc_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   await env.AURA_KV.put("doc:" + docId, btoa(pb)).catch(() => {});
-  console.log("[ARTIST-PDF] " + docId + " · " + (page - 2) + " pages after the job sheet · " + guide.map((g) => g[0] + ": " + g[1]).join(" | ").slice(0, 900));
-  return { ok: true, doc: docId, pdf: "https://" + (await imageHost(env)) + "/doc/" + docId, pages: page - 1, sheets: page - 2,
-           inches: first ? Number(first.pTallIn.toFixed(2)) : null, vector: anyVec, guide, panels: perPanel };
+  console.log("[ARTIST-PDF] " + docId + " · " + (page - 3) + " pages after the job sheet and how-to · " + guide.map((g) => g[0] + ": " + g[1]).join(" | ").slice(0, 900));
+  return { ok: true, doc: docId, pdf: "https://" + (await imageHost(env)) + "/doc/" + docId, pages: page - 1, sheets: page - 3,
+           inches: (o.panels && o.panels[0] && Number(o.panels[0].inches)) || (first ? Number(first.pTallIn.toFixed(2)) : null), vector: anyVec, guide, panels: perPanel };
 }
 
 // ══ ONE OF THE FOUR ON THEIR BODY, CUT BY HAND (v9.651, 2026-10-17, Aaron) ════════════════════════════════
@@ -64125,13 +64139,17 @@ async function makeArtistFiles(env, ctx) {
             let lineUrl = null, lineId = null;
             // EVERY STENCIL, NOT ONE (v9.653, 2026-10-17, Aaron: "we give them every version"): the linework, the shading
             // guide and the realism map are made side by side from the same flat artwork, each caught on its own.
+            // ONE MORE TRY (v9.662, 2026-10-18): MEASURED 08:07:18 - the whole piece's shading guide was lost to one server error
+            // at the image model ("The server had an error while processing your request"); nothing asked again.
             const _fin = async (flat, mode) => {
-              try {
-                const r = await processCommand("FINAL " + flat + " " + mode, env, true);
-                const q = (r && r.payload) ? r.payload : r;
-                if (q && q.ok && q.image) return q;
-                console.log("[ARTIST] " + mode + " stencil not made: " + String((q && q.error) || "?").slice(0, 160));
-              } catch (e) { console.log("[ARTIST] " + mode + " stencil failed: " + String(e?.message ?? e).slice(0, 160)); }
+              for (let _try = 1; _try <= 2; _try++) {
+                try {
+                  const r = await processCommand("FINAL " + flat + " " + mode, env, true);
+                  const q = (r && r.payload) ? r.payload : r;
+                  if (q && q.ok && q.image) return q;
+                  console.log("[ARTIST] " + mode + " stencil not made (try " + _try + "): " + String((q && q.error) || "?").slice(0, 160));
+                } catch (e) { console.log("[ARTIST] " + mode + " stencil failed (try " + _try + "): " + String(e?.message ?? e).slice(0, 160)); }
+              }
               return null;
             };
             for (const sh of sheets) {
@@ -69439,7 +69457,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 })(opts.name)
                 : (drew && drew.name_hint) ? String(drew.name_hint)
                 : (intent && intent.subject) ? String(intent.subject).slice(0, 70)
-                : (drew && drew.image && !drew.failed && !drew.for_the_artist)
+                // NEVER OUR OWN SENTENCE (v9.662, 2026-10-18, Aaron: "the sentence is just wrong"): MEASURED - My Tattoos read "This is
+                // my current tattoo. Show me 4 different ideas for extending it", the fixed sentence the four were drawn from. Those
+                // words name nothing; the title waits for her name at This Is My Tattoo.
+                : (drew && drew.image && !drew.failed && !drew.for_the_artist &&
+                   !/^(ideas_grid|addon_poss|design_grid|grid_pick)/.test(String(drew.words_from || "")))
                 ? (String(drew.asked || drew.changed || "").split(",")[0].trim().slice(0, 70) || null) : null,
               came_from: _cameFrom ? _cameFrom.id : null,
               ...(_herName ? { name_final: _herName } : {}),
@@ -69485,7 +69507,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                     // and her next chat reply to a photo was "NAME: Blush Floral Arm Sleeve COLOUR: ...". Side jobs
                     // go to her own second instance, never into the conversation with them.
                     false, me + "_side", _imgN, world);
-                  const raw = (q && q.reply && !q.failed) ? String(q.reply) + "\n" + String(_verdict(q.reply, readAct(q.reply)) || "") : "";
+                  // HER WORDS, NOT HER ENVELOPE (v9.662, 2026-10-18): MEASURED 08:05:57 - she answered {"say":"NAME: Norse Wolf and
+                  // Ravens Sleeve\nCOLOUR: black and grey",...}; read raw, the "\n" was two letters, the name ran into the colour,
+                  // passed seven words and was thrown away. The text inside "say" is read first.
+                  let _sayTxt = ""; try { const _j = JSON.parse(String((q && q.reply) || "")); if (_j && typeof _j.say === "string") _sayTxt = _j.say; } catch {}
+                  if (!_sayTxt) { const _m = String((q && q.reply) || "").match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (_m) { try { _sayTxt = JSON.parse('"' + _m[1] + '"'); } catch {} } }
+                  const raw = (q && q.reply && !q.failed) ? (_sayTxt ? _sayTxt + "\n" : "") + String(q.reply) + "\n" + String(_verdict(q.reply, readAct(q.reply)) || "") : "";
                   const clean = (x) => String(x || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 60);
                   let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
                   const c = clean((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,60})/i) || [])[1]);

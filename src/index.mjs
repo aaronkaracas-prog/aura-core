@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.650.0-2026-10-17-styles-above-her-words";
+const BUILD = "aura-core-v9.651.0-2026-10-17-addon-four-cut-not-redrawn";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13700,6 +13700,8 @@ async function successionGate(env) {
         if (!hit) return { cmd: "CUT_PANEL", payload: { ok: false, error: "no four sheet on " + cpSrc } };
         cpSrc = hit.image;
       }
+      // `CUT_PANEL <sheet> <n> BODY` (v9.651) cuts an add-on sheet on their body, marked or not - the back-end test.
+      if (/^BODY$/i.test(String(args[2] || "").trim())) return { cmd: "CUT_PANEL", payload: await cutBodyPanel(env, cpSrc, cpN) };
       return { cmd: "CUT_PANEL", payload: await cutPanel(env, cpSrc, cpN) };
     }
     case "GETKV": {
@@ -59799,7 +59801,12 @@ async function cutPanel(env, url, n) {
   const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
   const W = im.get_width(), H = im.get_height();
   // Only a tall page of four phone-shaped cards (9:16) is cut; anything else is not ours to chop.
-  if (Math.abs(W / H - 0.5625) > 0.03) { try { im.free(); } catch {} return { ok: false, error: "not a four-card sheet (" + W + "x" + H + ")" }; }
+  if (Math.abs(W / H - 0.5625) > 0.03) {
+    try { im.free(); } catch {}
+    // THE ADD-ON FOUR ON THEIR BODY (v9.651): a sheet marked when it was made is cut by its own rule.
+    if (await env.AURA_KV.get("bodysheet:" + id).catch(() => null)) return await cutBodyPanel(env, id, n);
+    return { ok: false, error: "not a four-card sheet (" + W + "x" + H + ")" };
+  }
   const px = im.get_raw_pixels();
   const col = (n - 1) % 2, row = Math.floor((n - 1) / 2), qw = W / 2, qh = H / 2;
   // THE CARD, NOT THE STRIP (v9.619, 2026-10-15, Aaron). MEASURED 18:31 on img_mvaa8xlyn7d5: the white title and
@@ -59908,6 +59915,77 @@ async function cutPanel(env, url, n) {
     sheet: W + "x" + H, cut: cw + "x" + ch, cut_above_title: words, strip_found: stripTop < y1, strip_at: stripTop - y0, panel_height: y1 - y0 };
   await env.AURA_KV.put("panelcut5:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
   console.log("[CUT] panel " + n + " of " + id + " (" + out.sheet + ") -> " + nid + " " + out.cut + (words ? " · cut above the title" : out.strip_found ? " · strip cut off" : " · no strip found"));
+  return out;
+}
+
+// ══ ONE OF THE FOUR ON THEIR BODY, CUT BY HAND (v9.651, 2026-10-17, Aaron) ════════════════════════════════
+// "We crop it - that's the one they're working on." The add-on four come back as one 2x2 sheet in the shape of their photo:
+// each quarter is their body with the new work, over a white strip with the title and two lines. MEASURED 18:53
+// (pta_8915b37d0bb3500f): picking number 3 sent it back to the image model, which refused it twice for safety and took 97s.
+// This cuts the chosen quarter straight out of the stored pixels - no image model, no cost, never different from what they
+// chose. The white strip is found by its light rows (the word lines are short gaps inside it); the photo ends where it
+// begins. If the strip is not found, the whole quarter is kept - nothing of the photo is ever cut off.
+// Only for sheets marked `bodysheet:<id>` when the add-on four were made (or forced by CUT_PANEL ... BODY).
+async function cutBodyPanel(env, url, n) {
+  const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
+  if (!id || ![1, 2, 3, 4].includes(Number(n))) return { ok: false, error: "need a picture and a number 1-4" };
+  n = Number(n);
+  const was = await env.AURA_KV.get("bodycut1:" + id + ":" + n).catch(() => null);
+  if (was) { try { return JSON.parse(was); } catch {} }
+  const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+  if (!b64) return { ok: false, error: "picture not found: " + id };
+  const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+  const W = im.get_width(), H = im.get_height();
+  const px = im.get_raw_pixels();
+  const mn = (x, y) => { const o = (y * W + x) * 4; return Math.min(px[o], px[o + 1], px[o + 2]); };
+  // The white of the strip: near the top of how light the sheet gets (97th percentile of each pixel's darkest channel).
+  const hist = new Uint32Array(256); let cnt = 0;
+  for (let y = 0; y < H; y += 4) for (let x = 0; x < W; x += 4) { hist[mn(x, y)]++; cnt++; }
+  let acc = 0, bg = 255; for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= cnt * 0.97) { bg = v; break; } }
+  const lt = bg - 16;
+  const lightCol = (x, y0, y1) => { let t = 0, l = 0; for (let y = y0; y < y1; y += 3) { t++; if (mn(x, y) >= lt) l++; } return t ? l / t : 0; };
+  const lightRow = (y, x0, x1) => { let t = 0, l = 0; for (let x = x0; x < x1; x += 2) { t++; if (mn(x, y) >= lt) l++; } return t ? l / t : 0; };
+  // The line between left and right: the lightest column in the middle 6%.
+  let mid = Math.round(W / 2), best = -1;
+  for (let x = Math.round(W * 0.47); x <= Math.round(W * 0.53); x++) { let s = 0, t = 0; for (let y = 0; y < H; y += 4) { s += mn(x, y); t++; } if (s / t > best) { best = s / t; mid = x; } }
+  const col = (n - 1) % 2, row = Math.floor((n - 1) / 2);
+  let x0 = col === 0 ? 0 : mid + 2, x1 = col === 0 ? mid - 1 : W;
+  while (x0 < x1 && lightCol(x0, 0, H) > 0.9) x0++;          // the sheet's own white margin
+  while (x1 > x0 && lightCol(x1 - 1, 0, H) > 0.9) x1--;
+  const L = new Uint8Array(H); for (let y = 0; y < H; y++) L[y] = lightRow(y, x0, x1) > 0.55 ? 1 : 0;
+  let runs = [], s = -1;
+  for (let y = 0; y < H; y++) { if (L[y] && s < 0) s = y; if (!L[y] && s >= 0) { runs.push([s, y]); s = -1; } }
+  if (s >= 0) runs.push([s, H]);
+  const merged = [];                                          // the word lines are short gaps inside one strip
+  for (const r of runs) { if (merged.length && r[0] - merged[merged.length - 1][1] < H * 0.03) merged[merged.length - 1][1] = r[1]; else merged.push([r[0], r[1]]); }
+  runs = merged.filter((r) => r[1] - r[0] >= Math.max(3, H * 0.01));
+  const midRuns = runs.filter((r) => r[0] < H * 0.62 && r[1] > H * 0.38);
+  let top, bot, found = false;
+  if (midRuns.length) {
+    const mr = midRuns.reduce((a, b) => (b[1] - b[0] > a[1] - a[0] ? b : a));
+    if (row === 0) { top = 0; while (top < H && L[top]) top++; bot = mr[0]; }
+    else { top = mr[1]; const tail = runs.filter((r) => r[0] > H * 0.7); bot = tail.length ? tail[tail.length - 1][0] : H; }
+    found = (bot - top) > H * 0.25 && (mr[1] - mr[0]) < H * 0.2;
+  }
+  if (!found) { top = row === 0 ? 0 : Math.round(H / 2) + 2; bot = row === 0 ? Math.round(H / 2) - 1 : H; }
+  // A hair inside the edges, so no border line of the sheet comes with it.
+  const ins = Math.round(Math.min(W, H) * 0.004);
+  const a = x0 + ins, b = top + ins, cw = (x1 - ins) - a, ch = (bot - ins) - b;
+  if (cw < 50 || ch < 50) { try { im.free(); } catch {} return { ok: false, error: "panel " + n + " too small to cut (" + cw + "x" + ch + ")" }; }
+  const dst = new Uint8Array(cw * ch * 4);
+  for (let y = 0; y < ch; y++) { const so = ((b + y) * W + a) * 4; dst.set(px.subarray(so, so + cw * 4), y * cw * 4); }
+  try { im.free(); } catch {}
+  const cut = new PhotonImage(dst, cw, ch);
+  const bts = cut.get_bytes_jpeg(92);
+  try { cut.free(); } catch {}
+  let t = "";
+  for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
+  const nid = "img_p" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+  await env.AURA_KV.put("image:" + nid, btoa(t));
+  const out = { ok: true, image_url: "https://" + (await imageHost(env)) + "/image/" + nid, from: id, panel: n, body: true,
+    sheet: W + "x" + H, cut: cw + "x" + ch, words_cut_off: found, middle_line: mid, strip_white: bg };
+  await env.AURA_KV.put("bodycut1:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
+  console.log("[CUT] body panel " + n + " of " + id + " (" + out.sheet + ") -> " + nid + " " + out.cut + (found ? " · the words under it cut off" : " · words not found - the whole quarter kept"));
   return out;
 }
 
@@ -68326,6 +68404,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _withNow = [_pickGridImg];
             _herAsk = null;
             _wordsFrom = "addon_grid_pick";
+            // CUT, NOT REDRAWN (v9.651, Aaron: "we crop it - that's the one they're working on"): a marked add-on sheet hands
+            // back the chosen quarter itself. The words above stay only as the fallback if the cut cannot be made.
+            try {
+              const _bsid = (String(_pickGridImg).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+              if (_bsid && await env.AURA_KV.get("bodysheet:" + _bsid)) {
+                _gridPickCut = { img: _pickGridImg, n: _pickN, card: null };
+                console.log("[TURN:PICK] number " + _pickN + " is cut out of the add-on sheet - the image model only if the cut fails");
+              }
+            } catch {}
             console.log("[TURN:PICK] number " + _pickN + " drawn on their own photo, the grid sent as the second picture");
           }
           // ══ MADE FROM THE PICTURE: THE PHOTO, ONE OPENING, HER BRIEF (2026-10-01, v9.504, Aaron) ═══
@@ -68510,11 +68597,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const _next = _resetToPhoto ? (_bad ? 1 : 0) : (_bad ? badStreak + 1 : 0);
             await talkStatePut(env, me, "bad", String(_next));
           }
+          // THE ADD-ON FOUR ARE MARKED (v9.651): a pick off this sheet is cut out of it, never redrawn (cutBodyPanel).
+          if (_ideasGrid && cp?.ok && cp.image_url) {
+            const _bsid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+            if (_bsid) { try { await env.AURA_KV.put("bodysheet:" + _bsid, "1"); console.log("[CUT] add-on four marked to be cut on a pick: " + _bsid); } catch {} }
+          }
           drew = (cp?.ok && cp.image_url)
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
                 ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { panels: true } : {}),
+                ...(_ideasGrid ? { body_sheet: true } : {}),
                 ...(_designGrid && (readSaidCards(cp.said) || (cp.brief && readCards(cp.brief))) ? { cards: readSaidCards(cp.said) || readCards(cp.brief) } : {}),
                 ...(_designGrid && _designWords === "__poss__" ? { possibilities: true } : {}),
                 ...(cp.card ? { card: cp.card } : {}), ...(cp.cut ? { cut: true } : {}),
@@ -70003,7 +70096,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // in the log said why. Each step is timed: when the call arrived, reading the project, and her answer.
         const _nt0 = Date.now();
         console.log("[NEXT] asked · " + String(b.stage || "") + (me ? " · who=" + me : ""));
-        const stage = ["sheet", "poss", "change", "design", "finetune", "new"].includes(String(b.stage)) ? String(b.stage) : "design";
+        const stage = ["sheet", "addsheet", "poss", "change", "design", "finetune", "new"].includes(String(b.stage)) ? String(b.stage) : "design";
         const cards = (Array.isArray(b.cards) ? b.cards : []).map((x) => String(x || "").replace(/\s+/g, " ").trim().slice(0, 200)).filter(Boolean).slice(0, 4);
         // SHE SEES WHAT THEY SEE (v9.636, 2026-10-17, Aaron): the sheet when four came back, the cut design once they chose one.
         const seen = /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.url || "")) ? String(b.url) : null;
@@ -70014,6 +70107,7 @@ export class PublicEntry extends WorkerEntrypoint {
         const pics = (pj && Array.isArray(pj.pictures)) ? pj.pictures.length : 0;
         const lines = (pj && Array.isArray(pj.lines)) ? pj.lines.slice(-10).map((l) => (l.role === "them" ? "Them: " : "You: ") + String(l.said || "").replace(/\s+/g, " ").replace(/^\s*i want number [1-4]\.?\s*$/i, "I choose this design").slice(0, 300)) : [];
         const where = stage === "sheet" ? "Four new designs just came back on one sheet. They have not chosen one yet."
+          : stage === "addsheet" ? "Four directions for adding to the tattoo they already have just came back on one sheet, each shown on their own photo. They have not chosen one yet."
           : stage === "poss" ? "Four possibilities of the design they chose just came back on one sheet. They have not chosen one yet."
           : stage === "change" ? "Four versions of the change they asked for, on the design they chose, just came back on one sheet. They have not chosen one yet."
           : stage === "finetune" ? "They tapped Fine-tune it on the one design they are working on - they want to change something on it."

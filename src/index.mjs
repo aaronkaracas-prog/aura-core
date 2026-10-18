@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.655.0-2026-10-18-addon-places-it-could-go";
+const BUILD = "aura-core-v9.656.0-2026-10-18-places-are-not-ideas";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65470,7 +65470,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         "{\n" +
         // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
         // so the floor and her live agent cannot disagree.
-        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give the ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'. When they are adding to a tattoo they have, read the whole picture - what is already inked, what skin is open, and what the photo cuts off - and put the places it could go in directions.",\n' +
+        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give design ideas yet. When they are adding to a tattoo they have, read the whole picture - what is already inked, what skin is open, and what the photo cuts off - and always put the places it could go in directions; places are not ideas. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
@@ -69477,6 +69477,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         console.log("[TURN:WORDS] they said: \"" + String(saidIn || "").replace(/\s+/g, " ").slice(0, 2000) + "\" · shown to them: \"" +
           String(_said || (acted && acted.say) || "").replace(/\s+/g, " ").slice(0, 2000) + "\"" + (_fixedWhy ? " · fixed (" + _fixedWhy + ")" : "") + (me ? " · who=" + me : ""));
       } catch {}
+      // HER PLACES, SEEN (v9.656): on every add-on turn, the places she offered or "none" - measured 05:25, ideas=0 and no way to see why.
+      try { if (_bodyPhoto && (jobNow === "add" || _freshPhoto)) {
+        const _pl = (acted && Array.isArray(acted.directions)) ? acted.directions : [];
+        console.log("[TURN:PLACES] she offered: " + (_pl.length ? _pl.map((x) => "\"" + x + "\"").join(" | ") : "none"));
+      } } catch {}
       // THE LAST TURN, KEPT FOR A PAGE THAT LOST THE CONNECTION (2026-10-12, v9.572). MEASURED 06:45: a 128s turn
       // drew the picture and the phone showed "I could not answer that". The page asks for this by its turn id.
       if (me && opts && opts.tid) {

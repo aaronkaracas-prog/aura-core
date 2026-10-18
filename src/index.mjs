@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.660.0-2026-10-18-addon-ideas-without-her";
+const BUILD = "aura-core-v9.661.0-2026-10-18-addon-four-possibilities";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13473,7 +13473,10 @@ async function successionGate(env) {
       // it drew at its own (higher) quality, far above the app's ~1 cent. The tool now gets the app's own
       // image model (`config:edit:model`) and quality (`config:edit:quality`) - the dials every edit uses.
       const thImgModel = thOA ? String((await env.AURA_KV.get("config:edit:model").catch(() => null)) || "").trim() : "";
-      const thQual = thOA ? String((await env.AURA_KV.get("config:edit:quality").catch(() => null)) || "").trim().toLowerCase() : "";
+      let thQual = thOA ? String((await env.AURA_KV.get("config:edit:quality").catch(() => null)) || "").trim().toLowerCase() : "";
+      // A CALLER MAY NAME ITS QUALITY (v9.661, 2026-10-18, Aaron): the add-on possibilities draw at their own setting
+      // (MEASURED 07:40: low gave four near-copies of one raven, medium gave four real versions). Unnamed, the setting above.
+      if (thOA && thP && ["low", "medium", "high", "auto"].includes(String(thP.quality || "").toLowerCase())) thQual = String(thP.quality).toLowerCase();
       // ITS OWN SIZE (v9.595, Aaron): nothing named a size, so OpenAI chose 1254x1254 every time - four ideas and
       // their captions in ~627 pixels each, too small to read. A setting, `config:edit:thread:size` (default
       // "1920x1920": the same square shape the model picked, at the largest size `config:edit:maxpx` allows).
@@ -19651,7 +19654,12 @@ async function successionGate(env) {
           const _sendUrl = await sendCopy(env, parentUrl);
           let tp = null;
           for (let _t = 0; _t < 2; _t++) {
+            // MORE THAN ONE PICTURE, IN ORDER (v9.661): the parent first, then `with` - the add-on possibilities send their photo,
+            // then the design they chose, exactly as the 07:40 command did.
+            const _thImgs = withRefs.length ? [_sendUrl, ...withRefs] : null;
             const tr = await processCommand("THREAD START " + _sendUrl + " " + JSON.stringify({ prompt: p.prompt, action: "auto",
+              ...(_thImgs ? { images: _thImgs } : {}),
+              ...(["low", "medium", "high", "auto"].includes(String(p.quality || "")) ? { quality: String(p.quality) } : {}),
               ...(/^\d{3,4}x\d{3,4}$/.test(String(p.size || "")) ? { size: String(p.size) } : {}) }), env, true);
             tp = (tr && tr.payload) ? tr.payload : tr;
             if (tp && tp.ok && tp.image) break;
@@ -66262,7 +66270,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // versions), and a number picked off those four. Each now answers with one fixed line (a setting each) and she is
       // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
-      let _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false;
+      let _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -66320,6 +66328,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "new_start", _s.slice(0, 500)); } catch {}
           } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
+          } else if (_bodyPhoto && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s) && await (async () => {
+                       // FOUR POSSIBILITIES OF A CHOSEN ADD-ON (v9.661, 2026-10-18, Aaron): "the same way we do tattoos ... a version
+                       // that was on their chest or on their arm, then they can evolve it from there". Their photo and the card they
+                       // chose go to the chat model with one sentence (`config:frame:addon:poss`), at `config:edit:addon_poss:quality`.
+                       // PROVEN 07:40 by command (img_mvdxmlit53oj, medium). The last picture must be a card cut off an add-on sheet
+                       // (bodycut:) - or, for "4 more", a possibilities sheet (bodyposs: holds the card it was made from).
+                       try {
+                         const _tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || [];
+                         for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i];
+                           if (e && e.role === "picture") { const _id = (String(e.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                             if (!_id) return false;
+                             if (await env.AURA_KV.get("bodycut:" + _id)) { _addonPossCard = String(e.image); return true; }
+                             const _was = await env.AURA_KV.get("bodyposs:" + _id);
+                             if (_was) { _addonPossCard = String(_was); return true; }
+                             return false; } }
+                       } catch {}
+                       return false; })()) {
+            _fixedWhy = "addon_poss"; _fixedSay = await _fx("addon_poss", "Imagining 4 possibilities on you now.");
           } else if ((_newFlow || _lastDesignChange || (opts && opts.pick && refUrl)) && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
             // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): after they choose a design, four possibilities for that
             // same design, on the same four-card sheet - the chat model reads the design, nothing is asked of her.
@@ -67354,8 +67380,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if (_dirTap && (act === "draw" || act === "change" || act === "onme")) {
         console.log("[TURN:PLACE] they said where - nothing drawn yet (her act was " + act + ")"); act = "none";
       }
-      let _ideasGrid = false;
-      if (_askIdeas && jobNow === "add" && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
+      let _ideasGrid = false, _addonPoss = false;
+      if (_addonPossCard && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
+        act = "change"; _ideasGrid = true; _addonPoss = true;
+        console.log("[TURN:IDEAS] four possibilities of the chosen add-on, on their photo: " + _addonPossCard);
+      } else if (_askIdeas && jobNow === "add" && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true;
         console.log("[TURN:IDEAS] four ideas drawn as one grid on their photo, from the one fixed sentence");
       }
@@ -68489,6 +68518,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // lines go, as before. Every change after the first picture is unchanged.
           let _herAsk = null;
           let _seedNow = null, _withNow = null;   // v9.586: a fresh grid, and the grid sent with a pick
+          let _qualNow = null;                     // v9.661: a quality named for this one picture (add-on possibilities)
           let _canvasNow = null;                   // v9.591: the ideas picture's own canvas
           let _viaNow = null;                      // v9.596: "thread" - the ideas picture goes the chat-model way
           let _asNow = null;                       // v9.629: the image job's dial - "show_it_cmd" for the four possibilities
@@ -68551,6 +68581,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _sentNow = _go;
             _herAsk = null;
             _wordsFrom = "ideas_grid_" + _goFrom;
+            if (_addonPoss) {
+              // THE POSSIBILITIES SENTENCE (v9.661): word for word the 07:40 command; no place added.
+              let _ap = "The first picture is my tattoo as it is today. The second picture is the design I chose for adding to it. Show me 4 different versions of what I'm adding, on my body. Make number 1 the closest to the design I chose. For 2, 3 and 4, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is. Keep the same view of my body as the second picture. Show all 4 in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you changed.";
+              try { const _k = String((await env.AURA_KV.get("config:frame:addon:poss")) || "").trim(); if (_k) _ap = _k; } catch {}
+              _sentNow = _ap; _wordsFrom = "addon_poss";
+              _withNow = [_addonPossCard];
+              _qualNow = "medium";
+              try { const _k = String((await env.AURA_KV.get("config:edit:addon_poss:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(_k)) _qualNow = _k; } catch {}
+            }
             // A FRESH FOUR EVERY TIME (v9.586): the image cache is keyed on the photo and the words, so the
             // same sentence on the same photo would hand back the same grid. A seed makes it a new ask.
             _seedNow = 1 + Math.floor(Math.random() * 2000000000);
@@ -68652,6 +68691,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   ...(_canvasNow ? _canvasNow : {}),
                   // THE IDEAS PICTURE GOES THE CHATGPT WAY (v9.596): a chat model reads their photo and writes the brief.
                   ...(_viaNow ? { via: _viaNow } : {}),
+                  ...(_qualNow ? { quality: _qualNow } : {}),
                   ...(_sizeNow ? { size: _sizeNow } : {}) }), env, true);
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
@@ -68678,6 +68718,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                     const _reg = await registerSmartFile(env, { id: _cid, filetype: "image", name: _cardT || ("number " + _gridPickCut.n + " of the four"),
                       url: _c.image_url, subject: "number " + _gridPickCut.n + ", cut from the four", source: "panel_cut", creator: me || null,
                       parent: cur, context: "they chose number " + _gridPickCut.n + " - cut from the sheet, nothing redrawn", access: "public" });
+                    // A CARD CUT OFF AN ADD-ON SHEET IS MARKED (v9.661): Imagine 4 possibilities starts from it.
+                    if (_cid) { try { await env.AURA_KV.put("bodycut:" + _cid, "1"); } catch {} }
                     t = { ok: true, image_url: _c.image_url, child: (_reg && _reg.entity_id) || null, cut: true,
                           ...(_gridPickCut.card ? { card: _gridPickCut.card } : {}) };
                     _pl("number " + _gridPickCut.n + " cut from the sheet by hand - no image model, nothing redrawn -> " + _c.image_url + " (" + _c.cut + (_c.strip_found ? ", strip cut off" : "") + ")");
@@ -68796,6 +68838,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             } else if (_ideasGrid) {
               let _done = "Here are four ideas. Tap the one you want to work on, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:ideas_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              if (_addonPoss) {
+                _done = "Here are 4 possibilities on you. Tap the one you like, or I can imagine 4 more.";
+                try { const _k = String((await env.AURA_KV.get("config:say:addon_poss_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              }
               _reaction = _done;
             } else if (_fixedWhy === "pick") {
               _reaction = _fixedSay;   // v9.602 / v9.605: the picked version, no look - the fixed line stands, every round
@@ -68816,6 +68862,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_ideasGrid && cp?.ok && cp.image_url) {
             const _bsid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
             if (_bsid) { try { await env.AURA_KV.put("bodysheet:" + _bsid, "1"); console.log("[CUT] add-on four marked to be cut on a pick: " + _bsid); } catch {} }
+            if (_bsid && _addonPoss && _addonPossCard) { try { await env.AURA_KV.put("bodyposs:" + _bsid, _addonPossCard); } catch {} }
           }
           drew = (cp?.ok && cp.image_url)
             ? { design: cp.child, image: cp.image_url,
@@ -68824,7 +68871,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { panels: true } : {}),
                 ...(_ideasGrid ? { body_sheet: true } : {}),
                 ...(_designGrid && (readSaidCards(cp.said) || (cp.brief && readCards(cp.brief))) ? { cards: readSaidCards(cp.said) || readCards(cp.brief) } : {}),
-                ...(_designGrid && _designWords === "__poss__" ? { possibilities: true } : {}),
+                ...((_designGrid && _designWords === "__poss__") || _addonPoss ? { possibilities: true } : {}),
                 ...(cp.card ? { card: cp.card } : {}), ...(cp.cut ? { cut: true } : {}),
                 ...((acted.ask && !_herAsk && String(jobNow || "") === "add") ? { her_ask_not_used: String(acted.ask).slice(0, 400) } : {}),
                 ...(_pointed.length ? { lines: _pointed.map((l) => l.n + " " + l.who) } : {}),

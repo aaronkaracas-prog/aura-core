@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.667.0-2026-10-18-their-words-four-too";
+const BUILD = "aura-core-v9.668.0-2026-10-18-cover-four-no-numbers";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60191,7 +60191,7 @@ async function lookCopy(env, url) {
 // rewrote our words into its own stock picks (phoenix, crescent moon, neon, desert) on run after run. And the one
 // sentence added to every four that asks the chat model to list the cards in its written reply (`config:frame:cards:info`).
 // The image model never writes words back - the chat model does, in its reply; until now that reply was thrown away.
-const POSS_SENTENCE = "This is my tattoo design. Show me 4 different designs of it. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them creative and amazing. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
+const POSS_SENTENCE = "This is my tattoo design. Show me 4 different designs of it. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea. Make them creative and amazing. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
 const CARD_INFO_ASK = "In your written reply, also list the 4 cards in order, one per line, as: TITLE | first line | second line | one sentence about the design and where on the body it would look best.";
 async function cardInfoAsk(env) {
   try { const k = String((await env.AURA_KV.get("config:frame:cards:info")) || "").trim(); if (k) return k; } catch {}
@@ -66408,14 +66408,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        // comes back"). MEASURED 07:15 (pta_eb938501011c73f8): 103.5s - she took 45.8s, her words were replaced by the
                        // fixed line and her four ideas thrown away; the image model got the one setting sentence either way. Only when
                        // they started with Add to Existing - a cover-up keeps her.
+                       // A COVER-UP IS THE SAME ROAD (v9.668, 2026-10-18, Aaron): MEASURED 12:23 - job=cover, "Show me some ideas",
+                       // she was asked (31.5s) and nothing was drawn. PROVEN 12:51 by command (img_mve8gzsjynza): their photo and one
+                       // cover sentence (`config:frame:cover:grid`) came back as four cover-ups in colour, the tiger hidden.
                        for (let i = tnow.length - 1; i >= 0; i--) { const _t = tnow[i];
                          if (_t && _t.role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(_t.said || "")))
-                           return /^\s*i want to add to a tattoo/i.test(String(_t.said || "")); }
+                           return /^\s*i want to (add to|cover up) a tattoo/i.test(String(_t.said || "")); }
                        // NO TILE, SAME ROAD (v9.664, 2026-10-18, Aaron: "I should never be able to trigger an old pattern"): MEASURED
                        // 10:33 - a photo sent straight into the chat, "I want to add to it": the job was add (job=add) but this
                        // waited for the Add to Existing opening line, so the old ideas path drew. The job core already holds decides.
-                       return String((carriedObj && carriedObj.job) || "").toLowerCase() === "add"; })()) {
-            _fixedWhy = "addon_ideas"; _fixedSay = await _fx("addon_ideas", "Here they come - four ways your tattoo could grow.");
+                       return ["add", "cover"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase()); })()) {
+            _fixedWhy = "addon_ideas";
+            _fixedSay = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover"
+              ? await _fx("cover_ideas", "Here they come - four ways to cover it.")
+              : await _fx("addon_ideas", "Here they come - four ways your tattoo could grow.");
           } else if (/^i want number [1-4]\.?$/i.test(_s) && _bodyPhoto && await (async () => {
                        // THE ADD-ON PICK IS A CUT, SO SHE IS NOT CALLED (v9.652, 2026-10-17, Aaron). MEASURED 19:43 (pta_15fa057112170b60):
                        // the cut took 2s, but she was asked first (15.6s) and looked at the cut after (15.6s) - 35s for a picture that
@@ -67429,10 +67435,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if (_addonPossCard && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true; _addonPoss = true;
         console.log("[TURN:IDEAS] four possibilities of the chosen add-on, on their photo: " + _addonPossCard);
-      } else if (_askIdeas && jobNow === "add" && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
+      } else if (_askIdeas && (jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true;
         console.log("[TURN:IDEAS] four ideas drawn as one grid on their photo, from the one fixed sentence");
-      } else if (jobNow === "add" && refDesign && _bodyPhoto && !(opts && opts.inspire) && (act === "draw" || act === "change") &&
+      } else if ((jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire) && (act === "draw" || act === "change") &&
                  !_pickGo && !_cutPick && _fixedWhy !== "pick" && String(said || "").trim()) {
         // THEIR OWN WORDS COME BACK AS FOUR TOO (v9.667, 2026-10-18, Aaron: "I gave a tattoo my idea before suggestions - 4 style
         // cards ... this is the main feature"). MEASURED 11:43: "I really love this style and the vibe I wanna Do a full sleeve" drew
@@ -68039,9 +68045,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // step, in her own words, never one stock phrase ("it looks like software").
             const rx = await proxyToAgent(env,
               (isGrid
-                ? "[This is the picture you just made for them: four numbered directions for their tattoo. " +
+                ? "[This is the picture you just made for them: four directions for their tattoo. " +
                   "Look at it. In one or two short lines, say what makes each direction different" + (flat ? "" : " and where on their body it goes") + ", then ask " +
-                  "which number grabs them, or whether you should imagine 4 more - in your own words. Do not offer to lock anything in yet."
+                  "which one grabs them, or whether you should imagine 4 more - in your own words. Do not offer to lock anything in yet."
                 : "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
                   "in one warm line, then ask whether this is the one - their tattoo - or whether they want to " +
                   "change something, in your own words, different each time. Never say 'lock it in'.") +
@@ -68622,14 +68628,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // is the whole sentence; a value still holding "____" is the old opening-plus-her-lines shape
           // and is not used.
           if (_ideasGrid && parentId === refDesign) {
-            let _go = "This is my current tattoo. Show me 4 different ideas for extending it into a bigger piece, each one growing it the way a tattoo artist naturally would. Zoom out to show more of my body than this photo does, so the whole extended piece is visible. Keep my existing tattoo exactly as it is. Show all 4 in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you added.";
+            let _go = "This is my current tattoo. Show me 4 different ideas for extending it into a bigger piece, each one growing it the way a tattoo artist naturally would. Zoom out to show more of my body than this photo does, so the whole extended piece is visible. Keep my existing tattoo exactly as it is. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about what you added.";
             let _goFrom = "default";
             try {
               const _k = String((await env.AURA_KV.get("config:frame:addon:grid")) || "").trim();
               if (_k && !_k.includes("____")) { _go = _k; _goFrom = "setting"; }
               else if (_k) console.log("[TURN:IDEAS] config:frame:addon:grid still holds the old ____ shape - not used, the default went");
             } catch {}
-            if (_placeNow) {
+            // THE COVER-UP SENTENCE (v9.668, 2026-10-18, Aaron): word for word the 12:51 command (img_mve8gzsjynza). No zoom out
+            // (12:30 drew a full-torso body suit for a chest piece); the tattoo itself decides the size; colour where it works.
+            const _coverNow = jobNow === "cover";
+            if (_coverNow) {
+              _go = "This is my current tattoo. I want to cover it up. Show me 4 different cover-up designs, each one in the same place as my tattoo and only as big as it needs to be to fully hide it, the way a tattoo artist would cover it. None of my old tattoo should show through. Use colour wherever it works with the design. Keep the same view of my body as this photo. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about the design.";
+              _goFrom = "cover";
+              try { const _k = String((await env.AURA_KV.get("config:frame:cover:grid")) || "").trim(); if (_k && !_k.includes("____")) { _go = _k; _goFrom = "cover_setting"; } } catch {}
+            }
+            if (_placeNow && !_coverNow) {
               const _ps = "I want it to go " + _placeNow + ".";
               // HER PLACE AFTER THE FIRST SENTENCE (v9.658, 2026-10-18, Aaron): MEASURED 06:25 img_mvduysnr6lhq - "This is my current
               // tattoo. I want it to go down the forearm to the wrist. Show me 4..." came back right. The sentence that worked has no
@@ -68641,22 +68655,36 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
             if (_addonOwnWords) {
               // THEIR IDEA, FOUR VERSIONS (v9.667): the 11:52 sentence word for word, their words as they typed them.
-              let _ow = "This is my current tattoo. I want to add to it: ____. Show me 4 different versions of that, each one growing it the way a tattoo artist naturally would. Zoom out to show more of my body than this photo does, so the whole extended piece is visible. Keep my existing tattoo exactly as it is. Show all 4 in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you added.";
+              let _ow = "This is my current tattoo. I want to add to it: ____. Show me 4 different versions of that, each one growing it the way a tattoo artist naturally would. Zoom out to show more of my body than this photo does, so the whole extended piece is visible. Keep my existing tattoo exactly as it is. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about what you added.";
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:own")) || "").trim(); if (_k.includes("____")) _ow = _k; } catch {}
-              _go = _ow.replace("____", _addonOwnWords.replace(/[\s.]+$/, "").slice(0, 600)); _goFrom = "own";
+              if (_coverNow) {
+                // THEIR OWN COVER-UP IDEA (v9.668): the 12:51 cover sentence with their words in it.
+                _ow = "This is my current tattoo. I want to cover it up with: ____. Show me 4 different cover-up designs of that, each one in the same place as my tattoo and only as big as it needs to be to fully hide it, the way a tattoo artist would cover it. None of my old tattoo should show through. Use colour wherever it works with the design. Keep the same view of my body as this photo. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about the design.";
+                try { const _k = String((await env.AURA_KV.get("config:frame:cover:own")) || "").trim(); if (_k.includes("____")) _ow = _k; } catch {}
+              }
+              _go = _ow.replace("____", _addonOwnWords.replace(/[\s.]+$/, "").slice(0, 600)); _goFrom = _coverNow ? "cover_own" : "own";
             }
             _sentNow = _go;
             _herAsk = null;
             _wordsFrom = "ideas_grid_" + _goFrom;
             if (_addonPoss) {
               // THE POSSIBILITIES SENTENCE (v9.661): word for word the 07:40 command; no place added.
-              let _ap = "The first picture is my tattoo as it is today. The second picture is the design I chose for adding to it. Show me 4 different versions of what I'm adding, on my body. Make number 1 the closest to the design I chose. For 2, 3 and 4, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is. Keep the same view of my body as the second picture. Show all 4 in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you changed.";
+              let _ap = "The first picture is my tattoo as it is today. The second picture is the design I chose for adding to it. Show me 4 different versions of what I'm adding, on my body. Make the first one the closest to the design I chose. For the other three, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is. Keep the same view of my body as the second picture. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about what you changed.";
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:poss")) || "").trim(); if (_k) _ap = _k; } catch {}
+              if (_coverNow) {
+                // FOUR POSSIBILITIES OF A CHOSEN COVER-UP (v9.668): the add-on sentence with the cover-up's own words.
+                _ap = "The first picture is my tattoo as it is today. The second picture is the cover-up I chose. Show me 4 different versions of that cover-up, on my body. Make the first one the closest to the cover-up I chose. For the other three, be bold and imaginative with the idea, but keep the same style. None of my old tattoo should show through. Use colour wherever it works with the design. Keep the same view of my body as the second picture. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about what you changed.";
+                try { const _k = String((await env.AURA_KV.get("config:frame:cover:poss")) || "").trim(); if (_k) _ap = _k; } catch {}
+              }
               _sentNow = _ap; _wordsFrom = "addon_poss";
               if (_addonChangeWords) {
                 // THEIR CHANGE, FOUR VERSIONS (v9.665): word for word the 11:02 command; "____" is their words as they typed them.
-                let _ac = "The first picture is my tattoo as it is today. The second picture is the design I chose for adding to it. I want to change it: ____. Show me 4 different versions of that change, on my body. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is. Keep the same view of my body as the second picture. Show all 4 in a numbered 2x2 grid. Under each one, write a short title and two or three lines about what you changed.";
+                let _ac = "The first picture is my tattoo as it is today. The second picture is the design I chose for adding to it. I want to change it: ____. Show me 4 different versions of that change, on my body. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is. Keep the same view of my body as the second picture. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about what you changed.";
                 try { const _k = String((await env.AURA_KV.get("config:frame:addon:change")) || "").trim(); if (_k.includes("____")) _ac = _k; } catch {}
+                if (_coverNow) {
+                  _ac = "The first picture is my tattoo as it is today. The second picture is the cover-up I chose. I want to change it: ____. Show me 4 different versions of that change, on my body. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the same style. None of my old tattoo should show through. Use colour wherever it works with the design. Keep the same view of my body as the second picture. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about what you changed.";
+                  try { const _k = String((await env.AURA_KV.get("config:frame:cover:change")) || "").trim(); if (_k.includes("____")) _ac = _k; } catch {}
+                }
                 _sentNow = _ac.replace("____", String(_addonChangeWords).replace(/[\s.]+$/, "").slice(0, 600)); _wordsFrom = "addon_poss_change";
               }
               _withNow = [_addonPossCard];
@@ -68682,7 +68710,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // "____" is their words), sent with the design to the chat model. Not when this turn is a pick off a grid.
           if (_designGrid && _gridPick) _designGrid = false;
           if (_designGrid) {
-            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea, but keep the style of my design. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about what you changed and why in white. No numbers anywhere.";
+            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the style of my design. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about what you changed and why in white. No numbers anywhere.";
             try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
             if (_designWords === "__poss__") {
               // FOUR POSSIBILITIES (v9.628, Aaron): its own sentence, a setting (`config:frame:design:possibilities`).
@@ -68719,15 +68747,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // picture, and one sentence gave back number 3 as drawn, with their own ink untouched. The
           // sentence is a setting (`config:frame:addon:pick`, {n} = the number). If they asked for more in
           // the same line ("3 but in black and grey"), their line follows it.
-          if (String(jobNow || "") === "add" && _pickN && _pickGridImg && parentId === refDesign && !_ideasGrid) {
-            let _pk = "This is my tattoo. Add the new work from number {n} in the second picture. Keep my existing tattoo exactly as it is.";
-            try { const _k = String((await env.AURA_KV.get("config:frame:addon:pick")) || "").trim(); if (_k.includes("{n}")) _pk = _k; } catch {}
+          // A COVER-UP SHEET IS CUT THE SAME WAY (v9.668). The sheets carry no numbers now (Aaron, 2026-10-18), so the words
+          // below - only the fallback when the cut fails - name the card by where it sits, never by a number.
+          if (["add", "cover"].includes(String(jobNow || "")) && _pickN && _pickGridImg && parentId === refDesign && !_ideasGrid) {
+            let _pk = String(jobNow) === "cover"
+              ? "This is my tattoo. Cover it up with {n} in the second picture."
+              : "This is my tattoo. Add the new work from {n} in the second picture. Keep my existing tattoo exactly as it is.";
+            try { const _k = String((await env.AURA_KV.get("config:frame:" + (String(jobNow) === "cover" ? "cover" : "addon") + ":pick")) || "").trim(); if (_k.includes("{n}")) _pk = _k; } catch {}
+            _pk = _pk.replace(/number\s+\{n\}/gi, "{n}");
+            const _pos = ["", "the top left one", "the top right one", "the bottom left one", "the bottom right one"][_pickN] || ("number " + _pickN);
             const _line = String(said || "").toLowerCase();
             const _w2 = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
             const _fill = /^(i|i'?m|love|like|want|wanna|the|a|one|number|image|picture|pic|option|go|going|with|let'?s|lets|do|that|this|it|is|please|pick|choose|take|best|most|grabs|me|yeah|yes|yep|ok|okay|really|definitely|def|my|favorite|favourite|for|sure|has|to|be|gotta|think|and|so|oh|wow|nice|cool|awesome|perfect|one'?s|#|no|keep)$/;
             const _more = _line.replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean)
               .filter((t) => !_fill.test(t) && !/^([1-4])(st|nd|rd|th)?$/.test(t) && !(t in _w2));
-            _sentNow = _pk.replace(/\{n\}/g, String(_pickN)) + (_more.length ? " " + String(said || "").trim().slice(0, 300) : "");
+            _sentNow = _pk.replace(/\{n\}/g, _pos) + (_more.length ? " " + String(said || "").trim().slice(0, 300) : "");
             _withNow = [_pickGridImg];
             _herAsk = null;
             _wordsFrom = "addon_grid_pick";
@@ -69012,7 +69046,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                                  : (_mine[0] ? String(_mine[0]).replace(/[\s.]+$/, "").slice(0, 70) : null);
             const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
             if (_words) {
-              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make number 1 the closest to what I described. For 2, 3 and 4, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
+              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
               let _st = ", all in the {name} style";
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}

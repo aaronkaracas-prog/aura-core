@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.665.0-2026-10-18-addon-change-four";
+const BUILD = "aura-core-v9.666.0-2026-10-18-title-is-a-name";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69493,12 +69493,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 })(opts.name)
                 : (drew && drew.name_hint) ? String(drew.name_hint)
                 : (intent && intent.subject) ? String(intent.subject).slice(0, 70)
-                // NEVER OUR OWN SENTENCE (v9.662, 2026-10-18, Aaron: "the sentence is just wrong"): MEASURED - My Tattoos read "This is
-                // my current tattoo. Show me 4 different ideas for extending it", the fixed sentence the four were drawn from. Those
-                // words name nothing; the title waits for her name at This Is My Tattoo.
-                : (drew && drew.image && !drew.failed && !drew.for_the_artist &&
-                   !/^(ideas_grid|addon_poss|design_grid|grid_pick)/.test(String(drew.words_from || "")))
-                ? (String(drew.asked || drew.changed || "").split(",")[0].trim().slice(0, 70) || null) : null,
+                // A TITLE IS A NAME, NEVER WORDS SENT TO THE IMAGE MODEL (v9.666, 2026-10-18, Aaron). MEASURED twice: "This is my
+                // current tattoo. Show me 4 different ideas..." and "This is my tattoo. Add the new work from number 1 in the second
+                // pictur" - our own sentences as titles. The title waits for a name (hers at This Is My Tattoo, a card's, a pick's);
+                // until then the page says "Your tattoo".
+                : null,
               came_from: _cameFrom ? _cameFrom.id : null,
               ...(_herName ? { name_final: _herName } : {}),
               // THE ONE THEY PICKED NAMES THE TATTOO (v9.626): its card's title, and its two lines and what it shows as the "i".
@@ -69551,6 +69550,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   const raw = (q && q.reply && !q.failed) ? (_sayTxt ? _sayTxt + "\n" : "") + String(q.reply) + "\n" + String(_verdict(q.reply, readAct(q.reply)) || "") : "";
                   const clean = (x) => String(x || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 60);
                   let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
+                  // HER NAME WITHOUT A LABEL (v9.666, 2026-10-18): MEASURED 11:18:51 - she answered {"say":"Roses and Butterflies Trail"},
+                  // just the name, and it was thrown away for having no "NAME:". A short plain line is the name.
+                  if (!n && _sayTxt) { const _one = String(_sayTxt).trim();
+                    if (_one && !/[\n:]/.test(_one) && _one.split(/\s+/).length <= 7) n = clean(_one); }
                   // THE COLOUR WHOLE (v9.663, 2026-10-18): MEASURED - "bold red, gold and teal-green American traditi" on the job
                   // sheet; it was read to 60 letters and cut mid-word. Read to 120; if that is where it stops, it ends at a word.
                   let c = String((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,120})/i) || [])[1] || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "");

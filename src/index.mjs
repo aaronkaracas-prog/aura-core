@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.663.0-2026-10-18-colour-whole";
+const BUILD = "aura-core-v9.664.0-2026-10-18-why-you-are-here-go";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64428,6 +64428,8 @@ function talkReadAct(txt) {
              // HER IDEAS AS PICTURE WORDS (2026-10-12, v9.584, Aaron): the same four, written for the picture.
              directions: strList(o.directions, 4, 80).map((x) => x.replace(/^\s*i want it to go\s+/i, "").replace(/[.\s]+$/, "")),
              where_to: (typeof o.where_to === "string") ? o.where_to.trim().slice(0, 160) : "",
+             // WHERE SHE TAKES THEM (v9.664): one of the places her world's purpose names - a short name, nothing else.
+             go: (typeof o.go === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.go.trim())) ? o.go.trim().toLowerCase() : "",
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
              // first version of this field took that name, and the duplicate key silently lost.
              lines: Array.isArray(o.lines) ? o.lines.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
@@ -65503,6 +65505,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', each one bringing together everything they have told you they want, said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
         // THE PLACES IT COULD GO (2026-10-18, v9.655, Aaron) - the same words as aura-think's reply format.
         '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go, in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
+        '  "go": "only when they want to go somewhere else - one of the places named in WHY YOU ARE HERE, by its name; the app takes them there. If you can\'t tell where they want to go, ask them and leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:
@@ -66231,9 +66234,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           _notYet = !(_off && !_saidNo);
         }
       } catch {}
+      // WHY YOU ARE HERE (v9.664, 2026-10-18, Aaron: "she needs to know why she's here, what she's doing ... and where to take
+      // them"): each world's purpose and the places she can take people, one setting per world (`config:world:<world>:purpose`).
+      // A new doorway is a new setting - her rules name no places.
+      let _purpose = "";
+      try { _purpose = String((await env.AURA_KV.get("config:world:" + world + ":purpose")) || "").trim(); } catch {}
       const agentLine = hasLive
         ? "[A person is designing a tattoo with you on " + world + ".world. Answer as yourself, " +
-          "from what you know about them.]\n\n" + agentSys + "\n\nTHEY SAID: " + said +
+          "from what you know about them.]\n\n" + (_purpose ? "WHY YOU ARE HERE: " + _purpose + "\n\n" : "") + agentSys + "\n\nTHEY SAID: " + said +
           (_notYet ? "\n\nThey have not asked to see anything yet, so nothing is drawn this turn - think with them." : "") +
           // The other half of the same rule (v9.547): told before she answers that this IS their go.
           ((_goSaid && !_drewNow()) ? "\n\nThey said go - draw it this turn." : "") + SHAPE
@@ -66387,7 +66395,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        for (let i = tnow.length - 1; i >= 0; i--) { const _t = tnow[i];
                          if (_t && _t.role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(_t.said || "")))
                            return /^\s*i want to add to a tattoo/i.test(String(_t.said || "")); }
-                       return false; })()) {
+                       // NO TILE, SAME ROAD (v9.664, 2026-10-18, Aaron: "I should never be able to trigger an old pattern"): MEASURED
+                       // 10:33 - a photo sent straight into the chat, "I want to add to it": the job was add (job=add) but this
+                       // waited for the Add to Existing opening line, so the old ideas path drew. The job core already holds decides.
+                       return String((carriedObj && carriedObj.job) || "").toLowerCase() === "add"; })()) {
             _fixedWhy = "addon_ideas"; _fixedSay = await _fx("addon_ideas", "Here they come - four ways your tattoo could grow.");
           } else if (/^i want number [1-4]\.?$/i.test(_s) && _bodyPhoto && await (async () => {
                        // THE ADD-ON PICK IS A CUT, SO SHE IS NOT CALLED (v9.652, 2026-10-17, Aaron). MEASURED 19:43 (pta_15fa057112170b60):
@@ -69589,6 +69600,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                ...(_picsGot.length ? { image_model_got: _picsGot } : {}),
                ...(_newFlow ? { flow: "new tattoo" } : {}),
                ...((acted.ideas && acted.ideas.length) ? { ideas: acted.ideas } : {}),
+               // WHERE SHE TAKES THEM (v9.664): the page goes there - the same as tapping that place.
+               ...(acted && acted.go && !_fixedWhy ? { go: acted.go } : {}),
                // HER PLACES (v9.655): on an add-on photo, the page shows each as a button.
                ...((Array.isArray(acted.directions) && acted.directions.length) ? { directions: acted.directions } : {}),
                ...(_herTurn ? { her_turn: _herTurn } : {}),

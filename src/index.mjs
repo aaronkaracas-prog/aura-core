@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.668.0-2026-10-18-cover-four-no-numbers";
+const BUILD = "aura-core-v9.669.0-2026-10-18-cover-her-line";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -70499,6 +70499,9 @@ export class PublicEntry extends WorkerEntrypoint {
         const pics = (pj && Array.isArray(pj.pictures)) ? pj.pictures.length : 0;
         const lines = (pj && Array.isArray(pj.lines)) ? pj.lines.slice(-10).map((l) => (l.role === "them" ? "Them: " : "You: ") + String(l.said || "").replace(/\s+/g, " ").replace(/^\s*i want number [1-4]\.?\s*$/i, "I choose this design").slice(0, 300)) : [];
         const where = stage === "sheet" ? "Four new designs just came back on one sheet. They have not chosen one yet."
+          // A COVER-UP SHEET IS NOT AN ADD-ON (v9.668, 2026-10-18): MEASURED 13:11 - under four cover-ups she was told they were
+          // four directions for adding to the tattoo. The page sends the job.
+          : stage === "addsheet" && String(b.job || "").toLowerCase() === "cover" ? "Four ways to cover the tattoo they have just came back on one sheet, each shown on their own photo. They have not chosen one yet."
           : stage === "addsheet" ? "Four directions for adding to the tattoo they already have just came back on one sheet, each shown on their own photo. They have not chosen one yet."
           : stage === "poss" ? "Four possibilities of the design they chose just came back on one sheet. They have not chosen one yet."
           : stage === "change" ? "Four versions of the change they asked for, on the design they chose, just came back on one sheet. They have not chosen one yet."

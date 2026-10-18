@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.670.0-2026-10-18-cover-style";
+const BUILD = "aura-core-v9.671.0-2026-10-18-cover-styles-after-photo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64835,6 +64835,8 @@ async function recordArtistFiles(env, d, drew) {
   }
 }
 
+// The cover-up style cards on the page, in its order (v9.671) - she is told these are on screen.
+const COVER_STYLE_CARDS = ["Japanese", "Black & Grey Realism", "Neo-Traditional", "American Traditional", "Chicano", "Blackwork", "Colour Realism", "Ornamental", "Polynesian Tribal", "Biomechanical", "Dense Botanical"];
 async function auraTalk(env, me, stage, saidIn, history, opts) {
   return _TURN_ALS.run({ think: [], pics: [] }, () => _auraTalkInner(env, me, stage, saidIn, history, opts));
 }
@@ -65888,7 +65890,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           (_isCover ? "\n\n" + COVER_DOCTRINE + "\n" : "") +
           // THE STYLE THEY CHOSE (v9.670, 2026-10-18, Aaron): on Cover Up they can pick a style card first. She is told,
           // so what she says about covering it is in that style.
-          (_isCover && opts && opts.cover_style ? "\n\nTHEY CHOSE THE " + String(opts.cover_style).toUpperCase() + " STYLE for this cover-up - talk about covering it in that style.\n" : "") +
+          (_isCover && opts && opts.cover_style ? "\n\nTHEY CHOSE THE " + String(opts.cover_style).toUpperCase() + " STYLE for this cover-up - talk about covering it in that style.\n"
+            // THE STYLE CARDS UNDER HER REPLY (v9.671, 2026-10-18, Aaron: "Aura will look at it and suggest styles"). Once their
+            // photo is in, they see these cards under what she says; she knows they are there and which they are.
+            : _isCover ? "\n\nUNDER YOUR REPLY THEY SEE STYLE CARDS they can tap, each showing four designs in that style: " + COVER_STYLE_CARDS.join(", ") +
+              ". When you look at their tattoo, suggest the one or two of those that would cover it best, and why - they can tap one or just tell you their idea.\n" : "") +
           // MEASURED: asked to make a cover-up raven "light grey and delicate", she did it without
           // a word. That design cannot be tattooed over dark linework, and the person finds out in
           // the chair. She had the constraint in front of her, said it once, and dropped it the

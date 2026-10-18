@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.671.0-2026-10-18-cover-styles-after-photo";
+const BUILD = "aura-core-v9.672.0-2026-10-18-cover-styles-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65858,7 +65858,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // ("new ink mixes with the old... warm and pale tones bleed back through dark ink") was sent on
       // every photo turn, whatever the job, and she applied rules for HIDING a tattoo to COLOURING one.
       // It goes to her only when the job on record is a cover-up.
-      const _isCover = !!(carriedObj && String(carriedObj.job || "").toLowerCase() === "cover");
+      // THE OPENING LINE COUNTS TOO (v9.672, 2026-10-18): MEASURED 15:07 - on the photo turn the job was not saved yet, so she was
+      // never told the cover-up style cards were on screen and suggested none. "I want to cover up a tattoo" is a cover-up.
+      const _isCover = !!(carriedObj && String(carriedObj.job || "").toLowerCase() === "cover") || /^\s*i want to cover up a tattoo/i.test(String(saidIn || ""));
       const refNote = (refSaw || seeing)
         // ══ AN INSTRUCTION SHE CANNOT ACT ON (2026-09-09) ═══════════════════════════════════
         // This said "THEY JUST SENT YOU THIS PHOTOGRAPH. LOOK AT IT." and never gave the address.
@@ -65893,8 +65895,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           (_isCover && opts && opts.cover_style ? "\n\nTHEY CHOSE THE " + String(opts.cover_style).toUpperCase() + " STYLE for this cover-up - talk about covering it in that style.\n"
             // THE STYLE CARDS UNDER HER REPLY (v9.671, 2026-10-18, Aaron: "Aura will look at it and suggest styles"). Once their
             // photo is in, they see these cards under what she says; she knows they are there and which they are.
-            : _isCover ? "\n\nUNDER YOUR REPLY THEY SEE STYLE CARDS they can tap, each showing four designs in that style: " + COVER_STYLE_CARDS.join(", ") +
-              ". When you look at their tattoo, suggest the one or two of those that would cover it best, and why - they can tap one or just tell you their idea.\n" : "") +
+            : _isCover ? "\n\nABOVE YOUR REPLY THEY SEE STYLE CARDS they can tap, each showing four designs in that style: " + COVER_STYLE_CARDS.join(", ") +
+              ". When you look at their tattoo, suggest the one or two of those that would cover it best, and why - and say they can pick a style above or just tell you their idea.\n" : "") +
           // MEASURED: asked to make a cover-up raven "light grey and delicate", she did it without
           // a word. That design cannot be tattooed over dark linework, and the person finds out in
           // the chair. She had the constraint in front of her, said it once, and dropped it the

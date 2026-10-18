@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.648.0-2026-10-17-cut-the-card-when-chosen";
+const BUILD = "aura-core-v9.649.0-2026-10-17-she-greets-them-by-name";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66033,6 +66033,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _fixedWhy = "placed"; _fixedSay = await _fx("onme_coming", "Putting it on you now.");
           } else if (/^i want to create a new tattoo\.?$/i.test(_s)) {
             _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Let's make something that's yours. Pick a style below, or tell me your idea and we'll build it together.");
+            // HER OWN GREETING, BY NAME (v9.649, 2026-10-17, Aaron): "it'll be hi Aaron awesome let's create a new tattoo - acknowledging
+            // the human by what information we have". Her words replace the fixed line; if she does not answer, the fixed line stands.
+            try {
+              const _fn = String((opts && opts.first) || "").replace(/[^A-Za-z\u00C0-\u00FF' -]/g, "").trim().slice(0, 30);
+              const _gq = await proxyToAgent(env, "[THEY JUST TAPPED CREATE NEW TATTOO." + (_fn ? " Their first name is " + _fn + "." : "") + "] " +
+                "Reply as you always do, with do set to none. say: greet them" + (_fn ? " by name" : "") + " in one or two warm, short lines and invite them " +
+                "to share what they're imagining - a story, a memory, a feeling, or just a picture in their head - or to pick a style below. " +
+                "Do not draw anything yet.\n\n(Reply with the JSON object. No prose.)", false, me + "_hello", null, world);
+              const _ga = (_gq && _gq.reply && !_gq.failed) ? talkReadAct(_gq.reply) : null;
+              const _gs = String((_ga && _ga.say) || "").trim();
+              if (_gs) _fixedSay = _gs.slice(0, 400);
+              console.log("[TURN:HELLO] " + (_gs ? "her greeting" + (_fn ? " to " + _fn : "") + ": \"" + _gs.slice(0, 200) + "\"" : "she did not answer - the fixed line stands") + (me ? " · who=" + me : ""));
+            } catch {}
           } else if ((_stm = _s.match(/^i like the (.+) style\.?$/i))) {
             _fixedWhy = "style"; _fixedSay = (await _fx("style_pick", "____ - great pick. Explore the designs made in this style, or create your own with me.")).replace("____", _stm[1]);
             if (_newFlow) { try { await talkStatePut(env, me, "new_style", String(_stm[1]).slice(0, 80)); } catch {} _newStyle = String(_stm[1]).slice(0, 80); }
@@ -68470,10 +68483,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_designGrid) {
               // FOUR VERSIONS OF A CHANGE (v9.605, Aaron): her own words to their change stay - she was called before it
               // was drawn - and the same fixed line as the first four follows. No look: the titles are in the picture.
-              let _done = "Here are your four - tap Choose on the one you like, or I can imagine four more.";
+              let _done = "Here are your four - tap Open this design on the one you like, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_designWords === "__poss__") {
-                _done = "Here are 4 possibilities for your design. Tap Choose This One on the one you like, or I can imagine 4 more.";
+                _done = "Here are 4 possibilities for your design. Tap Open this design on the one you like, or I can imagine 4 more.";
                 try { const _k = String((await env.AURA_KV.get("config:say:poss_done")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               const _hers = (!_fixedSay && acted && acted.say) ? String(acted.say).trim() : "";
@@ -68735,7 +68748,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // reading them back added ~20s and told them nothing new. One fixed line instead (config:say:four_done).
             let _lk2 = null;
             if (_newSentence) {
-              _reaction = "Here are your four - tap Choose on the one you like, or I can imagine four more.";
+              _reaction = "Here are your four - tap Open this design on the one you like, or I can imagine four more.";
               try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
             } else {
               _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);
@@ -70177,7 +70190,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -70201,7 +70214,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

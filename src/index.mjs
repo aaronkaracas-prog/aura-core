@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.677.0-2026-10-18-match-cards";
+const BUILD = "aura-core-v9.678.0-2026-10-18-eight-everywhere";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59695,6 +59695,12 @@ async function splitCardLeft(env, url, onlyWide) {
 // black strip only, trimmed to the ink with a little white around it. Same tools as the split-card cut above.
 async function cutPanel(env, url, n) {
   const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
+  // AN EIGHT SHEET WAS CUT WHEN IT CAME BACK (v9.678): the card is already there.
+  if (id && Number(n) >= 1 && Number(n) <= 8) {
+    try { const k8 = JSON.parse((await env.AURA_KV.get("sheet8:" + id)) || "null");
+      if (Array.isArray(k8) && k8[Number(n) - 1] && k8[Number(n) - 1].image) { const c8 = k8[Number(n) - 1];
+        return { ok: true, image_url: c8.image, from: id, panel: Number(n), cut: "card", eight: true, ...(c8.title ? { card: { title: c8.title, lines: c8.lines || [] } } : {}) }; } } catch {}
+  }
   if (!id || ![1, 2, 3, 4].includes(Number(n))) return { ok: false, error: "need a picture and a number 1-4" };
   n = Number(n);
   const was = await env.AURA_KV.get("panelcut5:" + id + ":" + n).catch(() => null);
@@ -60329,6 +60335,44 @@ async function lookCopy(env, url) {
 // sentence added to every four that asks the chat model to list the cards in its written reply (`config:frame:cards:info`).
 // The image model never writes words back - the chat model does, in its reply; until now that reply was thrown away.
 const POSS_SENTENCE = "This is my tattoo design. Show me 4 different designs of it. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea. Make them creative and amazing. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
+// ══ EIGHT, THE SAME WAY, EVERY TIME (v9.678, 2026-10-18, Aaron: "anything queued up or asked - any creation sent to the image
+// model gets the same treatment ... it's literally that simple across the entire board") ═══════════════════════════════════
+// Every sheet keeps its own opening - what they want - and gets ONE ending: eight pictures, 2 across and 4 down, white rounded
+// frames, wide black gaps, no words on the page, and the chat model lists the eight in its reply. PROVEN by command 18:13 (cover-up,
+// img_mvek89wntjco) and 18:43 (add-on, img_mvelc5g1ys5k): one draw each at 1280x3584, eight whole pictures, eight lines, cut clean.
+// The ending is a setting per kind (`config:frame:sheet8:body` - on their photo, `config:frame:sheet8:flat` - artwork on white).
+const SHEET8_BODY = "Show the whole tattoo in every picture, nothing cut off at the edges. Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture the same shape as my photo, each picture in a clean white frame with rounded corners, with a wide black gap between them. No text, no titles, no numbers, no words anywhere on the page. In your written reply, list the 8 designs in order, left to right and top to bottom, one per line, as: TITLE | first line | second line.";
+const SHEET8_FLAT = "Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture a white panel with the whole tattoo artwork as large as it fits - not on skin - in a clean white frame with rounded corners, with a wide black gap between them. No text, no titles, no numbers, no words anywhere on the page. In your written reply, list the 8 designs in order, left to right and top to bottom, one per line, as: TITLE | first line | second line.";
+// MEDIUM UNTIL AARON SAYS OTHERWISE (2026-10-18): low gave near-copies on the photo roads. A setting, `config:edit:sheet8:quality`.
+async function sheet8Quality(env) { try { const k = String((await env.AURA_KV.get("config:edit:sheet8:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(k)) return k; } catch {} return "medium"; }
+async function sheet8Size(env) { try { const k = String((await env.AURA_KV.get("config:edit:sheet8:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(k)) return k; } catch {} return "1280x3584"; }
+// Their opening stays word for word; the four-card layout at its end comes off, and the one ending goes on.
+async function toEight(env, sentence, kind) {
+  let s = String(sentence || "").trim();
+  s = s.replace(/\bShow me (?:4|four)\b/gi, "Show me 8").replace(/\bthese (?:4|four) ideas\b/gi, "these ideas")
+       .replace(/\bFor the other three\b/g, "For the others").replace(/\bFor 2, 3 and 4\b/g, "For the others");
+  const cut = s.search(/\s(?:Show all (?:4|four)\b|Make one tall page\b|Make one page\b|Under each one\b|No numbers anywhere\b)/i);
+  if (cut > 0) s = s.slice(0, cut).trim();
+  let end = kind === "flat" ? SHEET8_FLAT : SHEET8_BODY;
+  try { const k = String((await env.AURA_KV.get("config:frame:sheet8:" + (kind === "flat" ? "flat" : "body"))) || "").trim(); if (k) end = k; } catch {}
+  return s.replace(/[\s]+$/, "") + " " + end;
+}
+// The sheet cut into its cards the moment it comes back, each card with its own words - by order, after the count check. If the
+// count is off, the cards come back with no words rather than the wrong ones. The sheet is marked so a pick is that card.
+async function eightCards(env, sheetUrl, said) {
+  try {
+    const cut = await cutAllCards(env, sheetUrl);
+    if (!cut || !cut.ok || !Array.isArray(cut.cards) || cut.cards.length < 2) { console.log("[CUT8] not cut: " + String((cut && cut.error) || "no cards")); return null; }
+    const lines = String(said || "").split(/\r?\n/).map((l) => l.split("|").map((x) => x.trim().replace(/^[\s*#>-]*(?:\d+[.)]\s*)?/, "").replace(/[*`]+/g, "").trim()))
+      .filter((p) => p.length >= 2 && p[0] && p[0].length <= 60).map((p) => ({ title: p[0], lines: p.slice(1, 3).filter(Boolean) }));
+    const ok = lines.length === cut.cards.length;
+    const cards = cut.cards.map((c, k) => ({ n: k + 1, image: c.image_url, ...(ok ? { title: lines[k].title, lines: lines[k].lines } : {}) }));
+    const sid = (String(sheetUrl).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+    if (sid) { try { await env.AURA_KV.put("sheet8:" + sid, JSON.stringify(cards)); } catch {} }
+    console.log("[CUT8] " + cards.length + " cards off " + sid + (ok ? " · words matched by order" : " · words not used: " + lines.length + " lines for " + cards.length + " cards"));
+    return cards;
+  } catch (e) { console.log("[CUT8] failed: " + String(e?.message ?? e).slice(0, 160)); return null; }
+}
 const CARD_INFO_ASK = "In your written reply, also list the 4 cards in order, one per line, as: TITLE | first line | second line | one sentence about the design and where on the body it would look best.";
 async function cardInfoAsk(env) {
   try { const k = String((await env.AURA_KV.get("config:frame:cards:info")) || "").trim(); if (k) return k; } catch {}
@@ -64980,6 +65024,8 @@ async function auraTalk(env, me, stage, saidIn, history, opts) {
 async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // ONE BUTTON VOCABULARY (v9.673, 2026-10-18, Aaron: "there's just no consistency in the wording on every button"). The chat now
       // shows the button's own words; these mean exactly what the old fixed lines meant, so every road reads them as before.
+      // EIGHT EVERYWHERE (v9.678): the buttons say "Imagine 8 ..."; every road reads it as the "Imagine 4 ..." it always knew.
+      saidIn = String(saidIn || "").replace(/^(\s*imagine\s+(?:another\s+)?)(?:8|eight)\b/i, "$14");
       if (/^\s*imagine\s+(?:4|four)\s+(?:ideas|cover-?ups|cover ups|directions|in this style)\.?\s*$/i.test(String(saidIn || ""))) saidIn = "Show me some ideas";
       else if (/^\s*fine-?\s?tune it\.?\s*$/i.test(String(saidIn || ""))) saidIn = "I want to change something";
       // ══ MEASURE IT, DO NOT REASON ABOUT IT (2026-09-09) ═══════════════════════════════════
@@ -66499,7 +66545,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else if (opts && opts.new_now && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             // IMAGINE SOMETHING NEW (v9.643, 2026-10-17, Aaron): they tapped Imagine something new and she asked where they want
             // to go - their answer is a fresh four of the new idea, not a change of the design on screen. The words start over here.
-            _fixedWhy = "four_new"; _fixedSay = await _fx("four_coming", "Here they come - four versions of that for you.");
+            _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "Here they come - eight versions of that for you.");
             _newFlow = true; _lastDesignChange = ""; _newStyle = null;
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
                   await talkStatePut(env, me, "design_change_parent", ""); await talkStatePut(env, me, "new_flow", "1");
@@ -66519,9 +66565,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        } catch {}
                        return false; })()) {
             _fixedWhy = "addon_change"; _addonChangeWords = _s;
-            _fixedSay = await _fx("addon_change", "Here they come - four versions of that on you.");
+            _fixedSay = await _fx("addon_change8", "Here they come - eight versions of that on you.");
           } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && !_bodyPhoto) {
-            _fixedWhy = "four"; _fixedSay = await _fx("four_versions", "Imagining four versions of that for you now.");
+            _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining eight versions of that for you now.");
           } else if (_bodyPhoto && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s) && await (async () => {
                        // FOUR POSSIBILITIES OF A CHOSEN ADD-ON (v9.661, 2026-10-18, Aaron): "the same way we do tattoos ... a version
                        // that was on their chest or on their arm, then they can evolve it from there". Their photo and the card they
@@ -66539,21 +66585,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                              return false; } }
                        } catch {}
                        return false; })()) {
-            _fixedWhy = "addon_poss"; _fixedSay = await _fx("addon_poss", "Imagining 4 possibilities on you now.");
+            _fixedWhy = "addon_poss"; _fixedSay = await _fx("addon_poss8", "Imagining 8 possibilities on you now.");
           } else if ((_newFlow || _lastDesignChange || (opts && opts.pick && refUrl)) && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
             // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): after they choose a design, four possibilities for that
             // same design, on the same four-card sheet - the chat model reads the design, nothing is asked of her.
-            _fixedWhy = "poss"; _fixedSay = await _fx("poss_coming", "Imagining 4 possibilities for your design now.");
+            _fixedWhy = "poss"; _fixedSay = await _fx("poss_coming8", "Imagining 8 possibilities for your design now.");
           } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) {
             // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
-            _fixedWhy = "more"; _fixedSay = await _fx("four_more", "Round two, coming right up - four more.");
+            _fixedWhy = "more"; _fixedSay = await _fx("eight_more", "Round two, coming right up - eight more.");
           } else if (_newFlow && _goSaid && !_saidNo && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s) || (opts && Array.isArray(opts.all_ideas) && opts.all_ideas.length))) {
             // THEIR YES TO THE FIRST FOUR (v9.605): she offered, they said yes or tapped one of her ideas - she is not
             // called again; the four start and this line says they are coming.
             // ANOTHER OF HER IDEAS IS A FRESH FOUR TOO (v9.609, 2026-10-15, Aaron). MEASURED 21:04 (prj_83c97810dfe14e64):
             // with four on screen, tapping "Chrome garden" was read as a CHANGE of the four - Aura was called (34s) and the
             // image model was told "I want to change it: Show me: Chrome garden...". A tapped idea is a new four of that idea.
-            _fixedWhy = "four_new"; _fixedSay = await _fx("four_coming", "Here they come - four versions of that for you.");
+            _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "Here they come - eight versions of that for you.");
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
           } else if (_bodyPhoto && (/^\s*(?:give|show) me some ideas\.?\s*$/i.test(_s) || /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) && (() => {
                        // ADD-ON IDEAS DRAW AT ONCE (v9.660, 2026-10-18, Aaron: "take her off the drawing ... she can read it when it
@@ -66572,27 +66618,28 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        return ["add", "cover"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase()); })()) {
             _fixedWhy = "addon_ideas";
             _fixedSay = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover"
-              ? await _fx("cover_ideas", "Here they come - four ways to cover it.")
-              : await _fx("addon_ideas", "Here they come - four ways your tattoo could grow.");
-          } else if (/^i want number [1-4]\.?$/i.test(_s) && _bodyPhoto && await (async () => {
+              ? await _fx("cover_ideas8", "Here they come - eight ways to cover it.")
+              : await _fx("addon_ideas8", "Here they come - eight ways your tattoo could grow.");
+          } else if (/^i want number [1-8]\.?$/i.test(_s) && _bodyPhoto && await (async () => {
                        // THE ADD-ON PICK IS A CUT, SO SHE IS NOT CALLED (v9.652, 2026-10-17, Aaron). MEASURED 19:43 (pta_15fa057112170b60):
                        // the cut took 2s, but she was asked first (15.6s) and looked at the cut after (15.6s) - 35s for a picture that
                        // was already made. Only when the last picture is a marked add-on sheet (bodysheet:), so the cut is certain.
                        try {
                          const _tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || [];
                          for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i];
+                           if (opts && opts.pick_sheet && e && e.image !== opts.pick_sheet) continue;
                            if (e && e.role === "picture") { const _id = (String(e.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
-                             return !!(e.grid === true && _id && await env.AURA_KV.get("bodysheet:" + _id)); } }
+                             return !!(e.grid === true && _id && (await env.AURA_KV.get("bodysheet:" + _id) || await env.AURA_KV.get("sheet8:" + _id))); } }
                        } catch {}
                        return false; })()) {
             _fixedWhy = "pick"; _cutPick = true; _fixedSay = await _fx("addon_pick", "Here it is.");
-          } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-4]\.?$/i.test(_s) && !_bodyPhoto) {
+          } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-8]\.?$/i.test(_s) && !_bodyPhoto) {
             // CHOOSE, THEN THE OFFER (v9.628, 2026-10-16, Aaron): change it, imagine 4 possibilities, or finish.
-            _fixedWhy = "pick"; _fixedSay = await _fx("pick_ask", "Great choice. Want to change something on it, or should I imagine 4 possibilities for it?");
+            _fixedWhy = "pick"; _fixedSay = await _fx("pick_ask8", "Great choice. Want to fine-tune it, or should I imagine 8 possibilities for it?");
           } else if (_s && carriedObj && carriedObj.on_me === true && refHeld && _bodyPhoto && refUrl && !_freshPhoto &&
                      !["add", "cover", "rework"].includes(String(carriedObj.job || "").toLowerCase()) &&
                      !/^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|no|nope|nah|thanks?( you)?)[\s.!]*$/i.test(_s) &&
-                     !/^i'?d like to see this tattoo on me/i.test(_s) && !/^i want number [1-4]/i.test(_s) &&
+                     !/^i'?d like to see this tattoo on me/i.test(_s) && !/^i want number [1-8]/i.test(_s) &&
                      !/^\s*imagine\s/i.test(_s) && !/^i want to (create|add|cover)/i.test(_s)) {
             // ══ WHERE IT GOES ON THEM, WITHOUT CALLING HER (v9.611, 2026-10-15, Aaron) ═══════════════════════════
             // MEASURED 07:06: the placement turn took 55s - 29.6s of it was her writing a reply nobody saw (the fixed
@@ -67178,15 +67225,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       try {
         if (lastDrawn && lastDrawn.design && !_ideasLine && !_possLine) {
           let _gp = null;
-          for (let i = tline.length - 1; i >= 0; i--) {
+          // ANY SHEET ON SCREEN (v9.678): Work on this on an older sheet names that sheet.
+          if (opts && opts.pick_sheet) { for (let i = tline.length - 1; i >= 0 && !_gp; i--) { const e = tline[i]; if (e && e.role === "picture" && e.image === opts.pick_sheet && e.grid === true) _gp = e; } }
+          for (let i = tline.length - 1; i >= 0 && !_gp; i--) {
             const e = tline[i];
             if (e && e.role === "picture" && e.design === lastDrawn.design) { _gp = e; break; }
           }
           if (_gp && (_gp.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_gp.words || "")))) {
             const _l = String(said || "").toLowerCase();
-            const _wn = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
+            const _wn = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4, five: 5, fifth: 5, six: 6, sixth: 6, seven: 7, seventh: 7, eight: 8, eighth: 8 };
             const _ns = new Set();
-            for (const m of _l.matchAll(/\b([1-4])(?:st|nd|rd|th)?\b|(?:(?:number|image|picture|option|pic)\s+)(one)\b|\b(first|two|second|three|third|four|fourth)\b/g)) {
+            for (const m of _l.matchAll(/\b([1-8])(?:st|nd|rd|th)?\b|(?:(?:number|image|picture|option|pic)\s+)(one)\b|\b(first|two|second|three|third|four|fourth|five|fifth|six|sixth|seven|seventh|eight|eighth)\b/g)) {
               _ns.add(m[1] ? Number(m[1]) : _wn[m[2] || m[3]]);
             }
             if (_ns.size === 1) {
@@ -68677,16 +68726,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           let _gridPick = null, _gridPickCut = null;
           try {
             let _pic = null;
-            for (let i = tline.length - 1; i >= 0; i--) {
+            if (opts && opts.pick_sheet) { for (let i = tline.length - 1; i >= 0 && !_pic; i--) { const e = tline[i]; if (e && e.role === "picture" && e.image === opts.pick_sheet && e.grid === true) _pic = e; } }
+            for (let i = tline.length - 1; i >= 0 && !_pic; i--) {
               const e = tline[i];
               if (e && e.role === "picture" && e.design === parentId) { _pic = e; break; }
             }
             if (_pic && !_ideasLine && (_pic.grid === true || /\b2\s*(?:by|x)\s*2\s+grid\b/i.test(String(_pic.words || "")))) {
               const _line = String(said || "").toLowerCase();
-              const _w = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
+              const _w = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4, five: 5, fifth: 5, six: 6, sixth: 6, seven: 7, seventh: 7, eight: 8, eighth: 8 };
               const _nums = new Set();
               // "one" is a number only after "number/image/picture/option" - "the third one" is 3, not 3 and 1.
-              for (const m of _line.matchAll(/\b([1-4])(?:st|nd|rd|th)?\b|(?:(?:number|image|picture|option|pic)\s+)(one)\b|\b(first|two|second|three|third|four|fourth)\b/g)) {
+              for (const m of _line.matchAll(/\b([1-8])(?:st|nd|rd|th)?\b|(?:(?:number|image|picture|option|pic)\s+)(one)\b|\b(first|two|second|three|third|four|fourth|five|fifth|six|sixth|seven|seventh|eight|eighth)\b/g)) {
                 _nums.add(m[1] ? Number(m[1]) : _w[m[2] || m[3]]);
               }
               if (_nums.size === 1) {
@@ -68696,7 +68746,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 const _fixed = (_pf || "I want image number {n}.").replace(/\{n\}/g, String(n));
                 const _filler = /^(i|i'?m|love|like|want|wanna|the|a|one|number|image|picture|pic|option|go|going|with|let'?s|lets|do|that|this|it|is|please|pick|choose|take|best|most|grabs|me|yeah|yes|yep|ok|okay|really|definitely|def|my|favorite|favourite|for|sure|has|to|be|gotta|think|and|so|oh|wow|nice|cool|love|awesome|perfect|one'?s|#|no)$/;
                 const _rest = _line.replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean)
-                  .filter((t) => !_filler.test(t) && !/^([1-4])(st|nd|rd|th)?$/.test(t) && !(t in _w));
+                  .filter((t) => !_filler.test(t) && !/^([1-8])(st|nd|rd|th)?$/.test(t) && !(t in _w));
                 _gridPick = n;
                 // A PICK OFF THE FOUR IS CUT, NOT REDRAWN (v9.618, Aaron): "this saves a call to the image model and it will
                 // never fluctuate." The phone-panel sheets (new four and change grids) are cut by hand; any other grid keeps the
@@ -68916,10 +68966,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _pk = _pk.replace(/number\s+\{n\}/gi, "{n}");
             const _pos = ["", "the top left one", "the top right one", "the bottom left one", "the bottom right one"][_pickN] || ("number " + _pickN);
             const _line = String(said || "").toLowerCase();
-            const _w2 = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4 };
+            const _w2 = { one: 1, first: 1, two: 2, second: 2, three: 3, third: 3, four: 4, fourth: 4, five: 5, fifth: 5, six: 6, sixth: 6, seven: 7, seventh: 7, eight: 8, eighth: 8 };
             const _fill = /^(i|i'?m|love|like|want|wanna|the|a|one|number|image|picture|pic|option|go|going|with|let'?s|lets|do|that|this|it|is|please|pick|choose|take|best|most|grabs|me|yeah|yes|yep|ok|okay|really|definitely|def|my|favorite|favourite|for|sure|has|to|be|gotta|think|and|so|oh|wow|nice|cool|awesome|perfect|one'?s|#|no|keep)$/;
             const _more = _line.replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean)
-              .filter((t) => !_fill.test(t) && !/^([1-4])(st|nd|rd|th)?$/.test(t) && !(t in _w2));
+              .filter((t) => !_fill.test(t) && !/^([1-8])(st|nd|rd|th)?$/.test(t) && !(t in _w2));
             _sentNow = _pk.replace(/\{n\}/g, _pos) + (_more.length ? " " + String(said || "").trim().slice(0, 300) : "");
             _withNow = [_pickGridImg];
             _herAsk = null;
@@ -68946,6 +68996,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               _herAsk = _herF;
               _wordsFrom = String(brief || "").trim() ? "her_brief" : (acted.ask ? "her_ask" : "her_prompt");
             }
+          }
+          // THE SAME TREATMENT (v9.678): an add-on, cover-up, possibilities or change sheet - their opening, the one ending,
+          // through the chat model, on the tall page.
+          if ((_ideasGrid || _designGrid) && _sentNow) {
+            _sentNow = await toEight(env, _sentNow, _designGrid ? "flat" : "body");
+            _viaNow = "thread"; _asNow = null; _canvasNow = null; _sizeNow = await sheet8Size(env); _qualNow = await sheet8Quality(env);
+            _wordsFrom = String(_wordsFrom || "sheet") + "+eight";
           }
           const _asks = [_sentNow];
           const _evolve = async (parent, ask, seed) => {
@@ -69093,23 +69150,23 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_designGrid) {
               // FOUR VERSIONS OF A CHANGE (v9.605, Aaron): her own words to their change stay - she was called before it
               // was drawn - and the same fixed line as the first four follows. No look: the titles are in the picture.
-              let _done = "Here are your four - tap Open this design on the one you like, or I can imagine four more.";
-              try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              let _done = "Here are your 8. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+              try { const _k = String((await env.AURA_KV.get("config:say:eight_done")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_designWords === "__poss__") {
-                _done = "Here are 4 possibilities for your design. Tap Open this design on the one you like, or I can imagine 4 more.";
-                try { const _k = String((await env.AURA_KV.get("config:say:poss_done")) || "").trim(); if (_k) _done = _k; } catch {}
+                _done = "Here are 8 possibilities for your design. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+                try { const _k = String((await env.AURA_KV.get("config:say:poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               const _hers = (!_fixedSay && acted && acted.say) ? String(acted.say).trim() : "";
               _reaction = _hers ? (_hers + "\n\n" + _done) : _done;
             } else if (_ideasGrid) {
-              let _done = "Here are four ideas. Tap the one you want to work on, or I can imagine four more.";
-              try { const _k = String((await env.AURA_KV.get("config:say:ideas_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              let _done = "Here are your 8. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+              try { const _k = String((await env.AURA_KV.get("config:say:ideas_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_addonPoss && _addonChangeWords) {
-                _done = "Here are 4 versions of that on you. Tap the one you like.";
-                try { const _k = String((await env.AURA_KV.get("config:say:addon_change_done")) || "").trim(); if (_k) _done = _k; } catch {}
+                _done = "Here are 8 versions of that on you. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+                try { const _k = String((await env.AURA_KV.get("config:say:addon_change_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               } else if (_addonPoss) {
-                _done = "Here are 4 possibilities on you. Tap the one you like, or I can imagine 4 more.";
-                try { const _k = String((await env.AURA_KV.get("config:say:addon_poss_done")) || "").trim(); if (_k) _done = _k; } catch {}
+                _done = "Here are 8 possibilities on you. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+                try { const _k = String((await env.AURA_KV.get("config:say:addon_poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               _reaction = _done;
             } else if (_fixedWhy === "pick") {
@@ -69127,6 +69184,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const _next = _resetToPhoto ? (_bad ? 1 : 0) : (_bad ? badStreak + 1 : 0);
             await talkStatePut(env, me, "bad", String(_next));
           }
+          // CUT THE MOMENT IT COMES BACK (v9.678): the eight cards, each with its words.
+          let _eight = null;
+          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said);
           // THE ADD-ON FOUR ARE MARKED (v9.651): a pick off this sheet is cut out of it, never redrawn (cutBodyPanel).
           if (_ideasGrid && cp?.ok && cp.image_url) {
             const _bsid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
@@ -69139,7 +69199,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 words_from: _wordsFrom,
                 ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { panels: true } : {}),
                 ...(_ideasGrid ? { body_sheet: true } : {}),
-                ...(_designGrid && (readSaidCards(cp.said) || (cp.brief && readCards(cp.brief))) ? { cards: readSaidCards(cp.said) || readCards(cp.brief) } : {}),
+                ...(_eight ? { cards8: _eight, cards: _eight.map((c) => ({ title: c.title || "", lines: c.lines || [] })) }
+                  : (_designGrid && (readSaidCards(cp.said) || (cp.brief && readCards(cp.brief))) ? { cards: readSaidCards(cp.said) || readCards(cp.brief) } : {})),
                 ...((_designGrid && _designWords === "__poss__") || _addonPoss ? { possibilities: true } : {}),
                 ...(cp.card ? { card: cp.card } : {}), ...(cp.cut ? { cut: true } : {}),
                 ...((acted.ask && !_herAsk && String(jobNow || "") === "add") ? { her_ask_not_used: String(acted.ask).slice(0, 400) } : {}),
@@ -69226,6 +69287,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 askLine = (_from >= 0 && _to > _from) ? (_base.slice(0, _from) + _clause + " " + _base.slice(_to)) : (askLine + " " + _clause);
                 console.log("[TURN:NEW] all of her ideas, one per card: " + _allIdeas.length + (me ? " · who=" + me : ""));
               }
+              // THE SAME TREATMENT (v9.678).
+              askLine = await toEight(env, askLine, "flat");
               _newSentence = true;
               console.log("[TURN:NEW] the first four from the fixed sentence - their words: \"" + _words.slice(0, 300) + "\"" + (_newStyle ? " · style: " + _newStyle : ""));
             }
@@ -69321,11 +69384,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // IMAGE MODEL ONLY (v9.630, 2026-10-16, Aaron: "image model only and the i information - that's gone"). The chat-model
           // route below is kept but never taken: every sheet it drew pushed its own stock picks (phoenix, crescent moon, neon,
           // desert) - Bay Phoenix at 14:32 on a San Francisco idea. The sentence goes straight to the image model, as run 9 did.
-          if (_newSentence && false) {
+          // EVERY SHEET THROUGH THE CHAT MODEL AGAIN (v9.678, 2026-10-18, Aaron: "everything goes through the same model") - it
+          // writes the eight titles. The tall page; our sentence alone (it already asks for the list).
+          if (_newSentence) {
             for (let _t = 0; _t < 2 && !_thNew; _t++) {
               try {
-                const _tr = await processCommand("THREAD START NONE " + JSON.stringify({ prompt: askLine + " " + (await cardInfoAsk(env)), action: "generate",
-                  size: _newSize.width + "x" + _newSize.height }), env, true);
+                const _tr = await processCommand("THREAD START NONE " + JSON.stringify({ prompt: askLine, action: "generate",
+                  size: await sheet8Size(env), quality: await sheet8Quality(env) }), env, true);
                 const _tp = (_tr && _tr.payload) ? _tr.payload : _tr;
                 if (_tp && _tp.ok && _tp.image) {
                   let _reg = null;
@@ -69357,6 +69422,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             creator: me
           }), env, true);
           const dp = (dr && dr.payload) ? dr.payload : dr;
+          const _eightN = (_newSentence && dp?.ok && dp.image_url) ? await eightCards(env, dp.image_url, dp.said) : null;
           if (dp?.ok && dp.image_url) {
             // ══ A CACHE HIT IS NOT A SECOND DRAWING (2026-09-14) ═══════════════════════
             // MEASURED: "do that" after a draw returned the SAME image id in 1,610ms - the image
@@ -69372,8 +69438,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // reading them back added ~20s and told them nothing new. One fixed line instead (config:say:four_done).
             let _lk2 = null;
             if (_newSentence) {
-              _reaction = "Here are your four - tap Open this design on the one you like, or I can imagine four more.";
-              try { const _k = String((await env.AURA_KV.get("config:say:four_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
+              _reaction = "Here are your 8. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+              try { const _k = String((await env.AURA_KV.get("config:say:eight_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
             } else {
               _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);
               _reaction = (_lk2 && _lk2.say) || null;
@@ -69382,7 +69448,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             drew = { design: dp.entity_id || dp.id || null, image: dp.image_url,
                      asked: askLine, cached: !!dp.cached, ...(_grid ? { four_directions: true } : {}), ...(_newSentence ? { panels: true } : {}),
                      ...(_newSentence && _nameHint ? { name_hint: _nameHint } : {}),
-                     ...(_newSentence && (readSaidCards(dp.said) || (dp.brief && readCards(dp.brief))) ? { cards: readSaidCards(dp.said) || readCards(dp.brief) } : {}),
+                     ...(_eightN ? { cards8: _eightN, cards: _eightN.map((c) => ({ title: c.title || "", lines: c.lines || [] })) }
+                       : (_newSentence && (readSaidCards(dp.said) || (dp.brief && readCards(dp.brief))) ? { cards: readSaidCards(dp.said) || readCards(dp.brief) } : {})),
                      ...(_wPick ? { world: _wPick.name, look_sent: reg } : {}),
                      ...(_twist ? { world: "twist" } : {}),
                      ...(_mockNote2 ? { she_looked: _mockNote2,
@@ -69670,6 +69737,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                          words: String(drew.changed || acted.prompt || "").slice(0, 600),
                          ...(drew.four_directions ? { grid: true } : {}),
                          ...(Array.isArray(drew.cards) ? { cards: drew.cards } : {}),
+                         ...(Array.isArray(drew.cards8) ? { cards8: drew.cards8 } : {}),
                          ...(drew.for_the_artist ? { artist_files: true, files: artistFilesOf(drew) } : {}) });
           }
           if (tline.length > 60) tline = tline.slice(-60);
@@ -70657,13 +70725,13 @@ export class PublicEntry extends WorkerEntrypoint {
         const _nt1 = Date.now();
         const pics = (pj && Array.isArray(pj.pictures)) ? pj.pictures.length : 0;
         const lines = (pj && Array.isArray(pj.lines)) ? pj.lines.slice(-10).map((l) => (l.role === "them" ? "Them: " : "You: ") + String(l.said || "").replace(/\s+/g, " ").replace(/^\s*i want number [1-4]\.?\s*$/i, "I choose this design").slice(0, 300)) : [];
-        const where = stage === "sheet" ? "Four new designs just came back on one sheet. They have not chosen one yet."
+        const where = stage === "sheet" ? "Eight new designs just came back, each on its own card. They have not chosen one yet."
           // A COVER-UP SHEET IS NOT AN ADD-ON (v9.668, 2026-10-18): MEASURED 13:11 - under four cover-ups she was told they were
           // four directions for adding to the tattoo. The page sends the job.
-          : stage === "addsheet" && String(b.job || "").toLowerCase() === "cover" ? "Four ways to cover the tattoo they have just came back on one sheet, each shown on their own photo. They have not chosen one yet."
-          : stage === "addsheet" ? "Four directions for adding to the tattoo they already have just came back on one sheet, each shown on their own photo. They have not chosen one yet."
-          : stage === "poss" ? "Four possibilities of the design they chose just came back on one sheet. They have not chosen one yet."
-          : stage === "change" ? "Four versions of the change they asked for, on the design they chose, just came back on one sheet. They have not chosen one yet."
+          : stage === "addsheet" && String(b.job || "").toLowerCase() === "cover" ? "Eight ways to cover the tattoo they have just came back, each on its own photo. They have not chosen one yet."
+          : stage === "addsheet" ? "Eight directions for adding to the tattoo they already have just came back, each shown on their own photo. They have not chosen one yet."
+          : stage === "poss" ? "Eight possibilities of the design they chose just came back. They have not chosen one yet."
+          : stage === "change" ? "Eight versions of the change they asked for, on the design they chose, just came back. They have not chosen one yet."
           : stage === "finetune" ? "They tapped Fine-tune it on the one design they are working on - they want to change something on it."
           : stage === "new" ? "They tapped Imagine something new - they want to leave this design and imagine a whole new idea."
           : "One design is on their screen now - the one design they are working on.";
@@ -70838,7 +70906,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -70862,7 +70930,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

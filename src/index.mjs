@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.684.0-2026-10-19-one-way-to-eight-and-stuck-line";
+const BUILD = "aura-core-v9.685.0-2026-10-19-a-go-on-unpicked-eight-is-a-fresh-eight";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66821,7 +66821,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) {
             // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
             _fixedWhy = "more"; _fixedSay = await _fx("eight_more", "Round two, coming right up - eight more.");
-          } else if (_newFlow && _goSaid && !_saidNo && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s) || (opts && Array.isArray(opts.all_ideas) && opts.all_ideas.length))) {
+          } else if (_newFlow && _goSaid && !_saidNo && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s) || (opts && Array.isArray(opts.all_ideas) && opts.all_ideas.length) ||
+                     // ══ A GO WITH THE 8 STILL UNPICKED IS A FRESH 8 OF ALL THEIR WORDS (v9.684, 2026-10-19) ═══════════════════
+                     // MEASURED 14:17 (pta_ace73d2ef3cabb9c): the 8 on screen, nothing picked, they said "I kind of like fine line" and
+                     // then "yeah show me" - it went down the change road and the image model got "I want to change it: yeah show me",
+                     // so fine line was lost and the same 8 came back. Nothing was chosen, so there is nothing to change: their own lines
+                     // since Create New Tattoo (fine line now among them) make a fresh 8. Only on a real go-word, and never on a number.
+                     (_GO_WORDS.test(_s) && !/\b(number|no\.?|#)\s*\d|\b(first|second|third|fourth|fifth|sixth|seventh|eighth|last) one\b/i.test(_s) && await (async () => {
+                       try { const _id = (String((lastDrawn && lastDrawn.image) || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                             return !!(_id && await env.AURA_KV.get("sheet8:" + _id)); } catch { return false; } })()))) {
             // THEIR YES TO THE FIRST FOUR (v9.605): she offered, they said yes or tapped one of her ideas - she is not
             // called again; the four start and this line says they are coming.
             // ANOTHER OF HER IDEAS IS A FRESH FOUR TOO (v9.609, 2026-10-15, Aaron). MEASURED 21:04 (prj_83c97810dfe14e64):
@@ -69501,7 +69509,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           const _newAny = _newFlow || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
           if (_newAny) {
             const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four) more|i want number [1-4])\.?\s*$/i;
-            const _bare = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
+            // A YES IN TWO PARTS IS STILL A YES (v9.684): "yeah show me" went to the image model as their idea.
+            const _bare = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|show it|let'?s see( it)?|let me see( it)?|please|absolutely|definitely|perfect)[\s,.!]*)+$/i;
             const _mine = [];
             let _start = 0;
             // IMAGINE SOMETHING NEW (v9.643): the words start at their new idea, not at Create New Tattoo.

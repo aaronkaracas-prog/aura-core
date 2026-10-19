@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.679.0-2026-10-19-name-chain-fixed-lines";
+const BUILD = "aura-core-v9.680.0-2026-10-19-their-words-in";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67644,7 +67644,26 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         console.log("[TURN:IDEAS] eight possibilities of the one they chose, on their photo: " + _addonPossCard);
       } else if (_askIdeas && (jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true;
-        console.log("[TURN:IDEAS] eight drawn as one sheet on their photo, from the one fixed sentence");
+        // THEIR WORDS GO IN (v9.680, 2026-10-19, Aaron): MEASURED 08:28 - "I like the Chicano style and I wanna have the word mom in it",
+        // she agreed, then Imagine 8 cover-ups sent the plain sentence and the sheet was a raven and a dragon. Everything they typed in
+        // this tattoo's conversation - not button taps, not the door's own words - goes into their-own-idea sentence, exactly as a new
+        // tattoo already does. Nothing typed: the plain sentence, as before.
+        try {
+          const _jobW = /^\s*i want to (?:add to a tattoo i already have|add to a tattoo|cover up a tattoo)[\s.,!-]*/i;
+          const _tapW = /^\s*(?:show me some ideas|show me all of them|imagine\b.*|i want number [1-8]|i have my own idea|my own idea|fine-?\s?tune it|i want to change something|this is my tattoo|i choose\b.*|keep it like this)[\s.!]*$/i;
+          const _bareW = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
+          let _st = Math.max(0, tnow.length - 12);
+          for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "them" && _jobW.test(String(tnow[i].said || ""))) { _st = i; break; } }
+          const _ws = [];
+          for (let i = _st; i < tnow.length; i++) { const e = tnow[i];
+            let t = String((e && e.role === "them" && e.said) || "").trim();
+            if (i === _st) t = t.replace(_jobW, "").trim();
+            t = t.replace(/^show me:\s*/i, "");
+            if (!t || _tapW.test(t) || _bareW.test(t)) continue;
+            _ws.push(t.replace(/[\s.]+$/, "")); }
+          if (_ws.length) { _addonOwnWords = _ws.join(". ").slice(0, 600); console.log("[TURN:IDEAS] their own words go in: \"" + _addonOwnWords + "\""); }
+        } catch (e) { console.log("[TURN:IDEAS] their words could not be read: " + String(e?.message ?? e).slice(0, 120)); }
+        console.log("[TURN:IDEAS] eight drawn as one sheet on their photo, from the " + (_addonOwnWords ? "their-own-idea sentence" : "one fixed sentence"));
       } else if ((jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire) && (act === "draw" || act === "change") &&
                  !_pickGo && !_cutPick && _fixedWhy !== "pick" && String(said || "").trim()) {
         // THEIR OWN WORDS COME BACK AS FOUR TOO (v9.667, 2026-10-18, Aaron: "I gave a tattoo my idea before suggestions - 4 style

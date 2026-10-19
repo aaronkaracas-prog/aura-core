@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.673.0-2026-10-18-one-button-vocabulary";
+const BUILD = "aura-core-v9.674.0-2026-10-18-cut-all-cards";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13574,6 +13574,10 @@ async function successionGate(env) {
       return { cmd: "ARTIST_PDF", payload: await artistPdf(env, { title: "Test - every version", rows: [["Made", new Date().toISOString().slice(0, 10)], ["For", ap[5] || null]],
         panels: [{ name: "", inches: apIn, long: true, colour: c0,
           stencils: [{ label: "Linework stencil", url: l0 }, { label: "Shading-guide stencil", url: s0 }, { label: "Realism stencil", url: r0 }] }] }) };
+    }
+    case "CUT_ALL": {
+      // CUT_ALL <picture url | img_ id> - every card off a sheet, each whole with its title strip (v9.674). Draws nothing.
+      return { cmd: "CUT_ALL", payload: await cutAllCards(env, String(args[0] || "").trim()) };
     }
     case "CUT_PANEL": {
       // CUT_PANEL <picture url | img_ id | pta_ id> <1-4> - cut one design out of a four sheet (v9.617). With a pta_ id, the
@@ -59806,6 +59810,77 @@ async function cutPanel(env, url, n) {
     sheet: W + "x" + H, cut: cw + "x" + ch, cut_above_title: words, strip_found: stripTop < y1, strip_at: stripTop - y0, panel_height: y1 - y0 };
   await env.AURA_KV.put("panelcut5:" + id + ":" + n, JSON.stringify(out)).catch(() => {});
   console.log("[CUT] panel " + n + " of " + id + " (" + out.sheet + ") -> " + nid + " " + out.cut + (words ? " · cut above the title" : out.strip_found ? " · strip cut off" : " · no strip found"));
+  return out;
+}
+
+// ══ CUT EVERY CARD OFF A SHEET, HOWEVER MANY (v9.674, 2026-10-18, Aaron) ═══════════════════════════════
+// "When we get four cards back we should chop it up instantly ... then we can display it anywhere." The cutter above knows one
+// layout - four quarters. This one reads the page itself: the columns are where white runs top to bottom, each card's white
+// panel is found by its two light side edges, and the card ends at the last line of its own words before the next card. So
+// 4, 6 or 8 cards come off the same way, each whole - its picture and its title strip. A test first (`CUT_ALL <sheet>`);
+// nothing calls it yet. Kept under `cutall1:<sheet>` so a second ask is instant.
+async function cutAllCards(env, url) {
+  const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
+  if (!id) return { ok: false, error: "need a picture" };
+  const was = await env.AURA_KV.get("cutall1:" + id).catch(() => null);
+  if (was) { try { return JSON.parse(was); } catch {} }
+  const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+  if (!b64) return { ok: false, error: "picture not found: " + id };
+  const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+  const W = im.get_width(), H = im.get_height();
+  const px = im.get_raw_pixels();
+  try { im.free(); } catch {}
+  const lum = (x, y) => { const o = (y * W + x) * 4; return (px[o] + px[o + 1] + px[o + 2]) / 3; };
+  const runs = (flags, minLen, maxGap) => {
+    const out = []; let s0 = -1, last = -1;
+    for (let i = 0; i < flags.length; i++) {
+      if (flags[i]) { if (s0 < 0) s0 = i; else if (i - last > maxGap) { out.push([s0, last + 1]); s0 = i; } last = i; }
+    }
+    if (s0 >= 0) out.push([s0, last + 1]);
+    return out.filter((r) => r[1] - r[0] >= minLen);
+  };
+  // The columns: where at least a quarter of the page, top to bottom, is white.
+  const colFlag = new Array(W).fill(false);
+  for (let x = 0; x < W; x++) { let t = 0, w = 0; for (let y = 0; y < H; y += 4) { t++; if (lum(x, y) > 200) w++; } colFlag[x] = w / t > 0.25; }
+  const cols = runs(colFlag, Math.round(W * 0.15), Math.round(W * 0.01));
+  if (!cols.length) return { ok: false, error: "no columns of cards found (" + W + "x" + H + ")" };
+  const boxes = [];
+  for (const [x0, x1] of cols) {
+    const cw = x1 - x0;
+    const probesL = [0.03, 0.05, 0.07].map((f) => x0 + Math.round(cw * f)), probesR = [0.03, 0.05, 0.07].map((f) => x1 - 1 - Math.round(cw * f));
+    const rowFlag = new Array(H).fill(false);
+    for (let y = 0; y < H; y++) rowFlag[y] = probesL.some((x) => lum(x, y) > 200) && probesR.some((x) => lum(x, y) > 200);
+    const panels = runs(rowFlag, Math.round(H * 0.04), Math.round(H * 0.006));
+    for (let i = 0; i < panels.length; i++) {
+      const [pt, pb] = panels[i], next = i + 1 < panels.length ? panels[i + 1][0] : H;
+      // The card's words: the lowest line with anything bright on it before the next card starts.
+      let end = pb;
+      for (let y = next - 1; y >= pb; y--) { let n = 0; for (let x = x0; x < x1 && n < 3; x += 2) if (lum(x, y) > 150) n++; if (n >= 3) { end = y + 1; break; } }
+      const top = Math.max(0, pt - Math.round(H * 0.004)), bot = Math.min(next, end + Math.round(H * 0.006));
+      boxes.push({ x0, x1, top, bot });
+    }
+  }
+  if (!boxes.length) return { ok: false, error: "no cards found (" + W + "x" + H + ")" };
+  // Reading order: row by row, left to right.
+  boxes.sort((a, b) => a.top - b.top);
+  const rowsB = []; for (const b of boxes) { const r = rowsB.find((g) => Math.abs(g[0].top - b.top) < H * 0.05); if (r) r.push(b); else rowsB.push([b]); }
+  const ordered = rowsB.flatMap((g) => g.sort((a, b) => a.x0 - b.x0));
+  const host = await imageHost(env), cards = [];
+  for (let k = 0; k < ordered.length; k++) {
+    const { x0, x1, top, bot } = ordered[k], cw = x1 - x0, ch = bot - top, dst = new Uint8Array(cw * ch * 4);
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+      const so = ((top + y) * W + (x0 + x)) * 4, to = (y * cw + x) * 4;
+      dst[to] = px[so]; dst[to + 1] = px[so + 1]; dst[to + 2] = px[so + 2]; dst[to + 3] = 255;
+    }
+    const cut = new PhotonImage(dst, cw, ch); const bts = cut.get_bytes(); try { cut.free(); } catch {}
+    let t = ""; for (let j = 0; j < bts.length; j += 8192) t += String.fromCharCode.apply(null, bts.subarray(j, j + 8192));
+    const nid = "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+    await env.AURA_KV.put("image:" + nid, btoa(t));
+    cards.push({ n: k + 1, image_url: "https://" + host + "/image/" + nid, size: cw + "x" + ch });
+  }
+  const out = { ok: true, from: id, sheet: W + "x" + H, columns: cols.length, count: cards.length, cards };
+  await env.AURA_KV.put("cutall1:" + id, JSON.stringify(out)).catch(() => {});
+  console.log("[CUT] all cards of " + id + " (" + out.sheet + "): " + cards.length + " cards in " + cols.length + " columns");
   return out;
 }
 

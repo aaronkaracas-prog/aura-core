@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.682.0-2026-10-19-speed-and-modelping";
+const BUILD = "aura-core-v9.683.0-2026-10-19-no-placeholders-in-their-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67877,6 +67877,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           for (let i = _st; i < tnow.length; i++) { const e = tnow[i];
             let t = String((e && e.role === "them" && e.said) || "").trim();
             if (i === _st) t = t.replace(_jobW, "").trim();
+            // THE PAGE'S OWN NOTES ARE NOT THEIR WORDS (v9.683, 2026-10-19): MEASURED 11:18 - the cover sentence carried "[they sent a
+            // photo, with no words]". Anything in square brackets is a note the page or core wrote, never something they said.
+            t = t.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
             t = t.replace(/^show me:\s*/i, "");
             if (!t || _tapW.test(t) || _bareW.test(t)) continue;
             _ws.push(t.replace(/[\s.]+$/, "")); }

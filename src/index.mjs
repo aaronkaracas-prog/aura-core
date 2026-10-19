@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.678.0-2026-10-18-eight-everywhere";
+const BUILD = "aura-core-v9.679.0-2026-10-19-name-chain-fixed-lines";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64214,13 +64214,17 @@ async function makeArtistFiles(env, ctx) {
           }
           // A design put on them (v9.529): the artwork is the design itself; how big it is comes from her
           // look at it on their body - the same measuring an add-on gets.
-          if (bodyLook && !_seeWhole) {
+          // A COVER-UP IS MEASURED TOO (v9.679, 2026-10-19, Aaron): MEASURED 06:10 and 06:36 - two cover-ups printed at the 5in
+          // default; only a design put on them was measured. The one they chose is already on their own body, so she reads its
+          // height from that picture with the same words.
+          const _measureOn = bodyLook || ((jobNow === "cover" || jobNow === "rework") && !alreadyFlat && /^https?:\/\//i.test(String(mockUrl || "")) ? mockUrl : null);
+          if (_measureOn && !_seeWhole) {
             try {
               const q = await proxyToAgent(env,
                 "[FOR YOU, NOT THEM. Their artist's sheets are being made now from the design they chose." +
                 " From what you see on their body in this picture, the finished height in inches of the tattoo," +
                 " written as whole: N in. Reply with only that line.]",
-                false, me, bodyLook, world);
+                false, me, _measureOn, world);
               if (q && q.reply && !q.failed) {
                 const _a = String(_verdict(q.reply, readAct(q.reply)) || "") + "\n" + String(q.reply || "");
                 _seeRaw = String(q.reply || "").slice(0, 600);
@@ -65025,6 +65029,8 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // ONE BUTTON VOCABULARY (v9.673, 2026-10-18, Aaron: "there's just no consistency in the wording on every button"). The chat now
       // shows the button's own words; these mean exactly what the old fixed lines meant, so every road reads them as before.
       // EIGHT EVERYWHERE (v9.678): the buttons say "Imagine 8 ..."; every road reads it as the "Imagine 4 ..." it always knew.
+      // WHAT THEY TAPPED, IN THE LOG (v9.679, 2026-10-19, Aaron): the log said "Imagine 4 possibilities" for a tap on Imagine 8.
+      const _saidAsTapped = String(saidIn || "");
       saidIn = String(saidIn || "").replace(/^(\s*imagine\s+(?:another\s+)?)(?:8|eight)\b/i, "$14");
       if (/^\s*imagine\s+(?:4|four)\s+(?:ideas|cover-?ups|cover ups|directions|in this style)\.?\s*$/i.test(String(saidIn || ""))) saidIn = "Show me some ideas";
       else if (/^\s*fine-?\s?tune it\.?\s*$/i.test(String(saidIn || ""))) saidIn = "I want to change something";
@@ -66632,10 +66638,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                              return !!(e.grid === true && _id && (await env.AURA_KV.get("bodysheet:" + _id) || await env.AURA_KV.get("sheet8:" + _id))); } }
                        } catch {}
                        return false; })()) {
-            _fixedWhy = "pick"; _cutPick = true; _fixedSay = await _fx("addon_pick", "Here it is.");
+            _fixedWhy = "pick"; _cutPick = true; _fixedSay = await _fx("pick8", "This is the one you're working on - make it your tattoo, fine-tune it, or imagine 8 possibilities of it.");
           } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-8]\.?$/i.test(_s) && !_bodyPhoto) {
             // CHOOSE, THEN THE OFFER (v9.628, 2026-10-16, Aaron): change it, imagine 4 possibilities, or finish.
-            _fixedWhy = "pick"; _fixedSay = await _fx("pick_ask8", "Great choice. Want to fine-tune it, or should I imagine 8 possibilities for it?");
+            _fixedWhy = "pick"; _fixedSay = await _fx("pick8", "This is the one you're working on - make it your tattoo, fine-tune it, or imagine 8 possibilities of it.");
           } else if (_s && carriedObj && carriedObj.on_me === true && refHeld && _bodyPhoto && refUrl && !_freshPhoto &&
                      !["add", "cover", "rework"].includes(String(carriedObj.job || "").toLowerCase()) &&
                      !/^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|no|nope|nah|thanks?( you)?)[\s.!]*$/i.test(_s) &&
@@ -67243,7 +67249,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               _pickN = [..._ns][0];
               _pickGridImg = _gp.image || null;
               if (act === "none") act = "change";
-              console.log("[TURN:PICK] they picked number " + [..._ns][0] + " off the four - their go");
+              console.log("[TURN:PICK] they picked number " + [..._ns][0] + " - their go");
             }
           }
         }
@@ -67635,10 +67641,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       let _ideasGrid = false, _addonPoss = false, _addonOwnWords = null;
       if (_addonPossCard && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true; _addonPoss = true;
-        console.log("[TURN:IDEAS] four possibilities of the chosen add-on, on their photo: " + _addonPossCard);
+        console.log("[TURN:IDEAS] eight possibilities of the one they chose, on their photo: " + _addonPossCard);
       } else if (_askIdeas && (jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true;
-        console.log("[TURN:IDEAS] four ideas drawn as one grid on their photo, from the one fixed sentence");
+        console.log("[TURN:IDEAS] eight drawn as one sheet on their photo, from the one fixed sentence");
       } else if ((jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire) && (act === "draw" || act === "change") &&
                  !_pickGo && !_cutPick && _fixedWhy !== "pick" && String(said || "").trim()) {
         // THEIR OWN WORDS COME BACK AS FOUR TOO (v9.667, 2026-10-18, Aaron: "I gave a tattoo my idea before suggestions - 4 style
@@ -68980,10 +68986,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _bsid = (String(_pickGridImg).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
               if (_bsid && await env.AURA_KV.get("bodysheet:" + _bsid)) {
                 _gridPickCut = { img: _pickGridImg, n: _pickN, card: null };
-                console.log("[TURN:PICK] number " + _pickN + " is cut out of the add-on sheet - the image model only if the cut fails");
+                console.log("[TURN:PICK] number " + _pickN + " is cut out of the sheet - the image model only if the cut fails");
               }
             } catch {}
-            console.log("[TURN:PICK] number " + _pickN + " drawn on their own photo, the grid sent as the second picture");
+            if (!_gridPickCut) console.log("[TURN:PICK] number " + _pickN + " drawn on their own photo, the sheet sent as the second picture");
           }
           // ══ MADE FROM THE PICTURE: THE PHOTO, ONE OPENING, HER BRIEF (2026-10-01, v9.504, Aaron) ═══
           // The opening is a setting (`config:frame:from`, "____" is her brief). Their lines never go.
@@ -69037,6 +69043,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   const _c = await cutPanel(env, _gridPickCut.img, _gridPickCut.n);
                   if (_c && _c.ok && _c.image_url) {
                     const _cid = (String(_c.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1] || null;
+                    // THE NAME CHAIN (v9.679, 2026-10-19, Aaron: "we lost the chain of what we should call this"): a card cut off an 8-sheet
+                    // carries its own title from the sheet; that title names the tattoo all the way to the artist files.
+                    if (!_gridPickCut.card && _c.card && _c.card.title) _gridPickCut.card = _c.card;
                     const _cardT = _gridPickCut.card && _gridPickCut.card.title ? String(_gridPickCut.card.title) : null;
                     const _reg = await registerSmartFile(env, { id: _cid, filetype: "image", name: _cardT || ("number " + _gridPickCut.n + " of the four"),
                       url: _c.image_url, subject: "number " + _gridPickCut.n + ", cut from the four", source: "panel_cut", creator: me || null,
@@ -69045,7 +69054,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                     if (_cid) { try { await env.AURA_KV.put("bodycut:" + _cid, "1"); } catch {} }
                     t = { ok: true, image_url: _c.image_url, child: (_reg && _reg.entity_id) || null, cut: true,
                           ...(_gridPickCut.card ? { card: _gridPickCut.card } : {}) };
-                    _pl("number " + _gridPickCut.n + " cut from the sheet by hand - no image model, nothing redrawn -> " + _c.image_url + " (" + _c.cut + (_c.strip_found ? ", strip cut off" : "") + ")");
+                    _pl("number " + _gridPickCut.n + " cut from the sheet by hand - no image model, nothing redrawn -> " + _c.image_url + " (" + _c.cut + (_c.strip_found ? ", strip cut off" : "") + ")" + (_cardT ? " · named: " + _cardT : " · no title on this card"));
                   } else _pl("the cut did not work (" + String((_c && _c.error) || "?") + ") - the image model picks it instead");
                 } catch (e) { _pl("the cut failed (" + String(e?.message ?? e).slice(0, 120) + ") - the image model picks it instead"); }
               }
@@ -69887,7 +69896,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           (me ? " · who=" + me : "") + " · said: " + (String(saidIn || "").trim() ? "\"" + String(saidIn).slice(0, 60).replace(/\s+/g, " ") + "\"" : "(no words" + ((opts && opts.ref) ? ", a photo" : "") + ")"));
         // EVERY WORD, BOTH WAYS (2026-10-14, v9.602, Aaron: "I want you to see all information"): the line above cuts both
         // at 50-60 letters; this one does not.
-        console.log("[TURN:WORDS] they said: \"" + String(saidIn || "").replace(/\s+/g, " ").slice(0, 2000) + "\" · shown to them: \"" +
+        console.log("[TURN:WORDS] they said: \"" + String(_saidAsTapped || saidIn || "").replace(/\s+/g, " ").slice(0, 2000) + "\" · shown to them: \"" +
           String(_said || (acted && acted.say) || "").replace(/\s+/g, " ").slice(0, 2000) + "\"" + (_fixedWhy ? " · fixed (" + _fixedWhy + ")" : "") + (me ? " · who=" + me : ""));
       } catch {}
       // THE LAST TURN, KEPT FOR A PAGE THAT LOST THE CONNECTION (2026-10-12, v9.572). MEASURED 06:45: a 128s turn

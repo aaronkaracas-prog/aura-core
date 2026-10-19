@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.680.0-2026-10-19-their-words-in";
+const BUILD = "aura-core-v9.681.0-2026-10-19-turns-survive-a-dropped-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63363,6 +63363,19 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         try { console.log("[WORKFLOW] progress write failed: " + kvTrouble); } catch {}
       }
     };
+    // A TURN AS ITS OWN JOB (v9.681): no retries - a second go would draw and charge twice.
+    if (String(event.payload?.mode || "") === "talk_turn") {
+      const d = event.payload?.data || {};
+      try {
+        return await step.do("turn", { retries: { limit: 0, delay: "1 second" }, timeout: "15 minutes" }, async () => {
+          try { return await runTalkJob(this.env, d); }
+          catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 300) }; }
+        });
+      } catch (e) {
+        try { console.log("[TURNJOB] the job stopped: " + String(e?.message ?? e).slice(0, 240)); } catch {}
+        return { ok: false };
+      }
+    }
     if (String(event.payload?.mode || "") === "artist_files") {
       const d = event.payload?.data || {};
       // ══ A CLOUDFLARE HICCUP GETS ANOTHER GO, AND A DEAD JOB STILL SAYS SO (2026-09-30) ══════════
@@ -64922,6 +64935,55 @@ async function startArtistFilesJob(env, data) {
     try { console.log("[FILES] background job did not start - making them inline: " + String(e?.message ?? e).slice(0, 160)); } catch {}
     return null;
   }
+}
+
+// ══ A TURN THAT SURVIVES A DROPPED CONNECTION (v9.681, 2026-10-19, Aaron: "go") ═══════════════════════════════════
+// MEASURED 08:51:57: the page's connection ended 28s into a turn that was drawing a sheet; Cloudflare gives work left over
+// after a connection ends 30 seconds, and at 08:52:28 it cancelled it ("waitUntil() tasks did not complete within the allowed
+// time"). The sheet was never cut, never titled, and the page had nothing to show. A turn now runs as its own job in the same
+// Workflow the artist files use, so it finishes whether or not anyone is still connected. The page's connection only relays
+// what the job writes (her words as they come, the stage, the final answer); if it drops, the page's existing recovery reads the
+// finished turn by its id. ONE IMPLEMENTATION: the job runs the same auraTalk, with the same options.
+// Off switch, no deploy: `config:talk:durable` = 0 puts every turn back on the connection.
+async function talkJobsOn(env) {
+  try { const k = String((await env.AURA_KV.get("config:talk:durable")) || "").trim().toLowerCase(); if (["0", "off", "no", "false"].includes(k)) return false; } catch {}
+  return true;
+}
+async function startTalkJob(env, data) {
+  try {
+    if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
+    const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: "talk_turn", data } });
+    return (inst && inst.id) ? inst.id : null;
+  } catch (e) {
+    try { console.log("[TURNJOB] the job did not start - this turn runs on the connection: " + String(e?.message ?? e).slice(0, 160)); } catch {}
+    return null;
+  }
+}
+async function runTalkJob(env, d) {
+  const me = d.me, tid = (d.opts && d.opts.tid) || null, t0 = Date.now();
+  let text = "", stg = "", what = "", lastW = 0;
+  const pend = [];
+  const live = async (force, extra) => {
+    const now = Date.now(); if (!force && now - lastW < 700) return; lastW = now;
+    await talkStatePut(env, me, "turnlive", JSON.stringify({ tid, text, stage: stg, what, ...(extra || {}) }));
+  };
+  await live(true);
+  let out;
+  try {
+    out = await auraTalk(env, me, d.stage, d.said, d.hist, { ...(d.opts || {}), world: worldFor(d.host),
+      waitUntil: (pr) => { pend.push(Promise.resolve(pr).catch(() => null)); },
+      onDelta: async (t) => { text += String(t || ""); await live(false); },
+      onStage: async (st, w) => { stg = String(st || ""); what = String(w || ""); await live(true); } });
+  } catch (e) {
+    out = { ok: false, error: "TALK_THREW", detail: String(e && e.message || e).slice(0, 300) };
+  }
+  if (d.opts && d.opts.ref && out && typeof out === "object") out = { ...out, ref: d.opts.ref };
+  await talkStatePut(env, me, "turnout", JSON.stringify({ tid, out }));
+  await live(true, { done: true });
+  try { console.log("[TURNJOB] turn " + tid + " finished in " + ((Date.now() - t0) / 1000).toFixed(1) + "s · ok=" + !!(out && out.ok !== false) + (me ? " · who=" + me : "")); } catch {}
+  // Her work behind the reply (naming at This Is My Tattoo, and the like) finishes inside the job, never cut off.
+  if (pend.length) { try { await Promise.all(pend); } catch {} }
+  return { ok: !!(out && out.ok !== false) };
 }
 
 async function runArtistFilesJob(env, d) {
@@ -70949,6 +71011,44 @@ export class PublicEntry extends WorkerEntrypoint {
         // connection was dropped at about 100s of silence. A comment line every 15s keeps it open; the page
         // ignores it.
         const _hb = setInterval(() => { _send(": still working\n\n"); }, 15000);
+        // THE TURN RUNS AS A JOB, THIS CONNECTION ONLY RELAYS IT (v9.681). Same options as the turn below, as plain data.
+        const _tOpts = {
+          tid: b.tid ? String(b.tid).slice(0, 40) : null,
+          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire };
+        const _jobId = (me && _tOpts.tid && await talkJobsOn(env))
+          ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;
+        if (_jobId) {
+          try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs as job " + _jobId + " - the page's connection only relays it · who=" + me); } catch {}
+          let _gone = false;
+          const _sendR = async (frame) => { try { await _w.write(_enc.encode(frame)); } catch { _gone = true; } };
+          const _relay = (async () => {
+            const t0 = Date.now(); let sentLen = 0, lastStage = "", fin = null;
+            while (!_gone && Date.now() - t0 < 14 * 60000) {
+              let st = null; try { st = talkParse((await talkStateGet(env, me, ["turnlive"])).turnlive); } catch {}
+              if (st && st.tid === _tOpts.tid) {
+                const txt = String(st.text || "");
+                if (txt.length > sentLen) { await _sendR("data: " + JSON.stringify({ delta: txt.slice(sentLen) }) + "\n\n"); sentLen = txt.length; }
+                const sk = String(st.stage || "") + "|" + String(st.what || "");
+                if (st.stage && sk !== lastStage) { lastStage = sk; await _sendR("event: stage\ndata: " + JSON.stringify({ stage: st.stage, ...(st.what ? { what: st.what } : {}) }) + "\n\n"); }
+                if (st.done) {
+                  try { const o = talkParse((await talkStateGet(env, me, ["turnout"])).turnout); if (o && o.tid === _tOpts.tid) fin = o.out; } catch {}
+                  break;
+                }
+              }
+              await new Promise((r) => setTimeout(r, 800));
+            }
+            clearInterval(_hb);
+            // No final here (the page left, or it ran past 14 minutes): the page's recovery reads the finished turn by its id.
+            if (fin && !_gone) await _sendR("event: final\ndata: " + JSON.stringify(fin) + "\n\n");
+            try { await _w.close(); } catch {}
+          })();
+          try { this.ctx?.waitUntil?.(_relay); } catch {}
+          return new Response(readable, { headers: {
+            "content-type": "text/event-stream; charset=utf-8",
+            "cache-control": "no-cache, no-transform",
+            "x-accel-buffering": "no",
+          }});
+        }
         const _pump = (async () => {
           let out;
           try {

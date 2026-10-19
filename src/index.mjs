@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.674.0-2026-10-18-cut-all-cards";
+const BUILD = "aura-core-v9.675.0-2026-10-18-cut-all-by-the-black";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59822,7 +59822,7 @@ async function cutPanel(env, url, n) {
 async function cutAllCards(env, url) {
   const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
   if (!id) return { ok: false, error: "need a picture" };
-  const was = await env.AURA_KV.get("cutall1:" + id).catch(() => null);
+  const was = await env.AURA_KV.get("cutall2:" + id).catch(() => null);
   if (was) { try { return JSON.parse(was); } catch {} }
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return { ok: false, error: "picture not found: " + id };
@@ -59839,25 +59839,26 @@ async function cutAllCards(env, url) {
     if (s0 >= 0) out.push([s0, last + 1]);
     return out.filter((r) => r[1] - r[0] >= minLen);
   };
-  // The columns: where at least a quarter of the page, top to bottom, is white.
-  const colFlag = new Array(W).fill(false);
-  for (let x = 0; x < W; x++) { let t = 0, w = 0; for (let y = 0; y < H; y += 4) { t++; if (lum(x, y) > 200) w++; } colFlag[x] = w / t > 0.25; }
-  const cols = runs(colFlag, Math.round(W * 0.15), Math.round(W * 0.01));
+  // THE BLACK BETWEEN THE CARDS, NOT THE WHITE IN THEM (v9.675, 2026-10-18, Aaron: "this cutting tool is just going to the white
+  // ... it's not a size math type thing"). MEASURED 17:04 on img_mvehdkt7gsya: v9.674 looked for columns that were mostly white,
+  // the artwork pulled most columns under the bar, and only a strip of one card came off. Proven here on that same sheet before
+  // shipping - all eight whole. The columns are what lies between the lines that are black from top to bottom; inside a column a
+  // card starts where its white panel starts and runs to the next card's panel - its title strip comes with it.
+  const sepCol = new Array(W).fill(false);
+  for (let x = 0; x < W; x++) { let t = 0, b = 0; for (let y = 0; y < H; y += 2) { t++; if (lum(x, y) < 40) b++; } sepCol[x] = b / t > 0.97; }
+  const cols = runs(sepCol.map((v) => !v), Math.round(W * 0.15), 2);
   if (!cols.length) return { ok: false, error: "no columns of cards found (" + W + "x" + H + ")" };
   const boxes = [];
   for (const [x0, x1] of cols) {
-    const cw = x1 - x0;
-    const probesL = [0.03, 0.05, 0.07].map((f) => x0 + Math.round(cw * f)), probesR = [0.03, 0.05, 0.07].map((f) => x1 - 1 - Math.round(cw * f));
-    const rowFlag = new Array(H).fill(false);
-    for (let y = 0; y < H; y++) rowFlag[y] = probesL.some((x) => lum(x, y) > 200) && probesR.some((x) => lum(x, y) > 200);
-    const panels = runs(rowFlag, Math.round(H * 0.04), Math.round(H * 0.006));
+    const n = Math.ceil((x1 - x0) / 2);
+    const frac = (y, test) => { let k = 0; for (let x = x0; x < x1; x += 2) if (test(lum(x, y))) k++; return k / n; };
+    const blackRow = new Array(H), whiteRow = new Array(H);
+    for (let y = 0; y < H; y++) { blackRow[y] = frac(y, (v) => v < 40) > 0.985; whiteRow[y] = frac(y, (v) => v > 200) > 0.35; }
+    const panels = runs(whiteRow, Math.round(H * 0.04), Math.round(H * 0.03));
     for (let i = 0; i < panels.length; i++) {
       const [pt, pb] = panels[i], next = i + 1 < panels.length ? panels[i + 1][0] : H;
-      // The card's words: the lowest line with anything bright on it before the next card starts.
-      let end = pb;
-      for (let y = next - 1; y >= pb; y--) { let n = 0; for (let x = x0; x < x1 && n < 3; x += 2) if (lum(x, y) > 150) n++; if (n >= 3) { end = y + 1; break; } }
-      const top = Math.max(0, pt - Math.round(H * 0.004)), bot = Math.min(next, end + Math.round(H * 0.006));
-      boxes.push({ x0, x1, top, bot });
+      let y = next - 1; while (y > pb && blackRow[y]) y--;
+      boxes.push({ x0, x1, top: pt, bot: Math.min(next, y + 1 + Math.round(H * 0.006)) });
     }
   }
   if (!boxes.length) return { ok: false, error: "no cards found (" + W + "x" + H + ")" };
@@ -59879,7 +59880,7 @@ async function cutAllCards(env, url) {
     cards.push({ n: k + 1, image_url: "https://" + host + "/image/" + nid, size: cw + "x" + ch });
   }
   const out = { ok: true, from: id, sheet: W + "x" + H, columns: cols.length, count: cards.length, cards };
-  await env.AURA_KV.put("cutall1:" + id, JSON.stringify(out)).catch(() => {});
+  await env.AURA_KV.put("cutall2:" + id, JSON.stringify(out)).catch(() => {});
   console.log("[CUT] all cards of " + id + " (" + out.sheet + "): " + cards.length + " cards in " + cols.length + " columns");
   return out;
 }

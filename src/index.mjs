@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.675.0-2026-10-18-cut-all-by-the-black";
+const BUILD = "aura-core-v9.676.0-2026-10-18-cut-all-gap-then-panel";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -59822,7 +59822,7 @@ async function cutPanel(env, url, n) {
 async function cutAllCards(env, url) {
   const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
   if (!id) return { ok: false, error: "need a picture" };
-  const was = await env.AURA_KV.get("cutall2:" + id).catch(() => null);
+  const was = await env.AURA_KV.get("cutall3:" + id).catch(() => null);
   if (was) { try { return JSON.parse(was); } catch {} }
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return { ok: false, error: "picture not found: " + id };
@@ -59850,15 +59850,28 @@ async function cutAllCards(env, url) {
   if (!cols.length) return { ok: false, error: "no columns of cards found (" + W + "x" + H + ")" };
   const boxes = [];
   for (const [x0, x1] of cols) {
+    // A CARD STARTS AFTER A BLACK GAP, AT A PANEL (v9.676, 2026-10-18). MEASURED 17:12 on img_mvee4cwb50an (the Japanese card,
+    // art edge to edge): v9.675 found panels by rows that were mostly white, the koi's dark waves broke the panel in two, and
+    // four cards came back as a top half, two run-ons and an 85-pixel sliver. Now: a row is a gap only when it is black across
+    // the whole column; a card starts at the first line after a gap of 3+ such rows where the next few lines are mostly NOT
+    // black - a panel (white or full of colour), never a title strip (black with white words). Dark art inside a card never
+    // reaches the column edge, so it never reads as a gap. Proven before shipping on the eight pin-ups (all whole), on a
+    // dense 2x2 with a near-black band through every card, and on a four-card page with black title strips.
     const n = Math.ceil((x1 - x0) / 2);
-    const frac = (y, test) => { let k = 0; for (let x = x0; x < x1; x += 2) if (test(lum(x, y))) k++; return k / n; };
-    const blackRow = new Array(H), whiteRow = new Array(H);
-    for (let y = 0; y < H; y++) { blackRow[y] = frac(y, (v) => v < 40) > 0.985; whiteRow[y] = frac(y, (v) => v > 200) > 0.35; }
-    const panels = runs(whiteRow, Math.round(H * 0.04), Math.round(H * 0.03));
-    for (let i = 0; i < panels.length; i++) {
-      const [pt, pb] = panels[i], next = i + 1 < panels.length ? panels[i + 1][0] : H;
-      let y = next - 1; while (y > pb && blackRow[y]) y--;
-      boxes.push({ x0, x1, top: pt, bot: Math.min(next, y + 1 + Math.round(H * 0.006)) });
+    const bf = new Array(H);
+    for (let y = 0; y < H; y++) { let k = 0; for (let x = x0; x < x1; x += 2) if (lum(x, y) < 40) k++; bf[y] = k / n; }
+    const blackRow = bf.map((v) => v > 0.985);
+    const starts = []; let blk = 999;
+    for (let y = 0; y < H; y++) {
+      if (blackRow[y]) { blk++; continue; }
+      if (blk >= 3) { let mn = 1; for (let k = y; k < Math.min(H, y + 12); k++) if (bf[k] < mn) mn = bf[k];
+        if (mn < 0.3 && (!starts.length || y - starts[starts.length - 1] > H * 0.04)) starts.push(y); }
+      blk = 0;
+    }
+    for (let i = 0; i < starts.length; i++) {
+      const st = starts[i], next = i + 1 < starts.length ? starts[i + 1] : H;
+      let y = next - 1; while (y > st && blackRow[y]) y--;
+      boxes.push({ x0, x1, top: st, bot: Math.min(next, y + 1 + Math.round(H * 0.006)) });
     }
   }
   if (!boxes.length) return { ok: false, error: "no cards found (" + W + "x" + H + ")" };
@@ -59880,7 +59893,7 @@ async function cutAllCards(env, url) {
     cards.push({ n: k + 1, image_url: "https://" + host + "/image/" + nid, size: cw + "x" + ch });
   }
   const out = { ok: true, from: id, sheet: W + "x" + H, columns: cols.length, count: cards.length, cards };
-  await env.AURA_KV.put("cutall2:" + id, JSON.stringify(out)).catch(() => {});
+  await env.AURA_KV.put("cutall3:" + id, JSON.stringify(out)).catch(() => {});
   console.log("[CUT] all cards of " + id + " (" + out.sheet + "): " + cards.length + " cards in " + cols.length + " columns");
   return out;
 }

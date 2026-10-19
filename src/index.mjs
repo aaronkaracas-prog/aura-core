@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.681.0-2026-10-19-turns-survive-a-dropped-page";
+const BUILD = "aura-core-v9.682.0-2026-10-19-speed-and-modelping";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5987,6 +5987,152 @@ async function processCommand(line, env, isOp) {
       }
       return { cmd: "FEEDBACK", payload: { ok: true, count: out.length, feedback: out } };
     }
+    // ══ MODELPING ── HOW FAST IS HER MODEL RIGHT NOW (v9.682, 2026-10-19, Aaron: "work on speed and analyze every step") ═════
+    // MEASURED 06:31-06:35: the same 98%-cached request took 38s, 44s, 64s, then 5.6s and 3.5s; at 10:18-10:21 three calls took 55-65s
+    // each for under 200 tokens out. Writing that little takes a second or two - the rest is waiting. This asks HER model (the same
+    // `config:core:*` dials aura-think reads, through the same gateway, cache skipped) a one-line question n times, and a second model the
+    // same, so "the service is slow right now" is measured apart from anything we do.
+    //   RUN "MODELPING"            5 each, her model and the comparison model
+    //   RUN "MODELPING 3 @cf/..."  3 each, against the model named
+    case "MODELPING": {
+      if (!isOp) return { cmd: "MODELPING", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      if (!env.AI || typeof env.AI.run !== "function") return { cmd: "MODELPING", payload: { ok: false, error: "NO_AI_BINDING" } };
+      const mpN = Math.min(Math.max(parseInt(args[0] || "5", 10) || 5, 1), 10);
+      const mpProv = String((await env.AURA_KV.get("config:core:provider").catch(() => null)) || "").trim();
+      const mpHer = String((await env.AURA_KV.get("config:core:model:" + (mpProv || "neurons")).catch(() => null)) || "").trim();
+      const mpVs = (args.find((x) => /^@cf\//.test(String(x))) || (await env.AURA_KV.get("config:modelping:vs").catch(() => null)) || "@cf/meta/llama-3.1-8b-instruct-fp8-fast").trim();
+      const mpEff = String((await env.AURA_KV.get("config:neurons:reasoning").catch(() => null)) || "").trim().toLowerCase();
+      const mpGw = String((await env.AURA_KV.get("config:gateway:name").catch(() => null)) || "default").trim();
+      const mpRun = async (model, withEffort) => {
+        const t = Date.now();
+        try {
+          const inp = { messages: [{ role: "user", content: "Reply with the single word: ready" }], max_tokens: 40,
+            ...(withEffort && mpEff ? { reasoning_effort: /^(off|none|null|disable)$/.test(mpEff) ? null : mpEff } : {}) };
+          const r = await env.AI.run(model, inp, { gateway: { id: mpGw, skipCache: true } });
+          const txt = String(aiText(r) || "").replace(/\s+/g, " ").trim().slice(0, 40);
+          return { ms: Date.now() - t, ok: true, said: txt };
+        } catch (e) { return { ms: Date.now() - t, ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
+      };
+      const mpSeries = async (model, withEffort) => { const rows = []; for (let i = 0; i < mpN; i++) rows.push(await mpRun(model, withEffort)); return rows; };
+      const mpSum = (rows) => { const ok = rows.filter((r) => r.ok).map((r) => r.ms).sort((a, b) => a - b);
+        return { each_s: rows.map((r) => r.ok ? +(r.ms / 1000).toFixed(1) : "failed: " + r.error),
+                 fastest_s: ok.length ? +(ok[0] / 1000).toFixed(1) : null, middle_s: ok.length ? +(ok[Math.floor(ok.length / 2)] / 1000).toFixed(1) : null,
+                 slowest_s: ok.length ? +(ok[ok.length - 1] / 1000).toFixed(1) : null }; };
+      if (!mpHer) return { cmd: "MODELPING", payload: { ok: false, error: "NO_MODEL_SET", say: "config:core:model:" + (mpProv || "neurons") + " is empty - her model could not be read." } };
+      const mpA = await mpSeries(mpHer, true);
+      const mpB = await mpSeries(mpVs, false);
+      const a = mpSum(mpA), b = mpSum(mpB);
+      return { cmd: "MODELPING", payload: { ok: true, asked: "\"Reply with the single word: ready\" (max 40 tokens out), " + mpN + " times each, one after another, cache skipped, through gateway '" + mpGw + "'",
+        her_model: mpHer + (mpEff ? " (reasoning " + mpEff + ", as her turns use)" : ""), her_times: a,
+        compared_with: mpVs, its_times: b,
+        read_this: (a.middle_s != null && b.middle_s != null)
+          ? (a.middle_s > 10 && b.middle_s < 5 ? "Her model is waiting in line; the other is not - the slowness is her model's capacity right now, not our prompt or our code."
+            : a.middle_s > 10 && b.middle_s > 10 ? "Both are slow - the gateway or Workers AI as a whole is slow right now, not one model."
+            : "Her model answers a one-line question quickly right now - slow turns at this moment would come from the size of what we send or the number of calls, not the queue.")
+          : "One series failed - see the errors in each_s." } };
+    }
+
+    // ══ SPEED ── EVERY STEP OF EVERY TURN, ONE TABLE (v9.682, 2026-10-19, Aaron: "work on speed and analyzing every step") ══════
+    // LOGS reads one worker at a time and stops at 1,000 entries, so one turn took three commands and hand-stitching - that is how a
+    // 186-second reply was three model calls and nobody saw it. SPEED asks Cloudflare only for the lines that carry time, from both
+    // workers, in 20-minute slices, and builds one row per turn: what they said, the total, every model call (seconds, % cached, tokens
+    // out), the extra look at a photo, instructions she loaded, the job start-up, the sheet (copy, chat model + drawing, cut).
+    //   RUN "SPEED 2026-10-19 06:00 10:30"
+    case "SPEED": {
+      const spTok = await getSecret(env, "cf_api_token");
+      const spAcct = (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+      if (!spTok) return { cmd: "SPEED", payload: { ok: false, error: "NO_CF_TOKEN" } };
+      const spTz = (await env.AURA_KV.get("config:operator:tz").catch(() => null)) || "America/Los_Angeles";
+      const spA = args.map((x) => String(x));
+      const spParts = (d) => { const o = {}; for (const q of new Intl.DateTimeFormat("en-US", { timeZone: spTz, hourCycle: "h23",
+        year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(d)) o[q.type] = q.value; return o; };
+      const spP = spParts(new Date());
+      const spDate = spA.find((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+      if (spDate) { const [dy, dm, dd] = spDate.split("-"); spP.year = dy; spP.month = dm; spP.day = dd; }
+      const spAt = (hm) => { const [h, mi] = hm.split(":").map(Number); const guess = Date.UTC(+spP.year, +spP.month - 1, +spP.day, h, mi, 0);
+        const g = spParts(new Date(guess)); const seen = Date.UTC(+g.year, +g.month - 1, +g.day, +g.hour, +g.minute, +g.second); return guess - (seen - guess); };
+      const spTimes = spA.filter((x) => /^\d{1,2}:\d{2}$/.test(x));
+      if (spTimes.length < 2) return { cmd: "SPEED", payload: { ok: false, error: "BAD_WINDOW", say: "Give a date and two times: SPEED 2026-10-19 06:00 10:30" } };
+      const spFrom = spAt(spTimes[0]), spTo = spAt(spTimes[1]) + 59999;
+      if (!(spTo > spFrom) || spTo - spFrom > 14 * 3600000) return { cmd: "SPEED", payload: { ok: false, error: "BAD_WINDOW", say: "The window must be under 14 hours." } };
+      const spFmt = (ms) => { const q = spParts(new Date(ms)); return q.hour + ":" + q.minute + ":" + q.second; };
+      const spFind = (o, depth = 0) => {
+        if (!o || depth > 6) return null;
+        if (Array.isArray(o)) { if (o.length && typeof o[0] === "object" && o[0] && ("timestamp" in o[0] || "$metadata" in o[0])) return o; for (const x of o) { const r = spFind(x, depth + 1); if (r) return r; } return null; }
+        if (typeof o === "object") for (const k of Object.keys(o)) { const r = spFind(o[k], depth + 1); if (r) return r; }
+        return null;
+      };
+      const spTrouble = [];
+      const spQuery = async (script, has, from, to) => {
+        const body = { queryId: "aura-speed-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), timeframe: { from, to }, view: "events", limit: 1000,
+          parameters: { filters: [{ key: "$workers.scriptName", operation: "eq", type: "string", value: script },
+                                  { key: "$metadata.message", operation: "includes", type: "string", value: has }],
+                        filterCombination: "and", calculations: [], groupBys: [], limit: 1000 } };
+        try {
+          const r = await fetch("https://api.cloudflare.com/client/v4/accounts/" + spAcct + "/workers/observability/telemetry/query",
+            { method: "POST", headers: { "Authorization": "Bearer " + spTok, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          const j = await r.json().catch(() => null);
+          if (!r.ok || !j || j.success === false) { spTrouble.push(script + " \"" + has + "\": HTTP " + r.status); return []; }
+          const ev = spFind(j.result || j) || [];
+          if (ev.length >= 1000) spTrouble.push(script + " \"" + has + "\" hit 1,000 in one slice - some lines are missing");
+          return ev.map((e) => { const md = e.$metadata || {}; let m = md.message || (e.source && e.source.message) || ""; if (typeof m !== "string") m = JSON.stringify(m);
+            return { t: Number(e.timestamp || md.timestamp || 0), m: String(m).replace(/\s+/g, " ") }; });
+        } catch (e) { spTrouble.push(script + " \"" + has + "\": " + String(e?.message ?? e).slice(0, 80)); return []; }
+      };
+      const spAll = async (script, has) => { const out = []; for (let f = spFrom; f < spTo; f += 20 * 60000) out.push(...await spQuery(script, has, f, Math.min(spTo, f + 20 * 60000 - 1))); return out.sort((a, b) => a.t - b.t); };
+      const [cTurn, cJob, cThread, cCut, cWords, tTiming, tTreas, tEyes, tSkills] = await Promise.all([
+        spAll("aura-core-v2", "[TURN] "), spAll("aura-core-v2", "[TURNJOB]"), spAll("aura-core-v2", "[THREAD]"), spAll("aura-core-v2", "[CUT8]"),
+        spAll("aura-core-v2", "[TURN:WORDS]"),
+        spAll("aura-think", "[TIMING] model_call"), spAll("aura-think", "TREASURY"), spAll("aura-think", "[EYES]"), spAll("aura-think", "[SKILLS] loaded")]);
+      const num = (re, s) => { const m = String(s).match(re); return m ? parseFloat(m[1]) : null; };
+      const inWin = (arr, a, b) => arr.filter((x) => x.t >= a && x.t <= b);
+      const rows = [];
+      const tot = { turns: 0, seconds: 0, model_calls: 0, model_s: 0, extra_calls: 0, extra_call_s: 0, photo_look_s: 0, sheets: 0, sheet_s: 0, job_start_s: 0, cut_s: 0 };
+      for (const tr of cTurn) {
+        const secs = num(/\[TURN\] ([\d.]+)s/, tr.m); if (secs == null) continue;
+        const end = tr.t, start = end - secs * 1000;
+        const said = (tr.m.match(/said: (\"[^\"]*\"|\(no words[^)]*\))/) || [])[1] || "";
+        const a = start - 2000, b = end + 1500;
+        const calls = inWin(tTiming, a, b).map((x) => num(/model_call (\d+)ms/, x.m)).filter((x) => x != null);
+        const treas = inWin(tTreas, a, b).map((x) => { const j = (() => { try { return JSON.parse(x.m.replace(/^.*?TREASURY\s*/, "")); } catch { return null; } })();
+          return j ? { cached: j.hit_rate || null, in: j.in, out: j.out } : null; }).filter(Boolean);
+        const eyes = inWin(tEyes, a, b).map((x) => num(/(\d+) ms/, x.m)).filter((x) => x != null);
+        const skills = inWin(tSkills, a, b).map((x) => (x.m.match(/loaded (\S+)/) || [])[1]).filter(Boolean);
+        const thr = inWin(cThread, a, b);
+        const took = thr.map((x) => num(/took ([\d.]+)s/, x.m)).filter((x) => x != null);
+        const copy = thr.map((x) => num(/copy ([\d.]+)s/, x.m)).filter((x) => x != null);
+        const thinkTok = thr.map((x) => (x.m.match(/thinking (\S+)/) || [])[1]).filter(Boolean);
+        const cut = inWin(cCut, a, b + 3000).map((x) => num(/· ([\d.]+)s$/, x.m)).filter((x) => x != null);
+        const job = cJob.filter((x) => /runs as job/.test(x.m) && x.t <= start + 500 && x.t >= start - 20000).pop();
+        const jobStart = job ? Math.max(0, (start - job.t) / 1000) : null;
+        const modelS = calls.reduce((s, x) => s + x, 0) / 1000;
+        const row = { at: spFmt(start), said: said.slice(0, 70), total_s: secs,
+          her_model_calls: calls.map((ms, i) => (ms / 1000).toFixed(1) + "s" + (treas[i] ? " (" + treas[i].cached + " cached, " + treas[i].out + " out)" : "")),
+          ...(eyes.length ? { photo_look_s: eyes.map((x) => +(x / 1000).toFixed(1)) } : {}),
+          ...(skills.length ? { loaded_instructions: skills } : {}),
+          ...(took.length ? { sheet_chat_model_plus_drawing_s: took, ...(thinkTok.length ? { chat_model_thinking_tokens: thinkTok } : {}) } : {}),
+          ...(copy.length ? { photo_copy_s: copy } : {}),
+          ...(cut.length ? { cut_s: cut } : {}),
+          ...(jobStart != null ? { job_start_s: +jobStart.toFixed(1) } : {}),
+          other_s: +Math.max(0, secs - modelS - eyes.reduce((s, x) => s + x, 0) / 1000 - took.reduce((s, x) => s + x, 0) - copy.reduce((s, x) => s + x, 0)).toFixed(1) };
+        rows.push(row);
+        tot.turns++; tot.seconds += secs; tot.model_calls += calls.length; tot.model_s += modelS;
+        if (calls.length > 1) { tot.extra_calls += calls.length - 1; tot.extra_call_s += calls.slice(0, -1).reduce((s, x) => s + x, 0) / 1000; }
+        tot.photo_look_s += eyes.reduce((s, x) => s + x, 0) / 1000; tot.sheets += took.length; tot.sheet_s += took.reduce((s, x) => s + x, 0);
+        tot.job_start_s += jobStart || 0; tot.cut_s += cut.reduce((s, x) => s + x, 0);
+      }
+      const r1 = (x) => +x.toFixed(1);
+      return { cmd: "SPEED", payload: { ok: true, zone: spTz, from: spFmt(spFrom), to: spFmt(spTo),
+        totals: { turns: tot.turns, all_turns_s: r1(tot.seconds),
+          her_model_s: r1(tot.model_s) + " over " + tot.model_calls + " calls",
+          extra_calls_before_her_reply: tot.extra_calls + " calls, " + r1(tot.extra_call_s) + "s",
+          extra_photo_look_s: r1(tot.photo_look_s),
+          sheets: tot.sheets + " sheets, " + r1(tot.sheet_s) + "s (chat model + drawing)",
+          job_start_s: r1(tot.job_start_s), cut_s: r1(tot.cut_s) },
+        turns: rows, ...(spTrouble.length ? { trouble: spTrouble.slice(0, 8) } : {}),
+        note: "Times before v9.682 have no sheet split, copy or cut seconds - those lines start with this build." } };
+    }
+
     case "LOGS": {
       const lgTok = await getSecret(env, "cf_api_token");
       const lgAcct = (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
@@ -13504,12 +13650,20 @@ async function successionGate(env) {
         : { model: thModel, tools: [thTool(thAction)], tool_choice: "required",
             previous_response_id: thArg, input: thAsk };
       try {
+        const _thT0 = Date.now();
         const thR = await pfetch(env, thOA ? "openai" : "xai", "core:thread",
           (thOA ? "https://api.openai.com" : "https://api.x.ai") + "/v1/responses", {
           method: "POST",
           headers: { "Authorization": "Bearer " + thKey, "Content-Type": "application/json" },
           body: JSON.stringify(thBody) });
         const thD = await thR.json().catch(() => null);
+        // WHERE A SHEET'S TIME GOES (v9.682, 2026-10-19, Aaron: "analyze every step"): one request carries the chat model's brief AND
+        // the drawing, so its total, the chat model's tokens (and how many of them were its own thinking) and the picture's quality are
+        // logged together. SPEED reads this line.
+        try { const _u = (thD && thD.usage) || {}; console.log("[THREAD] took " + ((Date.now() - _thT0) / 1000).toFixed(1) + "s · status " + thR.status +
+          " · chat model " + thModel + " in " + (_u.input_tokens ?? "?") + " out " + (_u.output_tokens ?? "?") +
+          " thinking " + ((_u.output_tokens_details && _u.output_tokens_details.reasoning_tokens) ?? "?") +
+          " · picture " + (thImgModel || "?") + " " + (thQual || "?") + " " + (thOA ? (thSize || "?") : "")); } catch {}
         if (!thR.ok || !thD) return { cmd: "THREAD", payload: { ok: false, error: "HTTP " + thR.status + " " + JSON.stringify(thD || {}).slice(0, 300) } };
         const thOut = Array.isArray(thD.output) ? thD.output : [];
         const thCalls = thOut.filter((o) => o && o.type === "image_generation_call" && o.result);
@@ -19663,7 +19817,9 @@ async function successionGate(env) {
         // lands - a child of the parent in the Smart File graph - so everything after it works unchanged.
         if (p.via === "thread" && parentUrl) {
           // v9.609: a copy small enough to download in time, and one more try if the picture does not come back.
+          const _cpT0 = Date.now();
           const _sendUrl = await sendCopy(env, parentUrl);
+          try { console.log("[THREAD] copy " + ((Date.now() - _cpT0) / 1000).toFixed(1) + "s"); } catch {}
           let tp = null;
           for (let _t = 0; _t < 2; _t++) {
             // MORE THAN ONE PICTURE, IN ORDER (v9.661): the parent first, then `with` - the add-on possibilities send their photo,
@@ -60360,6 +60516,7 @@ async function toEight(env, sentence, kind) {
 // The sheet cut into its cards the moment it comes back, each card with its own words - by order, after the count check. If the
 // count is off, the cards come back with no words rather than the wrong ones. The sheet is marked so a pick is that card.
 async function eightCards(env, sheetUrl, said) {
+  const _c8T0 = Date.now();
   try {
     const cut = await cutAllCards(env, sheetUrl);
     if (!cut || !cut.ok || !Array.isArray(cut.cards) || cut.cards.length < 2) { console.log("[CUT8] not cut: " + String((cut && cut.error) || "no cards")); return null; }
@@ -60369,7 +60526,7 @@ async function eightCards(env, sheetUrl, said) {
     const cards = cut.cards.map((c, k) => ({ n: k + 1, image: c.image_url, ...(ok ? { title: lines[k].title, lines: lines[k].lines } : {}) }));
     const sid = (String(sheetUrl).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
     if (sid) { try { await env.AURA_KV.put("sheet8:" + sid, JSON.stringify(cards)); } catch {} }
-    console.log("[CUT8] " + cards.length + " cards off " + sid + (ok ? " · words matched by order" : " · words not used: " + lines.length + " lines for " + cards.length + " cards"));
+    console.log("[CUT8] " + cards.length + " cards off " + sid + (ok ? " · words matched by order" : " · words not used: " + lines.length + " lines for " + cards.length + " cards") + " · " + ((Date.now() - _c8T0) / 1000).toFixed(1) + "s");
     return cards;
   } catch (e) { console.log("[CUT8] failed: " + String(e?.message ?? e).slice(0, 160)); return null; }
 }

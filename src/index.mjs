@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.683.0-2026-10-19-no-placeholders-in-their-words";
+const BUILD = "aura-core-v9.684.0-2026-10-19-one-way-to-eight-and-stuck-line";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65912,11 +65912,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         "{\n" +
         // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
         // so the floor and her live agent cannot disagree.
-        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give design ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, put your four directions in ideas, not in your words; don\'t pick a favourite - one short, warm line about them is enough. When you give ideas, don\'t end with a question - the ideas are the question. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
+        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give design ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, offer to show them 8 in one picture - don\'t list directions in your words. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
-        '  "ideas": ["4 directions they can tap, each written \'Short title - one short line\', each one bringing together everything they have told you they want, said the way you\'d say it out loud to a friend looking at their tattoo: everyday words, no art terms; the fourth is something completely different - a direction they would never have thought of"],\n' +
         // THE PLACES IT COULD GO (2026-10-18, v9.655, Aaron) - the same words as aura-think's reply format.
         '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go, in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
         '  "go": "only when they want to go somewhere else - one of the places named in WHY YOU ARE HERE, by its name; the app takes them there. If you can\'t tell where they want to go, ask them and leave it out",\n' +
@@ -66307,7 +66306,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           (_isCover && opts && opts.cover_style ? "\n\nTHEY CHOSE THE " + String(opts.cover_style).toUpperCase() + " STYLE for this cover-up - talk about covering it in that style.\n"
             // THE STYLE CARDS UNDER HER REPLY (v9.671, 2026-10-18, Aaron: "Aura will look at it and suggest styles"). Once their
             // photo is in, they see these cards under what she says; she knows they are there and which they are.
-            : _isCover ? "\n\nABOVE YOUR REPLY THEY SEE STYLE CARDS they can tap, each showing four designs in that style: " + COVER_STYLE_CARDS.join(", ") +
+            : _isCover ? "\n\nABOVE YOUR REPLY THEY SEE STYLE CARDS they can tap, each showing 8 designs in that style: " + COVER_STYLE_CARDS.join(", ") +
               ". When you look at their tattoo, suggest the one or two of those that would cover it best, and why - and say they can pick a style above or just tell you their idea.\n" : "") +
           // MEASURED: asked to make a cover-up raven "light grey and delicate", she did it without
           // a word. That design cannot be tattooed over dark linework, and the person finds out in
@@ -66530,8 +66529,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           trendNote = "\n\nWHAT'S HOT RIGHT NOW AND FITS WHAT THEY SAID: " + _pick.picks.join("; ") + ". " +
             "These already fit their idea - use them. Your first ideas are the directions you will show them: " +
             "when you mention one of these, say plainly it's what's hot right now and why it would look great on " +
-            "this idea. Then offer to show them four different takes on it - do not ask them to choose between " +
-            "two styles in words; the four pictures are how you ask. Only these may be called hot. If one of them " +
+            "this idea. Then offer to show them 8 different takes on it in one picture - do not ask them to choose between " +
+            "two styles in words; the 8 pictures are how you ask. Only these may be called hot. If one of them " +
             "does not suit what they told you or showed you, leave it out - you decide. If they haven't said what " +
             "they want yet (\"I want a tattoo\"), don't pitch these - ask your one line.";
         }
@@ -66753,10 +66752,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // the human by what information we have". Her words replace the fixed line; if she does not answer, the fixed line stands.
             try {
               const _fn = String((opts && opts.first) || "").replace(/[^A-Za-z\u00C0-\u00FF' -]/g, "").trim().slice(0, 30);
-              const _gq = await proxyToAgent(env, "[THEY JUST TAPPED CREATE NEW TATTOO." + (_fn ? " Their first name is " + _fn + "." : "") + "] " +
+              // ══ HER HELLO HAS 6 SECONDS (v9.684, 2026-10-19, Aaron) ═══ MEASURED 13:43: one two-line greeting waited 66.1s on
+              // a stalled call while the fixed hello sat ready. Past `config:talk:hello_ms` (default 6000) the fixed line stands.
+              let _helloMs = 6000; try { const _hv = parseInt(String((await env.AURA_KV.get("config:talk:hello_ms")) || ""), 10); if (Number.isFinite(_hv) && _hv >= 0) _helloMs = _hv; } catch {}
+              const _gq = await Promise.race([new Promise((r) => setTimeout(() => r({ failed: true, late: true }), _helloMs)), proxyToAgent(env, "[THEY JUST TAPPED CREATE NEW TATTOO." + (_fn ? " Their first name is " + _fn + "." : "") + "] " +
                 "Reply as you always do, with do set to none. say: greet them" + (_fn ? " by name" : "") + " in one or two warm, short lines and invite them " +
                 "to share what they're imagining - a story, a memory, a feeling, or just a picture in their head - or to pick a style above. " +
-                "Do not draw anything yet.\n\n(Reply with the JSON object. No prose.)", false, me + "_hello", null, world);
+                "Do not draw anything yet.\n\n(Reply with the JSON object. No prose.)", false, me + "_hello", null, world)]);
+              if (_gq && _gq.late) console.log("[TURN:HELLO] no greeting in " + _helloMs + "ms - the fixed line goes" + (me ? " · who=" + me : ""));
               const _ga = (_gq && _gq.reply && !_gq.failed) ? talkReadAct(_gq.reply) : null;
               const _gs = String((_ga && _ga.say) || "").trim();
               if (_gs) _fixedSay = _gs.slice(0, 400);
@@ -66905,7 +66908,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // turn was interrupted: the Durable Object was reset mid-flight". Her own log says the next
           // turn runs fine, and it did. Instead the stand-in model answered in her place and the test
           // was spoiled. So the same turn goes to her once more, unchanged, before anyone else answers.
-          if (!(proxied && proxied.reply && !proxied.failed) &&
+          // ══ STUCK IS ONE PLAIN LINE, NOT A RETRY AND NOT A STAND-IN (v9.684, 2026-10-19, Aaron) ═══════════════════════
+          // MEASURED 12:37: a stalled turn held the phone 7.6 minutes. aura-think now stops a call with no answer in 60s and says
+          // STUCK; asking her again would be another 60s, and the stand-in model would answer as her. They get one line and type again.
+          const _stuck = !(proxied && proxied.reply && !proxied.failed) && /STUCK/.test(String((proxied && proxied.failed) || ""));
+          if (_stuck) {
+            let _stuckSay = "That one got stuck on my end - say it again?";
+            try { const _k = String((await env.AURA_KV.get("config:say:stuck")) || "").trim(); if (_k) _stuckSay = _k; } catch {}
+            acted = { say: _stuckSay, act: "none", prompt: "", ask: "", use: [], brief: null };
+            agentVia = "stuck";
+            console.log("[TURN:STUCK] her model gave no answer in time - the turn ends with: \"" + _stuckSay + "\"" + (me ? " · who=" + me : ""));
+          }
+          if (!_stuck && !(proxied && proxied.reply && !proxied.failed) &&
               /empty answer|interrupted|reset|isolate|http 50[0-9]/i.test(String((proxied && proxied.failed) || ""))) {
             try {
               const _again = await proxyToAgent(env, agentLine,
@@ -69480,7 +69494,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // grid". Their own lines since Create New Tattoo (the taps and bare yeses left out) fill ____, the style they
           // tapped fills {style}. Nothing of hers goes in. Settings: config:frame:new:grid, config:frame:new:grid:style.
           let _newSentence = false, _nameHint = null;
-          if (_newFlow) {
+          // ══ EVERY NEW TATTOO IS THE SAME 8 (v9.684, 2026-10-19, Aaron: "this image I'm showing you should never even
+          // appear anymore") ═══ MEASURED: a new tattoo talked about without the Create New Tattoo tap (the opening chat, a
+          // terminal TALK) drew her own 2x2 grid of four while the tap drew the 8-sheet. One way in: any new design with no
+          // photo in play takes the same fixed sentence and their own words.
+          const _newAny = _newFlow || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
+          if (_newAny) {
             const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four) more|i want number [1-4])\.?\s*$/i;
             const _bare = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
             const _mine = [];
@@ -69488,7 +69507,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // IMAGINE SOMETHING NEW (v9.643): the words start at their new idea, not at Create New Tattoo.
             let _ns = ""; try { const _x = await talkStateGet(env, me, ["new_start"]); _ns = String((_x && _x.new_start) || "").trim(); } catch {}
             for (let i = tnow.length - 1; i >= 0; i--) {
-              if (tnow[i] && tnow[i].role === "them" && /^\s*i want to create a new tattoo/i.test(String(tnow[i].said || ""))) { _start = i + 1; break; }
+              if (tnow[i] && tnow[i].role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(tnow[i].said || ""))) { _start = i + 1; break; }
               if (_ns && tnow[i] && tnow[i].role === "them" && String(tnow[i].said || "").trim() === _ns) { _start = i; break; }
             }
             if (opts && opts.new_now) _start = tnow.length;
@@ -70146,7 +70165,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         try {
           await talkStatePut(env, me, "lastturn", JSON.stringify({ tid: String(opts.tid).slice(0, 40), at: new Date().toISOString(),
             ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
-            ideas: (acted.ideas && acted.ideas.length) ? acted.ideas : null,
+            ideas: null,   // NO IDEA CARDS (v9.684, 2026-10-19, Aaron): her reply and the chat box are the whole screen
             directions: (Array.isArray(acted.directions) && acted.directions.length) ? acted.directions : null,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
             // THE SAME ANSWER EITHER WAY (v9.634, 2026-10-16, Aaron: "there should not be two paths"): the whole `drew` as it
@@ -70160,7 +70179,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                answered_by: _fixedWhy ? ("fixed line (" + _fixedWhy + ")" + (_reaction && _reaction !== _fixedSay ? " + her look" : "")) : (_tapKeep ? "tap (her short line after)" : "Aura"),
                ...(_picsGot.length ? { image_model_got: _picsGot } : {}),
                ...(_newFlow ? { flow: "new tattoo" } : {}),
-               ...((acted.ideas && acted.ideas.length) ? { ideas: acted.ideas } : {}),
+
                // WHERE SHE TAKES THEM (v9.664): the page goes there - the same as tapping that place.
                ...(acted && acted.go && !_fixedWhy ? { go: acted.go } : {}),
                // HER PLACES (v9.655): on an add-on photo, the page shows each as a button.

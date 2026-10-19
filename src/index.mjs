@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.676.0-2026-10-18-cut-all-gap-then-panel";
+const BUILD = "aura-core-v9.677.0-2026-10-18-match-cards";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13543,6 +13543,10 @@ async function successionGate(env) {
             created: new Date().toISOString(), source: "image_thread", model: thModel,
             cost_usd: (thD.usage && thD.usage.cost_in_usd_ticks != null) ? thD.usage.cost_in_usd_ticks / 1e10 : null, url: "https://" + (await imageHost(env)) + "/image/" + thId })).catch(() => {});
           thUrl = "https://" + (await imageHost(env)) + "/image/" + thId;
+          // THE WORDS STAY WITH THE PICTURE (v9.677, 2026-10-18, Aaron: "associating the data we got back with the image"). The
+          // chat model's reply (the card list) and its brief (the panel order) are kept with the sheet, for MATCH_CARDS.
+          try { await env.AURA_KV.put("sheetwords:" + thId, JSON.stringify({ said: thText || null,
+            brief: (thLast && (thLast.prompt || thLast.revised_prompt)) || null, at: new Date().toISOString() })); } catch {}
         }
         return { cmd: "THREAD", payload: { ok: true, thread: thD.id || null, image: thUrl,
           image_id: thId, said: thText || null,
@@ -13574,6 +13578,10 @@ async function successionGate(env) {
       return { cmd: "ARTIST_PDF", payload: await artistPdf(env, { title: "Test - every version", rows: [["Made", new Date().toISOString().slice(0, 10)], ["For", ap[5] || null]],
         panels: [{ name: "", inches: apIn, long: true, colour: c0,
           stencils: [{ label: "Linework stencil", url: l0 }, { label: "Shading-guide stencil", url: s0 }, { label: "Realism stencil", url: r0 }] }] }) };
+    }
+    case "MATCH_CARDS": {
+      // MATCH_CARDS <sheet> - each cut card with its title and lines, and the three checks (v9.677). Changes nothing.
+      return { cmd: "MATCH_CARDS", payload: await matchCards(env, String(args[0] || "").trim()) };
     }
     case "CUT_ALL": {
       // CUT_ALL <picture url | img_ id> - every card off a sheet, each whole with its title strip (v9.674). Draws nothing.
@@ -59896,6 +59904,46 @@ async function cutAllCards(env, url) {
   await env.AURA_KV.put("cutall3:" + id, JSON.stringify(out)).catch(() => {});
   console.log("[CUT] all cards of " + id + " (" + out.sheet + "): " + cards.length + " cards in " + cols.length + " columns");
   return out;
+}
+
+// ══ EVERY CUT CARD WITH ITS OWN WORDS (v9.677, 2026-10-18, Aaron) ══════════════════════════════════════════════
+// "The description next to this and we're good." The image carries no words now; the chat model's reply lists the cards
+// as TITLE | line | line, in the order it drew them. Three checks before a title is trusted on a card:
+//   1. COUNT - as many lines as cut cards, or no titles at all (never the wrong ones).
+//   2. ORDER - each title's main words are found in the chat model's brief in the same order as the list.
+//   3. PICTURE - a model looks at each cut card and says what the tattoo is; it must share a word with the title.
+// A test command first (`MATCH_CARDS <sheet>`): it reports card by card and changes nothing.
+const _MATCH_STOP = new Set(["and", "the", "with", "of", "in", "a", "an", "on", "over", "black", "dark", "deep", "midnight", "descending", "japanese", "blackwork", "sea"]);
+const _matchWords = (t) => String(t || "").toLowerCase().replace(/[^a-z ]+/g, " ").split(/\s+/).filter((w) => w.length > 2 && !_MATCH_STOP.has(w)).map((w) => w.replace(/s$/, ""));
+async function matchCards(env, url) {
+  const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
+  if (!id) return { ok: false, error: "need a sheet" };
+  let words = null; try { words = JSON.parse((await env.AURA_KV.get("sheetwords:" + id)) || "null"); } catch {}
+  if (!words || !words.said) return { ok: false, error: "no words kept for " + id + " - only sheets drawn after v9.677 have them" };
+  const lines = String(words.said).split(/\r?\n/).map((l) => l.split("|").map((x) => x.trim().replace(/^[\s*#>-]*(?:\d+[.)]\s*)?/, "").replace(/[*`]+/g, "").trim()))
+    .filter((p) => p.length >= 2 && p[0] && p[0].length <= 60).map((p) => ({ title: p[0], lines: p.slice(1, 3).filter(Boolean) }));
+  const cut = await cutAllCards(env, id);
+  if (!cut.ok) return { ok: false, error: "cut failed: " + cut.error };
+  const countOk = lines.length === cut.count;
+  // ORDER: where each title first shows up in the brief.
+  const brief = String(words.brief || "").toLowerCase();
+  const at = lines.map((l) => { let best = -1; for (const w of _matchWords(l.title)) { const i = brief.indexOf(w); if (i >= 0 && (best < 0 || i < best)) best = i; } return best; });
+  const found = at.filter((x) => x >= 0);
+  const orderOk = !!brief && found.length === at.length && found.every((v, i) => i === 0 || v > found[i - 1]);
+  // PICTURE: what each card actually shows.
+  const cards = [];
+  for (let k = 0; k < cut.cards.length; k++) {
+    const c = cut.cards[k], l = lines[k] || null;
+    let saw = null; try { const d = await seeMedia({ url: c.image_url, max_tokens: 30, prompt: "This is a tattoo on a person's torso. In two to five words, what is the main subject of the tattoo? Answer with the words only." }, env); saw = d && d.ok ? String(d.saw || "").trim() : null; } catch {}
+    const sw = new Set(_matchWords(saw)), tw = _matchWords(l && l.title);
+    const pictureOk = !!(saw && l && tw.some((w) => sw.has(w) || [...sw].some((x) => x.startsWith(w) || w.startsWith(x))));
+    cards.push({ n: k + 1, image_url: c.image_url, title: l ? l.title : null, lines: l ? l.lines : [], saw, picture_matches: pictureOk });
+  }
+  const pictureAll = cards.every((c) => c.picture_matches);
+  return { ok: true, sheet: id, cut: cut.count, listed: lines.length, count_ok: countOk, order_ok: orderOk,
+    pictures_matched: cards.filter((c) => c.picture_matches).length + " of " + cards.length,
+    trust_titles: countOk && orderOk, cards,
+    note: "count_ok and order_ok are free; picture_matches is a model's look at each card. A miss on the picture check alone is worth looking at with your own eyes - the looker can name a koi a fish." };
 }
 
 // ══ THE PRINT LAYOUT, ONE COPY (v9.653, 2026-10-17) ═══════════════════════════════════════════════

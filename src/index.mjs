@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.687.0-2026-10-20-logfind-turnload-and-no-forever-wait";
+const BUILD = "aura-core-v9.688.0-2026-10-20-hello-free-and-capcount";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6038,6 +6038,28 @@ async function processCommand(line, env, isOp) {
     // workers, in 20-minute slices, and builds one row per turn: what they said, the total, every model call (seconds, % cached, tokens
     // out), the extra look at a photo, instructions she loaded, the job start-up, the sheet (copy, chat model + drawing, cut).
     //   RUN "SPEED 2026-10-19 06:00 10:30"
+    // ══ CAPCOUNT ── CALLS TO HER MODEL, MINUTE BY MINUTE (v9.688, 2026-10-20, Aaron: "how many requests do I take as one user") ══
+    // Her model (glm-5.3-flash) allows 20 calls a minute for the whole account. Every reply step and every first look at a photo is a
+    // call, and aura-think logs each one; this counts them per minute so the busiest minute can be read against the cap.
+    //   RUN "CAPCOUNT 2026-10-20 05:30 06:00"
+    case "CAPCOUNT": {
+      if (!isOp) return { cmd: "CAPCOUNT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ccW = String(rest || "").trim();
+      if (!/\d{1,2}:\d{2}\s+\d{1,2}:\d{2}/.test(ccW)) return { cmd: "CAPCOUNT", payload: { ok: false, error: "BAD_WINDOW", say: 'RUN "CAPCOUNT 2026-10-20 05:30 06:00"' } };
+      const ccRead = async (phrase) => { const r = await processCommand("LOGFIND " + ccW + " think FULL ::: " + phrase, env, true); const p = (r && r.payload) || {}; return { lines: p.lines || [], trouble: p.trouble || null }; };
+      const [ccR, ccE] = [await ccRead("[TIMING] model_call"), await ccRead("[EYES] look")];
+      const ccMin = {};
+      const ccAdd = (arr, kind) => { for (const l of arr) { const m = String(l).match(/^(\d{2}:\d{2})/); if (!m) continue; const b = (ccMin[m[1]] ||= { reply: 0, look: 0 }); b[kind]++; } };
+      ccAdd(ccR.lines, "reply"); ccAdd(ccE.lines, "look");
+      const ccRows = Object.keys(ccMin).sort().map((k) => ({ minute: k, calls: ccMin[k].reply + ccMin[k].look, replies: ccMin[k].reply, looks: ccMin[k].look }));
+      const ccBusy = ccRows.slice().sort((a, b) => b.calls - a.calls)[0] || null;
+      let ccCap = 20; try { const k = parseInt(String((await env.AURA_KV.get("config:neurons:cap_rpm")) || ""), 10); if (k > 0) ccCap = k; } catch {}
+      return { cmd: "CAPCOUNT", payload: { ok: true, window: ccW, cap_per_minute: ccCap, total_calls: ccRows.reduce((a, r) => a + r.calls, 0),
+        busiest_minute: ccBusy, minutes_at_or_over_cap: ccRows.filter((r) => r.calls >= ccCap).length, minutes: ccRows,
+        ...(ccR.trouble || ccE.trouble ? { trouble: [].concat(ccR.trouble || [], ccE.trouble || []) } : {}),
+        counts: "each reply step aura-think made and each first look at a photo - both are calls to her model; a look remembered from before is not counted" } };
+    }
+
     // ══ LOGFIND ── EVERY TIME ONE PHRASE WAS LOGGED, OVER A WHOLE DAY (v9.687, 2026-10-20, Aaron: "look at every error") ═══════
     // LOGS stops at Cloudflare's 1,000 lines a window, and the page's relay alone writes more than that, so "how often did the job
     // stop" could not be answered. This asks Cloudflare only for lines that CONTAIN the phrase, in 20-minute slices.
@@ -6090,7 +6112,8 @@ async function processCommand(line, env, isOp) {
       }
       lfHits.sort((a, b) => a.t - b.t);
       return { cmd: "LOGFIND", payload: { ok: true, worker: lfScript, phrase: lfPhrase, from: lfFmt(lfFrom), to: lfFmt(lfTo), found: lfHits.length,
-        lines: lfHits.slice(0, 200).map((h) => lfFmt(h.t) + "  " + h.m), ...(lfHits.length > 200 ? { note: "first 200 shown" } : {}),
+        lines: lfHits.slice(0, /\bFULL\b/.test(lfRaw.slice(0, lfCut >= 0 ? lfCut : lfRaw.length)) ? 5000 : 200).map((h) => lfFmt(h.t) + "  " + h.m),
+        ...(lfHits.length > 200 && !/\bFULL\b/.test(lfRaw.slice(0, lfCut >= 0 ? lfCut : lfRaw.length)) ? { note: "first 200 shown" } : {}),
         ...(lfTrouble.length ? { trouble: lfTrouble, trouble_note: "these slices could not be read - the count may be short" } : {}) } };
     }
 
@@ -66886,6 +66909,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // ══ HER HELLO HAS 6 SECONDS (v9.684, 2026-10-19, Aaron) ═══ MEASURED 13:43: one two-line greeting waited 66.1s on
               // a stalled call while the fixed hello sat ready. Past `config:talk:hello_ms` (default 6000) the fixed line stands.
               let _helloMs = 6000; try { const _hv = parseInt(String((await env.AURA_KV.get("config:talk:hello_ms")) || ""), 10); if (Number.isFinite(_hv) && _hv >= 0) _helloMs = _hv; } catch {}
+              // ══ THE HELLO SPENDS NONE OF HER 20 A MINUTE (v9.688, 2026-10-20, Aaron: "get it as fast as it can be how it is") ══
+              // Her model allows 20 calls a minute for the whole account; a two-line greeting was one of them on every new tattoo,
+              // and was already the fixed line whenever she was slow. The fixed line greets them by name when we know it, at once.
+              // `config:talk:hello_her` = 1 brings her own greeting back.
+              let _helloHer = false; try { _helloHer = String((await env.AURA_KV.get("config:talk:hello_her")) || "").trim() === "1"; } catch {}
+              if (!_helloHer) {
+                if (_fn) _fixedSay = "Hi " + _fn + " - " + _fixedSay.charAt(0).toLowerCase() + _fixedSay.slice(1);
+                console.log("[TURN:HELLO] fixed greeting" + (_fn ? " to " + _fn : "") + " - her model not called" + (me ? " · who=" + me : ""));
+                throw { __helloDone: true };
+              }
               const _gq = await Promise.race([new Promise((r) => setTimeout(() => r({ failed: true, late: true }), _helloMs)), proxyToAgent(env, "[THEY JUST TAPPED CREATE NEW TATTOO." + (_fn ? " Their first name is " + _fn + "." : "") + "] " +
                 "Reply as you always do, with do set to none. say: greet them" + (_fn ? " by name" : "") + " in one or two warm, short lines and invite them " +
                 "to share what they're imagining - a story, a memory, a feeling, or just a picture in their head - or to pick a style above. " +

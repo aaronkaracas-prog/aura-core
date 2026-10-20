@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.685.0-2026-10-19-a-go-on-unpicked-eight-is-a-fresh-eight";
+const BUILD = "aura-core-v9.686.0-2026-10-20-my-tattoos-shows-the-artwork";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63145,7 +63145,24 @@ export class PtaDurableObject {
 
   async talkProjects() {
     let idx = []; try { idx = JSON.parse((await this.storage.get("talk-proj:index")) || "[]") || []; } catch {}
-    return { ok: true, projects: Array.isArray(idx) ? idx : [] };
+    if (!Array.isArray(idx)) idx = [];
+    // ══ MY TATTOOS SHOWS THE ARTWORK, NEVER THEIR FACE (v9.686, 2026-10-20, Aaron) ═════════════════════════════════
+    // MEASURED on his phone: Best Friends Aboard and Celestial Sunburst (cover-ups, locked in, artist files ready) showed his
+    // face - the card was the last picture made, and on a cover-up every picture is on their photo. A finished tattoo has its
+    // flat artwork; that is the card. Read when the list is asked for, so tattoos locked before this build show it too.
+    try {
+      const _lk = idx.filter((e) => e && e.locked && e.id).map((e) => "talk-proj:" + e.id).slice(0, 128);
+      if (_lk.length) {
+        const _m = await this.storage.get(_lk);
+        for (const e of idx) {
+          if (!e || !e.locked) continue;
+          let _pj = null; try { _pj = JSON.parse(_m.get("talk-proj:" + e.id) || "null"); } catch {}
+          const _fl = _pj && _pj.files && (_pj.files.flat_artwork || (Array.isArray(_pj.files.panels) && _pj.files.panels[0] && _pj.files.panels[0].flat));
+          if (_fl) e.cover = String(_fl);
+        }
+      }
+    } catch {}
+    return { ok: true, projects: idx };
   }
 
   async talkProject(pid) {
@@ -66796,7 +66813,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _fixedSay = await _fx("addon_change8", "Here they come - eight versions of that on you.");
           } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining eight versions of that for you now.");
-          } else if (_bodyPhoto && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s) && await (async () => {
+          } else if (_bodyPhoto && /^\s*imagine\s+(?:4|four|8|eight)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s) && await (async () => {
                        // FOUR POSSIBILITIES OF A CHOSEN ADD-ON (v9.661, 2026-10-18, Aaron): "the same way we do tattoos ... a version
                        // that was on their chest or on their arm, then they can evolve it from there". Their photo and the card they
                        // chose go to the chat model with one sentence (`config:frame:addon:poss`), at `config:edit:addon_poss:quality`.
@@ -66814,11 +66831,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        } catch {}
                        return false; })()) {
             _fixedWhy = "addon_poss"; _fixedSay = await _fx("addon_poss8", "Imagining 8 possibilities on you now.");
-          } else if ((_newFlow || _lastDesignChange || (opts && opts.pick && refUrl)) && /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
+          } else if ((_newFlow || _lastDesignChange || (opts && opts.pick && refUrl)) && /^\s*imagine\s+(?:4|four|8|eight)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
             // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): after they choose a design, four possibilities for that
             // same design, on the same four-card sheet - the chat model reads the design, nothing is asked of her.
             _fixedWhy = "poss"; _fixedSay = await _fx("poss_coming8", "Imagining 8 possibilities for your design now.");
-          } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) {
+          } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four|8|eight)|(?:4|four|8|eight)\s+more)\.?\s*$/i.test(_s)) {
             // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
             _fixedWhy = "more"; _fixedSay = await _fx("eight_more", "Round two, coming right up - eight more.");
           } else if (_newFlow && _goSaid && !_saidNo && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s) || (opts && Array.isArray(opts.all_ideas) && opts.all_ideas.length) ||
@@ -66837,7 +66854,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // image model was told "I want to change it: Show me: Chrome garden...". A tapped idea is a new four of that idea.
             _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "Here they come - eight versions of that for you.");
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
-          } else if (_bodyPhoto && (/^\s*(?:give|show) me some ideas\.?\s*$/i.test(_s) || /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(_s)) && (() => {
+          } else if (_bodyPhoto && (/^\s*(?:give|show) me some ideas\.?\s*$/i.test(_s) || /^\s*imagine\s+(?:another\s+(?:4|four|8|eight)|(?:4|four|8|eight)\s+more)\.?\s*$/i.test(_s)) && (() => {
                        // ADD-ON IDEAS DRAW AT ONCE (v9.660, 2026-10-18, Aaron: "take her off the drawing ... she can read it when it
                        // comes back"). MEASURED 07:15 (pta_eb938501011c73f8): 103.5s - she took 45.8s, her words were replaced by the
                        // fixed line and her four ideas thrown away; the image model got the one setting sentence either way. Only when
@@ -67462,10 +67479,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // The page's buttons send exactly these lines. "Imagine 4 more" names a number, so it is read here,
       // before the pick test below, and never mistaken for picking number 4.
       const _ideasLine = /^\s*(?:give|show) me some ideas\.?\s*$/i.test(String(said || "").trim()) ||
-                         /^\s*imagine\s+(?:another\s+(?:4|four)|(?:4|four)\s+more)\.?\s*$/i.test(String(said || "").trim());
+                         /^\s*imagine\s+(?:another\s+(?:4|four|8|eight)|(?:4|four|8|eight)\s+more)\.?\s*$/i.test(String(said || "").trim());
       // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): the button under a chosen design. It names a number,
       // so it is read here and never mistaken for picking number 4.
-      const _possLine = /^\s*imagine\s+(?:4|four)\s+(?:more\s+)?possibilities\.?\s*$/i.test(String(said || "").trim());
+      const _possLine = /^\s*imagine\s+(?:4|four|8|eight)\s+(?:more\s+)?possibilities\.?\s*$/i.test(String(said || "").trim());
       // A tapped direction ("I want it to go down my spine...") answers where - it is never a yes to lock in.
       const _dirLine = /^\s*i want it to go\s/i.test(String(said || ""));
       let _pickGo = false, _pickN = 0, _pickGridImg = null;
@@ -69508,7 +69525,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // photo in play takes the same fixed sentence and their own words.
           const _newAny = _newFlow || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
           if (_newAny) {
-            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four) more|i want number [1-4])\.?\s*$/i;
+            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8])\.?\s*$/i;
             // A YES IN TWO PARTS IS STILL A YES (v9.684): "yeah show me" went to the image model as their idea.
             const _bare = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|show it|let'?s see( it)?|let me see( it)?|please|absolutely|definitely|perfect)[\s,.!]*)+$/i;
             const _mine = [];
@@ -69542,7 +69559,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // The title of the idea card they tapped ("Surfing retriever"), else their own first line.
             _nameHint = _lastTap ? String(_lastTap).split(/\s+[-\u2013\u2014:]\s+/)[0].trim().slice(0, 60)
                                  : (_mine[0] ? String(_mine[0]).replace(/[\s.]+$/, "").slice(0, 70) : null);
-            const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).join(". ").slice(0, 1200);
+            // "what do you think?." (v9.686): a line that ends in ? or ! keeps its own mark and gets no added full stop.
+            const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).reduce((acc, x) => acc ? acc + (/[?!]$/.test(acc) ? " " : ". ") + x : x, "").slice(0, 1200);
             if (_words) {
               let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
               let _st = ", all in the {name} style";
@@ -71002,7 +71020,7 @@ export class PublicEntry extends WorkerEntrypoint {
         if (pid) { try { const r = await talkDo(env, me, "talkProject", [pid]); pj = (r && r.ok && r.project) ? r.project : null; } catch {} }
         const _nt1 = Date.now();
         const pics = (pj && Array.isArray(pj.pictures)) ? pj.pictures.length : 0;
-        const lines = (pj && Array.isArray(pj.lines)) ? pj.lines.slice(-10).map((l) => (l.role === "them" ? "Them: " : "You: ") + String(l.said || "").replace(/\s+/g, " ").replace(/^\s*i want number [1-4]\.?\s*$/i, "I choose this design").slice(0, 300)) : [];
+        const lines = (pj && Array.isArray(pj.lines)) ? pj.lines.slice(-10).map((l) => (l.role === "them" ? "Them: " : "You: ") + String(l.said || "").replace(/\s+/g, " ").replace(/^\s*i want number [1-8]\.?\s*$/i, "I choose this design").slice(0, 300)) : [];
         const where = stage === "sheet" ? "Eight new designs just came back, each on its own card. They have not chosen one yet."
           // A COVER-UP SHEET IS NOT AN ADD-ON (v9.668, 2026-10-18): MEASURED 13:11 - under four cover-ups she was told they were
           // four directions for adding to the tattoo. The page sends the job.

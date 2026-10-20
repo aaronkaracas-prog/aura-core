@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.686.0-2026-10-20-my-tattoos-shows-the-artwork";
+const BUILD = "aura-core-v9.687.0-2026-10-20-logfind-turnload-and-no-forever-wait";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6038,6 +6038,119 @@ async function processCommand(line, env, isOp) {
     // workers, in 20-minute slices, and builds one row per turn: what they said, the total, every model call (seconds, % cached, tokens
     // out), the extra look at a photo, instructions she loaded, the job start-up, the sheet (copy, chat model + drawing, cut).
     //   RUN "SPEED 2026-10-19 06:00 10:30"
+    // ══ LOGFIND ── EVERY TIME ONE PHRASE WAS LOGGED, OVER A WHOLE DAY (v9.687, 2026-10-20, Aaron: "look at every error") ═══════
+    // LOGS stops at Cloudflare's 1,000 lines a window, and the page's relay alone writes more than that, so "how often did the job
+    // stop" could not be answered. This asks Cloudflare only for lines that CONTAIN the phrase, in 20-minute slices.
+    //   RUN "LOGFIND 2026-10-19 00:00 23:59 core ::: the job stopped"
+    case "LOGFIND": {
+      if (!isOp) return { cmd: "LOGFIND", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const lfTok = await getSecret(env, "cf_api_token");
+      const lfAcct = (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+      if (!lfTok) return { cmd: "LOGFIND", payload: { ok: false, error: "NO_CF_TOKEN" } };
+      const lfRaw = String(rest || "");
+      const lfCut = lfRaw.indexOf(":::");
+      const lfPhrase = lfCut >= 0 ? lfRaw.slice(lfCut + 3).trim() : "";
+      const lfA = (lfCut >= 0 ? lfRaw.slice(0, lfCut) : lfRaw).trim().split(/\s+/);
+      if (!lfPhrase) return { cmd: "LOGFIND", payload: { ok: false, error: "NO_PHRASE", say: 'RUN "LOGFIND 2026-10-19 00:00 23:59 core ::: the job stopped"' } };
+      const lfWorker = lfA.find((x) => /^(core|think)$/i.test(x)) || "core";
+      const lfScript = /^think$/i.test(lfWorker) ? "aura-think" : "aura-core-v2";
+      const lfTz = (await env.AURA_KV.get("config:operator:tz").catch(() => null)) || "America/Los_Angeles";
+      const lfParts = (d) => { const o = {}; for (const q of new Intl.DateTimeFormat("en-US", { timeZone: lfTz, hourCycle: "h23",
+        year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(d)) o[q.type] = q.value; return o; };
+      const lfP = lfParts(new Date());
+      const lfDate = lfA.find((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+      if (lfDate) { const [dy, dm, dd] = lfDate.split("-"); lfP.year = dy; lfP.month = dm; lfP.day = dd; }
+      const lfAt = (hm) => { const [h, mi] = hm.split(":").map(Number); const guess = Date.UTC(+lfP.year, +lfP.month - 1, +lfP.day, h, mi, 0);
+        const g = lfParts(new Date(guess)); const seen = Date.UTC(+g.year, +g.month - 1, +g.day, +g.hour, +g.minute, +g.second); return guess - (seen - guess); };
+      const lfTimes = lfA.filter((x) => /^\d{1,2}:\d{2}$/.test(x));
+      if (lfTimes.length < 2) return { cmd: "LOGFIND", payload: { ok: false, error: "BAD_WINDOW", say: 'RUN "LOGFIND 2026-10-19 00:00 23:59 core ::: the job stopped"' } };
+      const lfFrom = lfAt(lfTimes[0]), lfTo = lfAt(lfTimes[1]) + 59999;
+      if (!(lfTo > lfFrom) || lfTo - lfFrom > 24 * 3600000) return { cmd: "LOGFIND", payload: { ok: false, error: "BAD_WINDOW", say: "The window must be under 24 hours." } };
+      const lfFmt = (ms) => { const q = lfParts(new Date(ms)); return q.hour + ":" + q.minute + ":" + q.second; };
+      const lfFind = (o, depth = 0) => { if (!o || depth > 6) return null; if (Array.isArray(o) && o.length && o[0] && (o[0].$metadata || o[0].timestamp)) return o;
+        if (typeof o === "object") for (const k of Object.keys(o)) { const r = lfFind(o[k], depth + 1); if (r) return r; } return null; };
+      const lfTrouble = [], lfHits = [];
+      for (let f = lfFrom; f < lfTo; f += 20 * 60000) {
+        const body = { queryId: "aura-logfind-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), timeframe: { from: f, to: Math.min(lfTo, f + 20 * 60000 - 1) }, view: "events", limit: 1000,
+          parameters: { filters: [{ key: "$workers.scriptName", operation: "eq", type: "string", value: lfScript },
+                                  { key: "$metadata.message", operation: "includes", type: "string", value: lfPhrase }],
+                        filterCombination: "and", calculations: [], groupBys: [], limit: 1000 } };
+        let ok = false;
+        for (let tries = 0; tries < 3 && !ok; tries++) {
+          try {
+            const r = await fetch("https://api.cloudflare.com/client/v4/accounts/" + lfAcct + "/workers/observability/telemetry/query",
+              { method: "POST", headers: { "Authorization": "Bearer " + lfTok, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            const j = await r.json().catch(() => null);
+            if (!r.ok || !j || j.success === false) { if (tries === 2) lfTrouble.push(lfFmt(f) + ": HTTP " + r.status); await new Promise((x) => setTimeout(x, 600)); continue; }
+            ok = true;
+            for (const e of (lfFind(j.result || j) || [])) { const md = e.$metadata || {}; let m = md.message || (e.source && e.source.message) || ""; if (typeof m !== "string") m = JSON.stringify(m);
+              lfHits.push({ t: Number(e.timestamp || md.timestamp || 0), m: String(m).replace(/\s+/g, " ").slice(0, 300) }); }
+          } catch (e) { if (tries === 2) lfTrouble.push(lfFmt(f) + ": " + String(e?.message ?? e).slice(0, 80)); }
+        }
+      }
+      lfHits.sort((a, b) => a.t - b.t);
+      return { cmd: "LOGFIND", payload: { ok: true, worker: lfScript, phrase: lfPhrase, from: lfFmt(lfFrom), to: lfFmt(lfTo), found: lfHits.length,
+        lines: lfHits.slice(0, 200).map((h) => lfFmt(h.t) + "  " + h.m), ...(lfHits.length > 200 ? { note: "first 200 shown" } : {}),
+        ...(lfTrouble.length ? { trouble: lfTrouble, trouble_note: "these slices could not be read - the count may be short" } : {}) } };
+    }
+
+    // ══ TURNLOAD ── REAL TURN JOBS AT ONCE, THE SAME ROAD THE PHONE TAKES (v9.687, 2026-10-20, Aaron: "I need to stress test this") ══
+    // TALK runs a turn directly; only the page runs it as a job. This starts N jobs from N fresh test customers with one plain line
+    // each, and STATUS reads every one: finished or not, seconds, and whether Cloudflare dropped the job (its own output says so).
+    //   RUN "TURNLOAD START 10 ::: I'm thinking something with my golden retriever, his name is Bodie"
+    //   RUN "TURNLOAD STATUS"          (the last run)
+    case "TURNLOAD": {
+      if (!isOp) return { cmd: "TURNLOAD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tlSub = String(args[0] || "").toUpperCase();
+      if (tlSub === "START") {
+        const tlRaw = String(rest || "");
+        const tlCut = tlRaw.indexOf(":::");
+        const tlLine = (tlCut >= 0 ? tlRaw.slice(tlCut + 3).trim() : "") || "I'm thinking something with my golden retriever, his name is Bodie";
+        const tlN = Math.min(Math.max(parseInt(args[1] || "5", 10) || 5, 1), 20);
+        const tlRun = "tl" + Date.now().toString(36);
+        // All at once, as real load would arrive - not one after another.
+        const items = await Promise.all(Array.from({ length: tlN }, async (_, i) => {
+          let pta = null;
+          try { const born = await ptaBirth(env, { identities: ["email:" + tlRun + "-" + (i + 1) + "@load.mytattoo.world"], name: "Load Test " + (i + 1), app: "mytattoo", via: "TURNLOAD" });
+                pta = born && born.ok ? born.pta : null; } catch {}
+          if (!pta) return { n: i + 1, failed: "no test customer" };
+          const tid = tlRun + "-" + (i + 1);
+          const started = Date.now();
+          const job = await startTalkJob(env, { me: pta, stage: "pta", said: tlLine, hist: [], host: "mytattoo.world", opts: { tid, fresh: true } });
+          return { n: i + 1, pta, tid, job, started, ...(job ? {} : { failed: "the job did not start" }) };
+        }));
+        const rec = { run: tlRun, at: new Date().toISOString(), line: tlLine, items };
+        try { await env.AURA_KV.put("turnload:" + tlRun, JSON.stringify(rec), { expirationTtl: 14 * 86400 }); await env.AURA_KV.put("turnload:last", tlRun, { expirationTtl: 14 * 86400 }); } catch {}
+        console.log("[TURNLOAD] " + tlRun + ": " + items.filter((x) => x.job).length + " of " + tlN + " jobs started · line: \"" + tlLine.slice(0, 120) + "\"");
+        return { cmd: "TURNLOAD", payload: { ok: true, run: tlRun, started: items.filter((x) => x.job).length, of: tlN, line: tlLine,
+          next: 'RUN "TURNLOAD STATUS" in about two minutes' } };
+      }
+      if (tlSub === "STATUS") {
+        let tlRun = String(args[1] || "").trim();
+        if (!tlRun) tlRun = String((await env.AURA_KV.get("turnload:last").catch(() => null)) || "");
+        let rec = null; try { rec = JSON.parse((await env.AURA_KV.get("turnload:" + tlRun)) || "null"); } catch {}
+        if (!rec) return { cmd: "TURNLOAD", payload: { ok: false, error: "NO_RUN", say: 'Start one: RUN "TURNLOAD START 5"' } };
+        const rows = [];
+        for (const it of rec.items) {
+          if (!it.job) { rows.push({ n: it.n, state: "not started", why: it.failed || null }); continue; }
+          let js = null; try { js = await (await env.GRID_CRAWL_WORKFLOW.get(it.job)).status(); } catch {}
+          let out = null; try { const o = talkParse((await talkStateGet(env, it.pta, ["turnout"])).turnout); if (o && o.tid === it.tid) out = o; } catch {}
+          const secs = out && out.at ? +((out.at - it.started) / 1000).toFixed(1) : null;
+          const dropped = js && js.output && js.output.stopped ? String(js.output.stopped) : null;
+          rows.push({ n: it.n, answered: !!out, ...(secs != null ? { seconds: secs } : { waiting_s: Math.round((Date.now() - it.started) / 1000) }),
+            job: (js && js.status) || "?", ...(dropped ? { cloudflare_dropped: dropped } : {}),
+            ...(out && out.out ? { said: String(out.out.said || out.out.error || "").slice(0, 90), answered_by: out.out.answered_by || null } : {}) });
+        }
+        const done = rows.filter((r) => r.answered), secsAll = done.map((r) => r.seconds).filter((x) => x != null).sort((a, b) => a - b);
+        return { cmd: "TURNLOAD", payload: { ok: true, run: rec.run, line: rec.line, at: rec.at,
+          answered: done.length + " of " + rows.length, dropped_by_cloudflare: rows.filter((r) => r.cloudflare_dropped).length,
+          stuck_line: rows.filter((r) => /stuck/i.test(String(r.answered_by || ""))).length,
+          fastest_s: secsAll[0] ?? null, middle_s: secsAll.length ? secsAll[Math.floor(secsAll.length / 2)] : null, slowest_s: secsAll.length ? secsAll[secsAll.length - 1] : null,
+          rows } };
+      }
+      return { cmd: "TURNLOAD", payload: { ok: false, error: "USAGE", say: 'RUN "TURNLOAD START 5 ::: <what they say>"  then  RUN "TURNLOAD STATUS"' } };
+    }
+
     case "SPEED": {
       const spTok = await getSecret(env, "cf_api_token");
       const spAcct = (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
@@ -63547,7 +63660,8 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         });
       } catch (e) {
         try { console.log("[TURNJOB] the job stopped: " + String(e?.message ?? e).slice(0, 240)); } catch {}
-        return { ok: false };
+        // Said in the job's own output (v9.687), so TURNLOAD and FACES <id> can tell a Cloudflare drop from a turn of ours that failed.
+        return { ok: false, stopped: String(e?.message ?? e).slice(0, 240) };
       }
     }
     if (String(event.payload?.mode || "") === "artist_files") {
@@ -65152,7 +65266,7 @@ async function runTalkJob(env, d) {
     out = { ok: false, error: "TALK_THREW", detail: String(e && e.message || e).slice(0, 300) };
   }
   if (d.opts && d.opts.ref && out && typeof out === "object") out = { ...out, ref: d.opts.ref };
-  await talkStatePut(env, me, "turnout", JSON.stringify({ tid, out }));
+  await talkStatePut(env, me, "turnout", JSON.stringify({ tid, out, at: Date.now() }));
   await live(true, { done: true });
   try { console.log("[TURNJOB] turn " + tid + " finished in " + ((Date.now() - t0) / 1000).toFixed(1) + "s · ok=" + !!(out && out.ok !== false) + (me ? " · who=" + me : "")); } catch {}
   // Her work behind the reply (naming at This Is My Tattoo, and the like) finishes inside the job, never cut off.
@@ -71229,7 +71343,29 @@ export class PublicEntry extends WorkerEntrypoint {
           const _sendR = async (frame) => { try { await _w.write(_enc.encode(frame)); } catch { _gone = true; } };
           const _relay = (async () => {
             const t0 = Date.now(); let sentLen = 0, lastStage = "", fin = null;
+            // ══ A JOB THAT ENDED WITH NO ANSWER IS NOT A FOREVER WAIT (v9.687, 2026-10-20, Aaron: "look at every error") ══════
+            // MEASURED 17:01:07 (job 63152547): Cloudflare marked the step failed ("internal workflows error") and closed the job
+            // while our code kept running and delivered at 17:01:49 - that time it came. If the code is ever stopped too, nothing
+            // would arrive and the page would wait to the 14-minute end. Every 10s the job's own status is read; once it has
+            // ended, the answer gets `config:talk:orphan_ms` (default 120000) to arrive, then the stuck line goes instead.
+            let _jobEnded = 0, _lastJobCheck = 0, _orphanMs = 120000;
+            try { const _ov = parseInt(String((await env.AURA_KV.get("config:talk:orphan_ms")) || ""), 10); if (Number.isFinite(_ov) && _ov >= 10000) _orphanMs = _ov; } catch {}
             while (!_gone && Date.now() - t0 < 14 * 60000) {
+              if (!_jobEnded && Date.now() - _lastJobCheck > 10000) {
+                _lastJobCheck = Date.now();
+                try { const _js = await (await env.GRID_CRAWL_WORKFLOW.get(_jobId)).status();
+                      if (_js && ["complete", "errored", "terminated"].includes(String(_js.status || ""))) {
+                        _jobEnded = Date.now();
+                        console.log("[TURNJOB] job " + _jobId + " ended (" + _js.status + ") before its answer came - waiting " + Math.round(_orphanMs / 1000) + "s for it · who=" + me); } } catch {}
+              }
+              if (_jobEnded && Date.now() - _jobEnded > _orphanMs) {
+                let _stuckSay = "That one got stuck on my end - say it again?";
+                try { const _k = String((await env.AURA_KV.get("config:say:stuck")) || "").trim(); if (_k) _stuckSay = _k; } catch {}
+                fin = { ok: true, said: _stuckSay, act: "none", answered_by: "stuck (the job ended with no answer)" };
+                try { await talkStatePut(env, me, "turnout", JSON.stringify({ tid: _tOpts.tid, out: fin })); } catch {}
+                console.log("[TURNJOB] no answer " + Math.round(_orphanMs / 1000) + "s after job " + _jobId + " ended - the stuck line goes · who=" + me);
+                break;
+              }
               let st = null; try { st = talkParse((await talkStateGet(env, me, ["turnlive"])).turnlive); } catch {}
               if (st && st.tid === _tOpts.tid) {
                 const txt = String(st.text || "");

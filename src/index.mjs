@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.695.0-2026-10-21-unpicked-sheet-is-ideas";
+const BUILD = "aura-core-v9.696.0-2026-10-21-no-numbers-two-sheets";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67039,7 +67039,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // ideas are drawn at once from their own words since they started, in the style they picked - the same road as a
             // style tapped at the top followed by "show me". She is not called.
             const _cs = String((opts && opts.choose_style) || "").replace(/[^A-Za-z0-9 &'\/-]/g, "").trim().slice(0, 60);
-            _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "Here they come - eight versions of that for you.");
+            _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "On it - imagining some designs for you now.");
             _newFlow = true; _lastDesignChange = ""; _newStyle = _cs || null;
             try { await talkStatePut(env, me, "new_flow", "1"); await talkStatePut(env, me, "new_style", _cs);
                   await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", ""); } catch {}
@@ -67081,7 +67081,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else if (opts && opts.new_now && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             // IMAGINE SOMETHING NEW (v9.643, 2026-10-17, Aaron): they tapped Imagine something new and she asked where they want
             // to go - their answer is a fresh four of the new idea, not a change of the design on screen. The words start over here.
-            _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "Here they come - eight versions of that for you.");
+            _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "On it - imagining some designs for you now.");
             _newFlow = true; _lastDesignChange = ""; _newStyle = null;
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
                   await talkStatePut(env, me, "design_change_parent", ""); await talkStatePut(env, me, "new_flow", "1");
@@ -67101,9 +67101,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        } catch {}
                        return false; })()) {
             _fixedWhy = "addon_change"; _addonChangeWords = _s;
-            _fixedSay = await _fx("addon_change8", "Here they come - eight versions of that on you.");
+            _fixedSay = await _fx("addon_change8", "On it - imagining that change on you now.");
           } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && !_bodyPhoto) {
-            _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining eight versions of that for you now.");
+            _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining that change for you now.");
           } else if (_bodyPhoto && /^\s*imagine\s+(?:4|four|8|eight)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s) && await (async () => {
                        // FOUR POSSIBILITIES OF A CHOSEN ADD-ON (v9.661, 2026-10-18, Aaron): "the same way we do tattoos ... a version
                        // that was on their chest or on their arm, then they can evolve it from there". Their photo and the card they
@@ -67121,14 +67121,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                              return false; } }
                        } catch {}
                        return false; })()) {
-            _fixedWhy = "addon_poss"; _fixedSay = await _fx("addon_poss8", "Imagining 8 possibilities on you now.");
+            _fixedWhy = "addon_poss"; _fixedSay = await _fx("addon_poss8", "Imagining possibilities on you now.");
           } else if ((_newFlow || _lastDesignChange || (opts && opts.pick && refUrl)) && /^\s*imagine\s+(?:4|four|8|eight)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s)) {
             // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): after they choose a design, four possibilities for that
             // same design, on the same four-card sheet - the chat model reads the design, nothing is asked of her.
-            _fixedWhy = "poss"; _fixedSay = await _fx("poss_coming8", "Imagining 8 possibilities for your design now.");
+            _fixedWhy = "poss"; _fixedSay = await _fx("poss_coming8", "Imagining possibilities for your design now.");
           } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four|8|eight)|(?:4|four|8|eight)\s+more)\.?\s*$/i.test(_s)) {
             // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
-            _fixedWhy = "more"; _fixedSay = await _fx("eight_more", "Round two, coming right up - eight more.");
+            _fixedWhy = "more"; _fixedSay = await _fx("eight_more", "I've imagined more for you - here they come.");
           } else if (_newFlow && _goSaid && !_saidNo && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s) || (opts && Array.isArray(opts.all_ideas) && opts.all_ideas.length) ||
                      // ══ A GO WITH THE 8 STILL UNPICKED IS A FRESH 8 OF ALL THEIR WORDS (v9.684, 2026-10-19) ═══════════════════
                      // MEASURED 14:17 (pta_ace73d2ef3cabb9c): the 8 on screen, nothing picked, they said "I kind of like fine line" and
@@ -67143,7 +67143,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // ANOTHER OF HER IDEAS IS A FRESH FOUR TOO (v9.609, 2026-10-15, Aaron). MEASURED 21:04 (prj_83c97810dfe14e64):
             // with four on screen, tapping "Chrome garden" was read as a CHANGE of the four - Aura was called (34s) and the
             // image model was told "I want to change it: Show me: Chrome garden...". A tapped idea is a new four of that idea.
-            _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "Here they come - eight versions of that for you.");
+            _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "On it - imagining some designs for you now.");
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
           } else if (_bodyPhoto && (/^\s*(?:give|show) me some ideas\.?\s*$/i.test(_s) || /^\s*imagine\s+(?:another\s+(?:4|four|8|eight)|(?:4|four|8|eight)\s+more)\.?\s*$/i.test(_s)) && (() => {
                        // ADD-ON IDEAS DRAW AT ONCE (v9.660, 2026-10-18, Aaron: "take her off the drawing ... she can read it when it
@@ -67162,8 +67162,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        return ["add", "cover"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase()); })()) {
             _fixedWhy = "addon_ideas";
             _fixedSay = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover"
-              ? await _fx("cover_ideas8", "Here they come - eight ways to cover it.")
-              : await _fx("addon_ideas8", "Here they come - eight ways your tattoo could grow.");
+              ? await _fx("cover_ideas8", "On it - imagining ways to cover it.")
+              : await _fx("addon_ideas8", "On it - imagining ways your tattoo could grow.");
           } else if (/^i want number [1-8]\.?$/i.test(_s) && _bodyPhoto && await (async () => {
                        // THE ADD-ON PICK IS A CUT, SO SHE IS NOT CALLED (v9.652, 2026-10-17, Aaron). MEASURED 19:43 (pta_15fa057112170b60):
                        // the cut took 2s, but she was asked first (15.6s) and looked at the cut after (15.6s) - 35s for a picture that
@@ -67176,10 +67176,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                              return !!(e.grid === true && _id && (await env.AURA_KV.get("bodysheet:" + _id) || await env.AURA_KV.get("sheet8:" + _id))); } }
                        } catch {}
                        return false; })()) {
-            _fixedWhy = "pick"; _cutPick = true; _fixedSay = await _fx("pick8", "This is the one you're working on - make it your tattoo, fine-tune it, or imagine 8 possibilities of it.");
+            _fixedWhy = "pick"; _cutPick = true; _fixedSay = await _fx("pick8", "This is the one you're working on - make it your tattoo, fine-tune it, or imagine possibilities of it.");
           } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-8]\.?$/i.test(_s) && !_bodyPhoto) {
             // CHOOSE, THEN THE OFFER (v9.628, 2026-10-16, Aaron): change it, imagine 4 possibilities, or finish.
-            _fixedWhy = "pick"; _fixedSay = await _fx("pick8", "This is the one you're working on - make it your tattoo, fine-tune it, or imagine 8 possibilities of it.");
+            _fixedWhy = "pick"; _fixedSay = await _fx("pick8", "This is the one you're working on - make it your tattoo, fine-tune it, or imagine possibilities of it.");
           } else if (_s && carriedObj && carriedObj.on_me === true && refHeld && _bodyPhoto && refUrl && !_freshPhoto &&
                      !["add", "cover", "rework"].includes(String(carriedObj.job || "").toLowerCase()) &&
                      !/^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|no|nope|nah|thanks?( you)?)[\s.!]*$/i.test(_s) &&
@@ -69741,22 +69741,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_designGrid) {
               // FOUR VERSIONS OF A CHANGE (v9.605, Aaron): her own words to their change stay - she was called before it
               // was drawn - and the same fixed line as the first four follows. No look: the titles are in the picture.
-              let _done = "Here are your 8. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
+              let _done = (_fixedWhy === "more") ? "Here are more for you. Your favorites are saved - tap Work on this on the one that's closest and we'll make it yours." : "Here are your designs. Heart the ones you like - they're saved in your favorites and we can work from any of them. Tap Work on this when one feels right.";
               try { const _k = String((await env.AURA_KV.get("config:say:eight_done")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_designWords === "__poss__") {
-                _done = "Here are 8 possibilities for your design. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
+                _done = "Here are some possibilities for your design. Heart the ones you like - they're saved in your favorites. Tap Work on this when one feels right.";
                 try { const _k = String((await env.AURA_KV.get("config:say:poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               const _hers = (!_fixedSay && acted && acted.say) ? String(acted.say).trim() : "";
               _reaction = _hers ? (_hers + "\n\n" + _done) : _done;
             } else if (_ideasGrid) {
-              let _done = "Here are your 8. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
+              let _done = (_fixedWhy === "more") ? "Here are more for you. Your favorites are saved - tap Work on this on the one that's closest and we'll make it yours." : "Here are your designs. Heart the ones you like - they're saved in your favorites and we can work from any of them. Tap Work on this when one feels right.";
               try { const _k = String((await env.AURA_KV.get("config:say:ideas_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_addonPoss && _addonChangeWords) {
-                _done = "Here are 8 versions of that on you. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
+                _done = "Here are some versions of that on you. Heart the ones you like - they're saved in your favorites. Tap Work on this when one feels right.";
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_change_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               } else if (_addonPoss) {
-                _done = "Here are 8 possibilities on you. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
+                _done = "Here are some possibilities on you. Heart the ones you like - they're saved in your favorites. Tap Work on this when one feels right.";
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               _reaction = _done;
@@ -70037,7 +70037,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // reading them back added ~20s and told them nothing new. One fixed line instead (config:say:four_done).
             let _lk2 = null;
             if (_newSentence) {
-              _reaction = "Here are your 8. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
+              _reaction = (_fixedWhy === "more") ? "Here are more for you. Your favorites are saved - tap Work on this on the one that's closest and we'll make it yours." : "Here are your designs. Heart the ones you like - they're saved in your favorites and we can work from any of them. Tap Work on this when one feels right.";
               try { const _k = String((await env.AURA_KV.get("config:say:eight_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
             } else {
               _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);

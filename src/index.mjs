@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.697.0-2026-10-21-fixed-tap-is-its-own-go";
+const BUILD = "aura-core-v9.698.0-2026-10-21-imagine-some-ideas";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69830,7 +69830,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // photo in play takes the same fixed sentence and their own words.
           const _newAny = _newFlow || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
           if (_newAny) {
-            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|just imagine some ideas for me)\.?\s*$/i;
+            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|(?:just )?imagine some ideas for me)\.?\s*$/i;
             // A YES IN TWO PARTS IS STILL A YES (v9.684): "yeah show me" went to the image model as their idea.
             const _bare = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|show it|let'?s see( it)?|let me see( it)?|please|absolutely|definitely|perfect)[\s,.!]*)+$/i;
             const _mine = [];

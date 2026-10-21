@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.690.0-2026-10-21-continue-is-a-go";
+const BUILD = "aura-core-v9.691.0-2026-10-21-yes-card-one-size";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60682,6 +60682,13 @@ async function toEight(env, sentence, kind) {
 }
 // The sheet cut into its cards the moment it comes back, each card with its own words - by order, after the count check. If the
 // count is off, the cards come back with no words rather than the wrong ones. The sheet is marked so a pick is that card.
+// HER OFFER TO SHOW THEM (v9.691, 2026-10-21): one test for "she offered to show them ideas" - the go guard reads it on her earlier
+// lines, and the page's yes card ("Show me some ideas" / "Talk to me") appears under a reply that passes it.
+function _isOfferLine(t) {
+  const s = String(t || "");
+  return /\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(s) ||
+         /\b(i'?ll|i will|let me|i'?m going to|i can|i'?d love to|i would love to|happy to)\s+(show|draw|sketch|make)\b/i.test(s);
+}
 async function eightCards(env, sheetUrl, said) {
   const _c8T0 = Date.now();
   try {
@@ -66359,9 +66366,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // said "send me a photo of each... Once I have those I'll show you four different takes", they answered "I don't have a
       // photo, anyone that you generate will be fine", she chose to draw - and the gate stopped her, because her line had no
       // question mark. She asked the same question again. "I'll show you" counts the same as "want me to show you?".
-      const _offeredShow = tnow.some((e) => e && e.role === "aura" &&
-        (/\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(String(e.said || "")) ||
-         /\b(i'?ll|i will|let me|i'?m going to|i can)\s+(show|draw|sketch|make)\b/i.test(String(e.said || ""))));
+      // "I'D LOVE TO SHOW YOU" IS AN OFFER TOO (v9.691, 2026-10-21): her guidance says "let them know you'd love to show them
+      // some ideas" when they named a style - that line was not read as an offer, so a yes after it was not a go. One test,
+      // shared with the yes card the page shows under her offer, so the button and the go always agree.
+      const _offeredShow = tnow.some((e) => e && e.role === "aura" && _isOfferLine(e.said));
       const _saidNo = /^\s*(no|nope|nah|not (yet|now|really)|wait|hold on|hang on|don'?t|stop|never ?mind|later)\b/i.test(String(said || "").trim());
       // CONTINUE ON HER CARD IS A GO (v9.690, 2026-10-21): MEASURED 06:48 - Continue on "Fine-line botanical" was stopped by the
       // "nothing is drawn until they say go" guard, because her line before it was a question about feel, not an offer to show.
@@ -70400,6 +70408,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
             ideas: null,   // NO IDEA CARDS (v9.684, 2026-10-19, Aaron): her reply and the chat box are the whole screen
             choose: (acted && acted.choose && !_fixedWhy && !(drew && drew.image)) ? acted.choose : null,
+            offer: (!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_said)) || undefined,
             directions: (Array.isArray(acted.directions) && acted.directions.length) ? acted.directions : null,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
             // THE SAME ANSWER EITHER WAY (v9.634, 2026-10-16, Aaron: "there should not be two paths"): the whole `drew` as it
@@ -70416,6 +70425,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
 
                // HER ONE QUESTION (v9.689): the card under her words - never on a fixed line, never when a picture just came back.
                ...(acted && acted.choose && !_fixedWhy && !(drew && drew.image) ? { choose: acted.choose } : {}),
+               // HER OFFER, ONE TAP (v9.691, 2026-10-21, Aaron: "there's never a reason to type unless you're changing what the moment
+               // is"): when she offers to show ideas and there is no card, the page puts "Show me some ideas" / "Talk to me" under it.
+               ...(!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_said) ? { offer: true } : {}),
                // WHERE SHE TAKES THEM (v9.664): the page goes there - the same as tapping that place.
                // NOT TO WHERE THEY ALREADY ARE (v9.690): MEASURED 06:48 - in a new tattoo she sent go "new", which would have
                // moved them to a fresh Create New Tattoo screen mid-conversation.

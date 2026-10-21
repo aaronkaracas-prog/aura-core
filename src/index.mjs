@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.698.0-2026-10-21-imagine-some-ideas";
+const BUILD = "aura-core-v9.699.0-2026-10-21-create-own-draws";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67010,7 +67010,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         try {
           const _s = String(said || "").trim();
           const _fx = async (k, d) => { try { const v = String((await env.AURA_KV.get("config:say:" + k)) || "").trim(); return v || d; } catch { return d; } };
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea"]); } catch {}
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
           // because "design_change" from the 9:50 test was still set.
@@ -67019,7 +67019,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   await talkStatePut(env, me, "design_change_parent", "");
                   // THE NEW-TATTOO FLOW MARKER (v9.604): set only by the Create New Tattoo opener, cleared by every other start.
                   await talkStatePut(env, me, "new_flow", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : "");
-                  await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "new_start", ""); } catch {}
+                  await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "new_start", "");
+                  await talkStatePut(env, me, "await_idea", ""); } catch {}
             _ds = /^i want to create a new tattoo\.?$/i.test(_s) ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
@@ -67076,6 +67077,25 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else if ((_stm = _s.match(/^i like the (.+) style\.?$/i))) {
             _fixedWhy = "style"; _fixedSay = (await _fx("style_pick", "____ - great pick. Explore the designs made in this style, or create your own with me.")).replace("____", _stm[1]);
             if (_newFlow) { try { await talkStatePut(env, me, "new_style", String(_stm[1]).slice(0, 80)); } catch {} _newStyle = String(_stm[1]).slice(0, 80); }
+          } else if (_newFlow && /^let'?s create my own\.?$/i.test(_s)) {
+            // ══ CREATE YOUR OWN IS A FIXED STEP (v9.699, 2026-10-21, Aaron) ═══════════════════════════════════════════════
+            // MEASURED 14:16 (pta_4896a4c8a1890536): this was the one tap of the new-tattoo steps that went to her - 17.8s, and she
+            // decided what it was: once a question, once her own choice card (the page then hid her question). Aaron locked it:
+            // one line asking what they want, no card; whatever they type next is drawn (below). Setting: config:say:create_own.
+            _fixedWhy = "create_own";
+            _fixedSay = _newStyle
+              ? (await _fx("create_own", "Love it - tell me what you want in your ____ piece.")).replace("____", _newStyle)
+              : await _fx("create_own_nostyle", "Love it - tell me what you want in your tattoo.");
+            try { await talkStatePut(env, me, "await_idea", "1"); } catch {}
+          } else if (_newFlow && String(_ds.await_idea || "") === "1" && _s && !_bodyPhoto &&
+                     !(opts && (opts.inspire || opts.pick || opts.use || opts.tile || opts.name || opts.choose_go || opts.new_now)) &&
+                     !/^i want to (create|add|cover)/i.test(_s) && !/^i like the .+ style\.?$/i.test(_s) && !/^i want number [1-8]\.?$/i.test(_s)) {
+            // ══ WHAT THEY TYPE AFTER CREATE YOUR OWN IS DRAWN (v9.699, 2026-10-21, Aaron: "Step 4 draws regardless and throws it
+            // to the image model") ═══ MEASURED 14:18: "I'm a professional surfer I like butterflies and I have a golden retriever"
+            // went to her (15.6s) and she asked which of the three should lead - nothing drawn. Their words go straight to the 8,
+            // in the style they picked, with the fixed coming line. She is not called.
+            _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "On it - imagining some designs for you now.");
+            if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
           } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {
             _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
           } else if (opts && opts.new_now && _s && !(opts && opts.inspire) && !_bodyPhoto) {
@@ -67194,6 +67214,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               _fixedWhy = "onme"; _fixedSay = await _fx("onme_coming", "Putting it on you now.");
             }
           }
+          // The wait for their idea ends at any other fixed step (v9.699) - only the line right after Create your own is drawn as-is.
+          if (_fixedWhy !== "create_own" && String(_ds.await_idea || "") === "1") { try { await talkStatePut(env, me, "await_idea", ""); } catch {} }
           if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
           // WHY THE PLACEMENT WAITED FOR HER (v9.612): on any turn after they asked to see it on them, each condition is logged.
           if (_fixedWhy !== "onme" && (carriedObj && carriedObj.on_me === true || refHeld)) {

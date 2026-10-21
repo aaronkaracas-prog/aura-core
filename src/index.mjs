@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.692.0-2026-10-21-krea-door";
+const BUILD = "aura-core-v9.693.0-2026-10-21-sheet8-own-model";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13785,7 +13785,11 @@ async function successionGate(env) {
       // THE SAME PICTURE SETTINGS AS THE APP (v9.594, Aaron): the first OpenAI run left quality to OpenAI and
       // it drew at its own (higher) quality, far above the app's ~1 cent. The tool now gets the app's own
       // image model (`config:edit:model`) and quality (`config:edit:quality`) - the dials every edit uses.
-      const thImgModel = thOA ? String((await env.AURA_KV.get("config:edit:model").catch(() => null)) || "").trim() : "";
+      let thImgModel = thOA ? String((await env.AURA_KV.get("config:edit:model").catch(() => null)) || "").trim() : "";
+      // A CALLER MAY NAME ITS IMAGE MODEL (v9.693, 2026-10-21, Aaron): the new-tattoo 8-sheet draws with its own model
+      // (`config:source:sheet8:model`, e.g. gpt-image-2.5-flare - MEASURED 42.8s against 59.1s on gpt-image-2, same sheet),
+      // while every edit on a photo keeps `config:edit:model`. Unnamed, the setting above.
+      if (thOA && thP && /^gpt-image/i.test(String(thP.image_model || "").trim())) thImgModel = String(thP.image_model).trim();
       let thQual = thOA ? String((await env.AURA_KV.get("config:edit:quality").catch(() => null)) || "").trim().toLowerCase() : "";
       // A CALLER MAY NAME ITS QUALITY (v9.661, 2026-10-18, Aaron): the add-on possibilities draw at their own setting
       // (MEASURED 07:40: low gave four near-copies of one raven, medium gave four real versions). Unnamed, the setting above.
@@ -60668,6 +60672,10 @@ const SHEET8_BODY = "Show the whole tattoo in every picture, nothing cut off at 
 const SHEET8_FLAT = "Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture a white panel with the whole tattoo artwork as large as it fits - not on skin - in a clean white frame with rounded corners, with a wide black gap between them. No text, no titles, no numbers, no words anywhere on the page. In your written reply, list the 8 designs in order, left to right and top to bottom, one per line, as: TITLE | first line | second line.";
 // MEDIUM UNTIL AARON SAYS OTHERWISE (2026-10-18): low gave near-copies on the photo roads. A setting, `config:edit:sheet8:quality`.
 async function sheet8Quality(env) { try { const k = String((await env.AURA_KV.get("config:edit:sheet8:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(k)) return k; } catch {} return "medium"; }
+// THE NEW-TATTOO SHEET'S OWN IMAGE MODEL (v9.693, 2026-10-21, Aaron): `config:source:sheet8:model` - empty means the shared
+// `config:edit:model`, as before. Only the new-tattoo 8 read it; add-on, cover-up, change and possibilities sheets edit a photo
+// and stay on the shared setting until each is tested.
+async function sheet8Model(env) { try { const k = String((await env.AURA_KV.get("config:source:sheet8:model")) || "").trim(); if (/^gpt-image/i.test(k)) return k; } catch {} return null; }
 async function sheet8Size(env) { try { const k = String((await env.AURA_KV.get("config:edit:sheet8:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(k)) return k; } catch {} return "1280x3584"; }
 // Their opening stays word for word; the four-card layout at its end comes off, and the one ending goes on.
 async function toEight(env, sentence, kind) {
@@ -69838,7 +69846,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // "what do you think?." (v9.686): a line that ends in ? or ! keeps its own mark and gets no added full stop.
             const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).reduce((acc, x) => acc ? acc + (/[?!]$/.test(acc) ? " " : ". ") + x : x, "").slice(0, 1200);
             if (_words) {
-              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea. Make them in colour unless I asked for black and grey. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
+              let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep each subject as itself. Make them in color. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
               let _st = ", all in the {name} style";
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
@@ -69961,8 +69969,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_newSentence) {
             for (let _t = 0; _t < 2 && !_thNew; _t++) {
               try {
+                const _s8m = await sheet8Model(env);
                 const _tr = await processCommand("THREAD START NONE " + JSON.stringify({ prompt: askLine, action: "generate",
-                  size: await sheet8Size(env), quality: await sheet8Quality(env) }), env, true);
+                  size: await sheet8Size(env), quality: await sheet8Quality(env), ...(_s8m ? { image_model: _s8m } : {}) }), env, true);
                 const _tp = (_tr && _tr.payload) ? _tr.payload : _tr;
                 if (_tp && _tp.ok && _tp.image) {
                   let _reg = null;

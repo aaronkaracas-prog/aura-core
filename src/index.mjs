@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.700.0-2026-10-21-krea-thinking";
+const BUILD = "aura-core-v9.701.0-2026-10-21-style-then-idea-draws";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67086,6 +67086,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else if ((_stm = _s.match(/^i like the (.+) style\.?$/i))) {
             _fixedWhy = "style"; _fixedSay = (await _fx("style_pick", "____ - great pick. Explore the designs made in this style, or create your own with me.")).replace("____", _stm[1]);
             if (_newFlow) { try { await talkStatePut(env, me, "new_style", String(_stm[1]).slice(0, 80)); } catch {} _newStyle = String(_stm[1]).slice(0, 80); }
+            // ══ A STYLE PICKED IS ALSO WAITING FOR THEIR IDEA (v9.701, 2026-10-21, Aaron) ═══ MEASURED 16:35 (pta_8c4f4cd6f9f7f3db):
+            // Y2K Nostalgia picked, then "I like Harley Davidson's in Grim Reaper's" typed without tapping Create your own - it went
+            // to her (21s) and she offered styles again. At 16:33 the same words after the Create your own tap drew at once. Typing
+            // the idea IS creating their own: the line after a style is drawn the same way.
+            if (_newFlow) { try { await talkStatePut(env, me, "await_idea", "1"); } catch {} }
           } else if (_newFlow && /^let'?s create my own\.?$/i.test(_s)) {
             // ══ CREATE YOUR OWN IS A FIXED STEP (v9.699, 2026-10-21, Aaron) ═══════════════════════════════════════════════
             // MEASURED 14:16 (pta_4896a4c8a1890536): this was the one tap of the new-tattoo steps that went to her - 17.8s, and she
@@ -67098,7 +67103,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             try { await talkStatePut(env, me, "await_idea", "1"); } catch {}
           } else if (_newFlow && String(_ds.await_idea || "") === "1" && _s && !_bodyPhoto &&
                      !(opts && (opts.inspire || opts.pick || opts.use || opts.tile || opts.name || opts.choose_go || opts.new_now)) &&
-                     !/^i want to (create|add|cover)/i.test(_s) && !/^i like the .+ style\.?$/i.test(_s) && !/^i want number [1-8]\.?$/i.test(_s)) {
+                     !/^i want to (create|add|cover)/i.test(_s) && !/^i like the .+ style\.?$/i.test(_s) && !/^i want number [1-8]\.?$/i.test(_s) &&
+                     !/^i like this one\b/i.test(_s)) {
             // ══ WHAT THEY TYPE AFTER CREATE YOUR OWN IS DRAWN (v9.699, 2026-10-21, Aaron: "Step 4 draws regardless and throws it
             // to the image model") ═══ MEASURED 14:18: "I'm a professional surfer I like butterflies and I have a golden retriever"
             // went to her (15.6s) and she asked which of the three should lead - nothing drawn. Their words go straight to the 8,
@@ -67224,7 +67230,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
           }
           // The wait for their idea ends at any other fixed step (v9.699) - only the line right after Create your own is drawn as-is.
-          if (_fixedWhy !== "create_own" && String(_ds.await_idea || "") === "1") { try { await talkStatePut(env, me, "await_idea", ""); } catch {} }
+          if (_fixedWhy !== "create_own" && _fixedWhy !== "style" && String(_ds.await_idea || "") === "1") { try { await talkStatePut(env, me, "await_idea", ""); } catch {} }
           if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
           // WHY THE PLACEMENT WAITED FOR HER (v9.612): on any turn after they asked to see it on them, each condition is logged.
           if (_fixedWhy !== "onme" && (carriedObj && carriedObj.on_me === true || refHeld)) {
@@ -70523,6 +70529,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         console.log("[TURN:WORDS] they said: \"" + String(_saidAsTapped || saidIn || "").replace(/\s+/g, " ").slice(0, 2000) + "\" · shown to them: \"" +
           String(_said || (acted && acted.say) || "").replace(/\s+/g, " ").slice(0, 2000) + "\"" + (_fixedWhy ? " · fixed (" + _fixedWhy + ")" : "") + (me ? " · who=" + me : ""));
       } catch {}
+      // ══ A STYLE ALREADY PICKED IS NOT ASKED FOR AGAIN (v9.701, 2026-10-21, Aaron: "when you click a style you shouldn't be
+      // asked for styles") ═══ Her choice card is a style chooser. MEASURED 16:35: Y2K Nostalgia picked, and her card offered
+      // cyber-realism, liquid metal, dark surrealism. With a style in place the card does not go to the page.
+      if (acted && acted.choose && _newFlow && _newStyle) {
+        try { console.log("[TURN:CHOOSE] her style card dropped - " + _newStyle + " is already picked" + (me ? " · who=" + me : "")); } catch {}
+        acted.choose = null;
+      }
       // THE LAST TURN, KEPT FOR A PAGE THAT LOST THE CONNECTION (2026-10-12, v9.572). MEASURED 06:45: a 128s turn
       // drew the picture and the phone showed "I could not answer that". The page asks for this by its turn id.
       if (me && opts && opts.tid) {

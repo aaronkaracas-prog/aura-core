@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.699.0-2026-10-21-create-own-draws";
+const BUILD = "aura-core-v9.700.0-2026-10-21-krea-thinking";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -20079,7 +20079,7 @@ async function successionGate(env) {
       let refsP = null, rawP = false, parentP = null, creatorP = null;
       let aspP = null, resP = null, modelP = null, srcP = null, maskP = null;
       // EXACT SIZE AND SEED (v9.605): only a caller that names them gets them - today only the new-tattoo four.
-      let wP = null, hP = null, seedP = null;
+      let wP = null, hP = null, seedP = null, thinkP = null;
       if (/^\s*\{/.test(after)) {
         try {
           const p = JSON.parse(after);
@@ -20110,6 +20110,8 @@ async function successionGate(env) {
             maskP = (typeof p.mask === "string" && /^https:\/\//i.test(p.mask.trim())) ? p.mask.trim() : null;
             if (Number.isInteger(p.width) && Number.isInteger(p.height) && p.exact_size === true) { wP = p.width; hP = p.height; }
             if (Number.isInteger(p.seed)) seedP = p.seed;
+            // KREA 3 THINKING (v9.700, 2026-10-21, Aaron): Krea's own planner - fast (its default), high, ultra.
+            if (typeof p.thinking === "string" && /^(fast|high|ultra)$/i.test(p.thinking.trim())) thinkP = p.thinking.trim().toLowerCase();
           }
         } catch (e) {}
       }
@@ -20131,7 +20133,8 @@ async function successionGate(env) {
         via: viaP, host: hostP, refs: refsP || undefined, raw: rawP, parent: parentP, creator: creatorP,
         ...(aspP ? { aspect: aspP } : {}), ...(resP ? { res: resP } : {}),
         ...(modelP ? { model: modelP } : {}), ...(maskP ? { mask: maskP } : {}),
-        ...(wP && hP ? { width: wP, height: hP, exactSize: true } : {}), ...(seedP != null ? { seed: seedP } : {}) });
+        ...(wP && hP ? { width: wP, height: hP, exactSize: true } : {}), ...(seedP != null ? { seed: seedP } : {}),
+        ...(thinkP ? { thinking: thinkP } : {}) });
       return { cmd: "SHOW_IT", payload: r };
     }
 
@@ -61695,7 +61698,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     const sig = model + "|" + quality + "|" +
                 (opts.width || 1024) + "x" + (opts.height || 1024) + "|" +
                 (opts.aspect || "") + (opts.res || "") + "|" + (isEdit ? "es" + _editSizeRaw + "/" + _editMaxPxRaw + "|" : "") + refs.join("|") + "|" +
-                (opts.seed != null ? "seed" + opts.seed + "|" : "") + p;
+                (opts.seed != null ? "seed" + opts.seed + "|" : "") + (opts.thinking ? "think" + opts.thinking + "|" : "") + p;
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
     cacheKey = "imgcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
     const hitRaw = await env.AURA_KV.get(cacheKey);
@@ -62358,6 +62361,11 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       if (!kKey) throw new Error("no Krea key (secret:krea)");
       const kPath = model.replace(/^krea\//i, "");
       const kBody = { prompt: p };
+      // KREA 3 THINKING AND SEED (v9.700, 2026-10-21, Aaron): `fast` (Krea's default) only quickly expands the prompt; `high`
+      // plans from it with a stronger reasoning engine (+$0.02). Only a caller that names one sends it. The seed now reaches
+      // Krea too - before this it changed only our own cache key.
+      if (/^krea\/krea-3$/i.test(kPath) && /^(fast|high|ultra)$/.test(String(opts.thinking || ""))) kBody.thinking_mode = opts.thinking;
+      if (Number.isInteger(opts.seed)) kBody.seed = opts.seed;
       // References are public links (our pictures on auras.guide are). Krea 3 takes up to 8.
       if (refs.length) kBody.image_urls = refs.slice(0, 8);
       else if (isEdit) throw new Error("edit asked for with no reference image");
@@ -62401,7 +62409,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       // $0.03 at 1K, $0.06 at 2K, plus $0.02 for each reference picture (their 1K-reference rate).
       if (/^krea\/krea-3$/i.test(kPath)) {
         const k2 = kBody.resolution === "2K" || (kBody.width || 0) * (kBody.height || 0) > 1600000;
-        _kreaCost = +((k2 ? 0.06 : 0.03) + 0.02 * (kBody.image_urls ? kBody.image_urls.length : 0)).toFixed(4);
+        _kreaCost = +((k2 ? 0.06 : 0.03) + 0.02 * (kBody.image_urls ? kBody.image_urls.length : 0) +
+                     (kBody.thinking_mode === "high" ? 0.02 : (kBody.thinking_mode === "ultra" && kBody.image_urls ? 0.20 : 0))).toFixed(4);
       }
     } else if (/gemini.*image|nano-banana/i.test(model)) {
       // Google Gemini image (Nano Banana). NOT /images/generations - it uses generateContent with
@@ -62717,7 +62726,7 @@ async function showIt(subject, env, opts = {}) {
   // matter which model, which quality tier or which endpoint, and `[XAI-IMG]` printed
   // `asked aspect=- res=-` the moment it was pointed at the right branch. An afternoon of
   // theories about xAI's silent fallbacks, and the parameters never left this worker.
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, mask: opts.mask || null, exactSize: opts.exactSize === true });
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, thinking: opts.thinking || null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, mask: opts.mask || null, exactSize: opts.exactSize === true });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════

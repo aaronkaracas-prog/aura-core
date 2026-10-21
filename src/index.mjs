@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.701.0-2026-10-21-style-then-idea-draws";
+const BUILD = "aura-core-v9.702.0-2026-10-21-she-hears-them-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67111,6 +67111,38 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // in the style they picked, with the fixed coming line. She is not called.
             _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "On it - imagining some designs for you now.");
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
+            // ══ SHE HEARS THEM FIRST (v9.702, 2026-10-21, Aaron: "Aura needs to acknowledge them when they talk ... if someone
+            // just said my mom died ... she needs to have a conversation, discuss what they're saying and then show them their
+            // options") ═══ One short call before the drawing starts: her own reaction to what they said, and her judgement - draw
+            // now, or talk first. Draw: her words replace the fixed coming line and the 8 start. Talk: nothing is drawn and the
+            // turn goes to her as a normal conversation, with everything she knows. Past `config:talk:heard_ms` (default 8000) the
+            // fixed line stands and the 8 start, as before. Model: `config:source:heard:model`, else her talk model.
+            try {
+              let _hMs = 8000; try { const _hv = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(_hv) && _hv >= 0) _hMs = _hv; } catch {}
+              let _hModel = null; try { _hModel = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+              const _hT0 = Date.now();
+              const _hSys = "You are Aura, the tattoo designer on mytattoo.world - warm, real, and brief. Someone is designing a new tattoo with you" +
+                (_newStyle ? " in the " + _newStyle + " style" : "") + " and just told you what they want. Reply with ONLY a JSON object: " +
+                "{\"draw\": true or false, \"say\": \"...\"}. Use your own judgement. draw is true when they gave you an idea you can start " +
+                "imagining now; then say is one or two short lines in your own words reacting to what they said, ending by telling them you're " +
+                "imagining some designs for them now. draw is false when what they shared deserves a real conversation before any pictures; " +
+                "then say is empty. Never put a number in say.";
+              const _hq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _hMs)),
+                callBrain({ system: _hSys, user: _s.slice(0, 1200), max_tokens: 200, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+              let _hj = null;
+              if (_hq && _hq.ok && _hq.text) { try { const _m = String(_hq.text).match(/\{[\s\S]*\}/); _hj = _m ? JSON.parse(_m[0]) : null; } catch {} }
+              const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);
+              if (_hj && _hj.draw === false) {
+                _fixedWhy = null; _fixedSay = null;
+                try { await talkStatePut(env, me, "await_idea", ""); } catch {}
+                console.log("[TURN:HEARD] " + _hSec + "s - she wants to talk first, nothing drawn; the turn goes to her" + (me ? " · who=" + me : ""));
+              } else if (_hj && _hj.draw === true && String(_hj.say || "").trim()) {
+                _fixedSay = String(_hj.say).replace(/\s+/g, " ").trim().slice(0, 300);
+                console.log("[TURN:HEARD] " + _hSec + "s - her words before the 8: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
+              } else {
+                console.log("[TURN:HEARD] " + _hSec + "s - " + (_hq && _hq.late ? "no answer in " + _hMs + "ms" : "no usable answer") + " - the fixed line goes" + (me ? " · who=" + me : ""));
+              }
+            } catch {}
           } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {
             _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
           } else if (opts && opts.new_now && _s && !(opts && opts.inspire) && !_bodyPhoto) {

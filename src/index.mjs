@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.691.0-2026-10-21-yes-card-one-size";
+const BUILD = "aura-core-v9.692.0-2026-10-21-krea-door";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -61547,7 +61547,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // A capability that changes when a vendor ships is data, not code. `caps:edit` holds the regex
   // SOURCE as a string. Absent - which it is until somebody sets it - this is byte-identical to
   // what shipped, so the dial changes where the decision can be made from and nothing else.
-  const CAN_EDIT_DEFAULT = "^(gpt-image|dall-e-3|grok-imagine|gemini|nano-banana|imagen|flux[.-]?\\d*[-.]?kontext|@cf\\/[^/]+\\/flux-2)";
+  // krea/ (v9.692): every Krea image model takes reference pictures (image_urls).
+  const CAN_EDIT_DEFAULT = "^(krea\\/|gpt-image|dall-e-3|grok-imagine|gemini|nano-banana|imagen|flux[.-]?\\d*[-.]?kontext|@cf\\/[^/]+\\/flux-2)";
   let CAN_EDIT;
   try {
     const capsRaw = await env.AURA_KV.get("config:edit:caps").catch(() => null);
@@ -61724,7 +61725,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   } catch {}
 
   const id = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  let b64 = null, err = null, imgUsage = null;
+  let b64 = null, err = null, imgUsage = null, _kreaCost = null;
   try {
     if (model.startsWith("@cf/")) {
       // Cloudflare Workers AI - near-free, no external key, already bound as env.AI. flux-1-schnell returns
@@ -62336,6 +62337,64 @@ async function auraGenerateImage(prompt, env, opts = {}) {
             (opts.res === "2k" && Math.max(_w, _ht) < 1600 ? "  ** 2k NOT HONOURED **" : ""));
         }
       } catch {}
+    } else if (/^krea\//i.test(model)) {
+      // ══ KREA, ONE KEY FOR SEVERAL IMAGE MODELS (v9.692, 2026-10-21, Aaron) ═══════════════════════════════════
+      // The model is named `krea/<provider>/<model>` - krea/krea/krea-3, krea/google/nano-banana-pro,
+      // krea/bytedance/seedream-4 - and which one draws is a KV dial like every other model, never a name here.
+      // ABOVE the Gemini branch on purpose: that one matches anything with "nano-banana" in it and would take
+      // Krea's Nano Banana to Google with the wrong key.
+      // ASYNCHRONOUS, like BFL (docs.krea.ai job lifecycle): POST /generate/image/<provider>/<model> returns a
+      // job_id; GET /jobs/<id> until completed, failed or cancelled; the picture is result.urls[0]. The bytes are
+      // taken at once and stored the same way as every other model's, so nothing depends on Krea's link later.
+      const kKey = await getSecret(env, "krea");
+      if (!kKey) throw new Error("no Krea key (secret:krea)");
+      const kPath = model.replace(/^krea\//i, "");
+      const kBody = { prompt: p };
+      // References are public links (our pictures on auras.guide are). Krea 3 takes up to 8.
+      if (refs.length) kBody.image_urls = refs.slice(0, 8);
+      else if (isEdit) throw new Error("edit asked for with no reference image");
+      // SIZE: an exact width and height when the caller gave both (Krea takes up to 4096 a side); otherwise
+      // their aspect and 1K/2K; otherwise Krea frames it itself. Never both - Krea refuses that.
+      const kW = parseInt(opts.width, 10), kH = parseInt(opts.height, 10);
+      const kAsp = String(opts.aspect || "").trim(), kRes = String(opts.res || "").trim().toUpperCase();
+      if (kW > 0 && kH > 0 && !(kW === 1024 && kH === 1024 && kAsp)) {
+        kBody.width = Math.min(4096, kW); kBody.height = Math.min(4096, kH);
+      } else if (/^(1:1|4:5|3:4|2:3|9:16|5:4|4:3|3:2|16:9|21:9)$/.test(kAsp)) {
+        kBody.aspect_ratio = kAsp; kBody.resolution = /^2K$/.test(kRes) ? "2K" : "1K";
+      }
+      const kHead = { "Authorization": "Bearer " + kKey, "Content-Type": "application/json", "accept": "application/json" };
+      const kSub = await pfetch(env, "krea", "core:image", "https://api.krea.ai/generate/image/" + kPath, {
+        method: "POST", headers: kHead, body: JSON.stringify(kBody)
+      });
+      const kSj = await kSub.json().catch(() => ({}));
+      if (!kSub.ok) throw new Error("Krea " + kSub.status + ": " + JSON.stringify(kSj).slice(0, 300));
+      const kJob = kSj?.job_id;
+      if (!kJob) throw new Error("no job_id from Krea: " + JSON.stringify(kSj).slice(0, 200));
+      console.log("[KREA] " + kPath + " job " + kJob + " · sent: " + JSON.stringify(Object.assign({}, kBody, { prompt: String(p).slice(0, 120) + (String(p).length > 120 ? "..." : "") })).slice(0, 600));
+      // Bounded, like BFL: every 2 seconds (Krea's own advice), up to 3 minutes. A poll with no ceiling is a hung
+      // request, not a failure anybody can read.
+      let kUrl = null, kStatus = null, kErr = null; const kT0 = Date.now();
+      for (let i = 0; i < 90 && !kUrl; i++) {
+        await new Promise((res) => setTimeout(res, 2000));
+        const kr = await fetch("https://api.krea.ai/jobs/" + encodeURIComponent(kJob), { headers: kHead });
+        const kj = await kr.json().catch(() => ({}));
+        kStatus = kj?.status || null;
+        if (kStatus === "completed") { kUrl = (kj?.result?.urls || [])[0] || null; if (!kUrl) kErr = "completed with no picture"; break; }
+        if (kStatus === "failed" || kStatus === "cancelled") { kErr = kStatus + (kj?.result?.error ? ": " + JSON.stringify(kj.result.error).slice(0, 200) : ""); break; }
+      }
+      console.log("[KREA] " + kPath + " job " + kJob + " · " + (kUrl ? "done" : (kErr || "not finished, last status " + kStatus)) + " · " + ((Date.now() - kT0) / 1000).toFixed(1) + "s");
+      if (!kUrl) throw new Error("Krea " + (kErr || "did not finish in 180s (last status: " + kStatus + ")"));
+      const kDl = await fetch(kUrl);
+      if (!kDl.ok) throw new Error("could not download the Krea result: HTTP " + kDl.status);
+      const kU8 = new Uint8Array(await kDl.arrayBuffer());
+      let kBs = ""; for (let i = 0; i < kU8.length; i += 8192) kBs += String.fromCharCode.apply(null, kU8.subarray(i, i + 8192));
+      b64 = btoa(kBs);
+      // PRICE, FROM KREA'S PUBLISHED TABLE (Krea 3 only - the other models behind Krea publish no table we have):
+      // $0.03 at 1K, $0.06 at 2K, plus $0.02 for each reference picture (their 1K-reference rate).
+      if (/^krea\/krea-3$/i.test(kPath)) {
+        const k2 = kBody.resolution === "2K" || (kBody.width || 0) * (kBody.height || 0) > 1600000;
+        _kreaCost = +((k2 ? 0.06 : 0.03) + 0.02 * (kBody.image_urls ? kBody.image_urls.length : 0)).toFixed(4);
+      }
     } else if (/gemini.*image|nano-banana/i.test(model)) {
       // Google Gemini image (Nano Banana). NOT /images/generations - it uses generateContent with
       // responseModalities:["IMAGE"], and the image returns as inline base64 in the response PARTS, not a
@@ -62378,6 +62437,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // Where the number came from, carried all the way out. A figure priced from a provider's own
   // usage object and one guessed from a table must never look the same in a ledger.
   let costSource = "rate table (inferred)";
+  // KREA (v9.692): priced from its published table in the branch above; nothing for the models it publishes none for.
+  if (/^krea\//i.test(model)) { costUsd = _kreaCost; costSource = _kreaCost != null ? "Krea published price" : "not priced (Krea)"; }
   try {
     // ══ THESE WERE 10x LOW AND IT WAS MEASURED, NOT ARGUED (2026-07-31) ═══════════════════════════
     // grok-imagine-image read $0.002 with the comment "the floor we proved". It was never proved - it
@@ -62587,6 +62648,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       await _egressCore(env, {
         provider: _cf ? "cloudflare" : (/^grok-imagine/i.test(model) ? "xai"
                      : /^(gpt-image|dall-e)/i.test(model) ? "openai"
+                     : /^krea\//i.test(model) ? "krea"
                      : /gemini|nano-banana/i.test(model) ? "google" : "unknown"),
         caller: "core:image", model,
         endpoint: _cf ? "https://workers-ai/" + model : "https://image/" + model,

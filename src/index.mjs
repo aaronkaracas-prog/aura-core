@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.694.0-2026-10-21-progress-never-blocks";
+const BUILD = "aura-core-v9.695.0-2026-10-21-unpicked-sheet-is-ideas";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65940,6 +65940,14 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // than a history display.
       let lastDrawn = null;
       if (me) { try { lastDrawn = await _pre.last; } catch {} }
+      // ══ AN UNPICKED SHEET IS NOT THEIR DESIGN (v9.695, 2026-10-21, Aaron chose rule "a") ════════════════════════════════
+      // MEASURED 12:40 (pta_f122ae203ea2a21c): the octopus 8 were drawn and never picked; "I'm thinking a lighthouse in a storm with a
+      // little sailboat" was then sent as "This is my tattoo design. I want to change it: ..." with the octopus sheet as the design.
+      // Until they choose one (Work on this, or a catalogue pick), the 8 are ideas, not a design - so a sheet that is still the last
+      // drawing does not count as "a design exists". The test is the one v9.684 already uses: the sheet's own `sheet8:` record.
+      let _sheetImg = null;
+      try { const _sid = (String((lastDrawn && lastDrawn.image) || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+            if (_sid && await env.AURA_KV.get("sheet8:" + _sid)) _sheetImg = lastDrawn.image; } catch {}
       // What she had made BEFORE anything arrived this turn. A photo that lands this turn becomes
       // the working picture below - right for an add-on, and wrong for putting a design on them.
       const _madeBefore = lastDrawn;
@@ -65970,7 +65978,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // her a piece she drew was on screen, and the roster called their photo "the piece".
       // The fact that separates the two already exists: a drawing is never the reference itself.
       const _drewNow = () => !!(lastDrawn && lastDrawn.image && lastDrawn.design &&
-                                lastDrawn.design !== refDesign);
+                                lastDrawn.design !== refDesign && !(_sheetImg && lastDrawn.image === _sheetImg));
       let wantRef = String((opts && opts.ref) || "").trim();
       // When their photo arrived (talk-state:ref `at`) - an add-on's words are their lines from here on.
       let _refAt = null;
@@ -67802,7 +67810,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if ((act === "draw" || act === "change") && !_theirGo) {
         const _sayNow = String(acted.say || said || "").trim();
         const _lastQ = (_sayNow.match(/[^.!?]*\?\s*$/) || [""])[0];
-        if (_lastQ && /\b(show|draw|sketch|see|mock it up|picture it)\b/i.test(_lastQ)) {
+        // HER WORDS WIN (v9.695, 2026-10-21): MEASURED 12:40 - "Say the word and I'll show you some." is an offer with no question
+        // mark, and her act said change, so it drew. The same offer test as the go guard and the yes card (_isOfferLine) decides.
+        if ((_lastQ && /\b(show|draw|sketch|see|mock it up|picture it)\b/i.test(_lastQ)) || (!_fixedWhy && _isOfferLine(_sayNow))) {
           act = "none";
           console.log("[ASKFIRST] she asked to show it - nothing drawn until they say go");
         }

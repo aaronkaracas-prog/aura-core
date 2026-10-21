@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.689.0-2026-10-21-her-one-question-card";
+const BUILD = "aura-core-v9.690.0-2026-10-21-continue-is-a-go";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66363,7 +66363,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         (/\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(String(e.said || "")) ||
          /\b(i'?ll|i will|let me|i'?m going to|i can)\s+(show|draw|sketch|make)\b/i.test(String(e.said || ""))));
       const _saidNo = /^\s*(no|nope|nah|not (yet|now|really)|wait|hold on|hang on|don'?t|stop|never ?mind|later)\b/i.test(String(said || "").trim());
-      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo);
+      // CONTINUE ON HER CARD IS A GO (v9.690, 2026-10-21): MEASURED 06:48 - Continue on "Fine-line botanical" was stopped by the
+      // "nothing is drawn until they say go" guard, because her line before it was a question about feel, not an offer to show.
+      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo) || !!(opts && opts.choose_go);
       // DRAWING NOTES ONLY WHEN THEY SAID GO (2026-10-02, v9.514, Aaron): on a talking turn these sat
       // where her ideas should be - "every picture starts from their photo", "one picture, never four" -
       // while nothing was being drawn. The draw guard already uses these words; so do the notes.
@@ -70415,7 +70417,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                // HER ONE QUESTION (v9.689): the card under her words - never on a fixed line, never when a picture just came back.
                ...(acted && acted.choose && !_fixedWhy && !(drew && drew.image) ? { choose: acted.choose } : {}),
                // WHERE SHE TAKES THEM (v9.664): the page goes there - the same as tapping that place.
-               ...(acted && acted.go && !_fixedWhy ? { go: acted.go } : {}),
+               // NOT TO WHERE THEY ALREADY ARE (v9.690): MEASURED 06:48 - in a new tattoo she sent go "new", which would have
+               // moved them to a fresh Create New Tattoo screen mid-conversation.
+               ...(acted && acted.go && !_fixedWhy && !((acted.go === "new" && (_newFlow || String(jobNow || "") === "new")) || acted.go === String(jobNow || "")) ? { go: acted.go } : {}),
                // HER PLACES (v9.655): on an add-on photo, the page shows each as a button.
                ...((Array.isArray(acted.directions) && acted.directions.length) ? { directions: acted.directions } : {}),
                ...(_herTurn ? { her_turn: _herTurn } : {}),

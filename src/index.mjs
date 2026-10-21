@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.696.0-2026-10-21-no-numbers-two-sheets";
+const BUILD = "aura-core-v9.697.0-2026-10-21-fixed-tap-is-its-own-go";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67841,7 +67841,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if (_askIdeas && _fixedWhy !== "more" && (act === "draw" || act === "change" || act === "onme")) {
         console.log("[TURN:IDEAS] they asked for ideas - she gives them, nothing drawn (her act was " + act + ")"); act = "none";
       }
-      if ((act === "draw" || act === "change") && !_drewNow() &&
+      // A FIXED TAP IS ITS OWN GO (v9.697, 2026-10-21): MEASURED 13:39 - "Imagine more" under an unpicked sheet chose the fixed
+      // `more` road, and then this check stopped it ("no go-ahead in their words"), because v9.695 made an unpicked sheet count as
+      // no design yet. A fixed line is a button they pressed - Imagine more, Continue, a pick - never something to second-guess here.
+      if ((act === "draw" || act === "change") && !_drewNow() && !_fixedWhy &&
           !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
         const _them = String(said || "").trim();
         let _prevAura = "";

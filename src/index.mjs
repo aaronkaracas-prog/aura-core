@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.693.0-2026-10-21-sheet8-own-model";
+const BUILD = "aura-core-v9.694.0-2026-10-21-progress-never-blocks";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -65388,9 +65388,16 @@ async function runTalkJob(env, d) {
   const me = d.me, tid = (d.opts && d.opts.tid) || null, t0 = Date.now();
   let text = "", stg = "", what = "", lastW = 0;
   const pend = [];
+  // ══ A PROGRESS NOTE NEVER HOLDS UP THE TURN (v9.694, 2026-10-21, Aaron) ═══════════════════════════════════════════
+  // MEASURED 12:30:27 -> 12:30:40: one `turnlive` write to the Durable Object hung 13s and came back "internal error", and the
+  // drawing could not start until it gave up - 13 of a 73s turn. The note is only the page's "what's happening now" line, so
+  // it is written in the background, one after another in order (a later note never lands before an earlier one), and the
+  // job waits for them only at its very end. A slow or failed note now costs the turn nothing.
+  let liveChain = Promise.resolve();
   const live = async (force, extra) => {
     const now = Date.now(); if (!force && now - lastW < 700) return; lastW = now;
-    await talkStatePut(env, me, "turnlive", JSON.stringify({ tid, text, stage: stg, what, ...(extra || {}) }));
+    const body = JSON.stringify({ tid, text, stage: stg, what, ...(extra || {}) });
+    liveChain = liveChain.then(() => talkStatePut(env, me, "turnlive", body)).catch(() => null);
   };
   await live(true);
   let out;
@@ -65405,6 +65412,7 @@ async function runTalkJob(env, d) {
   if (d.opts && d.opts.ref && out && typeof out === "object") out = { ...out, ref: d.opts.ref };
   await talkStatePut(env, me, "turnout", JSON.stringify({ tid, out, at: Date.now() }));
   await live(true, { done: true });
+  try { await liveChain; } catch {}
   try { console.log("[TURNJOB] turn " + tid + " finished in " + ((Date.now() - t0) / 1000).toFixed(1) + "s · ok=" + !!(out && out.ok !== false) + (me ? " · who=" + me : "")); } catch {}
   // Her work behind the reply (naming at This Is My Tattoo, and the like) finishes inside the job, never cut off.
   if (pend.length) { try { await Promise.all(pend); } catch {} }
@@ -69723,22 +69731,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_designGrid) {
               // FOUR VERSIONS OF A CHANGE (v9.605, Aaron): her own words to their change stay - she was called before it
               // was drawn - and the same fixed line as the first four follows. No look: the titles are in the picture.
-              let _done = "Here are your 8. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+              let _done = "Here are your 8. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
               try { const _k = String((await env.AURA_KV.get("config:say:eight_done")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_designWords === "__poss__") {
-                _done = "Here are 8 possibilities for your design. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+                _done = "Here are 8 possibilities for your design. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
                 try { const _k = String((await env.AURA_KV.get("config:say:poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               const _hers = (!_fixedSay && acted && acted.say) ? String(acted.say).trim() : "";
               _reaction = _hers ? (_hers + "\n\n" + _done) : _done;
             } else if (_ideasGrid) {
-              let _done = "Here are your 8. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+              let _done = "Here are your 8. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
               try { const _k = String((await env.AURA_KV.get("config:say:ideas_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_addonPoss && _addonChangeWords) {
-                _done = "Here are 8 versions of that on you. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+                _done = "Here are 8 versions of that on you. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_change_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               } else if (_addonPoss) {
-                _done = "Here are 8 possibilities on you. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+                _done = "Here are 8 possibilities on you. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               _reaction = _done;
@@ -69960,7 +69968,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // our sentence to the chat model, which writes its brief (a title and two lines for every card, in order) and draws.
           // Measured 08:02: the chat-model route drew the sheet for $0.006 against $0.012. If it draws nothing twice, the
           // straight route below draws it, as before.
-          let _thNew = null;
+          let _thNew = null, _thAsked = null;   // v9.694: the size the 8-sheet really asked for, for the log
           // IMAGE MODEL ONLY (v9.630, 2026-10-16, Aaron: "image model only and the i information - that's gone"). The chat-model
           // route below is kept but never taken: every sheet it drew pushed its own stock picks (phoenix, crescent moon, neon,
           // desert) - Bay Phoenix at 14:32 on a San Francisco idea. The sentence goes straight to the image model, as run 9 did.
@@ -69969,7 +69977,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_newSentence) {
             for (let _t = 0; _t < 2 && !_thNew; _t++) {
               try {
-                const _s8m = await sheet8Model(env);
+                const _s8m = await sheet8Model(env); _thAsked = await sheet8Size(env);
                 const _tr = await processCommand("THREAD START NONE " + JSON.stringify({ prompt: askLine, action: "generate",
                   size: await sheet8Size(env), quality: await sheet8Quality(env), ...(_s8m ? { image_model: _s8m } : {}) }), env, true);
                 const _tp = (_tr && _tr.payload) ? _tr.payload : _tr;
@@ -70019,7 +70027,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // reading them back added ~20s and told them nothing new. One fixed line instead (config:say:four_done).
             let _lk2 = null;
             if (_newSentence) {
-              _reaction = "Here are your 8. Heart any you like and keep saving your favourites as we go - tap Work on this on the one you want to keep going with.";
+              _reaction = "Here are your 8. Heart any you like and keep saving your favorites as we go - tap Work on this on the one you want to keep going with.";
               try { const _k = String((await env.AURA_KV.get("config:say:eight_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
             } else {
               _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);
@@ -70044,7 +70052,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
           }
           if (_newSentence) { try { console.log("[TURN:NEW] sent to the image model only: \"" + String(_subjectSent).replace(/\s+/g, " ").slice(0, 1500) + "\"" + (dp && dp.cost_usd != null ? " · $" + dp.cost_usd : "")); } catch {} }
-          if (_newSentence) { try { console.log("[TURN:NEW] drawn by " + ((dp && dp.model) || "?") + " · asked " + (_newSize.width + "x" + _newSize.height) +
+          if (_newSentence) { try { console.log("[TURN:NEW] drawn by " + ((dp && dp.model) || "?") + " · asked " + ((_thNew && _thAsked) ? _thAsked : (_newSize.width + "x" + _newSize.height)) +
             (_fixedWhy === "more" ? " · a fresh four (new seed)" : "") + " -> " + ((dp && dp.image_url) || ("not made: " + ((dp && dp.error) || "?"))) + (me ? " · who=" + me : "")); } catch {} }
           // EVERY WORD THE IMAGE MODEL GOT (v9.604) - handed back with the turn, never cut.
           try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: "drawn new", words: _subjectSent,

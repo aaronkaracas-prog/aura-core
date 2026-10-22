@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.710.0-2026-10-22-right-size-in-the-log";
+const BUILD = "aura-core-v9.711.0-2026-10-22-possibilities-straight-to-image-model";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -20022,7 +20022,12 @@ async function successionGate(env) {
               refs: [parentUrl, ...withRefs], subject: p.prompt,
               ...(evW ? { width: evW } : {}), ...(evH ? { height: evH } : {}),
               ...(evAsp ? { aspect: evAsp } : {}), ...(evRes ? { res: evRes } : {}),
-              ...(evSeed != null ? { seed: evSeed } : {}) })
+              ...(evSeed != null ? { seed: evSeed } : {}),
+              // NAMED FOR ONE CALL (v9.711): the possibilities sheet straight to the image model names its model and quality, and
+              // sends its words with nothing added (raw) - the same as the new-tattoo sheet.
+              ...(typeof p.model === "string" && /^gpt-image/i.test(p.model.trim()) ? { model: p.model.trim() } : {}),
+              ...(["low", "medium", "high", "auto"].includes(String(p.quality || "")) ? { quality: String(p.quality) } : {}),
+              ...(p.raw === true ? { raw: true } : {}) })
           : await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id,
               creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
         if (!r || !r.ok) return { cmd: "IMAGE", payload: { ok: false, error: r ? r.error : "evolution failed" } };
@@ -69514,6 +69519,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           let _qualNow = null;                     // v9.661: a quality named for this one picture (add-on possibilities)
           let _canvasNow = null;                   // v9.591: the ideas picture's own canvas
           let _viaNow = null;                      // v9.596: "thread" - the ideas picture goes the chat-model way
+          let _modelNow = null, _rawNow = false;   // v9.711: possibilities straight to the image model - its model, words sent as they are
           let _asNow = null;                       // v9.629: the image job's dial - "show_it_cmd" for the four possibilities
           let _sizeNow = null;                     // v9.606: the four-card page's own tall size, through the thread
           // CHANGES TOO (2026-09-30, Aaron): MEASURED on pta_4e048acbadd8af04, "Adding color to the new
@@ -69732,7 +69738,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
           // THE SAME TREATMENT (v9.678): an add-on, cover-up, possibilities or change sheet - their opening, the one ending,
           // through the chat model, on the tall page.
-          if ((_ideasGrid || _designGrid) && _sentNow) {
+          // POSSIBILITIES STRAIGHT TO THE IMAGE MODEL (v9.711, 2026-10-22, Aaron). MEASURED 01:38 by command (img_mvjafg5m1lb5): their
+          // chosen design and the possibilities sentence with the direct ending, on Flare at high - 32.3s against 68.1s through the
+          // chat model, all eight her own portrait taken eight ways, every title spelled right. The same three settings as the
+          // new-tattoo sheet (config:source:sheet8:route / :model / :quality, size :size). Change and add-on/cover sheets unchanged.
+          const _possDirect = _designGrid && _designWords === "__poss__" && _sentNow && (await sheet8Route(env)) === "direct";
+          if (_possDirect) {
+            _sentNow = await toEight(env, _sentNow, "direct");
+            const _pz = await sheet8DirectSize(env);
+            _viaNow = null; _asNow = "design_evolve"; _canvasNow = { width: _pz.width, height: _pz.height }; _sizeNow = null;
+            _qualNow = await sheet8DirectQuality(env); _modelNow = await sheet8Model(env); _rawNow = true;
+            _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+            _wordsFrom = String(_wordsFrom || "sheet") + "+eight+direct";
+          } else if ((_ideasGrid || _designGrid) && _sentNow) {
             _sentNow = await toEight(env, _sentNow, _designGrid ? "flat" : "body");
             _viaNow = "thread"; _asNow = null; _canvasNow = null; _sizeNow = await sheet8Size(env); _qualNow = await sheet8Quality(env);
             _wordsFrom = String(_wordsFrom || "sheet") + "+eight";
@@ -69748,6 +69766,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // THE IDEAS PICTURE GOES THE CHATGPT WAY (v9.596): a chat model reads their photo and writes the brief.
                   ...(_viaNow ? { via: _viaNow } : {}),
                   ...(_qualNow ? { quality: _qualNow } : {}),
+                  ...(_modelNow ? { model: _modelNow } : {}), ...(_rawNow ? { raw: true } : {}),
                   ...(_sizeNow ? { size: _sizeNow } : {}) }), env, true);
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
@@ -69922,7 +69941,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
           // CUT THE MOMENT IT COMES BACK (v9.678): the eight cards, each with its words.
           let _eight = null;
-          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said);
+          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, _possDirect ? { printed: true } : null);
           // THE ADD-ON FOUR ARE MARKED (v9.651): a pick off this sheet is cut out of it, never redrawn (cutBodyPanel).
           if (_ideasGrid && cp?.ok && cp.image_url) {
             const _bsid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];

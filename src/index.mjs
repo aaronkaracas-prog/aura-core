@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.720.0-2026-10-22-cover-up-stays-cover-up";
+const BUILD = "aura-core-v9.721.0-2026-10-22-cover-up-straight-to-the-image-model";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60751,6 +60751,10 @@ async function sheet8Size(env) { try { const k = String((await env.AURA_KV.get("
 async function sheet8Route(env) { try { const k = String((await env.AURA_KV.get("config:source:sheet8:route")) || "").trim().toLowerCase(); if (k === "direct") return "direct"; } catch {} return "thread"; }
 async function sheet8DirectQuality(env) { try { const k = String((await env.AURA_KV.get("config:source:sheet8:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(k)) return k; } catch {} return await sheet8Quality(env); }
 async function sheet8DirectSize(env) { let w = 1440, h = 3120; try { const m = String((await env.AURA_KV.get("config:source:sheet8:size")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/); if (m) { w = parseInt(m[1], 10); h = parseInt(m[2], 10); } } catch {} return { width: w, height: h, exact_size: true }; }
+// ON THEIR PHOTO, STRAIGHT TO THE IMAGE MODEL (v9.721, 2026-10-22, Aaron: "why are we writing a brief for a cover up ... we're literally
+// supposed to be saying here's the tattoo I have, here's what I want to do with it"). The body ending with the words printed under each
+// picture, as the direct new-tattoo ending does - nothing writes a reply, so nothing has to. Setting: config:frame:sheet8:bodydirect.
+const SHEET8_BODY_DIRECT = "Show the whole tattoo in every picture, nothing cut off at the edges. Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture the same shape as my photo, in a clean white frame with rounded corners, with a wide black gap between them, and under each picture, on the black, a short title in bold white capital letters, and under it two short lines in white describing the design. No numbers anywhere.";
 // Their opening stays word for word; the four-card layout at its end comes off, and the one ending goes on.
 async function toEight(env, sentence, kind) {
   let s = String(sentence || "").trim();
@@ -60758,8 +60762,8 @@ async function toEight(env, sentence, kind) {
        .replace(/\bFor the other three\b/g, "For the others").replace(/\bFor 2, 3 and 4\b/g, "For the others");
   const cut = s.search(/\s(?:Show all (?:4|four)\b|Make one tall page\b|Make one page\b|Under each one\b|No numbers anywhere\b)/i);
   if (cut > 0) s = s.slice(0, cut).trim();
-  const _kn = kind === "direct" ? "direct" : kind === "flat" ? "flat" : "body";
-  let end = _kn === "direct" ? SHEET8_DIRECT : _kn === "flat" ? SHEET8_FLAT : SHEET8_BODY;
+  const _kn = kind === "direct" ? "direct" : kind === "bodydirect" ? "bodydirect" : kind === "flat" ? "flat" : "body";
+  let end = _kn === "direct" ? SHEET8_DIRECT : _kn === "bodydirect" ? SHEET8_BODY_DIRECT : _kn === "flat" ? SHEET8_FLAT : SHEET8_BODY;
   try { const k = String((await env.AURA_KV.get("config:frame:sheet8:" + _kn)) || "").trim(); if (k) end = k; } catch {}
   return s.replace(/[\s]+$/, "") + " " + end;
 }
@@ -67354,7 +67358,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        // 10:33 - a photo sent straight into the chat, "I want to add to it": the job was add (job=add) but this
                        // waited for the Add to Existing opening line, so the old ideas path drew. The job core already holds decides.
                        return ["add", "cover"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase()); })()) {
-            _fixedWhy = "addon_ideas";
+            // NAMED BY ITS JOB (v9.721): the cover-up 8 was logged as addon_ideas.
+            _fixedWhy = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover" ? "cover_ideas" : "addon_ideas";
             _fixedSay = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover"
               ? await _fx("cover_ideas8", "On it - imagining ways to cover it.")
               : await _fx("addon_ideas8", "On it - imagining ways your tattoo could grow.");
@@ -69805,7 +69810,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _qualNow = await sheet8DirectQuality(env); _modelNow = await sheet8Model(env); _rawNow = true;
             _seedNow = 1 + Math.floor(Math.random() * 2000000000);
             _wordsFrom = String(_wordsFrom || "sheet") + "+eight+direct";
-          } else if ((_ideasGrid || _designGrid) && _sentNow) {
+          }
+          // ADD-ON AND COVER-UP STRAIGHT TO THE IMAGE MODEL (v9.721, 2026-10-22, Aaron: "Aura looked at it - that's the brief"). MEASURED
+          // 14:45: the cover-up 8 took 63.2s, about 25s of it the chat model writing its own brief before anything was drawn. Their photo
+          // (and the card they chose, when there is one) and our sentence go to the image model with the words printed under each picture,
+          // the same road and the same three settings as the possibilities sheet. config:source:sheet8:route = thread brings the chat model back.
+          const _bodyDirect = !_possDirect && _ideasGrid && !_designGrid && _sentNow && (await sheet8Route(env)) === "direct";
+          if (_bodyDirect) {
+            _sentNow = await toEight(env, _sentNow, "bodydirect");
+            const _pz = await sheet8DirectSize(env);
+            _viaNow = null; _asNow = "design_evolve"; _canvasNow = { width: _pz.width, height: _pz.height }; _sizeNow = null;
+            _qualNow = await sheet8DirectQuality(env); _modelNow = await sheet8Model(env); _rawNow = true;
+            _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+            _wordsFrom = String(_wordsFrom || "sheet") + "+eight+direct";
+          } else if (!_possDirect && (_ideasGrid || _designGrid) && _sentNow) {
             _sentNow = await toEight(env, _sentNow, _designGrid ? "flat" : "body");
             _viaNow = "thread"; _asNow = null; _canvasNow = null; _sizeNow = await sheet8Size(env); _qualNow = await sheet8Quality(env);
             _wordsFrom = String(_wordsFrom || "sheet") + "+eight";
@@ -69996,7 +70014,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
           // CUT THE MOMENT IT COMES BACK (v9.678): the eight cards, each with its words.
           let _eight = null;
-          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, _possDirect ? { printed: true } : null);
+          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, (_possDirect || _bodyDirect) ? { printed: true } : null);
           // THE ADD-ON FOUR ARE MARKED (v9.651): a pick off this sheet is cut out of it, never redrawn (cutBodyPanel).
           if (_ideasGrid && cp?.ok && cp.image_url) {
             const _bsid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];

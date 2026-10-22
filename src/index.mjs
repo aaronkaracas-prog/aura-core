@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.719.0-2026-10-22-keeps-what-its-of";
+const BUILD = "aura-core-v9.720.0-2026-10-22-cover-up-stays-cover-up";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -68278,7 +68278,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // change to the photograph they sent - their skin, their existing ink, their arm - and
       // everything around the new piece has to survive. The mandala legs already proved the edit
       // lane holds a body still while the artwork changes.
-      let jobNow = String((intent && intent.job) || "").toLowerCase();
+      // ══ THE JOB THEY STARTED WITH CARRIES (v9.720, 2026-10-22, Aaron) ═══ MEASURED 14:20 (pta_8c4f4cd6f9f7f3db): a cover-up - the
+      // record said job=cover - but "Imagine 8 cover-ups" is a fixed step where she is not called, so this turn had no job of its own,
+      // their photo made it "add", and the image model got the ADD-ON sentence ("extending it into a bigger piece... keep my existing
+      // tattoo exactly") - the VITRUVIAN band came back untouched with new work beside it. The kept job is used when the turn has none.
+      let jobNow = String((intent && intent.job) || (carriedObj && carriedObj.job) || "").toLowerCase();
       // ══ THEIR OWN PHOTO MAKES IT AN ADD-ON (2026-09-30, Aaron) ═══════════════════════════════
       // MEASURED twice on the forearm photo: she wrote "new" for a piece on the opposite shoulder,
       // and the first picture came back flat on white instead of on her. Aaron: "It's an add-on so

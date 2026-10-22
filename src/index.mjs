@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.715.0-2026-10-22-work-on-this-style";
+const BUILD = "aura-core-v9.716.0-2026-10-22-see-it-on-you-is-not-a-fresh-start";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -71766,6 +71766,13 @@ export class PublicEntry extends WorkerEntrypoint {
                 "talk-state:brief": JSON.stringify(_brief),
                 "talk-state:project": _onmeP,
                 "talk-state:onme": "", "talk-state:ref": "", "talk-state:bad": "", "talk-state:split": "" }]);
+              // ══ AND IT IS NOT A FRESH START (v9.716, 2026-10-22, Aaron) ═══ MEASURED 11:10 (pta_8c4f4cd6f9f7f3db): the page sent the
+              // placed photo as a fresh start, so the design just put back was read as empty, "placed" never matched and the photo went
+              // to her (47s, an add-on reply). The locked tattoo was just put back on purpose - this turn reads it.
+              b.fresh = false;
+              console.log("[ONME] " + _onmeP + " back on screen for see it on you · design " + ((_locked && _locked.design) || "?") + (me ? " · who=" + me : ""));
+            } else {
+              console.log("[ONME] " + _onmeP + " not put back: " + (!_pj ? "no project" : !_pj.locked ? "not locked" : !_flat ? "no flat artwork" : "job " + _jobP) + (me ? " · who=" + me : ""));
             }
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }

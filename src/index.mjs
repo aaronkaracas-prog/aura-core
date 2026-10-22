@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.706.0-2026-10-21-idea-from-the-conversation";
+const BUILD = "aura-core-v9.707.0-2026-10-21-pick-is-a-pick";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67133,7 +67133,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 "DRAW when there is anything in what they said to imagine a tattoo from. TALK only when there is nothing yet to imagine " +
                 "from (for example they only shared a feeling) - then your words are your reply to them, with no mention of designs.";
               const _hq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _hMs)),
-                callBrain({ system: _hSys, user: _s.slice(0, 1200), max_tokens: 300, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+                callBrain({ system: _hSys, user: _s.slice(0, 1200), max_tokens: 2000, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
               const _hRaw = String((_hq && _hq.text) || "").trim();
               const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(DRAW|TALK)\W*\s*([\s\S]*)$/i);
               const _hDo = _hm ? _hm[1].toUpperCase() : null;
@@ -67214,7 +67214,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four|8|eight)|(?:4|four|8|eight)\s+more)\.?\s*$/i.test(_s)) {
             // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
             _fixedWhy = "more"; _fixedSay = await _fx("eight_more", "I've imagined more for you - here they come.");
-          } else if (_newFlow && _goSaid && !_saidNo && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s) || (opts && Array.isArray(opts.all_ideas) && opts.all_ideas.length) ||
+          } else if (_newFlow && _goSaid && !_saidNo && !/^\s*i want number [1-8]\.?\s*$/i.test(_s) && (!_drewNow() || /^\s*show me:\s*\S/i.test(_s) || (opts && Array.isArray(opts.all_ideas) && opts.all_ideas.length) ||
                      // ══ A GO WITH THE 8 STILL UNPICKED IS A FRESH 8 OF ALL THEIR WORDS (v9.684, 2026-10-19) ═══════════════════
                      // MEASURED 14:17 (pta_ace73d2ef3cabb9c): the 8 on screen, nothing picked, they said "I kind of like fine line" and
                      // then "yeah show me" - it went down the change road and the image model got "I want to change it: yeah show me",
@@ -69981,7 +69981,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                       "tattoo they want in one line, using their own words: only the things they want in the tattoo. Leave out questions, small talk, " +
                       "facts about their life that are not part of the tattoo, slips of the tongue, and anything Aura suggested that they did not take " +
                       "up. Add nothing - no style, no description, no colours unless they asked for them. Reply with only that one line.",
-                      user: _conv + ((_now && !_tap.test(_now) && !_bare.test(_now)) ? "\nThem: " + _now.slice(0, 600) : ""), max_tokens: 120,
+                      user: _conv + ((_now && !_tap.test(_now) && !_bare.test(_now)) ? "\nThem: " + _now.slice(0, 600) : ""), max_tokens: 2000,
                       ...(_iModel ? { model: _iModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
                   const _iLine = String((_iq && _iq.ok && _iq.text) || "").replace(/^["'\s]+|["'\s]+$/g, "").replace(/\s+/g, " ").trim();
                   if (_iLine && _iLine.length <= 400) _recIdea = _iLine;

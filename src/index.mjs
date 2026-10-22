@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.717.0-2026-10-22-show-me-stays-in-the-loop";
+const BUILD = "aura-core-v9.718.0-2026-10-22-artist-pdf-pictures-by-address";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60507,6 +60507,21 @@ async function artistPdf(env, o) {
     for (const s of (pn.stencils || [])) if (s && s.url) items.push({ label: s.label + " - MIRRORED", url: s.url, mirror: true, trace: !!s.trace });
     const laid = {};
     for (const it of items) {
+      // ══ THE PICTURES GO BY ADDRESS, NOT INSIDE THE PAGE (v9.718, 2026-10-22, Aaron: "the artist files are getting hung up still") ══
+      // MEASURED 12:54 (pta_8c4f4cd6f9f7f3db): with only the linework traced (1,110,954 chars at 12:54:17), the job was still killed
+      // 29s later - "Worker exceeded memory limit". Every other picture was decoded here, re-encoded and written into the page as
+      // base64, the mirrored ones twice, and the whole page then copied to the browser. The colour design, the shading guide and the
+      // realism map now go in as their own address: the browser fetches them itself and nothing of them is held here. One page each,
+      // fitted to the paper, the mirrored one flipped by the page. Only the traced linework is laid out here.
+      if (!it.trace) {
+        const start = page, flip = it.mirror ? "transform:scaleX(-1);" : "";
+        body += '<div class="art" style="height:10in"><img style="' + flip + 'max-height:10in;max-width:7.5in;width:auto;height:auto" src="' + esc(it.url) + '"></div>';
+        page++;
+        if (!it.colour && _tall == null) _tall = Number(pn.inches) || null;
+        guide.push([(pn.name ? pn.name + " - " : "") + it.label, "page " + start +
+          (it.colour ? " - for reference" : (Number(pn.inches) ? " - planned at about " + Number(pn.inches).toFixed(0) + " in" + (pn.long ? " on its longest side" : " tall") : ""))]);
+        continue;
+      }
       let L = laid[it.url];
       if (!L) {
         const b64 = await bytesOf(it.url);

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.703.0-2026-10-21-she-answers-first";
+const BUILD = "aura-core-v9.704.0-2026-10-21-draw-what-they-want";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67014,6 +67014,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // versions), and a number picked off those four. Each now answers with one fixed line (a setting each) and she is
       // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
+      let _heardIdea = null;
       let _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null;
       if (me && !_tapKeep) {
         try {
@@ -67127,7 +67128,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 "Then react to their idea and loosely name the kinds of things you'll bring in from what they said - general, never " +
                 "detailed, because you can't know exactly how each design will come out. End by telling them you're imagining some " +
                 "designs for them now. Never put a number in your words.\n\n" +
-                "Answer in exactly this shape. First line: DRAW, or TALK. Then your words on the next line.\n" +
+                "Answer in exactly this shape. First line: DRAW, or TALK. Second line: IDEA: the tattoo they want, in one line and in their own " +
+                "words - only what they want in the tattoo, nothing they asked or chatted about, nothing you are suggesting. Then your words on the next line.\n" +
                 "DRAW when there is anything in what they said to imagine a tattoo from. TALK only when there is nothing yet to imagine " +
                 "from (for example they only shared a feeling) - then your words are your reply to them, with no mention of designs.";
               const _hq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _hMs)),
@@ -67135,7 +67137,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _hRaw = String((_hq && _hq.text) || "").trim();
               const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(DRAW|TALK)\W*\s*([\s\S]*)$/i);
               const _hDo = _hm ? _hm[1].toUpperCase() : null;
-              const _hSay = _hm ? _hm[2].replace(/\s+/g, " ").trim().slice(0, 400) : "";
+              let _hRest = _hm ? _hm[2] : "";
+              const _hIdea = (_hRest.match(/^\s*IDEA:\s*(.+)/i) || [])[1] || "";
+              if (_hIdea) _hRest = _hRest.replace(/^\s*IDEA:\s*.+\n?/i, "");
+              const _hSay = _hRest.replace(/\s+/g, " ").trim().slice(0, 400);
+              // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
+              if (_hIdea.trim()) {
+                _heardIdea = _hIdea.replace(/\s+/g, " ").trim().slice(0, 400);
+                try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea, brief: _heardIdea }))); } catch {}
+              }
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);
               if (_hDo === "TALK") {
                 _fixedWhy = null; _fixedSay = null;
@@ -67480,8 +67490,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         // one. A turn that reached them has nothing for this call to read.
         (acted && (proxied_rung === "L0" || proxied_rung === "L1")) ? Promise.resolve(null) :
         (acted && acted.brief && Object.keys(acted.brief).length) ? Promise.resolve(null) :
+        // ══ A RECORD WITH NO SUBJECT IS NOT FILLED (v9.704, 2026-10-21, Aaron) ═══ MEASURED 17:16-17:20 (pta_8c4f4cd6f9f7f3db):
+        // three turns of "dragons ... my wife likes butterflies and dandelions" and the record held only {"job":"new"} - that one
+        // field counted as "a brief exists", so this reader skipped every turn and nobody wrote down what they wanted.
         (acted && carriedObj && typeof carriedObj === "object" &&
-         Object.keys(carriedObj).length) ? Promise.resolve(null) :
+         String(carriedObj.subject || "").trim()) ? Promise.resolve(null) :
         // ══ NOBODY IS WAITING FOR THIS (2026-09-14) ════════════════════════════
         // MEASURED across one real seven-turn conversation: 15,154ms on turn one and 33,581ms on
         // turn two, then 500ms for the rest of it. It is expensive exactly when the brief is empty,
@@ -67589,7 +67602,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         const hers = (acted && acted.brief && typeof acted.brief === "object" &&
                       Object.keys(acted.brief).length) ? acted.brief
                    : (acted && carriedObj && typeof carriedObj === "object" &&
-                      Object.keys(carriedObj).length) ? carriedObj
+                      String(carriedObj.subject || "").trim()) ? carriedObj
                    : null;
         if (hers || (it?.ok && it.text)) {
           let parsed = hers;
@@ -69942,7 +69955,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _nameHint = _lastTap ? String(_lastTap).split(/\s+[-\u2013\u2014:]\s+/)[0].trim().slice(0, 60)
                                  : (_mine[0] ? String(_mine[0]).replace(/[\s.]+$/, "").slice(0, 70) : null);
             // "what do you think?." (v9.686): a line that ends in ? or ! keeps its own mark and gets no added full stop.
-            const _words = _mine.map((x) => x.replace(/[\s.]+$/, "")).reduce((acc, x) => acc ? acc + (/[?!]$/.test(acc) ? " " : ". ") + x : x, "").slice(0, 1200);
+            const _typed = _mine.map((x) => x.replace(/[\s.]+$/, "")).reduce((acc, x) => acc ? acc + (/[?!]$/.test(acc) ? " " : ". ") + x : x, "").slice(0, 1200);
+            // ══ WHAT THEY WANT, NOT THE WHOLE CONVERSATION (v9.704, 2026-10-21, Aaron: "the conversation does not need to be passed ...
+            // that was basically what they wanted") ═══ MEASURED 17:20: every typed line went in - "My wife and I really don't know what
+            // style we like. What other styles are there" - and "butter" became a butter dish in all 8. The record of what they want
+            // (her line on the fixed steps, else the record kept from the conversation) is the idea; their typed lines only when there
+            // is none yet. Imagine something new starts over from their new words.
+            const _recIdea = (opts && opts.new_now) ? "" : String(_heardIdea || (carriedObj && typeof carriedObj === "object" &&
+              (String(carriedObj.brief || "").trim() || [String(carriedObj.subject || "").trim(),
+                (Array.isArray(carriedObj.elements) ? carriedObj.elements.join(", ") : "")].filter(Boolean).join(", "))) || "").trim();
+            const _words = (_recIdea && _typed) ? _recIdea.replace(/[\s.]+$/, "").slice(0, 1200) : _typed;
+            try { console.log("[TURN:IDEA] " + (_recIdea && _typed ? "from the record: \"" + _words.slice(0, 300) + "\"" : "no record yet - their typed lines go in") +
+              " · their lines: \"" + _typed.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } catch {}
             if (_words) {
               let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep each subject as itself. Make them in color. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
               let _st = ", all in the {name} style";

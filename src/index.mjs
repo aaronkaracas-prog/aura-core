@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.712.0-2026-10-22-only-the-linework-traced";
+const BUILD = "aura-core-v9.713.0-2026-10-22-five-ways-in";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66532,7 +66532,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       const _saidNo = /^\s*(no|nope|nah|not (yet|now|really)|wait|hold on|hang on|don'?t|stop|never ?mind|later)\b/i.test(String(said || "").trim());
       // CONTINUE ON HER CARD IS A GO (v9.690, 2026-10-21): MEASURED 06:48 - Continue on "Fine-line botanical" was stopped by the
       // "nothing is drawn until they say go" guard, because her line before it was a question about feel, not an offer to show.
-      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo) || !!(opts && opts.choose_go);
+      // ══ A QUESTION GETS AN ANSWER, NOT A DRAWING (v9.713, 2026-10-22, Aaron: "every question should have an answer and then a
+      // draw") ═══ MEASURED 07:02 (pta_fde328283cabc00e): she had said "I'd love to show you some ideas", so "What's that design where
+      // it looks really realistic I saw that on somebody the other day" counted as a yes and 8 were drawn. After her offer, a reply
+      // that asks something is answered first; their words that say show me still go.
+      const _askedQ = (() => { const t = String(said || "").trim();
+        return /\?\s*$/.test(t) || /^(what|what'?s|whats|how|why|where|when|who|which|can|could|is|are|was|do|does|did|will|would|should|have you|any)\b/i.test(t); })();
+      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo && !_askedQ) || !!(opts && opts.choose_go);
       // DRAWING NOTES ONLY WHEN THEY SAID GO (2026-10-02, v9.514, Aaron): on a talking turn these sat
       // where her ideas should be - "every picture starts from their photo", "one picture, never four" -
       // while nothing was being drawn. The draw guard already uses these words; so do the notes.
@@ -67120,7 +67126,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", ""); } catch {}
             console.log("[TURN:CHOOSE] Continue on her card - " + (_cs ? "style: " + _cs : "just imagine, no style") + (me ? " · who=" + me : ""));
           } else if (/^i want to create a new tattoo\.?$/i.test(_s)) {
-            _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Let's make something that's yours. Pick a style above, or tell me your idea and we'll build it together.");
+            _fixedWhy = "new"; _fixedSay = await _fx("new_tattoo", "Hey, I'm Aura. You don't need to have it all figured out. Maybe it's a feeling, a person, a moment, or just something you can't quite put into words yet. We'll discover it together. And I'll be here whenever you're ready to pick it back up.");
             // HER OWN GREETING, BY NAME (v9.649, 2026-10-17, Aaron): "it'll be hi Aaron awesome let's create a new tattoo - acknowledging
             // the human by what information we have". Her words replace the fixed line; if she does not answer, the fixed line stands.
             try {
@@ -67148,6 +67154,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (_gs) _fixedSay = _gs.slice(0, 400);
               console.log("[TURN:HELLO] " + (_gs ? "her greeting" + (_fn ? " to " + _fn : "") + ": \"" + _gs.slice(0, 200) + "\"" : "she did not answer - the fixed line stands") + (me ? " · who=" + me : ""));
             } catch {}
+          } else if (_newFlow && /^(i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?$/i.test(_s)) {
+            // ══ FIVE WAYS IN (v9.713, 2026-10-22, Aaron: "she's here to help them imagine") ═══════════════════════════════════════
+            // Under the style tiles the page offers five doors. Four of them get her first question at once, fixed (a setting each:
+            // config:say:door_idea / door_mean / door_memory / door_someone) - no model, no wait. What they answer goes to her as a
+            // conversation, never straight to a drawing: she draws when there is direction and they say yes. The fifth door,
+            // "Surprise me", is hers - it goes to her as an ordinary turn (her guidance says what to do with it).
+            const _dk = /^i have an idea/i.test(_s) ? "idea" : /^i want it to mean/i.test(_s) ? "mean" : /^i have a memory/i.test(_s) ? "memory" : "someone";
+            const _dq = { idea: "Tell me what you're imagining.", mean: "What would you like your tattoo to express?",
+                          memory: "What's a moment you'd like to keep with you?", someone: "Who are you thinking of?" }[_dk];
+            _fixedWhy = "door"; _fixedSay = await _fx("door_" + _dk, _dq);
+            try { await talkStatePut(env, me, "await_idea", ""); } catch {}
+            console.log("[TURN:DOOR] " + _dk + " - her first question, fixed" + (me ? " · who=" + me : ""));
           } else if ((_stm = _s.match(/^i like the (.+) style\.?$/i))) {
             _fixedWhy = "style"; _fixedSay = (await _fx("style_pick", "____ - great pick. Explore the designs made in this style, or create your own with me.")).replace("____", _stm[1]);
             if (_newFlow) { try { await talkStatePut(env, me, "new_style", String(_stm[1]).slice(0, 80)); } catch {} _newStyle = String(_stm[1]).slice(0, 80); }
@@ -69997,7 +70015,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // photo in play takes the same fixed sentence and their own words.
           const _newAny = _newFlow || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
           if (_newAny) {
-            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|(?:just )?imagine some ideas for me)\.?\s*$/i;
+            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|(?:just )?imagine some ideas for me|i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?\s*$/i;
             // A YES IN TWO PARTS IS STILL A YES (v9.684): "yeah show me" went to the image model as their idea.
             const _bare = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|show it|let'?s see( it)?|let me see( it)?|please|absolutely|definitely|perfect)[\s,.!]*)+$/i;
             const _mine = [];
@@ -70058,8 +70076,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                     callBrain({ system: "You read a conversation between someone designing a new tattoo and Aura, their tattoo designer. Write the " +
                       "tattoo they want in one line, using their own words: only the things they want in the tattoo. Leave out questions, small talk, " +
                       "facts about their life that are not part of the tattoo, slips of the tongue, and anything Aura suggested that they did not take " +
-                      "up. Add nothing - no style, no description, no colours unless they asked for them. Reply with only that one line.",
-                      user: _conv + ((_now && !_tap.test(_now) && !_bare.test(_now)) ? "\nThem: " + _now.slice(0, 600) : ""), max_tokens: 2000,
+                      "up (a yes to her suggestion takes it up). Add nothing - no style, no description, no colours unless they asked for them. Reply with only that one line.",
+                      user: _conv + ((_now && !_tap.test(_now) && !_bare.test(_now)) ? "\nThem: " + _now.slice(0, 600)
+                        // THEIR GO IS A YES TO WHAT SHE LAST OFFERED (v9.713): "Surprise me" -> her idea in words -> Continue / "yes".
+                        : ((opts && opts.choose_go) || (_now && _bare.test(_now))) ? "\nThem: yes, show me that" : ""), max_tokens: 2000,
                       ...(_iModel ? { model: _iModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
                   const _iLine = String((_iq && _iq.ok && _iq.text) || "").replace(/^["'\s]+|["'\s]+$/g, "").replace(/\s+/g, " ").trim();
                   if (_iLine && _iLine.length <= 400) _recIdea = _iLine;

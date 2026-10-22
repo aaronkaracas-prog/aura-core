@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.704.0-2026-10-21-draw-what-they-want";
+const BUILD = "aura-core-v9.705.0-2026-10-21-record-every-turn";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67144,7 +67144,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
               if (_hIdea.trim()) {
                 _heardIdea = _hIdea.replace(/\s+/g, " ").trim().slice(0, 400);
-                try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea, brief: _heardIdea }))); } catch {}
+                try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }))); } catch {}
               }
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);
               if (_hDo === "TALK") {
@@ -67493,8 +67493,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         // ══ A RECORD WITH NO SUBJECT IS NOT FILLED (v9.704, 2026-10-21, Aaron) ═══ MEASURED 17:16-17:20 (pta_8c4f4cd6f9f7f3db):
         // three turns of "dragons ... my wife likes butterflies and dandelions" and the record held only {"job":"new"} - that one
         // field counted as "a brief exists", so this reader skipped every turn and nobody wrote down what they wanted.
-        (acted && carriedObj && typeof carriedObj === "object" &&
-         String(carriedObj.subject || "").trim()) ? Promise.resolve(null) :
+        // EVERY TURN THAT TALKED KEEPS IT CURRENT (v9.705): MEASURED 17:35-17:36 - "I caught a giant marlin", then "Yeah, I also
+        // like stingrays": the record kept the marlin and never took the stingray, because a record with a subject stopped this
+        // reader. It runs behind the reply, so nobody waits for it; she still skips it when she writes the record herself.
         // ══ NOBODY IS WAITING FOR THIS (2026-09-14) ════════════════════════════
         // MEASURED across one real seven-turn conversation: 15,154ms on turn one and 33,581ms on
         // turn two, then 500ms for the rest of it. It is expensive exactly when the brief is empty,
@@ -67601,8 +67602,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         // It still goes through the same normalisation below - one reader, one shape.
         const hers = (acted && acted.brief && typeof acted.brief === "object" &&
                       Object.keys(acted.brief).length) ? acted.brief
-                   : (acted && carriedObj && typeof carriedObj === "object" &&
-                      String(carriedObj.subject || "").trim()) ? carriedObj
                    : null;
         if (hers || (it?.ok && it.text)) {
           let parsed = hers;
@@ -69961,9 +69960,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // style we like. What other styles are there" - and "butter" became a butter dish in all 8. The record of what they want
             // (her line on the fixed steps, else the record kept from the conversation) is the idea; their typed lines only when there
             // is none yet. Imagine something new starts over from their new words.
+            // ONLY WHAT THEY NAMED (v9.705): MEASURED 17:37 - the record's descriptive `brief` went in and added "realistic", "leaping",
+            // "dynamic splash details" that they never said. The subject and the things they named, nothing written about them.
             const _recIdea = (opts && opts.new_now) ? "" : String(_heardIdea || (carriedObj && typeof carriedObj === "object" &&
-              (String(carriedObj.brief || "").trim() || [String(carriedObj.subject || "").trim(),
-                (Array.isArray(carriedObj.elements) ? carriedObj.elements.join(", ") : "")].filter(Boolean).join(", "))) || "").trim();
+              [String(carriedObj.subject || "").trim(),
+               (Array.isArray(carriedObj.elements) ? carriedObj.elements.filter((x) => x && !String(carriedObj.subject || "").toLowerCase().includes(String(x).toLowerCase())).join(", ") : "")]
+                .filter(Boolean).join(", ")) || "").trim();
             const _words = (_recIdea && _typed) ? _recIdea.replace(/[\s.]+$/, "").slice(0, 1200) : _typed;
             try { console.log("[TURN:IDEA] " + (_recIdea && _typed ? "from the record: \"" + _words.slice(0, 300) + "\"" : "no record yet - their typed lines go in") +
               " · their lines: \"" + _typed.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } catch {}

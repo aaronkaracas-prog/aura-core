@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.705.0-2026-10-21-record-every-turn";
+const BUILD = "aura-core-v9.706.0-2026-10-21-idea-from-the-conversation";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69960,12 +69960,37 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // style we like. What other styles are there" - and "butter" became a butter dish in all 8. The record of what they want
             // (her line on the fixed steps, else the record kept from the conversation) is the idea; their typed lines only when there
             // is none yet. Imagine something new starts over from their new words.
-            // ONLY WHAT THEY NAMED (v9.705): MEASURED 17:37 - the record's descriptive `brief` went in and added "realistic", "leaping",
-            // "dynamic splash details" that they never said. The subject and the things they named, nothing written about them.
-            const _recIdea = (opts && opts.new_now) ? "" : String(_heardIdea || (carriedObj && typeof carriedObj === "object" &&
-              [String(carriedObj.subject || "").trim(),
-               (Array.isArray(carriedObj.elements) ? carriedObj.elements.filter((x) => x && !String(carriedObj.subject || "").toLowerCase().includes(String(x).toLowerCase())).join(", ") : "")]
-                .filter(Boolean).join(", ")) || "").trim();
+            // ══ THE IDEA IS READ FROM THE CONVERSATION WHEN THE DESIGNS START (v9.706, 2026-10-21, Aaron) ═══ MEASURED 17:48: she
+            // replied "Rosie, butterflies, sunflowers - that's a warm little world", the kept record still held only {"job":"new"}, and
+            // the 8 got every word typed - a butter pat, "64", a California outline and a cupcake in all of them. One short call reads
+            // the conversation - their lines and her replies - at the moment of drawing and writes the tattoo in one line, in their
+            // own words: only what they want in it. On the fixed steps her own line (she just heard it) is the idea. Capped at
+            // `config:talk:idea_ms` (default 8000); with no answer, their typed lines go in as before.
+            let _recIdea = "";
+            if (!(opts && opts.new_now)) {
+              if (_heardIdea) _recIdea = _heardIdea;
+              else if (_typed) {
+                try {
+                  let _iMs = 8000; try { const _iv = parseInt(String((await env.AURA_KV.get("config:talk:idea_ms")) || ""), 10); if (Number.isFinite(_iv) && _iv >= 0) _iMs = _iv; } catch {}
+                  let _iModel = null; try { _iModel = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+                  const _conv = tnow.slice(_start).filter((e) => e && (e.role === "them" || e.role === "aura") && String(e.said || "").trim())
+                    .map((e) => (e.role === "them" ? "Them: " : "Aura: ") + String(e.said).replace(/\s+/g, " ").trim().slice(0, 600)).join("\n").slice(-6000);
+                  const _iT0 = Date.now();
+                  const _iq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _iMs)),
+                    callBrain({ system: "You read a conversation between someone designing a new tattoo and Aura, their tattoo designer. Write the " +
+                      "tattoo they want in one line, using their own words: only the things they want in the tattoo. Leave out questions, small talk, " +
+                      "facts about their life that are not part of the tattoo, slips of the tongue, and anything Aura suggested that they did not take " +
+                      "up. Add nothing - no style, no description, no colours unless they asked for them. Reply with only that one line.",
+                      user: _conv + ((_now && !_tap.test(_now) && !_bare.test(_now)) ? "\nThem: " + _now.slice(0, 600) : ""), max_tokens: 120,
+                      ...(_iModel ? { model: _iModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+                  const _iLine = String((_iq && _iq.ok && _iq.text) || "").replace(/^["'\s]+|["'\s]+$/g, "").replace(/\s+/g, " ").trim();
+                  if (_iLine && _iLine.length <= 400) _recIdea = _iLine;
+                  console.log("[TURN:IDEA] read from the conversation in " + ((Date.now() - _iT0) / 1000).toFixed(1) + "s - " +
+                    (_recIdea ? "\"" + _recIdea + "\"" : (_iq && _iq.late ? "no answer in " + _iMs + "ms" : "not usable: " + String((_iq && (_iq.error || _iq.text)) || "?").slice(0, 160))) +
+                    (me ? " · who=" + me : ""));
+                } catch (e) { try { console.log("[TURN:IDEA] the read failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+              }
+            }
             const _words = (_recIdea && _typed) ? _recIdea.replace(/[\s.]+$/, "").slice(0, 1200) : _typed;
             try { console.log("[TURN:IDEA] " + (_recIdea && _typed ? "from the record: \"" + _words.slice(0, 300) + "\"" : "no record yet - their typed lines go in") +
               " · their lines: \"" + _typed.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } catch {}

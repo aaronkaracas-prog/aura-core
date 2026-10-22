@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.721.0-2026-10-22-cover-up-straight-to-the-image-model";
+const BUILD = "aura-core-v9.722.0-2026-10-22-measure-while-the-artwork-draws";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -64742,7 +64742,10 @@ async function makeArtistFiles(env, ctx) {
           // default; only a design put on them was measured. The one they chose is already on their own body, so she reads its
           // height from that picture with the same words.
           const _measureOn = bodyLook || ((jobNow === "cover" || jobNow === "rework") && !alreadyFlat && /^https?:\/\//i.test(String(mockUrl || "")) ? mockUrl : null);
-          if (_measureOn && !_seeWhole) {
+          // ══ SHE MEASURES WHILE THE ARTWORK DRAWS (v9.722, 2026-10-22, Aaron: "go") ═══ MEASURED 15:09:49-15:11:30: her
+          // measuring took 15s before the flat artwork started, and the size is first read by the PDF. It now runs alongside the
+          // flat artwork; it is awaited before her own look at that artwork (one conversation with her at a time) and before the PDF.
+          const _measureP = (_measureOn && !_seeWhole) ? (async () => {
             try {
               const q = await proxyToAgent(env,
                 "[FOR YOU, NOT THEM. Their artist's sheets are being made now from the design they chose." +
@@ -64758,7 +64761,7 @@ async function makeArtistFiles(env, ctx) {
               }
               try { console.log("[PRINT-SIZE] she measured the design on their body: whole=" + (_seeWhole || "?") + "in | she said: " + JSON.stringify(_seeRaw)); } catch {}
             } catch {}
-          }
+          })() : null;
           const sheets = _addSheets || [];
           const _checkSheets = await _checkOn("sheets");
           for (const panel of (_addSheets ? [] : panelList)) {
@@ -64803,6 +64806,7 @@ async function makeArtistFiles(env, ctx) {
             // Every sheet is asked, not only add-ons: the flat is a REDRAW of the approved design
             // and can add or lose things (three sunflowers where the mock-up had two).
             let _v1 = null, _redone = false;
+            if (_measureP) { try { await _measureP; } catch {} }
             if (fpp && fpp.ok && fpp.image && !fpp.as_approved && me && seeing && _checkSheets) {
               try {
                 const look1 = await proxyToAgent(env,
@@ -64837,6 +64841,7 @@ async function makeArtistFiles(env, ctx) {
                             ok: _v1 ? (!_redone && /^\s*RIGHT\b/i.test(_v1)) : null });
             }
           }
+          if (_measureP) { try { await _measureP; } catch {} }
           const fp = sheets.length ? { ok: true, image: sheets[0].flat, design: sheets[0].id } : null;
           if (!fp) {
             drew = { failed: "COULD_NOT_FLATTEN", from: shopParent };

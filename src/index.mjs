@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.722.0-2026-10-22-measure-while-the-artwork-draws";
+const BUILD = "aura-core-v9.723.0-2026-10-22-a-style-is-a-conversation";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60765,6 +60765,12 @@ async function toEight(env, sentence, kind) {
   const _kn = kind === "direct" ? "direct" : kind === "bodydirect" ? "bodydirect" : kind === "flat" ? "flat" : "body";
   let end = _kn === "direct" ? SHEET8_DIRECT : _kn === "bodydirect" ? SHEET8_BODY_DIRECT : _kn === "flat" ? SHEET8_FLAT : SHEET8_BODY;
   try { const k = String((await env.AURA_KV.get("config:frame:sheet8:" + _kn)) || "").trim(); if (k) end = k; } catch {}
+  // A STYLE DECIDES THE COLOUR (v9.723, 2026-10-22). MEASURED 15:50: "in the Black & Grey Realism style" with "Use colour wherever it
+  // works" drew a green-and-blue hummingbird. When a style is named, the colour line comes out of the sentence and the ending.
+  if (/\bin the [^.]{2,80} style\b/i.test(s)) {
+    const _col = /\s*Use colou?r wherever it works[^.]*\.\s*/gi;
+    s = s.replace(_col, " ").replace(/\s{2,}/g, " ").trim(); end = end.replace(_col, " ").replace(/\s{2,}/g, " ").trim();
+  }
   return s.replace(/[\s]+$/, "") + " " + end;
 }
 // The sheet cut into its cards the moment it comes back, each card with its own words - by order, after the count check. If the
@@ -67210,6 +67216,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _fixedWhy = "create_own";
             _fixedSay = (await _fx("create_own", "Love it - tell me what you want in your ____ piece.")).replace("____", _newStyle);
             console.log("[TURN:STYLE] work on this style: " + _newStyle + (me ? " · who=" + me : ""));
+          } else if (/^let'?s create my own in the (.+) style\.?$/i.test(_s) && ["add", "cover"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase())) {
+            // ══ A STYLE ON A COVER-UP OR ADD-ON IS A CONVERSATION (v9.723, 2026-10-22, Aaron: "I chose something I'd like to work on,
+            // but I never had a choice to talk about it") ═══ MEASURED 15:50: Black & Grey Realism + Continue drew the 8 at once. The
+            // style rides with every turn (cover_style / add_style); she asks what they want in it, fixed, and nothing is drawn.
+            // Settings: config:say:create_own_cover, config:say:create_own_add ("____" is the style).
+            const _bj = String(carriedObj.job).toLowerCase();
+            const _bs = String(_s.match(/^let'?s create my own in the (.+) style\.?$/i)[1]).slice(0, 80);
+            _fixedWhy = "create_own_body";
+            _fixedSay = (await _fx("create_own_" + _bj, _bj === "cover" ? "Love it - tell me what you'd like in your ____ cover-up." : "Love it - tell me what you'd like to add in the ____ style."))
+              .replace("____", _bs);
+            console.log("[TURN:STYLE] " + _bj + " in the " + _bs + " style - she asks, nothing drawn" + (me ? " · who=" + me : ""));
           } else if (_newFlow && /^let'?s create my own\.?$/i.test(_s)) {
             // ══ CREATE YOUR OWN IS A FIXED STEP (v9.699, 2026-10-21, Aaron) ═══════════════════════════════════════════════
             // MEASURED 14:16 (pta_4896a4c8a1890536): this was the one tap of the new-tattoo steps that went to her - 17.8s, and she
@@ -68416,7 +68433,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         // tattoo already does. Nothing typed: the plain sentence, as before.
         try {
           const _jobW = /^\s*i want to (?:add to a tattoo i already have|add to a tattoo|cover up a tattoo)[\s.,!-]*/i;
-          const _tapW = /^\s*(?:show me some ideas|show me all of them|imagine\b.*|i want number [1-8]|i have my own idea|my own idea|fine-?\s?tune it|i want to change something|this is my tattoo|i choose\b.*|keep it like this)[\s.!]*$/i;
+          const _tapW = /^\s*(?:show me some ideas|show me all of them|imagine\b.*|i want number [1-8]|i have my own idea|my own idea|fine-?\s?tune it|i want to change something|this is my tattoo|i choose\b.*|keep it like this|let'?s create my own\b.*|i like the .+ style)[\s.!]*$/i;
           const _bareW = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
           let _st = Math.max(0, tnow.length - 12);
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "them" && _jobW.test(String(tnow[i].said || ""))) { _st = i; break; } }
@@ -69675,7 +69692,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 _ow = "This is my current tattoo. I want to cover it up with: ____. Show me 4 different cover-up designs of that, each one in the same place as my tattoo and only as big as it needs to be to fully hide it, the way a tattoo artist would cover it. None of my old tattoo should show through. Use colour wherever it works with the design. Keep the same view of my body as this photo. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about the design.";
                 try { const _k = String((await env.AURA_KV.get("config:frame:cover:own")) || "").trim(); if (_k.includes("____")) _ow = _k; } catch {}
               }
-              _go = _ow.replace("____", _addonOwnWords.replace(/[\s.]+$/, "").slice(0, 600) + (_coverStyle ? ", in the " + _coverStyle + " style" : "")); _goFrom = _coverNow ? "cover_own" + (_coverStyle ? "+style" : "") : "own";
+              _go = _ow.replace("____", _addonOwnWords.replace(/[\s.]+$/, "").slice(0, 600) + ((_coverStyle || _addStyle) ? ", in the " + (_coverStyle || _addStyle) + " style" : "")); _goFrom = _coverNow ? "cover_own" + (_coverStyle ? "+style" : "") : "own";
             }
             _sentNow = _go;
             _herAsk = null;

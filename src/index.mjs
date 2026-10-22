@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.702.0-2026-10-21-she-hears-them-first";
+const BUILD = "aura-core-v9.703.0-2026-10-21-she-answers-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67121,26 +67121,34 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               let _hMs = 8000; try { const _hv = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(_hv) && _hv >= 0) _hMs = _hv; } catch {}
               let _hModel = null; try { _hModel = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
               const _hT0 = Date.now();
-              const _hSys = "You are Aura, the tattoo designer on mytattoo.world - warm, real, and brief. Someone is designing a new tattoo with you" +
-                (_newStyle ? " in the " + _newStyle + " style" : "") + " and just told you what they want. Reply with ONLY a JSON object: " +
-                "{\"draw\": true or false, \"say\": \"...\"}. Use your own judgement. draw is true when they gave you an idea you can start " +
-                "imagining now; then say is one or two short lines in your own words reacting to what they said, ending by telling them you're " +
-                "imagining some designs for them now. draw is false when what they shared deserves a real conversation before any pictures; " +
-                "then say is empty. Never put a number in say.";
+              const _hSys = "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
+                (_newStyle ? " (in the " + _newStyle + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
+                "tattoo artist would: brief, in your own words. If they shared something personal or hard, acknowledge it first, simply. " +
+                "Then react to their idea and loosely name the kinds of things you'll bring in from what they said - general, never " +
+                "detailed, because you can't know exactly how each design will come out. End by telling them you're imagining some " +
+                "designs for them now. Never put a number in your words.\n\n" +
+                "Answer in exactly this shape. First line: DRAW, or TALK. Then your words on the next line.\n" +
+                "DRAW when there is anything in what they said to imagine a tattoo from. TALK only when there is nothing yet to imagine " +
+                "from (for example they only shared a feeling) - then your words are your reply to them, with no mention of designs.";
               const _hq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _hMs)),
-                callBrain({ system: _hSys, user: _s.slice(0, 1200), max_tokens: 200, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
-              let _hj = null;
-              if (_hq && _hq.ok && _hq.text) { try { const _m = String(_hq.text).match(/\{[\s\S]*\}/); _hj = _m ? JSON.parse(_m[0]) : null; } catch {} }
+                callBrain({ system: _hSys, user: _s.slice(0, 1200), max_tokens: 300, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+              const _hRaw = String((_hq && _hq.text) || "").trim();
+              const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(DRAW|TALK)\W*\s*([\s\S]*)$/i);
+              const _hDo = _hm ? _hm[1].toUpperCase() : null;
+              const _hSay = _hm ? _hm[2].replace(/\s+/g, " ").trim().slice(0, 400) : "";
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);
-              if (_hj && _hj.draw === false) {
+              if (_hDo === "TALK") {
                 _fixedWhy = null; _fixedSay = null;
                 try { await talkStatePut(env, me, "await_idea", ""); } catch {}
-                console.log("[TURN:HEARD] " + _hSec + "s - she wants to talk first, nothing drawn; the turn goes to her" + (me ? " · who=" + me : ""));
-              } else if (_hj && _hj.draw === true && String(_hj.say || "").trim()) {
-                _fixedSay = String(_hj.say).replace(/\s+/g, " ").trim().slice(0, 300);
-                console.log("[TURN:HEARD] " + _hSec + "s - her words before the 8: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
+                console.log("[TURN:HEARD] " + _hSec + "s - TALK, nothing drawn; the turn goes to her · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+              } else if (_hDo === "DRAW" && _hSay) {
+                _fixedSay = _hSay;
+                console.log("[TURN:HEARD] " + _hSec + "s - DRAW · her words before the designs: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
               } else {
-                console.log("[TURN:HEARD] " + _hSec + "s - " + (_hq && _hq.late ? "no answer in " + _hMs + "ms" : "no usable answer") + " - the fixed line goes" + (me ? " · who=" + me : ""));
+                // WHY IT WAS NOT USED IS LOGGED (v9.703): MEASURED 16:57 - "no usable answer" in 4.0s and nothing said what came back.
+                console.log("[TURN:HEARD] " + _hSec + "s - " + (_hq && _hq.late ? "no answer in " + _hMs + "ms" :
+                  "not usable: " + (_hq && _hq.ok === false ? "error " + String(_hq.error || "?").slice(0, 160) : "came back \"" + _hRaw.slice(0, 200) + "\"") +
+                  " · model " + String((_hq && _hq.model) || _hModel || talkModel || "default")) + " - the fixed line goes" + (me ? " · who=" + me : ""));
               }
             } catch {}
           } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {

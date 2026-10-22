@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.711.0-2026-10-22-possibilities-straight-to-image-model";
+const BUILD = "aura-core-v9.712.0-2026-10-22-only-the-linework-traced";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13902,7 +13902,7 @@ async function successionGate(env) {
       const [c0, l0, s0, r0] = [apU(ap[0]), apU(ap[1]), apU(ap[2]), apU(ap[3])];
       return { cmd: "ARTIST_PDF", payload: await artistPdf(env, { title: "Test - every version", rows: [["Made", new Date().toISOString().slice(0, 10)], ["For", ap[5] || null]],
         panels: [{ name: "", inches: apIn, long: true, colour: c0,
-          stencils: [{ label: "Linework stencil", url: l0 }, { label: "Shading-guide stencil", url: s0 }, { label: "Realism stencil", url: r0 }] }] }) };
+          stencils: [{ label: "Linework stencil", url: l0, trace: true }, { label: "Shading-guide stencil", url: s0 }, { label: "Realism stencil", url: r0 }] }] }) };
     }
     case "MATCH_CARDS": {
       // MATCH_CARDS <sheet> - each cut card with its title and lines, and the three checks (v9.677). Changes nothing.
@@ -60497,15 +60497,21 @@ async function artistPdf(env, o) {
     const items = [], _p0 = page;
     let _tall = null;
     if (pn.colour) items.push({ label: "Colour design - the finished look", url: pn.colour, colour: true });
-    for (const s of (pn.stencils || [])) if (s && s.url) items.push({ label: s.label, url: s.url });
-    for (const s of (pn.stencils || [])) if (s && s.url) items.push({ label: s.label + " - MIRRORED", url: s.url, mirror: true });
+    // ══ ONLY THE LINEWORK IS TRACED (v9.712, 2026-10-22, Aaron: "find the problem... correct it") ══════════════════════════════
+    // MEASURED 07:08 (pta_fde328283cabc00e, Golden Sunset Dog): the linework traced to 1,577,632 characters of outline, then the
+    // shading guide went into the same tracer and 15s later Cloudflare killed the job: "Worker exceeded memory limit." A kill is
+    // not an error our code can catch - no retry ran, nothing was recorded, and the page said "Creating artist files..." forever.
+    // A shading guide and a realism map are tones - thousands of tiny shapes once traced - so they go in as the pictures they
+    // are. Only a stencil marked `trace` (the linework) is turned into outlines.
+    for (const s of (pn.stencils || [])) if (s && s.url) items.push({ label: s.label, url: s.url, trace: !!s.trace });
+    for (const s of (pn.stencils || [])) if (s && s.url) items.push({ label: s.label + " - MIRRORED", url: s.url, mirror: true, trace: !!s.trace });
     const laid = {};
     for (const it of items) {
       let L = laid[it.url];
       if (!L) {
         const b64 = await bytesOf(it.url);
         if (!b64) { guide.push([(pn.name ? pn.name + " - " : "") + it.label, "not available"]); continue; }
-        try { L = printLayout(b64, pn.inches, !!pn.long, it.colour ? { trace: false, jpeg: true, fit: true } : { fit: true }); }
+        try { L = printLayout(b64, pn.inches, !!pn.long, it.colour ? { trace: false, jpeg: true, fit: true } : (it.trace ? { fit: true } : { trace: false, fit: true })); }
         catch (e) { guide.push([(pn.name ? pn.name + " - " : "") + it.label, "could not be laid out"]); continue; }
         if (L.pVec) { L.gid = "a" + (vecN++); defs += '<g id="' + L.gid + '">' + L.pVec + "</g>"; anyVec = true; }
         laid[it.url] = L;
@@ -60553,7 +60559,7 @@ async function artistPdf(env, o) {
     // artists size the design in their stencil printer's app, which also splits a large design into sections with guides.
     "<div class=how><h1>How to use these files</h1><ol>" +
     "<li>Each stencil is on its own page, fitted to the page. The planned size is written on the first page as a guide - you and your client decide the final size.</li>" +
-    "<li>To print at your size, load the stencil image (in the client's artist files) into your stencil printer's app, or open this PDF in your own software. The stencils are drawn as lines, so they stay sharp at any size.</li>" +
+    "<li>To print at your size, load the stencil image (in the client's artist files) into your stencil printer's app, or open this PDF in your own software. The linework stencil is drawn as lines, so it stays sharp at any size.</li>" +
     "<li>Too big for one sheet? Most stencil printer apps split a large design into sections and print alignment guides, or use an A3 / large-format stencil printer.</li>" +
     "<li>Mirrored versions are included for printers that don't flip the design themselves. If your app or printer flips it, use the normal version.</li>" +
     "<li>The colour page shows the finished look. It is for reference, not for making a stencil.</li></ol></div>" +
@@ -64926,7 +64932,7 @@ async function makeArtistFiles(env, ctx) {
                        ["Size", _tv(_dt.size)], ["Placement", _tv(_dt.placement) || (intent && intent.placement) || "Finalize with your artist"],
                        ["Notes", _tv(_dt.notes)], ["Made", new Date().toISOString().slice(0, 10)]],
                 panels: _sizes.map((z) => ({ name: z.sh.panel || "", inches: z.inches, long: z.long, colour: z.sh.flat,
-                  stencils: [{ label: "Linework stencil", url: z.sh.line }, { label: "Shading-guide stencil", url: z.sh.shade },
+                  stencils: [{ label: "Linework stencil", url: z.sh.line, trace: true }, { label: "Shading-guide stencil", url: z.sh.shade },
                              { label: "Realism stencil", url: z.sh.real }] }))
               });
             } catch (e) { _one = { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }

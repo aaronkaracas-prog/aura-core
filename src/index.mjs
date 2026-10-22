@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.716.0-2026-10-22-see-it-on-you-is-not-a-fresh-start";
+const BUILD = "aura-core-v9.717.0-2026-10-22-show-me-stays-in-the-loop";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -66043,7 +66043,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // becomes the subject, and the drawing is an ORIGINAL born under their PTA.
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
-let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto = false;
+let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto = false, _likedPic = false;
       // ══ A PHOTOGRAPH THAT ARRIVED IS NOT A DRAWING (2026-09-16, v9.270) ══════════════════
       // `talk:last` is written on a REF turn with `image: refUrl` so the pixels survive the turn.
       // Correct - but three readers took "lastDrawn has an image" to mean SHE DREW IT. The go-ahead
@@ -66144,8 +66144,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // THEIR OWN BODY, OR A PICTURE THEY POINTED AT (2026-09-29). A photo that arrives with no
               // catalogue pick, no Get Inspired card and no tile is a photo of them - the four
               // directions for this tattoo are then drawn ON them. Anything they pointed at is not.
-              body: _bodyRefNow
+              body: _bodyRefNow,
+              // A PICTURE THEY LIKE (v9.717, 2026-10-22, Aaron): sent from Show me - it goes to the image model with their words.
+              liked: !!(opts && opts.inspire)
             }));
+            _likedPic = !!(opts && opts.inspire);
           } catch {}
         }
       } else if (me) {
@@ -66154,7 +66157,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           const held = await _pre.ref;
           if (held) { refSaw = held.saw || null; refUrl = held.url || null;
                       refDesign = held.design || null; refHeld = true; _refAt = held.at || null;
-                      _bodyPhoto = held.body === true; }
+                      _bodyPhoto = held.body === true; _likedPic = held.liked === true; }
         } catch {}
       }
 
@@ -70026,6 +70029,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_newAny) {
             const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|(?:just )?imagine some ideas for me|let'?s create my own in the .+ style|tell me|i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?\s*$/i;
             // A YES IN TWO PARTS IS STILL A YES (v9.684): "yeah show me" went to the image model as their idea.
+            // SHOW ME'S OWN LINES ARE NOT THE IDEA (v9.717): the picture line and the explore card's four.
+            const _xTap = /^\s*(here'?s something i like|what could it mean|what style is this|i want to change or personalize something about it|i'?m not sure yet\b.*)[.?!]?\s*$/i;
             const _bare = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|show it|let'?s see( it)?|let me see( it)?|please|absolutely|definitely|perfect)[\s,.!]*)+$/i;
             const _mine = [];
             let _start = 0;
@@ -70042,13 +70047,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             for (let i = _start; i < tnow.length; i++) {
               const e = tnow[i]; const raw = String((e && e.role === "them" && e.said) || "").trim();
               const t = raw.replace(/^show me:\s*/i, "");
-              if (!t || _tap.test(t) || _bare.test(t)) continue;
+              if (!t || _tap.test(t) || _bare.test(t) || _xTap.test(t)) continue;
               if (/^show me:/i.test(raw)) _lastTap = t; else _mine.push(t);
             }
             // A tapped idea arrives as "Show me: <idea>" - the two tap words are not theirs and do not go in (v9.605).
             const _rawNow = String(said || "").trim();
             const _now = _rawNow.replace(/^show me:\s*/i, "");
-            if (_now && !_tap.test(_now) && !_bare.test(_now)) {
+            if (_now && !_tap.test(_now) && !_bare.test(_now) && !_xTap.test(_now)) {
               if (/^show me:/i.test(_rawNow)) _lastTap = _now;
               else if (_mine[_mine.length - 1] !== _now) _mine.push(_now);
             }
@@ -70101,10 +70106,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const _words = (_recIdea && _typed) ? _recIdea.replace(/[\s.]+$/, "").slice(0, 1200) : _typed;
             try { console.log("[TURN:IDEA] " + (_recIdea && _typed ? "from the record: \"" + _words.slice(0, 300) + "\"" : "no record yet - their typed lines go in") +
               " · their lines: \"" + _typed.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } catch {}
-            if (_words) {
+            // ══ A PICTURE THEY LIKE GOES WITH THEIR WORDS (v9.717, 2026-10-22, Aaron: "if they see something they like we need to send
+            // it to the image model ... this is the image I'm looking at, this is what I wanna do with it") ═══ PROVEN 12:39 by command
+            // (img_mvjxwna6nu2m, $0.065, 31.3s): 8 cards from the picture, titled and lined. Same loop, same ending, the picture as the
+            // reference. With no words of theirs yet the middle sentence goes. Setting: config:frame:new:picture (needs ____ ).
+            const _picNow = !!(_likedPic && refUrl && !_bodyPhoto);
+            if (_words || _picNow) {
               let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep each subject as itself. Make them in color. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
               let _st = ", all in the {name} style";
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
+              if (_picNow) {
+                _ng = "This is a picture I like. This is what I want to do with it: ____. Show me 4 different tattoo designs from it{style}. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea. Make one tall page.";
+                try { const _k = String((await env.AURA_KV.get("config:frame:new:picture")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
+                if (!_words) _ng = _ng.replace(/\s*This is what I want to do with it: ____\./, "");
+                console.log("[TURN:NEW] a picture they like goes with their words: " + refUrl + (me ? " · who=" + me : ""));
+              }
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
               askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : "");
               // ══ ALL OF HER IDEAS AT ONCE (v9.627, 2026-10-16, Aaron: "let me see all 4 absolutely") ══════════════════════

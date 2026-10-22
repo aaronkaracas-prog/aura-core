@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.718.0-2026-10-22-artist-pdf-pictures-by-address";
+const BUILD = "aura-core-v9.719.0-2026-10-22-keeps-what-its-of";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67180,7 +67180,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // "Surprise me", is hers - it goes to her as an ordinary turn (her guidance says what to do with it).
             // TELL ME (v9.714, 2026-10-22, Aaron's mockup): the new tattoo screen now has two ways in - Tell me (here) and Show me (Get Inspired).
             const _dk = /^tell me/i.test(_s) ? "tell" : /^i have an idea/i.test(_s) ? "idea" : /^i want it to mean/i.test(_s) ? "mean" : /^i have a memory/i.test(_s) ? "memory" : "someone";
-            const _dq = { tell: "What's on your mind? Tell me anything - an idea, a feeling, a person, a memory.", idea: "Tell me what you're imagining.", mean: "What would you like your tattoo to express?",
+            const _dq = { tell: "What's on your mind? Tell me anything - an idea, a feeling, a person, a memory - or pick one of the styles above if one catches your eye.", idea: "Tell me what you're imagining.", mean: "What would you like your tattoo to express?",
                           memory: "What's a moment you'd like to keep with you?", someone: "Who are you thinking of?" }[_dk];
             _fixedWhy = "door"; _fixedSay = await _fx("door_" + _dk, _dq);
             try { await talkStatePut(env, me, "await_idea", ""); } catch {}
@@ -70103,7 +70103,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   const _iT0 = Date.now();
                   const _iq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _iMs)),
                     callBrain({ system: "You read a conversation between someone designing a new tattoo and Aura, their tattoo designer. Write the " +
-                      "tattoo they want in one line, using their own words: only the things they want in the tattoo. Leave out questions, small talk, " +
+                      "tattoo they want in one line, using their own words: only the things they want in the tattoo. Always keep who or what it is of - a person, an animal and what kind, an object - and any name they want on it. Leave out questions, small talk, " +
                       "facts about their life that are not part of the tattoo, slips of the tongue, and anything Aura suggested that they did not take " +
                       "up (a yes to her suggestion takes it up). Add nothing - no style, no description, no colours unless they asked for them. Reply with only that one line.",
                       user: _conv + ((_now && !_tap.test(_now) && !_bare.test(_now)) ? "\nThem: " + _now.slice(0, 600)

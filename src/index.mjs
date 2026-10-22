@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.714.0-2026-10-22-tell-me-show-me";
+const BUILD = "aura-core-v9.715.0-2026-10-22-work-on-this-style";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67175,6 +67175,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // to her (21s) and she offered styles again. At 16:33 the same words after the Create your own tap drew at once. Typing
             // the idea IS creating their own: the line after a style is drawn the same way.
             if (_newFlow) { try { await talkStatePut(env, me, "await_idea", "1"); } catch {} }
+          } else if (_newFlow && /^let'?s create my own in the (.+) style\.?$/i.test(_s)) {
+            // ══ WORK ON THIS STYLE (v9.715, 2026-10-22, Aaron): the style's full-screen window - one tap is the style AND Create your own.
+            // The same two steps as before, in one line: the style is kept for the 8, and whatever they say next is drawn in it.
+            _newStyle = String(_s.match(/^let'?s create my own in the (.+) style\.?$/i)[1]).slice(0, 80);
+            try { await talkStatePut(env, me, "new_style", _newStyle); await talkStatePut(env, me, "await_idea", "1"); } catch {}
+            _fixedWhy = "create_own";
+            _fixedSay = (await _fx("create_own", "Love it - tell me what you want in your ____ piece.")).replace("____", _newStyle);
+            console.log("[TURN:STYLE] work on this style: " + _newStyle + (me ? " · who=" + me : ""));
           } else if (_newFlow && /^let'?s create my own\.?$/i.test(_s)) {
             // ══ CREATE YOUR OWN IS A FIXED STEP (v9.699, 2026-10-21, Aaron) ═══════════════════════════════════════════════
             // MEASURED 14:16 (pta_4896a4c8a1890536): this was the one tap of the new-tattoo steps that went to her - 17.8s, and she
@@ -70016,7 +70024,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // photo in play takes the same fixed sentence and their own words.
           const _newAny = _newFlow || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
           if (_newAny) {
-            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|(?:just )?imagine some ideas for me|tell me|i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?\s*$/i;
+            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|(?:just )?imagine some ideas for me|let'?s create my own in the .+ style|tell me|i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?\s*$/i;
             // A YES IN TWO PARTS IS STILL A YES (v9.684): "yeah show me" went to the image model as their idea.
             const _bare = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|show it|let'?s see( it)?|let me see( it)?|please|absolutely|definitely|perfect)[\s,.!]*)+$/i;
             const _mine = [];

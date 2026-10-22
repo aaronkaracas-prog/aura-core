@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.707.0-2026-10-21-pick-is-a-pick";
+const BUILD = "aura-core-v9.709.0-2026-10-22-no-reading-the-cards";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -20079,7 +20079,7 @@ async function successionGate(env) {
       let refsP = null, rawP = false, parentP = null, creatorP = null;
       let aspP = null, resP = null, modelP = null, srcP = null, maskP = null;
       // EXACT SIZE AND SEED (v9.605): only a caller that names them gets them - today only the new-tattoo four.
-      let wP = null, hP = null, seedP = null, thinkP = null;
+      let wP = null, hP = null, seedP = null, thinkP = null, qualP = null;
       if (/^\s*\{/.test(after)) {
         try {
           const p = JSON.parse(after);
@@ -20112,6 +20112,8 @@ async function successionGate(env) {
             if (Number.isInteger(p.seed)) seedP = p.seed;
             // KREA 3 THINKING (v9.700, 2026-10-21, Aaron): Krea's own planner - fast (its default), high, ultra.
             if (typeof p.thinking === "string" && /^(fast|high|ultra)$/i.test(p.thinking.trim())) thinkP = p.thinking.trim().toLowerCase();
+            // A NAMED QUALITY (v9.708): low | medium | high | auto - only this call, the setting is untouched.
+            if (typeof p.quality === "string" && /^(low|medium|high|auto)$/i.test(p.quality.trim())) qualP = p.quality.trim().toLowerCase();
           }
         } catch (e) {}
       }
@@ -20134,7 +20136,7 @@ async function successionGate(env) {
         ...(aspP ? { aspect: aspP } : {}), ...(resP ? { res: resP } : {}),
         ...(modelP ? { model: modelP } : {}), ...(maskP ? { mask: maskP } : {}),
         ...(wP && hP ? { width: wP, height: hP, exactSize: true } : {}), ...(seedP != null ? { seed: seedP } : {}),
-        ...(thinkP ? { thinking: thinkP } : {}) });
+        ...(thinkP ? { thinking: thinkP } : {}), ...(qualP ? { quality: qualP } : {}) });
       return { cmd: "SHOW_IT", payload: r };
     }
 
@@ -60029,7 +60031,8 @@ async function cutPanel(env, url, n) {
   if (id && Number(n) >= 1 && Number(n) <= 8) {
     try { const k8 = JSON.parse((await env.AURA_KV.get("sheet8:" + id)) || "null");
       if (Array.isArray(k8) && k8[Number(n) - 1] && k8[Number(n) - 1].image) { const c8 = k8[Number(n) - 1];
-        return { ok: true, image_url: c8.image, from: id, panel: Number(n), cut: "card", eight: true, ...(c8.title ? { card: { title: c8.title, lines: c8.lines || [] } } : {}) }; } } catch {}
+        // A card with its words drawn under it is worked on as its artwork alone (v9.708).
+        return { ok: true, image_url: c8.art || c8.image, from: id, panel: Number(n), cut: "card", eight: true, ...(c8.art ? { strip_found: true } : {}), ...(c8.title ? { card: { title: c8.title, lines: c8.lines || [] } } : {}) }; } } catch {}
   }
   if (!id || ![1, 2, 3, 4].includes(Number(n))) return { ok: false, error: "need a picture and a number 1-4" };
   n = Number(n);
@@ -60163,10 +60166,14 @@ async function cutPanel(env, url, n) {
 // panel is found by its two light side edges, and the card ends at the last line of its own words before the next card. So
 // 4, 6 or 8 cards come off the same way, each whole - its picture and its title strip. A test first (`CUT_ALL <sheet>`);
 // nothing calls it yet. Kept under `cutall1:<sheet>` so a second ask is instant.
-async function cutAllCards(env, url) {
+async function cutAllCards(env, url, copts) {
   const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
   if (!id) return { ok: false, error: "need a picture" };
-  const was = await env.AURA_KV.get("cutall3:" + id).catch(() => null);
+  // THE ARTWORK WITHOUT ITS WORDS (v9.708): a card whose title is drawn under it also comes off as its panel alone - what a pick
+  // works from, so the words never travel into a change or the artist files. Kept under its own key.
+  const _art = !!(copts && copts.art);
+  const _ck = (_art ? "cutall4:" : "cutall3:") + id;
+  const was = await env.AURA_KV.get(_ck).catch(() => null);
   if (was) { try { return JSON.parse(was); } catch {} }
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return { ok: false, error: "picture not found: " + id };
@@ -60223,7 +60230,7 @@ async function cutAllCards(env, url) {
   boxes.sort((a, b) => a.top - b.top);
   const rowsB = []; for (const b of boxes) { const r = rowsB.find((g) => Math.abs(g[0].top - b.top) < H * 0.05); if (r) r.push(b); else rowsB.push([b]); }
   const ordered = rowsB.flatMap((g) => g.sort((a, b) => a.x0 - b.x0));
-  const host = await imageHost(env), cards = [];
+  const host = await imageHost(env), cards = [], _allPuts = [];
   for (let k = 0; k < ordered.length; k++) {
     const { x0, x1, top, bot } = ordered[k], cw = x1 - x0, ch = bot - top, dst = new Uint8Array(cw * ch * 4);
     for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
@@ -60233,11 +60240,36 @@ async function cutAllCards(env, url) {
     const cut = new PhotonImage(dst, cw, ch); const bts = cut.get_bytes(); try { cut.free(); } catch {}
     let t = ""; for (let j = 0; j < bts.length; j += 8192) t += String.fromCharCode.apply(null, bts.subarray(j, j + 8192));
     const nid = "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
-    await env.AURA_KV.put("image:" + nid, btoa(t));
-    cards.push({ n: k + 1, image_url: "https://" + host + "/image/" + nid, size: cw + "x" + ch });
+    const _puts = [env.AURA_KV.put("image:" + nid, btoa(t))];
+    const card = { n: k + 1, image_url: "https://" + host + "/image/" + nid, size: cw + "x" + ch };
+    if (_art) {
+      // The panel ends where the card's words begin: the first run of rows that are black right across the card, below its middle.
+      let artBot = -1;
+      for (let y = top + Math.round(ch * 0.5); y < bot - 3 && artBot < 0; y++) {
+        let allBlack = true;
+        for (let r = 0; r < 3 && allBlack; r++) { let b = 0, n = 0; for (let x = x0; x < x1; x += 2) { n++; if (lum(x, y + r) < 40) b++; } if (b / n <= 0.97) allBlack = false; }
+        if (allBlack) artBot = y;
+      }
+      if (artBot > top) {
+        const ah = artBot - top, adst = new Uint8Array(cw * ah * 4);
+        for (let y = 0; y < ah; y++) for (let x = 0; x < cw; x++) {
+          const so = ((top + y) * W + (x0 + x)) * 4, to = (y * cw + x) * 4;
+          adst[to] = px[so]; adst[to + 1] = px[so + 1]; adst[to + 2] = px[so + 2]; adst[to + 3] = 255;
+        }
+        const ac = new PhotonImage(adst, cw, ah); const abts = ac.get_bytes(); try { ac.free(); } catch {}
+        let at = ""; for (let j = 0; j < abts.length; j += 8192) at += String.fromCharCode.apply(null, abts.subarray(j, j + 8192));
+        const aid = "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+        _puts.push(env.AURA_KV.put("image:" + aid, btoa(at)));
+        card.art_url = "https://" + host + "/image/" + aid; card.art_size = cw + "x" + ah;
+      }
+    }
+    _allPuts.push(..._puts);
+    cards.push(card);
   }
+  // The stores run side by side (v9.708) instead of each card waiting for the one before.
+  await Promise.all(_allPuts);
   const out = { ok: true, from: id, sheet: W + "x" + H, columns: cols.length, count: cards.length, cards };
-  await env.AURA_KV.put("cutall3:" + id, JSON.stringify(out)).catch(() => {});
+  await env.AURA_KV.put(_ck, JSON.stringify(out)).catch(() => {});
   console.log("[CUT] all cards of " + id + " (" + out.sheet + "): " + cards.length + " cards in " + cols.length + " columns");
   return out;
 }
@@ -60673,6 +60705,8 @@ const POSS_SENTENCE = "This is my tattoo design. Show me 4 different designs of 
 // The ending is a setting per kind (`config:frame:sheet8:body` - on their photo, `config:frame:sheet8:flat` - artwork on white).
 const SHEET8_BODY = "Show the whole tattoo in every picture, nothing cut off at the edges. Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture the same shape as my photo, each picture in a clean white frame with rounded corners, with a wide black gap between them. No text, no titles, no numbers, no words anywhere on the page. In your written reply, list the 8 designs in order, left to right and top to bottom, one per line, as: TITLE | first line | second line.";
 const SHEET8_FLAT = "Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture a white panel with the whole tattoo artwork as large as it fits - not on skin - in a clean white frame with rounded corners, with a wide black gap between them. No text, no titles, no numbers, no words anywhere on the page. In your written reply, list the 8 designs in order, left to right and top to bottom, one per line, as: TITLE | first line | second line.";
+// THE DIRECT ENDING (v9.708): the words each card carries are drawn under it - nothing writes a reply, nobody lists them after.
+const SHEET8_DIRECT = "Use color wherever it works. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is a white panel with the whole tattoo artwork as large as it fits - not on skin - in a clean white frame with rounded corners, and under the panel, on the black, a short title in bold white capital letters, and under it two short lines in white describing the design. No numbers anywhere.";
 // MEDIUM UNTIL AARON SAYS OTHERWISE (2026-10-18): low gave near-copies on the photo roads. A setting, `config:edit:sheet8:quality`.
 async function sheet8Quality(env) { try { const k = String((await env.AURA_KV.get("config:edit:sheet8:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(k)) return k; } catch {} return "medium"; }
 // THE NEW-TATTOO SHEET'S OWN IMAGE MODEL (v9.693, 2026-10-21, Aaron): `config:source:sheet8:model` - empty means the shared
@@ -60680,6 +60714,17 @@ async function sheet8Quality(env) { try { const k = String((await env.AURA_KV.ge
 // and stay on the shared setting until each is tested.
 async function sheet8Model(env) { try { const k = String((await env.AURA_KV.get("config:source:sheet8:model")) || "").trim(); if (/^gpt-image/i.test(k)) return k; } catch {} return null; }
 async function sheet8Size(env) { try { const k = String((await env.AURA_KV.get("config:edit:sheet8:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(k)) return k; } catch {} return "1280x3584"; }
+// ══ THE NEW-TATTOO SHEET STRAIGHT TO THE IMAGE MODEL (v9.708, 2026-10-22, Aaron) ═══════════════════════════════════
+// MEASURED 2026-10-21/22 on the same words: through the chat model 64-86s (it spends ~25s writing its own brief first); our
+// sentence straight to the image model 37-44s on gpt-image-2 and 29-32s on Flare at high, seven ideas and six styles, every
+// title spelled right. The image model writes each card's title and two lines under it, so nothing has to write them after.
+// Three settings, only the new-tattoo sheet reads them - add-on, cover-up, change and possibilities sheets are untouched:
+//   config:source:sheet8:route    direct | thread (empty = thread, as before)
+//   config:source:sheet8:quality  low | medium | high | auto (empty = config:edit:sheet8:quality)
+//   config:source:sheet8:size     WxH (empty = 1440x3120, phone-shaped)
+async function sheet8Route(env) { try { const k = String((await env.AURA_KV.get("config:source:sheet8:route")) || "").trim().toLowerCase(); if (k === "direct") return "direct"; } catch {} return "thread"; }
+async function sheet8DirectQuality(env) { try { const k = String((await env.AURA_KV.get("config:source:sheet8:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(k)) return k; } catch {} return await sheet8Quality(env); }
+async function sheet8DirectSize(env) { let w = 1440, h = 3120; try { const m = String((await env.AURA_KV.get("config:source:sheet8:size")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/); if (m) { w = parseInt(m[1], 10); h = parseInt(m[2], 10); } } catch {} return { width: w, height: h, exact_size: true }; }
 // Their opening stays word for word; the four-card layout at its end comes off, and the one ending goes on.
 async function toEight(env, sentence, kind) {
   let s = String(sentence || "").trim();
@@ -60687,8 +60732,9 @@ async function toEight(env, sentence, kind) {
        .replace(/\bFor the other three\b/g, "For the others").replace(/\bFor 2, 3 and 4\b/g, "For the others");
   const cut = s.search(/\s(?:Show all (?:4|four)\b|Make one tall page\b|Make one page\b|Under each one\b|No numbers anywhere\b)/i);
   if (cut > 0) s = s.slice(0, cut).trim();
-  let end = kind === "flat" ? SHEET8_FLAT : SHEET8_BODY;
-  try { const k = String((await env.AURA_KV.get("config:frame:sheet8:" + (kind === "flat" ? "flat" : "body"))) || "").trim(); if (k) end = k; } catch {}
+  const _kn = kind === "direct" ? "direct" : kind === "flat" ? "flat" : "body";
+  let end = _kn === "direct" ? SHEET8_DIRECT : _kn === "flat" ? SHEET8_FLAT : SHEET8_BODY;
+  try { const k = String((await env.AURA_KV.get("config:frame:sheet8:" + _kn)) || "").trim(); if (k) end = k; } catch {}
   return s.replace(/[\s]+$/, "") + " " + end;
 }
 // The sheet cut into its cards the moment it comes back, each card with its own words - by order, after the count check. If the
@@ -60700,18 +60746,21 @@ function _isOfferLine(t) {
   return /\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(s) ||
          /\b(i'?ll|i will|let me|i'?m going to|i can|i'?d love to|i would love to|happy to)\s+(show|draw|sketch|make)\b/i.test(s);
 }
-async function eightCards(env, sheetUrl, said) {
+async function eightCards(env, sheetUrl, said, eopts) {
   const _c8T0 = Date.now();
+  const _printed = !!(eopts && eopts.printed);
   try {
-    const cut = await cutAllCards(env, sheetUrl);
+    const cut = await cutAllCards(env, sheetUrl, _printed ? { art: true } : null);
     if (!cut || !cut.ok || !Array.isArray(cut.cards) || cut.cards.length < 2) { console.log("[CUT8] not cut: " + String((cut && cut.error) || "no cards")); return null; }
     const lines = String(said || "").split(/\r?\n/).map((l) => l.split("|").map((x) => x.trim().replace(/^[\s*#>-]*(?:\d+[.)]\s*)?/, "").replace(/[*`]+/g, "").trim()))
       .filter((p) => p.length >= 2 && p[0] && p[0].length <= 60).map((p) => ({ title: p[0], lines: p.slice(1, 3).filter(Boolean) }));
     const ok = lines.length === cut.cards.length;
-    const cards = cut.cards.map((c, k) => ({ n: k + 1, image: c.image_url, ...(ok ? { title: lines[k].title, lines: lines[k].lines } : {}) }));
+    const cards = cut.cards.map((c, k) => ({ n: k + 1, image: c.image_url, ...(c.art_url ? { art: c.art_url } : {}), ...(_printed ? { printed: true } : {}),
+      ...(ok ? { title: lines[k].title, lines: lines[k].lines } : {}) }));
     const sid = (String(sheetUrl).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
     if (sid) { try { await env.AURA_KV.put("sheet8:" + sid, JSON.stringify(cards)); } catch {} }
-    console.log("[CUT8] " + cards.length + " cards off " + sid + (ok ? " · words matched by order" : " · words not used: " + lines.length + " lines for " + cards.length + " cards") + " · " + ((Date.now() - _c8T0) / 1000).toFixed(1) + "s");
+    console.log("[CUT8] " + cards.length + " cards off " + sid + (_printed ? " · words drawn on the cards, artwork kept apart: " + cards.filter((x) => x.art).length + " of " + cards.length
+      : ok ? " · words matched by order" : " · words not used: " + lines.length + " lines for " + cards.length + " cards") + " · " + ((Date.now() - _c8T0) / 1000).toFixed(1) + "s");
     return cards;
   } catch (e) { console.log("[CUT8] failed: " + String(e?.message ?? e).slice(0, 160)); return null; }
 }
@@ -61676,7 +61725,11 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // the wrong tool whatever the catalogue is set to. Overridable, because the day a Workers AI
   // model does image-to-image this should follow the pin again.
   if (isEdit && !CAN_EDIT.test(model)) model = IMAGE_POLICY.edit.model;
-  const quality = ((rawQuality && rawQuality.trim()) || resolved.quality || "low").trim();
+  // A CALLER MAY NAME ITS QUALITY (v9.708, 2026-10-22, Aaron): the new-tattoo sheet draws on Flare at high while every other
+  // picture stays on `config:image:quality`. MEASURED 2026-10-22: Flare at high = gpt-image-2 at medium in detail and price,
+  // ~30s against ~41s on seven ideas. Unnamed, the setting as before.
+  const _qOpt = String(opts.quality || "").trim().toLowerCase();
+  const quality = (["low", "medium", "high", "auto"].includes(_qOpt) ? _qOpt : ((rawQuality && rawQuality.trim()) || resolved.quality || "low")).trim();
   const p = String(prompt).slice(0, 4000);
 
   // IMAGE FLYWHEEL (AIMARGIN): the first request for an image pays; every identical repeat is FREE. Same
@@ -62726,7 +62779,7 @@ async function showIt(subject, env, opts = {}) {
   // matter which model, which quality tier or which endpoint, and `[XAI-IMG]` printed
   // `asked aspect=- res=-` the moment it was pointed at the right branch. An afternoon of
   // theories about xAI's silent fallbacks, and the parameters never left this worker.
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, thinking: opts.thinking || null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, mask: opts.mask || null, exactSize: opts.exactSize === true });
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null, thinking: opts.thinking || null, aspect: opts.aspect || null, res: opts.res || null, width: opts.width || null, height: opts.height || null, mask: opts.mask || null, exactSize: opts.exactSize === true, quality: opts.quality || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════
@@ -69912,7 +69965,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // "The person's idea is the instruction" and "it should not depend on Aura remembering to write make a 2x2
           // grid". Their own lines since Create New Tattoo (the taps and bare yeses left out) fill ____, the style they
           // tapped fills {style}. Nothing of hers goes in. Settings: config:frame:new:grid, config:frame:new:grid:style.
-          let _newSentence = false, _nameHint = null;
+          let _newSentence = false, _nameHint = null, _s8Direct = false;
           // ══ EVERY NEW TATTOO IS THE SAME 8 (v9.684, 2026-10-19, Aaron: "this image I'm showing you should never even
           // appear anymore") ═══ MEASURED: a new tattoo talked about without the Create New Tattoo tap (the opening chat, a
           // terminal TALK) drew her own 2x2 grid of four while the tap drew the 8-sheet. One way in: any new design with no
@@ -70016,8 +70069,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 askLine = (_from >= 0 && _to > _from) ? (_base.slice(0, _from) + _clause + " " + _base.slice(_to)) : (askLine + " " + _clause);
                 console.log("[TURN:NEW] all of her ideas, one per card: " + _allIdeas.length + (me ? " · who=" + me : ""));
               }
-              // THE SAME TREATMENT (v9.678).
-              askLine = await toEight(env, askLine, "flat");
+              // THE SAME TREATMENT (v9.678). Straight to the image model (v9.708): the ending that draws each card's words under it.
+              _s8Direct = (await sheet8Route(env)) === "direct";
+              askLine = await toEight(env, askLine, _s8Direct ? "direct" : "flat");
               _newSentence = true;
               console.log("[TURN:NEW] the first four from the fixed sentence - their words: \"" + _words.slice(0, 300) + "\"" + (_newStyle ? " · style: " + _newStyle : ""));
             }
@@ -70110,12 +70164,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // Measured 08:02: the chat-model route drew the sheet for $0.006 against $0.012. If it draws nothing twice, the
           // straight route below draws it, as before.
           let _thNew = null, _thAsked = null;   // v9.694: the size the 8-sheet really asked for, for the log
+          // STRAIGHT TO THE IMAGE MODEL (v9.708): its own model, quality and size; a fresh seed so the same words draw a fresh sheet,
+          // as the chat-model route always did (the seed is only part of the picture store's key - nothing extra reaches the model).
+          const _s8D = _newSentence && _s8Direct;
+          const _s8DModel = _s8D ? await sheet8Model(env) : null, _s8DQual = _s8D ? await sheet8DirectQuality(env) : null, _s8DSize = _s8D ? await sheet8DirectSize(env) : null;
           // IMAGE MODEL ONLY (v9.630, 2026-10-16, Aaron: "image model only and the i information - that's gone"). The chat-model
           // route below is kept but never taken: every sheet it drew pushed its own stock picks (phoenix, crescent moon, neon,
           // desert) - Bay Phoenix at 14:32 on a San Francisco idea. The sentence goes straight to the image model, as run 9 did.
           // EVERY SHEET THROUGH THE CHAT MODEL AGAIN (v9.678, 2026-10-18, Aaron: "everything goes through the same model") - it
           // writes the eight titles. The tall page; our sentence alone (it already asks for the list).
-          if (_newSentence) {
+          if (_newSentence && !_s8D) {
             for (let _t = 0; _t < 2 && !_thNew; _t++) {
               try {
                 const _s8m = await sheet8Model(env); _thAsked = await sheet8Size(env);
@@ -70136,6 +70194,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               } catch (e) { try { console.log("[TURN:NEW] chat model try " + (_t + 1) + " failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
             }
           }
+          const _drT0 = Date.now();
           const dr = _thNew ? { payload: _thNew } : await processCommand("SHOW_IT " + JSON.stringify({
             // The new four name their own size below and nothing else, exactly as run 9 went (no aspect, no res).
             ...(_newSentence ? {} : { aspect: _grid ? "1:1" : "3:4", res: "2k" }),
@@ -70144,15 +70203,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             ...(_newSentence ? { raw: true } : {}),
             // THE SAME SIZE AS THE OTHER GRIDS (v9.605): config:edit:thread:size, default 1920x1920; and Imagine 4 more
             // gets a new seed - the same words would otherwise hand back the same cached picture.
-            ...(_newSentence ? _newSize : {}),
-            ...(_newSentence && _fixedWhy === "more" ? { seed: 1 + Math.floor(Math.random() * 2000000000) } : {}),
+            ...(_s8D ? _s8DSize : _newSentence ? _newSize : {}),
+            ...(_s8D ? { quality: _s8DQual, ...(_s8DModel ? { model: _s8DModel } : {}) } : {}),
+            ...((_s8D || (_newSentence && _fixedWhy === "more")) ? { seed: 1 + Math.floor(Math.random() * 2000000000) } : {}),
             context: "a tattoo somebody is designing for themselves: " + askLine,
             name: askLine.slice(0, 60),
             ...(refUrl ? { refs: [refUrl] } : {}),
             creator: me
           }), env, true);
           const dp = (dr && dr.payload) ? dr.payload : dr;
-          const _eightN = (_newSentence && dp?.ok && dp.image_url) ? await eightCards(env, dp.image_url, dp.said) : null;
+          const _drMs = Date.now() - _drT0, _s8T0 = Date.now();
+          const _eightN = (_newSentence && dp?.ok && dp.image_url) ? await eightCards(env, dp.image_url, dp.said, _s8D ? { printed: true } : null) : null;
+          const _cutMs = Date.now() - _s8T0;
           if (dp?.ok && dp.image_url) {
             // ══ A CACHE HIT IS NOT A SECOND DRAWING (2026-09-14) ═══════════════════════
             // MEASURED: "do that" after a draw returned the SAME image id in 1,610ms - the image
@@ -70192,6 +70254,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else {
             drew = { failed: dp?.error || "COULD_NOT_DRAW", asked: askLine };
           }
+          if (_s8D) { try { console.log("[TURN:NEW] straight to the image model " + (_s8DModel || "(shared setting)") + " · " + _s8DQual + " · " + _s8DSize.width + "x" + _s8DSize.height +
+            " · drew in " + (_drMs / 1000).toFixed(1) + "s · cut in " + (_cutMs / 1000).toFixed(1) + "s" + (me ? " · who=" + me : "")); } catch {} }
           if (_newSentence) { try { console.log("[TURN:NEW] sent to the image model only: \"" + String(_subjectSent).replace(/\s+/g, " ").slice(0, 1500) + "\"" + (dp && dp.cost_usd != null ? " · $" + dp.cost_usd : "")); } catch {} }
           if (_newSentence) { try { console.log("[TURN:NEW] drawn by " + ((dp && dp.model) || "?") + " · asked " + ((_thNew && _thAsked) ? _thAsked : (_newSize.width + "x" + _newSize.height)) +
             (_fixedWhy === "more" ? " · a fresh four (new seed)" : "") + " -> " + ((dp && dp.image_url) || ("not made: " + ((dp && dp.error) || "?"))) + (me ? " · who=" + me : "")); } catch {} }

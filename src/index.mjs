@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.709.0-2026-10-22-no-reading-the-cards";
+const BUILD = "aura-core-v9.710.0-2026-10-22-right-size-in-the-log";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -70257,7 +70257,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_s8D) { try { console.log("[TURN:NEW] straight to the image model " + (_s8DModel || "(shared setting)") + " · " + _s8DQual + " · " + _s8DSize.width + "x" + _s8DSize.height +
             " · drew in " + (_drMs / 1000).toFixed(1) + "s · cut in " + (_cutMs / 1000).toFixed(1) + "s" + (me ? " · who=" + me : "")); } catch {} }
           if (_newSentence) { try { console.log("[TURN:NEW] sent to the image model only: \"" + String(_subjectSent).replace(/\s+/g, " ").slice(0, 1500) + "\"" + (dp && dp.cost_usd != null ? " · $" + dp.cost_usd : "")); } catch {} }
-          if (_newSentence) { try { console.log("[TURN:NEW] drawn by " + ((dp && dp.model) || "?") + " · asked " + ((_thNew && _thAsked) ? _thAsked : (_newSize.width + "x" + _newSize.height)) +
+          if (_newSentence) { try { console.log("[TURN:NEW] drawn by " + ((dp && dp.model) || "?") + " · asked " + ((_thNew && _thAsked) ? _thAsked : _s8D ? (_s8DSize.width + "x" + _s8DSize.height) : (_newSize.width + "x" + _newSize.height)) +
             (_fixedWhy === "more" ? " · a fresh four (new seed)" : "") + " -> " + ((dp && dp.image_url) || ("not made: " + ((dp && dp.error) || "?"))) + (me ? " · who=" + me : "")); } catch {} }
           // EVERY WORD THE IMAGE MODEL GOT (v9.604) - handed back with the turn, never cut.
           try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: "drawn new", words: _subjectSent,

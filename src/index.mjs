@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.713.0-2026-10-22-five-ways-in";
+const BUILD = "aura-core-v9.714.0-2026-10-22-tell-me-show-me";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67154,14 +67154,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (_gs) _fixedSay = _gs.slice(0, 400);
               console.log("[TURN:HELLO] " + (_gs ? "her greeting" + (_fn ? " to " + _fn : "") + ": \"" + _gs.slice(0, 200) + "\"" : "she did not answer - the fixed line stands") + (me ? " · who=" + me : ""));
             } catch {}
-          } else if (_newFlow && /^(i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?$/i.test(_s)) {
+          } else if (_newFlow && /^(tell me|i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?$/i.test(_s)) {
             // ══ FIVE WAYS IN (v9.713, 2026-10-22, Aaron: "she's here to help them imagine") ═══════════════════════════════════════
             // Under the style tiles the page offers five doors. Four of them get her first question at once, fixed (a setting each:
             // config:say:door_idea / door_mean / door_memory / door_someone) - no model, no wait. What they answer goes to her as a
             // conversation, never straight to a drawing: she draws when there is direction and they say yes. The fifth door,
             // "Surprise me", is hers - it goes to her as an ordinary turn (her guidance says what to do with it).
-            const _dk = /^i have an idea/i.test(_s) ? "idea" : /^i want it to mean/i.test(_s) ? "mean" : /^i have a memory/i.test(_s) ? "memory" : "someone";
-            const _dq = { idea: "Tell me what you're imagining.", mean: "What would you like your tattoo to express?",
+            // TELL ME (v9.714, 2026-10-22, Aaron's mockup): the new tattoo screen now has two ways in - Tell me (here) and Show me (Get Inspired).
+            const _dk = /^tell me/i.test(_s) ? "tell" : /^i have an idea/i.test(_s) ? "idea" : /^i want it to mean/i.test(_s) ? "mean" : /^i have a memory/i.test(_s) ? "memory" : "someone";
+            const _dq = { tell: "What's on your mind? Tell me anything - an idea, a feeling, a person, a memory.", idea: "Tell me what you're imagining.", mean: "What would you like your tattoo to express?",
                           memory: "What's a moment you'd like to keep with you?", someone: "Who are you thinking of?" }[_dk];
             _fixedWhy = "door"; _fixedSay = await _fx("door_" + _dk, _dq);
             try { await talkStatePut(env, me, "await_idea", ""); } catch {}
@@ -70015,7 +70016,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // photo in play takes the same fixed sentence and their own words.
           const _newAny = _newFlow || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
           if (_newAny) {
-            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|(?:just )?imagine some ideas for me|i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?\s*$/i;
+            const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|(?:just )?imagine some ideas for me|tell me|i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?\s*$/i;
             // A YES IN TWO PARTS IS STILL A YES (v9.684): "yeah show me" went to the image model as their idea.
             const _bare = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|show it|let'?s see( it)?|let me see( it)?|please|absolutely|definitely|perfect)[\s,.!]*)+$/i;
             const _mine = [];

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.734.0-2026-10-23-fresh-picture-address-in-artist-pdf";
+const BUILD = "aura-core-v9.735.0-2026-10-23-artist-pdf-waits-for-its-pictures";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60539,7 +60539,6 @@ async function artistPdf(env, o) {
   };
   let defs = "", body = "", page = 3, vecN = 0, first = null, anyVec = false;   // page 1 the job sheet, page 2 how to use them
   let _vMaxA = 0; try { _vMaxA = Number(String((await env.AURA_KV.get("config:print:vector_max")) || "").trim()) || 0; } catch {}
-  const _pdfTag = Date.now().toString(36);   // v9.734 - one tag per PDF, on every picture address (see A FRESH ADDRESS below)
   const guide = [], perPanel = [];
   for (const pn of (o.panels || [])) {
     const items = [], _p0 = page;
@@ -60563,13 +60562,7 @@ async function artistPdf(env, o) {
       // fitted to the paper, the mirrored one flipped by the page. Only the traced linework is laid out here.
       if (!it.trace) {
         const start = page, flip = it.mirror ? "transform:scaleX(-1);" : "";
-        // ══ A FRESH ADDRESS FOR EVERY PICTURE (v9.734, 2026-10-23, Aaron: "it's always worked until today") ══════════════════════
-        // MEASURED 11:04-11:18 (Rainbow Reverie, ARTIST_PDF): the same cut card at its plain address timed the browser out at 90s
-        // four times running - and Garden Swing's card, which printed fine at 10:15, did the same. The SAME card with "?fresh=1"
-        // made all 9 pages in 14s. Pictures are sent "keep for a year", and the copy Cloudflare kept for the PDF browser had gone
-        // bad. Each picture here gets its own one-off tag, so the browser always fetches it from our storage, never a kept copy.
-        const _fresh = it.url + (String(it.url).includes("?") ? "&" : "?") + "pdf=" + _pdfTag;
-        body += '<div class="art" style="height:10in"><img style="' + flip + 'max-height:10in;max-width:7.5in;width:auto;height:auto" src="' + esc(_fresh) + '"></div>';
+        body += '<div class="art" style="height:10in"><img style="' + flip + 'max-height:10in;max-width:7.5in;width:auto;height:auto" src="' + esc(it.url) + '"></div>';
         page++;
         if (!it.colour && _tall == null) _tall = Number(pn.inches) || null;
         guide.push([(pn.name ? pn.name + " - " : "") + it.label, "page " + start +
@@ -60641,7 +60634,21 @@ async function artistPdf(env, o) {
     br = await puppeteer.launch(env.BROWSER, { keep_alive: 150000 });
     const pg = await br.newPage();
     // 90s, NOT 30 (v9.731): a detailed design needs longer to lay out than the default allows.
-    await pg.setContent(html, { waitUntil: "networkidle0", timeout: 90000 });
+    // ══ READY WHEN THE PICTURES ARE HERE, NOT WHEN THE NETWORK GOES QUIET (v9.735, 2026-10-23, Aaron: "go") ════════════════
+    // MEASURED 10:43-11:44: 10 of 14 artist PDFs timed out at 90s waiting for "networkidle0" - card tattoos and photo-first
+    // alike (Kingfisher's own files failed at 11:40, nine minutes after they printed) - while the log shows the browser had
+    // every picture within 2s each time. PRINT, which loads nothing by address, never failed. So the page is read once its
+    // HTML is in, and then the wait is for the pictures themselves: every <img> arrived and drawn. If one never arrives, the
+    // log names it and how far each got - a bare "Navigation timeout" told us nothing all morning.
+    await pg.setContent(html, { waitUntil: "domcontentloaded", timeout: 60000 });
+    try {
+      await pg.waitForFunction(() => Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0), { timeout: 60000, polling: 250 });
+    } catch (e) {
+      let _st = null;
+      try { _st = await pg.evaluate(() => Array.from(document.images).map((i) => (i.currentSrc || i.src || "").slice(0, 90).replace(/^data:[^,]{0,40},.*/, "data:(inline)") + " complete=" + i.complete + " w=" + i.naturalWidth)); } catch {}
+      try { console.log("[ARTIST] pictures not all here after 60s: " + JSON.stringify(_st)); } catch {}
+      throw new Error("PICTURES_NOT_LOADED " + String(e && e.message || e).slice(0, 80));
+    }
     const _t1 = Date.now();
     pdfBytes = await pg.pdf({ printBackground: true, preferCSSPageSize: true, timeout: 90000 });
     try { console.log("[ARTIST] PDF timing - page " + Math.round(html.length / 1024) + "KB, browser+layout " + ((_t1 - _t0) / 1000).toFixed(1) + "s, pdf " + ((Date.now() - _t1) / 1000).toFixed(1) + "s"); } catch {}

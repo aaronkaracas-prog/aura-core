@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.727.0-2026-10-23-small-copies-kept-in-kv";
+const BUILD = "aura-core-v9.728.0-2026-10-23-small-copies-as-jpeg";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -76433,9 +76433,11 @@ function openAlbum(idx){
       const _wq = parseInt(url.searchParams.get("w") || "", 10);
       const _w = [240, 480, 720].includes(_wq) ? _wq : 0;
       if (_w && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
-        const _tk = "small:" + id + "_w" + _w;
+        // v9.728: MEASURED - Photon's get_bytes_webp() is LOSSLESS: 684KB at 480 wide. JPEG 80 measured 5-6x smaller on our
+        // pictures, so copies are JPEG, and the key carries .jpg so the lossless copies made under v9.727 are never served.
+        const _tk = "small:" + id + "_w" + _w + ".jpg";
         const _have = await env.AURA_KV.getWithMetadata(_tk, { type: "arrayBuffer" }).catch(() => null);
-        if (_have && _have.value) return new Response(_have.value, { headers: { "content-type": (_have.metadata && _have.metadata.ct) || "image/webp",
+        if (_have && _have.value) return new Response(_have.value, { headers: { "content-type": (_have.metadata && _have.metadata.ct) || "image/jpeg",
           "content-length": String(_have.value.byteLength), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });
         try {
           let _src = null;
@@ -76447,11 +76449,10 @@ function openAlbum(idx){
             const _W = _im.get_width(), _H = _im.get_height();
             let _sm = _im;
             if (_W > _w) _sm = photonResize(_im, _w, Math.max(1, Math.round(_H * _w / _W)), PhotonSampling.Lanczos3);
-            const _webp = typeof _sm.get_bytes_webp === "function";
-            const _out = _webp ? _sm.get_bytes_webp() : _sm.get_bytes_jpeg(82);
+            const _out = _sm.get_bytes_jpeg(80);
             try { if (_sm !== _im) _sm.free(); } catch {}
             try { _im.free(); } catch {}
-            const _ct = _webp ? "image/webp" : "image/jpeg";
+            const _ct = "image/jpeg";
             await env.AURA_KV.put(_tk, _out, { metadata: { ct: _ct, w: _w, from: _W + "x" + _H } })
               .catch((e) => { try { console.log("[SMALL] " + id + " w" + _w + " made but not kept: " + String(e?.message ?? e).slice(0, 160)); } catch {} });
             return new Response(_out, { headers: { "content-type": _ct, "content-length": String(_out.length),

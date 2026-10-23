@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.737.0-2026-10-23-turn-resend-and-sheet-cards-kept";
+const BUILD = "aura-core-v9.738.0-2026-10-23-onme-whole-brief-in-the-log";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -68937,7 +68937,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 try { _reg = await registerSmartFile(env, { id: _tp.image_id, filetype: "image", name: "on me", url: _tp.image,
                   subject: _omSubject, source: "onme", creator: me, parent: _onmeDesign.design, context: "seeing a tattoo on their own body", access: "public" }); } catch {}
                 _om = { ok: true, image_url: _tp.image, entity_id: (_reg && _reg.entity_id) || null };
-                try { console.log("[TURN:ONME] the chat model asked its image tool: \"" + String(_tp.tool_prompt || "").replace(/\s+/g, " ").slice(0, 600) + "\" · drawn " + (_tp.size_drawn || "?")); } catch {}
+                // THE WHOLE BRIEF (v9.738, 2026-10-23, Aaron): MEASURED 13:33 - cut at 600 letters, the part that would say whether it kept
+                // the size and the angle of their box was never seen.
+                try { console.log("[TURN:ONME] the chat model asked its image tool: \"" + String(_tp.tool_prompt || "").replace(/\s+/g, " ").slice(0, 4000) + "\" · drawn " + (_tp.size_drawn || "?")); } catch {}
               } else _om = { ok: false, error: String((_tp && (_tp.error || (_tp.said ? "no picture - it said: " + _tp.said : ""))) || "no picture").slice(0, 300) };
             } else _om = await processCommand(_omReq, env, true);
             _op = (_om && _om.payload) ? _om.payload : _om;
@@ -68946,7 +68948,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
           // EVERY LOOK ON THEM IS LOGGED (v9.609): the design picture, their photo, every word sent and what came back -
           // this step logged only failures, so the wrong result at 21:17 could not be traced.
-          try { console.log("[TURN:ONME] sent: \"" + _omSubject + "\" · picture 1: " + _omRefs[0] +
+          // WHAT WAS ACTUALLY SENT (v9.738): on a hand placement picture 1 is the TURNED copy and picture 2 the copy of their photo with
+          // the green box - the log named the plain card, which is not what the model got.
+          try { console.log("[TURN:ONME] sent: \"" + _omSubject + "\" · picture 1: " + ((_fixedWhy === "placed" && _omA) ? _omA + " (turned copy of " + _omRefs[0] + ")" : _omRefs[0]) +
             " · picture 2: " + _omRefs[1] + " · design " + (_onmeDesign.design || "?") + (_fixedWhy === "placed" ? " · placed by hand" : "") + " -> " +
             ((_op && _op.image_url) || ("not made: " + String((_op && _op.error) || "?").slice(0, 200))) + (me ? " · who=" + me : "")); } catch {}
           try { const _ps = _TURN_ALS.getStore(); if (_ps && _ps.pics) _ps.pics.push({ how: "put on their photo", words: _omSubject,

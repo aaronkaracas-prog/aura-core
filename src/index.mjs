@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.729.0-2026-10-23-a-chosen-design-is-what-changes";
+const BUILD = "aura-core-v9.731.0-2026-10-23-busy-drawings-print-as-images";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -10522,7 +10522,8 @@ async function processCommand(line, env, isOp) {
       // wins, and the job sheet says which way to feed the printer.
       let pSlices, pTallIn, pWideIn, pFitted, pDpi, pOrient, pVec, PAGE_IN, WIDE_IN, OVERLAP_IN, STEP_IN;
       try {
-        const _L = printLayout(pB64, pIn, pLong, {});
+        let _vMaxP = 0; try { _vMaxP = Number(String((await env.AURA_KV.get("config:print:vector_max")) || "").trim()) || 0; } catch {}
+        const _L = printLayout(pB64, pIn, pLong, { vecMax: _vMaxP });
         ({ pSlices, pTallIn, pWideIn, pFitted, pDpi, pOrient, pVec, PAGE_IN, WIDE_IN, OVERLAP_IN, STEP_IN } = _L);
         pIn = _L.pIn;
       } catch (e) {
@@ -10625,8 +10626,9 @@ async function processCommand(line, env, isOp) {
       try {
         pBrowser = await puppeteer.launch(env.BROWSER);
         const pg = await pBrowser.newPage();
-        await pg.setContent(html, { waitUntil: "networkidle0" });
-        pdfBytes = await pg.pdf({ printBackground: true, preferCSSPageSize: true });
+        // 90s, NOT 30 (v9.731): a detailed design needs longer to lay out than the default allows.
+        await pg.setContent(html, { waitUntil: "networkidle0", timeout: 90000 });
+        pdfBytes = await pg.pdf({ printBackground: true, preferCSSPageSize: true, timeout: 90000 });
       } catch (e) {
         return { cmd: "PRINT", payload: { ok: false, error: "COULD_NOT_RENDER",
           why: String(e && e.message || e).slice(0, 200) } };
@@ -60234,7 +60236,10 @@ async function cutAllCards(env, url, copts) {
     for (let i = 0; i < starts.length; i++) {
       const st = starts[i], next = i + 1 < starts.length ? starts[i + 1] : H;
       let y = next - 1; while (y > st && blackRow[y]) y--;
-      boxes.push({ x0, x1, top: st, bot: Math.min(next, y + 1 + Math.round(H * 0.006)) });
+      // NO BLACK STRIP UNDER A CARD (v9.730, 2026-10-23, Aaron: "the black border on the bottom of that white image"). MEASURED on
+      // img_ca1081e14eab553273c3e (Rainbow Legacy, 482x472): the last rows were sheet black. The rows added here were black by
+      // definition (blackRow), so they only ever added black; a title strip has words in it and is never a black row.
+      boxes.push({ x0, x1, top: st, bot: Math.min(next, y + 1) });
     }
   }
   if (!boxes.length) return { ok: false, error: "no cards found (" + W + "x" + H + ")" };
@@ -60378,6 +60383,12 @@ function printLayout(pB64, pIn, pLong, opts) {
           const _inner = String(_svg || "").replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
           if (_inner && /<path/.test(_inner)) pVec = _inner;
           console.log("[PRINT] traced to vector: " + (pVec ? pVec.length + " chars" : "nothing usable"));
+          // A DRAWING TOO BUSY TO LAY OUT PRINTS AS ITS IMAGE (v9.731, 2026-10-23, Aaron). MEASURED 08:12-08:14 (Rainbow Legacy): all three
+          // stencils traced to 1,246,926 - 2,293,114 characters and the renderer gave up at 30s ("Navigation timeout of 30000 ms
+          // exceeded"); no PDF at all. Over the line - `config:print:vector_max`, read by the caller, 800,000 by default - the stencil
+          // goes in as its own image, which is how it prints anyway (2048 pixels on a 5 in page is about 400 dpi).
+          const _vMax = Number(opts.vecMax) > 0 ? Number(opts.vecMax) : 800000;
+          if (pVec && pVec.length > _vMax) { console.log("[PRINT] " + pVec.length + " chars is over " + _vMax + " - too busy to lay out in time, printing the image"); pVec = null; }
         } catch (e) { console.log("[PRINT] trace failed, printing pixels: " + String(e && e.message || e).slice(0, 160)); }
 
         const MIN_DPI = 150;   // the floor below which linework stops burning cleanly
@@ -60499,6 +60510,7 @@ async function artistPdf(env, o) {
     return id ? await env.AURA_KV.get("image:" + id).catch(() => null) : null;
   };
   let defs = "", body = "", page = 3, vecN = 0, first = null, anyVec = false;   // page 1 the job sheet, page 2 how to use them
+  let _vMaxA = 0; try { _vMaxA = Number(String((await env.AURA_KV.get("config:print:vector_max")) || "").trim()) || 0; } catch {}
   const guide = [], perPanel = [];
   for (const pn of (o.panels || [])) {
     const items = [], _p0 = page;
@@ -60533,7 +60545,7 @@ async function artistPdf(env, o) {
       if (!L) {
         const b64 = await bytesOf(it.url);
         if (!b64) { guide.push([(pn.name ? pn.name + " - " : "") + it.label, "not available"]); continue; }
-        try { L = printLayout(b64, pn.inches, !!pn.long, it.colour ? { trace: false, jpeg: true, fit: true } : (it.trace ? { fit: true } : { trace: false, fit: true })); }
+        try { L = printLayout(b64, pn.inches, !!pn.long, it.colour ? { trace: false, jpeg: true, fit: true } : (it.trace ? { fit: true, vecMax: _vMaxA } : { trace: false, fit: true })); }
         catch (e) { guide.push([(pn.name ? pn.name + " - " : "") + it.label, "could not be laid out"]); continue; }
         if (L.pVec) { L.gid = "a" + (vecN++); defs += '<g id="' + L.gid + '">' + L.pVec + "</g>"; anyVec = true; }
         laid[it.url] = L;
@@ -60591,8 +60603,9 @@ async function artistPdf(env, o) {
   try {
     br = await puppeteer.launch(env.BROWSER);
     const pg = await br.newPage();
-    await pg.setContent(html, { waitUntil: "networkidle0" });
-    pdfBytes = await pg.pdf({ printBackground: true, preferCSSPageSize: true });
+    // 90s, NOT 30 (v9.731): a detailed design needs longer to lay out than the default allows.
+    await pg.setContent(html, { waitUntil: "networkidle0", timeout: 90000 });
+    pdfBytes = await pg.pdf({ printBackground: true, preferCSSPageSize: true, timeout: 90000 });
   } catch (e) { return { ok: false, error: "COULD_NOT_RENDER", why: String(e && e.message || e).slice(0, 200) }; }
   finally { if (br) { try { await br.close(); } catch {} } }
   const arr = new Uint8Array(pdfBytes);
@@ -64982,13 +64995,15 @@ async function makeArtistFiles(env, ctx) {
                 z.sh.pdf = _one.pdf; z.sh.vector = !!_one.vector; z.sh.inches = pp.inches || _one.inches; z.sh.sheets = pp.sheets || null; });
               pdfTotal = _one.sheets || 0;
               pdfUrl = _one.pdf; pdfInches = _one.inches;
-            } else console.log("[ARTIST] the one PDF was not made (" + String((_one && (_one.error || _one.why)) || "?") + ") - a line-art PDF per panel instead");
+            } else console.log("[ARTIST] the one PDF was not made (" + String((_one && _one.error) || "?") + (_one && _one.why ? ": " + String(_one.why) : "") + ") - a line-art PDF per panel instead");
             for (const z of (_one && _one.ok) ? [] : _sizes) {
               const sh = z.sh, sid = sh.lineId || sh.id, shIn = z.inches, _shLong = z.long;
               if (!sid) continue;
               try {
                 const pr2 = await processCommand("PRINT " + sid + " " + shIn + (_shLong ? " long" : "") + " " + me, env, true);
                 const pp = (pr2 && pr2.payload) ? pr2.payload : pr2;
+                // THE REASON TOO (v9.730): MEASURED 08:08 - the per-panel PDF failed after the one PDF and nothing said why.
+                if (!(pp && pp.ok && pp.pdf)) console.log("[ARTIST] the line-art PDF for " + sid + " was not made (" + String((pp && pp.error) || "?") + (pp && pp.why ? ": " + String(pp.why) : "") + ")");
                 if (pp && pp.ok && pp.pdf) {
                   sh.pdf = pp.pdf; sh.sheets = pp.sheets || 1; sh.inches = pp.inches; sh.vector = !!pp.vector;
                   pdfTotal += (pp.sheets || 1);
@@ -67331,7 +67346,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
                   await talkStatePut(env, me, "design_change_parent", ""); await talkStatePut(env, me, "new_flow", "1");
                   await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "new_start", _s.slice(0, 500)); } catch {}
-          } else if (_bodyPhoto && _s && !!(opts && opts.change_now) && !(opts && opts.inspire) && await (async () => {
+          // A PICTURE TURNED INTO A TATTOO IS NOT ON A BODY (v9.730, 2026-10-23, Aaron). MEASURED 08:05 (Ink It, the swing photo):
+          // "Let's meet the tree have some color in it" took the add-on line - "imagining that change on you now" - because the photo
+          // they sent counts as a photo held. With job `from` it is what the tattoo is made from, so a change is the design's own four.
+          } else if (_bodyPhoto && String((carriedObj && carriedObj.job) || "").toLowerCase() !== "from" && _s && !!(opts && opts.change_now) && !(opts && opts.inspire) && await (async () => {
                        // ONE WAY FOR EVERY PICTURE (v9.665, 2026-10-18, Aaron: "it's literally the same for every image - here's the
                        // image, here's what I want to do with it, show me 4 versions"). MEASURED 10:56: Fine-tune on a chosen add-on sent
                        // only their original photo and her one-line brief for one picture - the chosen design was never seen and the
@@ -67347,7 +67365,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        return false; })()) {
             _fixedWhy = "addon_change"; _addonChangeWords = _s;
             _fixedSay = await _fx("addon_change8", "On it - imagining that change on you now.");
-          } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && !_bodyPhoto) {
+          } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && (!_bodyPhoto || String((carriedObj && carriedObj.job) || "").toLowerCase() === "from")) {
             _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining that change for you now.");
           } else if (_bodyPhoto && /^\s*imagine\s+(?:4|four|8|eight)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s) && await (async () => {
                        // FOUR POSSIBILITIES OF A CHOSEN ADD-ON (v9.661, 2026-10-18, Aaron): "the same way we do tattoos ... a version

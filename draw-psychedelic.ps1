@@ -1,0 +1,17 @@
+﻿cd "C:\Users\Aaron Karacas\aura-worker\aura\aura-workers\aura-core"
+$names = @('Cosmic Dreamer','Galaxy Within','Nebula Heart','The Star Child','Planet Garden','Cosmic Bloom','The Sleeping Universe','Orbital Dream','The Galaxy Tear','Beyond the Stars','The Neon Toadstool','Enchanted Fungi','The Secret Mushroom Door','Rainbow Mycelium','The Mushroom Planet','Dreamcap Forest','The Tiny Fungi Spirit','Mushroom Moonrise','The Infinite Spore','Celestial Bloom','Solar Flower','Moonlit Lotus','The Cosmic Rose','Flower of Infinity','The Floating Orchid','The Psychedelic Dandelion','Rainbow Chrysanthemum','The Dreaming Succulent','The Flowering Galaxy','Sun and Moon','The Laughing Sun','Moon Face Mirage','Solar Eclipse Dream','The Twin Suns','The Moon Eater','Celestial Lovers','The Rainbow Crescent','The Solar Portal','Midnight Sunflower','Floating Landscape','The Upside-Down Forest','Rainbow Waterfall','The Floating Mountain','The Secret Valley','The Ocean in the Sky','The Rainbow Desert','The Floating Garden','The Dream Canyon','The Infinite Horizon','Dream Jellyfish','The Rainbow Serpent','Cosmic Butterfly','The Electric Moth','The Dream Whale','The Floating Koi','The Nebula Octopus','The Rainbow Fox','The Cosmic Hummingbird','The Dreaming Seahorse','Liquid Rainbow','The Chromatic Spiral','The Color Wave','The Melting Spectrum','The Infinite Ribbon','The Psychedelic Portal','The Liquid Diamond','The Chromatic Eye','The Floating Geometry','The Fractal Bloom','The Third Eye Garden','The Cosmic Mandala','The Infinite Lotus','The Dreamcatcher Galaxy','The Rainbow Eye Portal','The Sacred Spiral','The Celestial Compass','The Cosmic Keyhole','The Starseed Symbol','The Portal Within','The Floating Face','The Dream Staircase','The Colorful Void','The Infinite Wave','The Dream Balloon','The Floating Clock','The Cosmic Window','The Dreaming Mask','The Rainbow Tear','The Infinite Garden Gate','The Cosmic Dream Temple','The Rainbow Phoenix','The Dream Dragon','The Planetary Tree','The Ocean of Stars','The Celestial Hourglass','The Dream Weaver','The Cosmic Treehouse','The Universe in a Flower','The Grand Dreamscape')
+$tree = ((npx wrangler kv key get --namespace-id "9c2ba111589e48c6ba5ad1b924ae8809" "card:tree" --remote 2>$null | Out-String).Trim() | ConvertFrom-Json)
+$have = @{}; foreach ($k in @($tree.subjects.'Psychedelic Dream Worlds')) { foreach ($n in @($tree.specific.$k)) { $have[$n.ToLower()] = $n } }
+RUN "SETKV config:source:redo:model gpt-image-2" | Out-Null
+"  REDO model set to gpt-image-2 for this set - waiting 70 seconds..."
+Start-Sleep -Seconds 70
+$i = 0; $ok = 0; $bad = @()
+foreach ($n in $names) { $i++
+  $nm = $n; foreach ($h in $have.Values) { if ($h -eq $n -or $h -eq ($n + " in Psychedelic Dream Worlds Style")) { $nm = $h } }
+  $r = (RUN ("REDO " + $nm) | Out-String)
+  if ($r -match '->  (https://[^"]+)"') { $ok++; "  " + $i + "/99 " + $nm + " -> " + $matches[1] } else { $bad += $nm; "  " + $i + "/99 " + $nm + " -> NOT DRAWN: " + ($r.Substring(0, [Math]::Min(200, $r.Length))) }
+}
+"== drawn: " + $ok + " of 99 =="
+if ($bad.Count) { "== not drawn - send me this list ==" ; $bad }
+$old = ""; $f = Join-Path (Get-Location) "redo-model-before.txt"; if (Test-Path $f) { $old = (Get-Content $f -Raw).Trim() }
+if ($old) { RUN ("SETKV config:source:redo:model " + $old) | Out-Null; "  the REDO model is back to " + $old } else { RUN "DELKV config:source:redo:model" | Out-Null; "  the REDO model setting is back to empty (the default)" }

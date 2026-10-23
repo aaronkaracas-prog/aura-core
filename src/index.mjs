@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.728.0-2026-10-23-small-copies-as-jpeg";
+const BUILD = "aura-core-v9.729.0-2026-10-23-a-chosen-design-is-what-changes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69213,7 +69213,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // the difference now is the whole description rides every time.
           // Cover-up and rework start from their photo every time too (2026-10-01, v9.509, Aaron).
           const _addOnPhoto = ["add", "cover", "rework"].includes(String(jobNow || "")) && _bodyPhoto && !!refDesign && !(opts && opts.inspire);
-          const parentId = (_addOnPhoto || _fromPic) ? refDesign
+          // ══ A PICTURE TURNED INTO A TATTOO: THE PHOTO ONLY UNTIL A DESIGN IS CHOSEN (v9.729, 2026-10-23, Aaron) ═════════════
+          // MEASURED 07:38 (pta_8c4f4cd6f9f7f3db, Ink It): the swing photo -> eight designs -> they picked Shared Roots -> "Let's add
+          // color to the tree" went out with the SWING PHOTO as "my tattoo design" (ent_1d9ff1fc...), and the chat model said "the
+          // attachment shows a playground photo, not a tattoo design" and drew eight bare trees. `from` sent the photo every turn.
+          // The photo is still what the first eight and "Imagine 8 more" are made from (a sheet is not a chosen design - _drewNow
+          // already says so); once a design is chosen, a change starts from that design, like every other new tattoo.
+          const parentId = (_addOnPhoto || (_fromPic && !_drewNow())) ? refDesign
             : ((_drewNow() && !_resetToPhoto) ? lastDrawn.design : (refDesign || lastDrawn.design));
           const alsoRefs = [];
           // ══ `pieces` IS GONE, AND IT WAS MINE (2026-09-10) ═════════════════════════

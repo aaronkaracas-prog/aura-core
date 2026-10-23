@@ -1,0 +1,17 @@
+﻿cd "C:\Users\Aaron Karacas\aura-worker\aura\aura-workers\aura-core"
+$names = @('A Father''s Legacy','Her Beautiful Smile','Forever My Brother','The Face I Remember','A Mother''s Embrace','His Kind Eyes','Three Generations','Her Favorite Photograph','A Face in My Heart','In Your Own Words','The Words You Left Me','Forever in Ink','Your Birthday in Stars','Until We Meet Again','The Last Note','Your Name, My Heart','A Date I''ll Carry','Handwritten Forever','The Signature Flower','Her Birth Flowers','The Last Rose','Always Blooming','Father''s Garden','A Flower for Mom','Her Favorite Peonies','The Forget-Me-Not Tribute','A Garden of Memories','The Last Sunflower','Petals of Love','You Gave Me Wings','A Light That Remains','The Butterfly''s Journey','Still Among the Stars','The Bird That Visits','Love Never Leaves','A Piece of My Heart','The Gentle Dove','One Star Brighter','Forever Connected','A Mother''s Hands','Dad''s Loving Hand','The Family Tree','Her Warm Embrace','Generations Together','The Place We Gathered','A Father''s Compass','Mother''s Loving Heart','The Family Constellation','Home in Your Arms','Our Forever','Still My Person','The Day We Met','Love Beyond Time','Your Hand in Mine','The Dance We Shared','Half of My Heart','Our Favorite Place','The Promise We Kept','Always Beside Me','Good Boy','Forever My Cat','Pawprints Beside Me','The Ears I''d Know Anywhere','Our Last Walk','Whiskers and Wildflowers','Forever at My Feet','The Bird Who Sang','Little Soul, Big Heart','Waiting at the Rainbow Bridge','Where We Said Goodbye','The Mountain We Loved','Our Favorite Sunset','The Garden We Shared','A Place in the Sky','The Old Family Home','The Shore We Remember','Our Quiet Bench','The Road We Traveled','The Window of Memories','One Little Heart','The Smallest Star','A Single Feather','The Tiny Forget-Me-Not','Always Near','A Little Butterfly','The Quiet Dove','A Date in Flowers','One Continuous Line','The Little Moon','I Carry You Always','Still Tastes Like Home','The Photograph I Keep','A Thousand Little Memories','Your Light Remains','The Things You Taught Me','A Love That Stays','Beyond the Horizon','Every Petal, Every Memory','Forever in My Story')
+$tree = ((npx wrangler kv key get --namespace-id "9c2ba111589e48c6ba5ad1b924ae8809" "card:tree" --remote 2>$null | Out-String).Trim() | ConvertFrom-Json)
+$have = @{}; foreach ($k in @($tree.subjects.'Memorials')) { foreach ($n in @($tree.specific.$k)) { $have[$n.ToLower()] = $n } }
+RUN "SETKV config:source:redo:model gpt-image-2" | Out-Null
+"  REDO model set to gpt-image-2 for this set - waiting 70 seconds..."
+Start-Sleep -Seconds 70
+$i = 0; $ok = 0; $bad = @()
+foreach ($n in $names) { $i++
+  $nm = $n; foreach ($h in $have.Values) { if ($h -eq $n -or $h -eq ($n + " in Memorials Style")) { $nm = $h } }
+  $r = (RUN ("REDO " + $nm) | Out-String)
+  if ($r -match '->  (https://[^"]+)"') { $ok++; "  " + $i + "/99 " + $nm + " -> " + $matches[1] } else { $bad += $nm; "  " + $i + "/99 " + $nm + " -> NOT DRAWN: " + ($r.Substring(0, [Math]::Min(200, $r.Length))) }
+}
+"== drawn: " + $ok + " of 99 =="
+if ($bad.Count) { "== not drawn - send me this list ==" ; $bad }
+$old = ""; $f = Join-Path (Get-Location) "redo-model-before.txt"; if (Test-Path $f) { $old = (Get-Content $f -Raw).Trim() }
+if ($old) { RUN ("SETKV config:source:redo:model " + $old) | Out-Null; "  the REDO model is back to " + $old } else { RUN "DELKV config:source:redo:model" | Out-Null; "  the REDO model setting is back to empty (the default)" }

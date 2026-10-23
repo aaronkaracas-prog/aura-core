@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.733.0-2026-10-23-white-corners-on-cut-cards";
+const BUILD = "aura-core-v9.734.0-2026-10-23-fresh-picture-address-in-artist-pdf";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60539,6 +60539,7 @@ async function artistPdf(env, o) {
   };
   let defs = "", body = "", page = 3, vecN = 0, first = null, anyVec = false;   // page 1 the job sheet, page 2 how to use them
   let _vMaxA = 0; try { _vMaxA = Number(String((await env.AURA_KV.get("config:print:vector_max")) || "").trim()) || 0; } catch {}
+  const _pdfTag = Date.now().toString(36);   // v9.734 - one tag per PDF, on every picture address (see A FRESH ADDRESS below)
   const guide = [], perPanel = [];
   for (const pn of (o.panels || [])) {
     const items = [], _p0 = page;
@@ -60562,7 +60563,13 @@ async function artistPdf(env, o) {
       // fitted to the paper, the mirrored one flipped by the page. Only the traced linework is laid out here.
       if (!it.trace) {
         const start = page, flip = it.mirror ? "transform:scaleX(-1);" : "";
-        body += '<div class="art" style="height:10in"><img style="' + flip + 'max-height:10in;max-width:7.5in;width:auto;height:auto" src="' + esc(it.url) + '"></div>';
+        // ══ A FRESH ADDRESS FOR EVERY PICTURE (v9.734, 2026-10-23, Aaron: "it's always worked until today") ══════════════════════
+        // MEASURED 11:04-11:18 (Rainbow Reverie, ARTIST_PDF): the same cut card at its plain address timed the browser out at 90s
+        // four times running - and Garden Swing's card, which printed fine at 10:15, did the same. The SAME card with "?fresh=1"
+        // made all 9 pages in 14s. Pictures are sent "keep for a year", and the copy Cloudflare kept for the PDF browser had gone
+        // bad. Each picture here gets its own one-off tag, so the browser always fetches it from our storage, never a kept copy.
+        const _fresh = it.url + (String(it.url).includes("?") ? "&" : "?") + "pdf=" + _pdfTag;
+        body += '<div class="art" style="height:10in"><img style="' + flip + 'max-height:10in;max-width:7.5in;width:auto;height:auto" src="' + esc(_fresh) + '"></div>';
         page++;
         if (!it.colour && _tall == null) _tall = Number(pn.inches) || null;
         guide.push([(pn.name ? pn.name + " - " : "") + it.label, "page " + start +

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.723.0-2026-10-22-a-style-is-a-conversation";
+const BUILD = "aura-core-v9.724.0-2026-10-22-the-whole-story-goes-to-the-drawing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60764,6 +60764,10 @@ async function toEight(env, sentence, kind) {
   if (cut > 0) s = s.slice(0, cut).trim();
   const _kn = kind === "direct" ? "direct" : kind === "bodydirect" ? "bodydirect" : kind === "flat" ? "flat" : "body";
   let end = _kn === "direct" ? SHEET8_DIRECT : _kn === "bodydirect" ? SHEET8_BODY_DIRECT : _kn === "flat" ? SHEET8_FLAT : SHEET8_BODY;
+  // THE WHOLE DESIGN SHOWS (v9.724, 2026-10-22, Aaron: "are we cutting it off"): MEASURED 16:32 img_cc0d3fa402b22a38c8947 - "Keep the same
+  // view of my body as this photo" kept the photo's framing, the arm ran off the edge and the dragon's tail with it. On their photo the
+  // sheet zooms out just enough to show the whole piece instead.
+  if (_kn === "body" || _kn === "bodydirect") s = s.replace(/\s*Keep the same view of my body as this photo\.?/i, " Zoom out just enough that the whole design shows on my body, nothing cut off at the edges.");
   try { const k = String((await env.AURA_KV.get("config:frame:sheet8:" + _kn)) || "").trim(); if (k) end = k; } catch {}
   // A STYLE DECIDES THE COLOUR (v9.723, 2026-10-22). MEASURED 15:50: "in the Black & Grey Realism style" with "Use colour wherever it
   // works" drew a green-and-blue hummingbird. When a style is named, the colour line comes out of the sentence and the ending.
@@ -67123,6 +67127,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         try {
           const _s = String(said || "").trim();
           const _fx = async (k, d) => { try { const v = String((await env.AURA_KV.get("config:say:" + k)) || "").trim(); return v || d; } catch { return d; } };
+          // ══ THEIR STORY SO FAR (v9.724, 2026-10-22 walk) ═══ MEASURED 16:55: "my dog Dido passed last year, she was a black lab" then
+          // "her sitting on the shoreline" - only the last line reached the drawing and every card drew a woman with a dog. What they have
+          // told her since this tattoo started, taps and the page's own notes left out, in order.
+          const _told = (() => { try {
+            const _tl = (typeof tnow !== "undefined" && Array.isArray(tnow)) ? tnow : [];
+            let _st = 0; for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (e && e.role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(e.said || ""))) { _st = i + 1; break; } }
+            const _tap = /^\s*(tell me|show me\b.*|i have an idea|i want it to mean something|i have a memory|it'?s about someone|let'?s create my own\b.*|i like the .+ style|imagine\b.*|i want number [1-8]|i choose\b.*|this is my tattoo|fine-?\s?tune it|keep it like this|yes\b.*|yeah\b.*|ok(ay)?|sure|go( ahead)?|talk to me|here'?s something i like|what could it mean\??|what style is this\??|i'?m not sure yet.*)[\s.!?]*$/i;
+            return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
+              .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
+          } catch { return ""; } })();
           let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea"]); } catch {}
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
@@ -67214,8 +67228,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _newStyle = String(_s.match(/^let'?s create my own in the (.+) style\.?$/i)[1]).slice(0, 80);
             try { await talkStatePut(env, me, "new_style", _newStyle); await talkStatePut(env, me, "await_idea", "1"); } catch {}
             _fixedWhy = "create_own";
-            _fixedSay = (await _fx("create_own", "Love it - tell me what you want in your ____ piece.")).replace("____", _newStyle);
-            console.log("[TURN:STYLE] work on this style: " + _newStyle + (me ? " · who=" + me : ""));
+            // SHE DOES NOT ASK AGAIN (v9.724, 2026-10-22 walk): after "my dog Dido passed..." picking fine line got "tell me what you want in
+            // your fine line piece". When they have already told her, the line says so; the page shows Imagine some designs / I'll tell you more.
+            _fixedSay = _told
+              ? (await _fx("create_own_more", "Love it - ____ it is. Tell me anything else you'd like in it, or I can imagine some designs now.")).replace("____", _newStyle)
+              : (await _fx("create_own", "Love it - tell me what you want in your ____ piece.")).replace("____", _newStyle);
+            console.log("[TURN:STYLE] work on this style: " + _newStyle + (_told ? " - they had already told her, she does not ask again" : "") + (me ? " · who=" + me : ""));
           } else if (/^let'?s create my own in the (.+) style\.?$/i.test(_s) && ["add", "cover"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase())) {
             // ══ A STYLE ON A COVER-UP OR ADD-ON IS A CONVERSATION (v9.723, 2026-10-22, Aaron: "I chose something I'd like to work on,
             // but I never had a choice to talk about it") ═══ MEASURED 15:50: Black & Grey Realism + Continue drew the 8 at once. The
@@ -67268,7 +67286,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 "DRAW when there is anything in what they said to imagine a tattoo from. TALK only when there is nothing yet to imagine " +
                 "from (for example they only shared a feeling) - then your words are your reply to them, with no mention of designs.";
               const _hq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _hMs)),
-                callBrain({ system: _hSys, user: _s.slice(0, 1200), max_tokens: 2000, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+                callBrain({ system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\nWhat they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
               const _hRaw = String((_hq && _hq.text) || "").trim();
               const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(DRAW|TALK)\W*\s*([\s\S]*)$/i);
               const _hDo = _hm ? _hm[1].toUpperCase() : null;

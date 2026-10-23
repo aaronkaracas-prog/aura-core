@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.736.0-2026-10-23-photo-sentence-and-card-keeps-its-name";
+const BUILD = "aura-core-v9.737.0-2026-10-23-turn-resend-and-sheet-cards-kept";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -70790,7 +70790,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   ? [{ ts: _atP, image: drew.image, design: drew.design || null,
                        words: String(drew.changed || drew.asked || "").slice(0, 300),
                        // A look at it on them is not a new version of the design (2026-10-08, v9.544).
-                       ...(drew.on_me ? { on_me: true } : {}) }] : []) ],
+                       ...(drew.on_me ? { on_me: true } : {}),
+                       // AN EIGHT-CARD SHEET KEEPS ITS CARDS (v9.737, 2026-10-23, Aaron): reopening the tattoo shows the cut cards
+                       // with their titles, not the uncut sheet.
+                       ...(drew.four_directions ? { grid: true } : {}),
+                       ...(Array.isArray(drew.cards8) && drew.cards8.length ? { cards8: drew.cards8 } : {}) }] : []) ],
               // Named from its first picture - the words it was drawn from, up to the first comma.
               // A catalogue pick is named after the design they chose ("Micro-Real Lion").
               // Her brief's subject when she has one ("geisha with hannya mask") - the words a picture
@@ -70874,14 +70878,6 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // NOT A STATUS AS A NAME (2026-10-11, v9.566): MEASURED - a tattoo was titled "Locked In". A name
                   // is what the tattoo is, never what just happened to it.
                   if (n && /^(locked( in)?|your tattoo|tattoo|untitled|name|none|n\/a)$/i.test(n.trim())) n = "";
-                  // ══ THE CARD THEY PICKED KEEPS ITS NAME (v9.736, 2026-10-23, Aaron: "go") ═══ MEASURED 12:01-12:02: they picked
-                  // "Coastal Classic" off the eight; at the lock she named it "Beach Bug at Sunset" and that replaced the card's title.
-                  // A tattoo already named by its card (card_named, set when it was picked) keeps that name; she still reads the colour.
-                  let _keptN = null;
-                  try { const _pr = await talkDo(env, me, "talkProject", [_pidN]);
-                        const _pj = (_pr && _pr.ok && _pr.project) ? _pr.project : null;
-                        if (_pj && _pj.card_named && _pj.name_final) _keptN = String(_pj.name_final); } catch {}
-                  if (_keptN && n) { console.log("[NAME] kept the card's title: " + _keptN + " - her name \"" + n + "\" not used"); n = ""; }
                   if (n || c) {
                     await projectAppend(env, me, _pidN, { ...(n ? { name_final: n } : {}), ...(c ? { details: { colour: c } } : {}) });
                   }
@@ -71755,9 +71751,12 @@ export class PublicEntry extends WorkerEntrypoint {
       // A TURN THE PAGE LOST (v9.572): the finished turn, by the id the page sent with it.
       if (action === "talklast") {
         const tid = String(b.tid || "").slice(0, 40);
-        let lt = null; try { lt = talkParse((await talkStateGet(env, me, ["lastturn"])).lastturn); } catch {}
+        let lt = null, _st = null;
+        try { const _r = await talkStateGet(env, me, ["lastturn", "turnstart"]); lt = talkParse(_r.lastturn); _st = _r.turnstart || null; } catch {}
         if (tid && lt && lt.tid === tid) return { ok: true, done: true, turn: lt };
-        return { ok: true, done: false };
+        // DID IT EVER ARRIVE (v9.737, 2026-10-23): MEASURED 12:49 - "I choose Wings Of Wonder" never reached us and the page waited for
+        // it. `started` tells the page whether to send it again (it does, once, with the same id - see SENT TWICE, RUN ONCE).
+        return { ok: true, done: false, started: !!(tid && _st === tid) };
       }
       // ══ HER OPTIONS AFTER EVERY PICTURE (v9.635, 2026-10-16, Aaron) ══════════════════════════════════════════════════
       // "She sees what's going on better than they do and she can be there and advise." After a sheet or a single design the
@@ -71972,6 +71971,17 @@ export class PublicEntry extends WorkerEntrypoint {
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
           // lost the picture is visible in the output rather than looking like her judgement.
           return (_ref && _o && typeof _o === "object") ? { ..._o, ref: _ref } : _o;
+        }
+        // ══ SENT TWICE, RUN ONCE (v9.737, 2026-10-23, Aaron: "it keeps trying to make it happen") ══════════════════════════
+        // The page sends a turn again when its connection dropped and we say it never arrived. If the first send did arrive after all,
+        // this one is turned away - the page keeps waiting for the first one's answer. Every turn with an id is marked as started.
+        if (me && b.tid) {
+          const _tidS = String(b.tid).slice(0, 40);
+          let _seen = null; try { _seen = (await talkStateGet(env, me, ["turnstart"])).turnstart || null; } catch {}
+          if (_seen === _tidS) { try { console.log("[TURNJOB] turn " + _tidS + " sent again but already running - not run twice · who=" + me); } catch {}
+            return { ok: false, dup: true, error: "ALREADY_RUNNING" }; }
+          try { await talkStatePut(env, me, "turnstart", _tidS); } catch {}
+          if (b.resent) { try { console.log("[TURNJOB] turn " + _tidS + " arrived on the page's second try · who=" + me); } catch {} }
         }
         const { readable, writable } = new TransformStream();
         const _w = writable.getWriter();

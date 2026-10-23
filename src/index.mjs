@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.731.0-2026-10-23-busy-drawings-print-as-images";
+const BUILD = "aura-core-v9.732.0-2026-10-23-pdf-browser-stays-open";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -10624,11 +10624,17 @@ async function processCommand(line, env, isOp) {
 
       let pdfBytes = null, pBrowser = null;
       try {
-        pBrowser = await puppeteer.launch(env.BROWSER);
+        // KEEP THE BROWSER OPEN FOR THE WHOLE WAIT (v9.732, 2026-10-23): Cloudflare closes a browser after 60s without activity
+        // (developers.cloudflare.com/browser-rendering/limits). v9.731 waited up to 90s, so the browser closed under the job -
+        // MEASURED 08:34: "Navigating frame was detached" / "Connection closed" at 73s. keep_alive outlasts the wait.
+        const _t0 = Date.now();
+        pBrowser = await puppeteer.launch(env.BROWSER, { keep_alive: 150000 });
         const pg = await pBrowser.newPage();
         // 90s, NOT 30 (v9.731): a detailed design needs longer to lay out than the default allows.
         await pg.setContent(html, { waitUntil: "networkidle0", timeout: 90000 });
+        const _t1 = Date.now();
         pdfBytes = await pg.pdf({ printBackground: true, preferCSSPageSize: true, timeout: 90000 });
+        try { console.log("[PRINT] timing - page " + Math.round(html.length / 1024) + "KB, browser+layout " + ((_t1 - _t0) / 1000).toFixed(1) + "s, pdf " + ((Date.now() - _t1) / 1000).toFixed(1) + "s"); } catch {}
       } catch (e) {
         return { cmd: "PRINT", payload: { ok: false, error: "COULD_NOT_RENDER",
           why: String(e && e.message || e).slice(0, 200) } };
@@ -60601,11 +60607,15 @@ async function artistPdf(env, o) {
     body + "</body></html>";
   let pdfBytes = null, br = null;
   try {
-    br = await puppeteer.launch(env.BROWSER);
+    // KEEP THE BROWSER OPEN FOR THE WHOLE WAIT (v9.732) - see PRINT.
+    const _t0 = Date.now();
+    br = await puppeteer.launch(env.BROWSER, { keep_alive: 150000 });
     const pg = await br.newPage();
     // 90s, NOT 30 (v9.731): a detailed design needs longer to lay out than the default allows.
     await pg.setContent(html, { waitUntil: "networkidle0", timeout: 90000 });
+    const _t1 = Date.now();
     pdfBytes = await pg.pdf({ printBackground: true, preferCSSPageSize: true, timeout: 90000 });
+    try { console.log("[ARTIST] PDF timing - page " + Math.round(html.length / 1024) + "KB, browser+layout " + ((_t1 - _t0) / 1000).toFixed(1) + "s, pdf " + ((Date.now() - _t1) / 1000).toFixed(1) + "s"); } catch {}
   } catch (e) { return { ok: false, error: "COULD_NOT_RENDER", why: String(e && e.message || e).slice(0, 200) }; }
   finally { if (br) { try { await br.close(); } catch {} } }
   const arr = new Uint8Array(pdfBytes);

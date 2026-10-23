@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.735.0-2026-10-23-artist-pdf-waits-for-its-pictures";
+const BUILD = "aura-core-v9.736.0-2026-10-23-photo-sentence-and-card-keeps-its-name";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69837,6 +69837,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_designGrid) {
             let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the style of my design. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about what you changed and why in white. No numbers anywhere.";
             try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
+            // ══ A PHOTO IS NOT A TATTOO DESIGN (v9.736, 2026-10-23, Aaron: "go") ════════════════════════════════════════════
+            // MEASURED 10:25 (beach couple) and 12:00 (VW Beetle): Ink It's first eight went out as "This is my tattoo design. I want
+            // to change it: ..." with their PHOTO attached, and the chat model answered "The attachment is a beach photo rather than
+            // a tattoo design". The first sheet from a photo has its own sentence (`config:frame:inkit:grid`, "____" is their
+            // words); every change after it - a design is on screen by then - keeps the change sentence above, untouched.
+            const _inkFirst = (typeof _fromPic !== "undefined" && _fromPic) && !_drewNow() && _designWords !== "__poss__";
+            if (_inkFirst) {
+              _dg = "This is my photo. I want to turn it into a tattoo: ____. Show me 8 different tattoo designs made from it. Make number 1 the closest to the photo. For the others, be bold and imaginative. Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down";
+              try { const _k = String((await env.AURA_KV.get("config:frame:inkit:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
+              try { console.log("[TURN:DESIGN] the first eight from their photo - the photo sentence, not the change sentence"); } catch {}
+            }
             if (_designWords === "__poss__") {
               // FOUR POSSIBILITIES (v9.628, Aaron): its own sentence, a setting (`config:frame:design:possibilities`).
               _dg = POSS_SENTENCE;
@@ -70863,6 +70874,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // NOT A STATUS AS A NAME (2026-10-11, v9.566): MEASURED - a tattoo was titled "Locked In". A name
                   // is what the tattoo is, never what just happened to it.
                   if (n && /^(locked( in)?|your tattoo|tattoo|untitled|name|none|n\/a)$/i.test(n.trim())) n = "";
+                  // ══ THE CARD THEY PICKED KEEPS ITS NAME (v9.736, 2026-10-23, Aaron: "go") ═══ MEASURED 12:01-12:02: they picked
+                  // "Coastal Classic" off the eight; at the lock she named it "Beach Bug at Sunset" and that replaced the card's title.
+                  // A tattoo already named by its card (card_named, set when it was picked) keeps that name; she still reads the colour.
+                  let _keptN = null;
+                  try { const _pr = await talkDo(env, me, "talkProject", [_pidN]);
+                        const _pj = (_pr && _pr.ok && _pr.project) ? _pr.project : null;
+                        if (_pj && _pj.card_named && _pj.name_final) _keptN = String(_pj.name_final); } catch {}
+                  if (_keptN && n) { console.log("[NAME] kept the card's title: " + _keptN + " - her name \"" + n + "\" not used"); n = ""; }
                   if (n || c) {
                     await projectAppend(env, me, _pidN, { ...(n ? { name_final: n } : {}), ...(c ? { details: { colour: c } } : {}) });
                   }

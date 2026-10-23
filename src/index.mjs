@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.726.0-2026-10-23-small-copies-of-every-picture";
+const BUILD = "aura-core-v9.727.0-2026-10-23-small-copies-kept-in-kv";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -76426,19 +76426,23 @@ function openAlbum(idx){
       // `?w=240|480|720` hands back a WebP that wide (never wider than the original), made the first time it is asked for and kept in
       // R2 beside the original as `<id>_w<w>.webp` - every later view is a plain read. The original is never touched; anything
       // without `?w` is served exactly as before. If the copy cannot be made, the original goes instead.
+      // v9.727 (2026-10-23): MEASURED - v9.726 made nothing. This worker has NO AURA_IMAGES binding (see tatStencilBytes), so the
+      // `env.AURA_IMAGES &&` gate skipped silently on all 364 pictures and every one went full size. Every picture lives in KV as
+      // base64 under `image:<id>`, so the original is read from there (R2 first only if a binding ever appears), and the small
+      // copy is kept in KV as raw bytes under `small:<id>_w<w>`. A skip or a failure is now logged, never silent.
       const _wq = parseInt(url.searchParams.get("w") || "", 10);
       const _w = [240, 480, 720].includes(_wq) ? _wq : 0;
-      if (_w && !_head && env.AURA_IMAGES && /^img_[A-Za-z0-9_-]+$/.test(id)) {
-        const _tk = id + "_w" + _w + ".webp";
-        const _have = await env.AURA_IMAGES.get(_tk).catch(() => null);
-        if (_have) return new Response(_have.body, { headers: { "content-type": _have.httpMetadata?.contentType || "image/webp",
-          ...(_have.size ? { "content-length": String(_have.size) } : {}), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });
+      if (_w && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
+        const _tk = "small:" + id + "_w" + _w;
+        const _have = await env.AURA_KV.getWithMetadata(_tk, { type: "arrayBuffer" }).catch(() => null);
+        if (_have && _have.value) return new Response(_have.value, { headers: { "content-type": (_have.metadata && _have.metadata.ct) || "image/webp",
+          "content-length": String(_have.value.byteLength), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });
         try {
           let _src = null;
-          const _o = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null);
-          if (_o) _src = new Uint8Array(await _o.arrayBuffer());
-          else { const _b = await env.AURA_KV.get(`image:${id}`).catch(() => null); if (_b) _src = Uint8Array.from(atob(_b), (c) => c.charCodeAt(0)); }
-          if (_src) {
+          if (env.AURA_IMAGES) { const _o = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null); if (_o) _src = new Uint8Array(await _o.arrayBuffer()); }
+          if (!_src) { const _b = await env.AURA_KV.get(`image:${id}`).catch(() => null); if (_b) _src = Uint8Array.from(atob(_b), (c) => c.charCodeAt(0)); }
+          if (!_src) { try { console.log("[SMALL] " + id + " w" + _w + " skipped: no original found under image:" + id); } catch {} }
+          else {
             const _im = PhotonImage.new_from_byteslice(_src);
             const _W = _im.get_width(), _H = _im.get_height();
             let _sm = _im;
@@ -76448,7 +76452,8 @@ function openAlbum(idx){
             try { if (_sm !== _im) _sm.free(); } catch {}
             try { _im.free(); } catch {}
             const _ct = _webp ? "image/webp" : "image/jpeg";
-            await env.AURA_IMAGES.put(_tk, _out, { httpMetadata: { contentType: _ct } }).catch(() => {});
+            await env.AURA_KV.put(_tk, _out, { metadata: { ct: _ct, w: _w, from: _W + "x" + _H } })
+              .catch((e) => { try { console.log("[SMALL] " + id + " w" + _w + " made but not kept: " + String(e?.message ?? e).slice(0, 160)); } catch {} });
             return new Response(_out, { headers: { "content-type": _ct, "content-length": String(_out.length),
               "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "made" } });
           }

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.732.0-2026-10-23-pdf-browser-stays-open";
+const BUILD = "aura-core-v9.733.0-2026-10-23-white-corners-on-cut-cards";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60253,6 +60253,26 @@ async function cutAllCards(env, url, copts) {
   boxes.sort((a, b) => a.top - b.top);
   const rowsB = []; for (const b of boxes) { const r = rowsB.find((g) => Math.abs(g[0].top - b.top) < H * 0.05); if (r) r.push(b); else rowsB.push([b]); }
   const ordered = rowsB.flatMap((g) => g.sort((a, b) => a.x0 - b.x0));
+  // WHITE CORNERS ON A WHITE CARD (v9.733, 2026-10-23, Aaron): the panels are drawn with rounded corners, so a straight cut keeps four
+  // black wedges of the sheet - MEASURED on Garden Swing's print file (doc_mvl8dh1p7jmq, page 3). On a card whose panel is white
+  // (its edges are white midway along the top and the side), the black joined to each corner - and only that, a small box at each
+  // corner - turns white. A card that is dark to its edge (art edge to edge) is left exactly as it is.
+  const _whiteCorners = (buf, w, h) => {
+    const L = (x, y) => { const o = (y * w + x) * 4; return (buf[o] + buf[o + 1] + buf[o + 2]) / 3; };
+    if (w < 40 || h < 40 || L(w >> 1, 2) < 200 || L(2, h >> 1) < 200 || L(w - 3, h >> 1) < 200) return;
+    const r = Math.max(8, Math.round(Math.min(w, h) * 0.08));
+    for (const [cx, cy, dx, dy] of [[0, 0, 1, 1], [w - 1, 0, -1, 1], [0, h - 1, 1, -1], [w - 1, h - 1, -1, -1]]) {
+      if (L(cx, cy) >= 60) continue;
+      const seen = new Uint8Array(r * r), st = [[0, 0]];
+      while (st.length) {
+        const [i, j] = st.pop(); if (i < 0 || j < 0 || i >= r || j >= r || seen[j * r + i]) continue;
+        seen[j * r + i] = 1; const x = cx + dx * i, y = cy + dy * j;
+        if (L(x, y) >= 60) continue;
+        const o = (y * w + x) * 4; buf[o] = 255; buf[o + 1] = 255; buf[o + 2] = 255;
+        st.push([i + 1, j], [i, j + 1], [i - 1, j], [i, j - 1]);
+      }
+    }
+  };
   const host = await imageHost(env), cards = [], _allPuts = [];
   for (let k = 0; k < ordered.length; k++) {
     const { x0, x1, top, bot } = ordered[k], cw = x1 - x0, ch = bot - top, dst = new Uint8Array(cw * ch * 4);
@@ -60260,6 +60280,7 @@ async function cutAllCards(env, url, copts) {
       const so = ((top + y) * W + (x0 + x)) * 4, to = (y * cw + x) * 4;
       dst[to] = px[so]; dst[to + 1] = px[so + 1]; dst[to + 2] = px[so + 2]; dst[to + 3] = 255;
     }
+    _whiteCorners(dst, cw, ch);
     const cut = new PhotonImage(dst, cw, ch); const bts = cut.get_bytes(); try { cut.free(); } catch {}
     let t = ""; for (let j = 0; j < bts.length; j += 8192) t += String.fromCharCode.apply(null, bts.subarray(j, j + 8192));
     const nid = "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -60279,6 +60300,7 @@ async function cutAllCards(env, url, copts) {
           const so = ((top + y) * W + (x0 + x)) * 4, to = (y * cw + x) * 4;
           adst[to] = px[so]; adst[to + 1] = px[so + 1]; adst[to + 2] = px[so + 2]; adst[to + 3] = 255;
         }
+        _whiteCorners(adst, cw, ah);
         const ac = new PhotonImage(adst, cw, ah); const abts = ac.get_bytes(); try { ac.free(); } catch {}
         let at = ""; for (let j = 0; j < abts.length; j += 8192) at += String.fromCharCode.apply(null, abts.subarray(j, j + 8192));
         const aid = "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");

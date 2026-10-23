@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.725.0-2026-10-23-show-it-pta-says-what-it-ignores";
+const BUILD = "aura-core-v9.726.0-2026-10-23-small-copies-of-every-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -76420,6 +76420,40 @@ function openAlbum(idx){
         } catch {}
         return "image/png";
       };
+      // ══ A SMALL COPY WHEN ONE IS ASKED FOR (v9.726, 2026-10-23, Aaron: "let's do that ourselves") ═══════════════════════════
+      // MEASURED 2026-10-22 on the walk: the 41 style cards came down at 1024x1536 to show at 104px, 9-15s each, and Cloudflare's
+      // own resizing (/cdn-cgi/image) is not on for this zone, so every small request fell back to the full picture.
+      // `?w=240|480|720` hands back a WebP that wide (never wider than the original), made the first time it is asked for and kept in
+      // R2 beside the original as `<id>_w<w>.webp` - every later view is a plain read. The original is never touched; anything
+      // without `?w` is served exactly as before. If the copy cannot be made, the original goes instead.
+      const _wq = parseInt(url.searchParams.get("w") || "", 10);
+      const _w = [240, 480, 720].includes(_wq) ? _wq : 0;
+      if (_w && !_head && env.AURA_IMAGES && /^img_[A-Za-z0-9_-]+$/.test(id)) {
+        const _tk = id + "_w" + _w + ".webp";
+        const _have = await env.AURA_IMAGES.get(_tk).catch(() => null);
+        if (_have) return new Response(_have.body, { headers: { "content-type": _have.httpMetadata?.contentType || "image/webp",
+          ...(_have.size ? { "content-length": String(_have.size) } : {}), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });
+        try {
+          let _src = null;
+          const _o = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null);
+          if (_o) _src = new Uint8Array(await _o.arrayBuffer());
+          else { const _b = await env.AURA_KV.get(`image:${id}`).catch(() => null); if (_b) _src = Uint8Array.from(atob(_b), (c) => c.charCodeAt(0)); }
+          if (_src) {
+            const _im = PhotonImage.new_from_byteslice(_src);
+            const _W = _im.get_width(), _H = _im.get_height();
+            let _sm = _im;
+            if (_W > _w) _sm = photonResize(_im, _w, Math.max(1, Math.round(_H * _w / _W)), PhotonSampling.Lanczos3);
+            const _webp = typeof _sm.get_bytes_webp === "function";
+            const _out = _webp ? _sm.get_bytes_webp() : _sm.get_bytes_jpeg(82);
+            try { if (_sm !== _im) _sm.free(); } catch {}
+            try { _im.free(); } catch {}
+            const _ct = _webp ? "image/webp" : "image/jpeg";
+            await env.AURA_IMAGES.put(_tk, _out, { httpMetadata: { contentType: _ct } }).catch(() => {});
+            return new Response(_out, { headers: { "content-type": _ct, "content-length": String(_out.length),
+              "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "made" } });
+          }
+        } catch (e) { try { console.log("[SMALL] " + id + " w" + _w + " not made: " + String(e?.message ?? e).slice(0, 160) + " - the original goes"); } catch {} }
+      }
       // PRIMARY: serve from permanent R2
       if (env.AURA_IMAGES) {
         const obj = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null);

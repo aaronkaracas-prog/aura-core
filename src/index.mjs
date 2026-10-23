@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.724.0-2026-10-22-the-whole-story-goes-to-the-drawing";
+const BUILD = "aura-core-v9.725.0-2026-10-23-show-it-pta-says-what-it-ignores";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -20066,6 +20066,13 @@ async function successionGate(env) {
       if (/^PTA\b/i.test(after)) {
         let p; try { p = JSON.parse(after.replace(/^PTA\s+/i, "").trim()); } catch (e) { return { cmd: "SHOW_IT", payload: { ok: false, error: "Usage: SHOW_IT PTA {subject, context, name?, via?, handle?}" } }; }
         if (!p || !p.subject) return { cmd: "SHOW_IT", payload: { ok: false, error: "subject required (what to show)" } };
+        // ══ EVERY FIELD IS READ OR REFUSED, HERE TOO (v9.725, 2026-10-23) ═══ MEASURED 23:27: a model, thinking, aspect and size sent
+        // to this form were dropped without a word and the picture came from the default model - a comparison that compared nothing.
+        // The plain form reads those fields; this one refuses them and says which form to use.
+        const _ptaOk = ["subject", "context", "name", "via", "handle", "dest"];
+        const _ptaOther = Object.keys(p).filter((k) => !_ptaOk.includes(k));
+        if (_ptaOther.length) return { cmd: "SHOW_IT", payload: { ok: false, error: "SHOW_IT PTA does not read: " + _ptaOther.join(", ") + ". Nothing was drawn.",
+          use_instead: "SHOW_IT {json} - the plain form reads model, thinking, aspect, res, width/height, seed, quality, refs and raw" } };
         const r = await showIt(p.subject, env, { source: "show_it_pta", pta: true, context: p.context || p.subject, name: p.name || null, via: p.via || null, handle: p.handle || null, dest: p.dest || null });
         return { cmd: "SHOW_IT", payload: r };
       }

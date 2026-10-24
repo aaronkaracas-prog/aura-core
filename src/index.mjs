@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.750.0-2026-10-24-inspiration-three-sources";
+const BUILD = "aura-core-v9.751.0-2026-10-24-inspiration-pictures-fixed";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58507,7 +58507,9 @@ async function cfWebSearch(env, query, provider, limit) {
   if (res && typeof res.json === "function") { const txt = await res.text(); try { j = JSON.parse(txt); } catch { return { ok: false, error: txt.slice(0, 300) }; } }
   if (j && j.ok === false) return { ok: false, error: (j.error && (j.error.message || j.error.code)) || "SEARCH_FAILED" };
   const list = (j && (j.items || j.results)) || [];
-  return { ok: true, items: (Array.isArray(list) ? list : []).map((x) => ({ url: x.url || null, title: x.title || null, description: x.description || null, image: x.image || null })) };
+  // MEASURED 16:20 (v9.751): exa sends the picture as `imageUrl` - read as `image` only, all ten Pinterest pins arrived with none and were dropped.
+  return { ok: true, items: (Array.isArray(list) ? list : []).map((x) => ({ url: x.url || null, title: x.title || null, description: x.description || null,
+    image: x.image || x.imageUrl || x.image_url || x.thumbnail || null })) };
 }
 
 async function findReference(query, env, opts = {}) {
@@ -72086,6 +72088,9 @@ export class PublicEntry extends WorkerEntrypoint {
               let n = 0;
               x.items.forEach((it) => { const u = String(it.url || ""); if (!u || _seen.has(u)) return;
                 if (src.only && !new RegExp(src.only).test(u)) return;
+                // ONLY TATTOOS (v9.751, Aaron: "we're only interested in tattoo images"): the page has to say it is a tattoo - its address,
+                // its title or its own words. A page about something else is left out before its picture is ever fetched.
+                if (!/tattoo|\bink(ed)?\b/i.test(u + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) return;
                 _seen.add(u); out.push({ ...it, src }); n++; });
               _counts.push(src.name + " \"" + x.q + "\" " + x.items.length + "/" + n);
             });
@@ -72115,7 +72120,7 @@ export class PublicEntry extends WorkerEntrypoint {
               const clean = (t) => String(t || "").split(/\s+\|\s+/)[0].replace(/\s*[•|-]\s*(Tattoodo|InkedMag|Inked Magazine|Pinterest)\s*$/i, "").trim();
               const ab = String(x.about || "");
               items.push({ image: x.img, title: clean(x.it.title || x.title2) || null, feel: null, artist: null,
-                about: (ab && !/cookies|similar technologies|autocomplete/i.test(ab)) ? ab.slice(0, 160) : null, from: x.it.src.name, page: x.it.url }); }
+                about: (ab && !/cookies|similar technologies|autocomplete|^find your next tattoo\.?$/i.test(ab.trim())) ? ab.slice(0, 160) : null, from: x.it.src.name, page: x.it.url }); }
           }
           const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
           try { await env.AURA_KV.put(_k, JSON.stringify({ items }), { expirationTtl: 3600 }); } catch {}

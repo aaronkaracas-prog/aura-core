@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.742.0-2026-10-24-her-voice";
+const BUILD = "aura-core-v9.743.0-2026-10-24-real-world-inspiration";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58496,8 +58496,14 @@ async function findReference(query, env, opts = {}) {
           // rules around their words ("THE SUBJECT IS NOT NEGOTIABLE", "return fewer and say so") made a
           // STYLE unfindable as a "subject" and permitted an empty answer. Same lesson as the pictures:
           // their words, plainly. The quality filters below still run - in code, after.
-          input: "Show me " + want + " real photos of " + q + ". Show each image, and after each one " +
-                 "write one short line about it.",
+          // GET INSPIRED, THE REAL WORLD (2026-10-24, Aaron, from his ChatGPT screens): each photo comes with its name, the
+          // artist when the page says who made it, one line, and the page it is on - so the list can credit and link it.
+          input: opts.detail
+            ? "Show me " + want + " real photos of real tattoos by real artists: " + q + ". Show each image, and after it " +
+              "write these lines:\nTitle: a short name for it\nArtist: the artist's name, only if the page says who made it\n" +
+              "About: one short line about it\nPage: the link to the page the photo is on"
+            : "Show me " + want + " real photos of " + q + ". Show each image, and after each one " +
+              "write one short line about it.",
           tools: [{ type: "web_search", enable_image_search: true }]
         })
       });
@@ -58534,9 +58540,11 @@ async function findReference(query, env, opts = {}) {
       // depth has to be counted rather than matched.
       const found = [];
       const seen = new Set();
+      const marks = [];
       const re = /!\[([^\]]*)\]\(/g;
       let m;
       while ((m = re.exec(text)) && found.length < want * 3) {
+        marks.push(m.index);
         let i = re.lastIndex, depth = 1, url = "";
         while (i < text.length && depth > 0) {
           const ch = text[i];
@@ -58551,7 +58559,22 @@ async function findReference(query, env, opts = {}) {
         if (seen.has(url)) continue;
         seen.add(url);
         let host = null; try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { continue; }
-        found.push({ image: url, title: (m[1] || "").slice(0, 120) || null, source: host });
+        found.push({ image: url, title: (m[1] || "").slice(0, 120) || null, source: host, _end: i + 1 });
+      }
+      // The lines after each photo, up to the next photo: its title, artist, one line and page (opts.detail).
+      for (const f of found) {
+        const end = f._end; delete f._end;
+        if (!opts.detail) continue;
+        const next = marks.find((x) => x > end);
+        const seg = text.slice(end, next == null ? text.length : next);
+        const line = (k) => { const mm = seg.match(new RegExp("^[\\s>*_-]*" + k + "\\s*[:\\-]\\s*(.+)$", "im"));
+          return mm ? mm[1].replace(/[*_`]/g, "").trim() : ""; };
+        const t = line("Title"), a = line("Artist"), ab = line("About");
+        const pg = (line("Page").match(/https?:\/\/[^\s)\]>"]+/) || seg.match(/\]\((https?:\/\/[^\s)]+)\)/) || [])[0] || "";
+        if (t) f.title = t.slice(0, 90);
+        if (a && !/^(unknown|not (named|stated|given|listed|credited|specified|mentioned)|n\/?a|none|unnamed|unclear)/i.test(a)) f.artist = a.slice(0, 60);
+        if (ab) f.about = ab.slice(0, 200);
+        if (/^https?:\/\//i.test(pg)) f.page = pg.replace(/[.,;]+$/, "");
       }
 
       // ══ DROP THE ONES NOBODY CAN USE ═══════════════════════════════════════════════════
@@ -71899,6 +71922,55 @@ export class PublicEntry extends WorkerEntrypoint {
       // it's automatically just having a conversation with them") ═══ The page sends each line she says; this speaks it with the voice
       // model on Workers AI and hands back the sound. Which model is a dial (`config:source:voice:model`), which voice another
       // (`config:voice:speaker`). The same line in the same voice is kept for a week, so a fixed line costs once.
+      // ══ GET INSPIRED - REAL TATTOOS FROM THE REAL WORLD (2026-10-24, Aaron) ══════════════════════════════════════════
+      // "We're looking through out in the real world for inspiration." Their words from the Get Inspired search go to the
+      // web search exactly as typed; the list comes back with each photo's title, artist (only when its page names one), one
+      // line and the page it is on. Nothing looks at the photos - "we definitely do not need to read every image on the page
+      // until one is selected". Saved per search for 30 days, so the same words are instant for the next person.
+      if (action === "inspire_find") {
+        const q = String(b.q || "").replace(/\s+/g, " ").trim().slice(0, 160);
+        if (!q) return { ok: false, error: "NO_WORDS" };
+        const _t0 = Date.now();
+        const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
+        try {
+          const hit = await env.AURA_KV.get(_k);
+          if (hit) { const j = JSON.parse(hit); console.log("[INSPIRE] \"" + q + "\" - " + (j.items || []).length + " from the saved search"); return { ok: true, q, items: j.items || [], cached: true }; }
+        } catch {}
+        const r = await findReference(q, env, { count: 8, verify: false, detail: true });
+        if (!r || !r.ok) {
+          console.log("[INSPIRE] \"" + q + "\" - nothing: " + ((r && r.error) || "no answer") + " · " + (Date.now() - _t0) + "ms");
+          return { ok: false, q, error: (r && r.error) || "NOTHING_FOUND" };
+        }
+        const items = (r.found || []).map((f) => ({ image: f.image, title: f.title || null, artist: f.artist || null,
+          about: f.about || null, page: f.page || null, source: f.source || null }));
+        try { await env.AURA_KV.put(_k, JSON.stringify({ items, at: new Date().toISOString() }), { expirationTtl: 30 * 86400 }); } catch {}
+        console.log("[INSPIRE] \"" + q + "\" - " + items.length + " found · " + items.filter((x) => x.artist).length + " with an artist · " +
+          items.filter((x) => x.page).length + " with a page · " + (Date.now() - _t0) + "ms · " + (r.model || "?"));
+        return { ok: true, q, items, ms: Date.now() - _t0 };
+      }
+      // The photo they tapped, fetched here (their browser cannot read another site's picture) and handed back as their own
+      // photo - it then goes to her exactly as a photo they uploaded. Only a photo from that search's saved list.
+      if (action === "inspire_take") {
+        const q = String(b.q || "").replace(/\s+/g, " ").trim().slice(0, 160);
+        const url = String(b.url || "").trim();
+        const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
+        let listed = false;
+        try { const j = JSON.parse((await env.AURA_KV.get(_k)) || "{}"); listed = (j.items || []).some((x) => x && x.image === url); } catch {}
+        if (!listed || !/^https:\/\//i.test(url)) return { ok: false, error: "NOT_FROM_THE_SEARCH" };
+        try {
+          const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" }, redirect: "follow" });
+          const type = String(r.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+          if (!r.ok || !/^image\//.test(type)) { console.log("[INSPIRE] take failed: http " + r.status + " " + type + " " + url.slice(0, 120)); return { ok: false, error: "COULD_NOT_OPEN" }; }
+          const buf = new Uint8Array(await r.arrayBuffer());
+          if (buf.length > 6 * 1024 * 1024 || buf.length < 2000) return { ok: false, error: "COULD_NOT_OPEN" };
+          let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+          console.log("[INSPIRE] took " + Math.round(buf.length / 1024) + "KB from " + url.slice(0, 120));
+          return { ok: true, photo: "data:" + type + ";base64," + btoa(bin) };
+        } catch (e) {
+          console.log("[INSPIRE] take failed: " + String((e && e.message) || e).slice(0, 120));
+          return { ok: false, error: "COULD_NOT_OPEN" };
+        }
+      }
       if (action === "speak") {
         const text = String(b.text || "").replace(/[*_#`>]/g, "").replace(/\s+/g, " ").trim().slice(0, 1500);
         if (!text) return { ok: false, error: "NO_TEXT" };

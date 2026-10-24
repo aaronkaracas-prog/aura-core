@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.749.0-2026-10-24-inspiration-keywords";
+const BUILD = "aura-core-v9.750.0-2026-10-24-inspiration-three-sources";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -72053,64 +72053,78 @@ export class PublicEntry extends WorkerEntrypoint {
         // `config:inspire:cf_sites` (JSON list, default ["tattoodo.com"]), `config:inspire:search:provider` (ceramic | exa | linkup).
         const _engine = String((await env.AURA_KV.get("config:inspire:engine").catch(() => null)) || "cloudflare").trim().toLowerCase();
         if (_engine !== "grok") {
-          let cfSites = ["tattoodo.com"];
-          try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sites")) || "null"); if (Array.isArray(j) && j.length) cfSites = j.map(String).filter(Boolean).slice(0, 5); } catch {}
-          const prov = String((await env.AURA_KV.get("config:inspire:search:provider").catch(() => null)) || "ceramic").trim().toLowerCase();
-          // ══ KEYWORDS, THREE WAYS, THEN WIDER (v9.749, 2026-10-24) ══ MEASURED 15:46 on Tattoodo: "Show me cat tattoos" found 6 articles
-          // and no tattoo, "cat tattoo" found 9 tattoos; "tribal tattoo" 5 tattoos and 4 guides; "tribal realism tattoo" no tattoo at all.
-          // The search reads keywords literally and returns ten at most, so: their talk words come out, three searches go at once, and
-          // if fewer than four tattoos come back, each of their words is searched on its own and her line says it is the closest.
+          // ══ THREE SOURCES, MIXED (v9.750, 2026-10-24, Aaron: "let's put the Inked Magazine one in there also ... if we're able to
+          // determine what's good on it"). MEASURED 15:59-16:07 by WEBSEARCH: Tattoodo through ceramic - single tattoo pages, each
+          // page's own photo; Pinterest pins through exa - 10 of 10 single pins with Pinterest's 736px photo ("cyber realism" read by
+          // meaning: cybersigilism, biomechanical, glitch realism); Inked Magazine through exa - articles ("60 Superb Sphynx Cat Tattoos")
+          // whose picture is a cover, 3 of 10 only the Inked logo. A picture that is a logo or a site's blank share image is left out -
+          // that is how a good one is told from a bad one, no model. Taken in turn, one from each, up to 8.
+          // The dial: `config:inspire:cf_sources` - [{"site","provider","variants","only"}]; "only" is a pattern a page address must have.
+          let sources = [
+            { site: "tattoodo.com", provider: "ceramic", variants: 3, only: "/tattoos/\\d+", name: "Tattoodo" },
+            { site: "pinterest.com/pin", provider: "exa", variants: 1, only: "/pin/", name: "Pinterest" },
+            { site: "inkedmag.com", provider: "exa", variants: 1, only: "", name: "Inked Magazine" }];
+          try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && x.site).slice(0, 5); } catch {}
+          // KEYWORDS (v9.749): MEASURED 15:46 - "Show me cat tattoos" found articles, "cat tattoo" found tattoos. Their talk words come out.
           const _TALK = new Set(["show","me","some","any","few","i","im","i'm","want","wanna","to","see","can","could","you","please","find","look",
             "looking","give","get","fun","cool","awesome","nice","great","really","ideas","idea","inspiration","designs","design","tattoos","tattoo",
             "pictures","picture","photos","photo","examples","like","would","love","just","maybe","a","an","the","let's","lets","us","my"]);
           const _kw = String(q).toLowerCase().replace(/[^a-z0-9&' -]+/g, " ").split(/\s+/).filter((w) => w && !_TALK.has(w)).join(" ").trim() || String(q).trim();
-          const _ask = async (words) => {
-            const qs = [words + " tattoo", words + " tattoo design", words + " tattoos"];
-            const runs = [];
-            for (const d of cfSites) for (const qq of qs) runs.push(cfWebSearch(env, qq + " site:" + d, prov, 10)
-              .then((r) => ({ ...r, q: qq, site: d })).catch((e) => ({ ok: false, error: String(e && e.message || e), q: qq, site: d })));
-            return Promise.all(runs);
+          const _COST = { ceramic: 0.00025, linkup: 0.005, exa: 0.007 };
+          const _JUNKPIC = /logo|default_open_graph|\/opengraph\.|placeholder|blank\.(png|jpg)/i;
+          const _counts = [], _bad = []; let _spend = 0;
+          const _search = (src, words) => {
+            const qs = [words + " tattoo", words + " tattoo design", words + " tattoos"].slice(0, Math.max(1, Math.min(3, Number(src.variants) || 1)));
+            return Promise.all(qs.map((qq) => { _spend += _COST[src.provider] || 0;
+              return cfWebSearch(env, qq + " site:" + src.site, src.provider || "ceramic", 10).then((r) => ({ ...r, q: qq }))
+                .catch((e) => ({ ok: false, error: String((e && e.message) || e), q: qq })); }));
           };
-          // One tattoo per page: on Tattoodo that is /tattoos/<number>; an article, an artist or a city page is not a tattoo.
-          const _pages = []; const _seenU = new Set(); const _counts = []; const _bad = [];
-          const _take = (res) => res.forEach((x) => {
-            if (!x.ok) { _bad.push(x.error); return; }
-            let n = 0;
-            x.items.forEach((it) => {
-              const u = String(it.url || ""); if (!u || _seenU.has(u)) return;
-              if (/tattoodo\.com/i.test(u) && !/\/tattoos\/\d+/.test(u)) return;
-              _seenU.add(u); _pages.push({ ...it, site: x.site }); n++;
+          const _seen = new Set();
+          const _gather = (src, res) => { const out = [];
+            res.forEach((x) => {
+              if (!x.ok) { _bad.push(src.name + ": " + x.error); return; }
+              let n = 0;
+              x.items.forEach((it) => { const u = String(it.url || ""); if (!u || _seen.has(u)) return;
+                if (src.only && !new RegExp(src.only).test(u)) return;
+                _seen.add(u); out.push({ ...it, src }); n++; });
+              _counts.push(src.name + " \"" + x.q + "\" " + x.items.length + "/" + n);
             });
-            _counts.push("\"" + x.q + "\" " + x.items.length + "/" + n);
-          });
-          _take(await _ask(_kw));
+            return out; };
+          // Each source on its own words, all at once.
+          let perSource = await Promise.all(sources.map(async (src) => _gather(src, await _search(src, _kw))));
+          // WIDER WHEN THIN (v9.749): fewer than four, and more than one word - the cheap sources search each word on its own.
           let _closest = false;
           const _words = _kw.split(" ").filter((w) => w.length > 2);
-          if (_pages.length < 4 && _words.length > 1) {
+          if (perSource.reduce((a, b) => a + b.length, 0) < 4 && _words.length > 1) {
             _closest = true;
-            const _wide = await Promise.all(_words.slice(0, 3).flatMap((w) => cfSites.map((d) => cfWebSearch(env, w + " tattoo site:" + d, prov, 10)
-              .then((r) => ({ ...r, q: w + " tattoo", site: d })).catch((e) => ({ ok: false, error: String(e && e.message || e), q: w, site: d })))));
-            _take(_wide);
+            const _wide = await Promise.all(sources.map(async (src, k) => {
+              if ((src.provider || "ceramic") !== "ceramic") return [];
+              const more = await Promise.all(_words.slice(0, 3).map((w) => _search({ ...src, variants: 1 }, w)));
+              return more.flatMap((r) => _gather(src, r)); }));
+            perSource = perSource.map((list, k) => list.concat(_wide[k] || []));
           }
-          const _w = _kw;
-          const _pics = await Promise.all(_pages.slice(0, 12).map((it) => pagePicture(it.url)));
-          const _nm = { "tattoodo.com": "Tattoodo", "pinterest.com": "Pinterest", "reddit.com": "Reddit", "tattoolife.com": "Tattoo Life", "inkedmag.com": "Inked Magazine", "behance.net": "Behance" };
-          const items = _pages.slice(0, 12).map((it, i) => ({ p: _pics[i] || {}, it })).filter((x) => x.p.image).slice(0, 8).map(({ p, it }) => {
-            const clean = (t) => String(t || "").replace(/\s*[•|-]\s*Tattoodo\s*$/i, "").trim();
-            const about = String(p.about || "");
-            return { image: p.image, title: clean(it.title || p.title) || null, feel: null, artist: null,
-                     about: (about && !/cookies|similar technologies/i.test(about)) ? about.slice(0, 160) : null,
-                     from: _nm[String(it.site).replace(/^www\./, "")] || it.site, page: it.url };
-          });
+          // The picture: the one the search returned, or the page's own; a logo or a blank share image does not count.
+          const withPics = await Promise.all(perSource.map((list) => Promise.all(list.slice(0, 8).map(async (it) => {
+            let img = it.image && !_JUNKPIC.test(it.image) ? it.image : null, about = null, title2 = null;
+            if (!img) { const p = await pagePicture(it.url); if (p.image && !_JUNKPIC.test(p.image)) img = p.image; about = p.about; title2 = p.title; }
+            return img ? { it, img, about, title2 } : null; })).then((a) => a.filter(Boolean))));
+          // In turn, one from each source.
+          const items = []; const _seenImg = new Set();
+          for (let r = 0; items.length < 8 && withPics.some((l) => l.length > r); r++) {
+            for (const list of withPics) { const x = list[r]; if (!x || _seenImg.has(x.img) || items.length >= 8) continue; _seenImg.add(x.img);
+              const clean = (t) => String(t || "").split(/\s+\|\s+/)[0].replace(/\s*[•|-]\s*(Tattoodo|InkedMag|Inked Magazine|Pinterest)\s*$/i, "").trim();
+              const ab = String(x.about || "");
+              items.push({ image: x.img, title: clean(x.it.title || x.title2) || null, feel: null, artist: null,
+                about: (ab && !/cookies|similar technologies|autocomplete/i.test(ab)) ? ab.slice(0, 160) : null, from: x.it.src.name, page: x.it.url }); }
+          }
           const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
           try { await env.AURA_KV.put(_k, JSON.stringify({ items }), { expirationTtl: 3600 }); } catch {}
-          const _cost = { ceramic: 0.00025, linkup: 0.005, exa: 0.007 }[prov] || 0;
-          console.log("[INSPIRE] cloudflare search - they said \"" + q + "\", searched \"" + _w + "\" on " + cfSites.join(",") + " via " + prov +
-            " - each search results/tattoos: " + _counts.join(", ") + (_closest ? " (wider: their words one at a time)" : "") + " - " + _pages.length +
-            " tattoo pages, " + items.length + " with a picture · " + (Date.now() - _t0) + "ms · $" + (_cost * _counts.length).toFixed(5) + " (no model)" +
-            (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 200) : ""));
-          if (!items.length) return { ok: false, q, words: _w, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };
-          return { ok: true, q, words: _w, closest: _closest, items, ms: Date.now() - _t0 };
+          const _by = {}; items.forEach((x) => { _by[x.from] = (_by[x.from] || 0) + 1; });
+          console.log("[INSPIRE] cloudflare search - they said \"" + q + "\", searched \"" + _kw + "\" - each search results/kept: " + _counts.join(", ") +
+            (_closest ? " (wider: their words one at a time)" : "") + " - shown " + items.length + " (" + Object.entries(_by).map(([k, v]) => k + " " + v).join(", ") + ") · " +
+            (Date.now() - _t0) + "ms · $" + _spend.toFixed(5) + " (no model)" + (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 240) : ""));
+          if (!items.length) return { ok: false, q, words: _kw, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };
+          return { ok: true, q, words: _kw, closest: _closest, items, ms: Date.now() - _t0 };
         }
         // NOTHING IS SAVED (2026-10-24, Aaron: "we're not saving any of this stuff - all we're doing is discovery"): every search
         // is new. The list is held one hour only, so a tap can fetch the photo they chose.

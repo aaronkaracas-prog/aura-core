@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.748.0-2026-10-24-inspiration-on-cloudflare";
+const BUILD = "aura-core-v9.749.0-2026-10-24-inspiration-keywords";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -72056,19 +72056,46 @@ export class PublicEntry extends WorkerEntrypoint {
           let cfSites = ["tattoodo.com"];
           try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sites")) || "null"); if (Array.isArray(j) && j.length) cfSites = j.map(String).filter(Boolean).slice(0, 5); } catch {}
           const prov = String((await env.AURA_KV.get("config:inspire:search:provider").catch(() => null)) || "ceramic").trim().toLowerCase();
-          const _w = /\btattoos?\b/i.test(q) ? q : q + " tattoo";
-          const _res = await Promise.all(cfSites.map((d) => cfWebSearch(env, _w + " site:" + d, prov, 10).catch((e) => ({ ok: false, error: String(e && e.message || e) }))));
-          const _bad = _res.filter((x) => !x.ok).map((x) => x.error);
-          // One tattoo per page: on Tattoodo that is /tattoos/<number>; an artist list or a city page is not a tattoo.
-          const _pages = []; const _seenU = new Set();
-          _res.forEach((x, k) => (x.ok ? x.items : []).forEach((it) => {
-            const u = String(it.url || ""); if (!u || _seenU.has(u)) return;
-            if (/tattoodo\.com/i.test(u) && !/\/tattoos\/\d+/.test(u)) return;
-            _seenU.add(u); _pages.push({ ...it, site: cfSites[k] });
-          }));
-          const _pics = await Promise.all(_pages.slice(0, 10).map((it) => pagePicture(it.url)));
+          // ══ KEYWORDS, THREE WAYS, THEN WIDER (v9.749, 2026-10-24) ══ MEASURED 15:46 on Tattoodo: "Show me cat tattoos" found 6 articles
+          // and no tattoo, "cat tattoo" found 9 tattoos; "tribal tattoo" 5 tattoos and 4 guides; "tribal realism tattoo" no tattoo at all.
+          // The search reads keywords literally and returns ten at most, so: their talk words come out, three searches go at once, and
+          // if fewer than four tattoos come back, each of their words is searched on its own and her line says it is the closest.
+          const _TALK = new Set(["show","me","some","any","few","i","im","i'm","want","wanna","to","see","can","could","you","please","find","look",
+            "looking","give","get","fun","cool","awesome","nice","great","really","ideas","idea","inspiration","designs","design","tattoos","tattoo",
+            "pictures","picture","photos","photo","examples","like","would","love","just","maybe","a","an","the","let's","lets","us","my"]);
+          const _kw = String(q).toLowerCase().replace(/[^a-z0-9&' -]+/g, " ").split(/\s+/).filter((w) => w && !_TALK.has(w)).join(" ").trim() || String(q).trim();
+          const _ask = async (words) => {
+            const qs = [words + " tattoo", words + " tattoo design", words + " tattoos"];
+            const runs = [];
+            for (const d of cfSites) for (const qq of qs) runs.push(cfWebSearch(env, qq + " site:" + d, prov, 10)
+              .then((r) => ({ ...r, q: qq, site: d })).catch((e) => ({ ok: false, error: String(e && e.message || e), q: qq, site: d })));
+            return Promise.all(runs);
+          };
+          // One tattoo per page: on Tattoodo that is /tattoos/<number>; an article, an artist or a city page is not a tattoo.
+          const _pages = []; const _seenU = new Set(); const _counts = []; const _bad = [];
+          const _take = (res) => res.forEach((x) => {
+            if (!x.ok) { _bad.push(x.error); return; }
+            let n = 0;
+            x.items.forEach((it) => {
+              const u = String(it.url || ""); if (!u || _seenU.has(u)) return;
+              if (/tattoodo\.com/i.test(u) && !/\/tattoos\/\d+/.test(u)) return;
+              _seenU.add(u); _pages.push({ ...it, site: x.site }); n++;
+            });
+            _counts.push("\"" + x.q + "\" " + x.items.length + "/" + n);
+          });
+          _take(await _ask(_kw));
+          let _closest = false;
+          const _words = _kw.split(" ").filter((w) => w.length > 2);
+          if (_pages.length < 4 && _words.length > 1) {
+            _closest = true;
+            const _wide = await Promise.all(_words.slice(0, 3).flatMap((w) => cfSites.map((d) => cfWebSearch(env, w + " tattoo site:" + d, prov, 10)
+              .then((r) => ({ ...r, q: w + " tattoo", site: d })).catch((e) => ({ ok: false, error: String(e && e.message || e), q: w, site: d })))));
+            _take(_wide);
+          }
+          const _w = _kw;
+          const _pics = await Promise.all(_pages.slice(0, 12).map((it) => pagePicture(it.url)));
           const _nm = { "tattoodo.com": "Tattoodo", "pinterest.com": "Pinterest", "reddit.com": "Reddit", "tattoolife.com": "Tattoo Life", "inkedmag.com": "Inked Magazine", "behance.net": "Behance" };
-          const items = _pages.slice(0, 10).map((it, i) => ({ p: _pics[i] || {}, it })).filter((x) => x.p.image).slice(0, 8).map(({ p, it }) => {
+          const items = _pages.slice(0, 12).map((it, i) => ({ p: _pics[i] || {}, it })).filter((x) => x.p.image).slice(0, 8).map(({ p, it }) => {
             const clean = (t) => String(t || "").replace(/\s*[•|-]\s*Tattoodo\s*$/i, "").trim();
             const about = String(p.about || "");
             return { image: p.image, title: clean(it.title || p.title) || null, feel: null, artist: null,
@@ -72078,10 +72105,12 @@ export class PublicEntry extends WorkerEntrypoint {
           const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
           try { await env.AURA_KV.put(_k, JSON.stringify({ items }), { expirationTtl: 3600 }); } catch {}
           const _cost = { ceramic: 0.00025, linkup: 0.005, exa: 0.007 }[prov] || 0;
-          console.log("[INSPIRE] cloudflare search \"" + _w + "\" on " + cfSites.join(",") + " via " + prov + " - " + _pages.length + " tattoo pages, " +
-            items.length + " with a picture · " + (Date.now() - _t0) + "ms · $" + (_cost * cfSites.length).toFixed(5) + " (no model)" + (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 200) : ""));
-          if (!items.length) return { ok: false, q, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };
-          return { ok: true, q, items, ms: Date.now() - _t0 };
+          console.log("[INSPIRE] cloudflare search - they said \"" + q + "\", searched \"" + _w + "\" on " + cfSites.join(",") + " via " + prov +
+            " - each search results/tattoos: " + _counts.join(", ") + (_closest ? " (wider: their words one at a time)" : "") + " - " + _pages.length +
+            " tattoo pages, " + items.length + " with a picture · " + (Date.now() - _t0) + "ms · $" + (_cost * _counts.length).toFixed(5) + " (no model)" +
+            (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 200) : ""));
+          if (!items.length) return { ok: false, q, words: _w, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };
+          return { ok: true, q, words: _w, closest: _closest, items, ms: Date.now() - _t0 };
         }
         // NOTHING IS SAVED (2026-10-24, Aaron: "we're not saving any of this stuff - all we're doing is discovery"): every search
         // is new. The list is held one hour only, so a tap can fetch the photo they chose.

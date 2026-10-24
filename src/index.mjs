@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.751.0-2026-10-24-inspiration-pictures-fixed";
+const BUILD = "aura-core-v9.752.0-2026-10-24-inspiration-on-subject";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -72075,12 +72075,23 @@ export class PublicEntry extends WorkerEntrypoint {
           const _COST = { ceramic: 0.00025, linkup: 0.005, exa: 0.007 };
           const _JUNKPIC = /logo|default_open_graph|\/opengraph\.|placeholder|blank\.(png|jpg)/i;
           const _counts = [], _bad = []; let _spend = 0;
+          // HOW EXA IS ASKED (v9.752): a dial, `config:inspire:exa_words` - "____" is their words (empty = "____ tattoo"). Exa reads by
+          // meaning, so a phrase like "a photo of a finished ____ tattoo" may pull single tattoos over articles - set it once WEBSEARCH shows it.
+          let _exaWords = "____ tattoo";
+          try { const k = String((await env.AURA_KV.get("config:inspire:exa_words")) || "").trim(); if (k.includes("____")) _exaWords = k; } catch {}
           const _search = (src, words) => {
-            const qs = [words + " tattoo", words + " tattoo design", words + " tattoos"].slice(0, Math.max(1, Math.min(3, Number(src.variants) || 1)));
+            const qs = ((src.provider || "ceramic") === "exa" ? [_exaWords.replace("____", words)] : [words + " tattoo", words + " tattoo design", words + " tattoos"])
+              .slice(0, Math.max(1, Math.min(3, Number(src.variants) || 1)));
             return Promise.all(qs.map((qq) => { _spend += _COST[src.provider] || 0;
               return cfWebSearch(env, qq + " site:" + src.site, src.provider || "ceramic", 10).then((r) => ({ ...r, q: qq }))
                 .catch((e) => ({ ok: false, error: String((e && e.message) || e), q: qq })); }));
           };
+          // ON THEIR SUBJECT (v9.752, MEASURED 16:39-16:41): every Inked page says "tattoo", so Inked kept 10 of 10 every time - a shop in
+          // Canada, "100 Year History of Tattoos". When they named a subject (mermaid, sticker, tribal), the title or address must name it too.
+          // Words that are not a subject ("popular", "most", "best") do not count - a vague search is left as it is.
+          const _VAGUE = new Set(["most","popular","best","top","trending","new","latest","unique","beautiful","cute","small","big","simple","good","famous","amazing"]);
+          const _subj = _kw.split(" ").filter((w) => w.length > 2 && !_VAGUE.has(w) && !["and","with","for","of"].includes(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
+          const _onSubject = (t) => !_subj.length || _subj.some((w) => w.length > 2 && String(t).toLowerCase().includes(w));
           const _seen = new Set();
           const _gather = (src, res) => { const out = [];
             res.forEach((x) => {
@@ -72091,6 +72102,7 @@ export class PublicEntry extends WorkerEntrypoint {
                 // ONLY TATTOOS (v9.751, Aaron: "we're only interested in tattoo images"): the page has to say it is a tattoo - its address,
                 // its title or its own words. A page about something else is left out before its picture is ever fetched.
                 if (!/tattoo|\bink(ed)?\b/i.test(u + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) return;
+                if (!_onSubject(u.replace(/[-_/]+/g, " ") + " " + (it.title || ""))) return;
                 _seen.add(u); out.push({ ...it, src }); n++; });
               _counts.push(src.name + " \"" + x.q + "\" " + x.items.length + "/" + n);
             });
@@ -72109,14 +72121,15 @@ export class PublicEntry extends WorkerEntrypoint {
             perSource = perSource.map((list, k) => list.concat(_wide[k] || []));
           }
           // The picture: the one the search returned, or the page's own; a logo or a blank share image does not count.
-          const withPics = await Promise.all(perSource.map((list) => Promise.all(list.slice(0, 8).map(async (it) => {
+          // SHOW MORE (v9.752): up to 12 a source and 24 in all go back; the page shows 8 at a time.
+          const withPics = await Promise.all(perSource.map((list) => Promise.all(list.slice(0, 12).map(async (it) => {
             let img = it.image && !_JUNKPIC.test(it.image) ? it.image : null, about = null, title2 = null;
             if (!img) { const p = await pagePicture(it.url); if (p.image && !_JUNKPIC.test(p.image)) img = p.image; about = p.about; title2 = p.title; }
             return img ? { it, img, about, title2 } : null; })).then((a) => a.filter(Boolean))));
           // In turn, one from each source.
           const items = []; const _seenImg = new Set();
-          for (let r = 0; items.length < 8 && withPics.some((l) => l.length > r); r++) {
-            for (const list of withPics) { const x = list[r]; if (!x || _seenImg.has(x.img) || items.length >= 8) continue; _seenImg.add(x.img);
+          for (let r = 0; items.length < 24 && withPics.some((l) => l.length > r); r++) {
+            for (const list of withPics) { const x = list[r]; if (!x || _seenImg.has(x.img) || items.length >= 24) continue; _seenImg.add(x.img);
               const clean = (t) => String(t || "").split(/\s+\|\s+/)[0].replace(/\s*[•|-]\s*(Tattoodo|InkedMag|Inked Magazine|Pinterest)\s*$/i, "").trim();
               const ab = String(x.about || "");
               items.push({ image: x.img, title: clean(x.it.title || x.title2) || null, feel: null, artist: null,
@@ -72126,7 +72139,7 @@ export class PublicEntry extends WorkerEntrypoint {
           try { await env.AURA_KV.put(_k, JSON.stringify({ items }), { expirationTtl: 3600 }); } catch {}
           const _by = {}; items.forEach((x) => { _by[x.from] = (_by[x.from] || 0) + 1; });
           console.log("[INSPIRE] cloudflare search - they said \"" + q + "\", searched \"" + _kw + "\" - each search results/kept: " + _counts.join(", ") +
-            (_closest ? " (wider: their words one at a time)" : "") + " - shown " + items.length + " (" + Object.entries(_by).map(([k, v]) => k + " " + v).join(", ") + ") · " +
+            (_closest ? " (wider: their words one at a time)" : "") + (_subj.length ? " - subject: " + _subj.join(",") : " - no subject, vague words only") + " - sent " + items.length + " (" + Object.entries(_by).map(([k, v]) => k + " " + v).join(", ") + ") · " +
             (Date.now() - _t0) + "ms · $" + _spend.toFixed(5) + " (no model)" + (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 240) : ""));
           if (!items.length) return { ok: false, q, words: _kw, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };
           return { ok: true, q, words: _kw, closest: _closest, items, ms: Date.now() - _t0 };

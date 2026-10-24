@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.746.0-2026-10-24-inspiration-directions";
+const BUILD = "aura-core-v9.747.0-2026-10-24-cloudflare-websearch-test";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13934,6 +13934,39 @@ async function successionGate(env) {
       // `CUT_PANEL <sheet> <n> BODY` (v9.651) cuts an add-on sheet on their body, marked or not - the back-end test.
       if (/^BODY$/i.test(String(args[2] || "").trim())) return { cmd: "CUT_PANEL", payload: await cutBodyPanel(env, cpSrc, cpN) };
       return { cmd: "CUT_PANEL", payload: await cutPanel(env, cpSrc, cpN) };
+    }
+    // ══ WEBSEARCH - CLOUDFLARE'S OWN WEB SEARCH, THE TEST (v9.747, 2026-10-24, Aaron: "let's find an image for the person looking
+    // for it the same exact way GPT does ... I'm pretty sure Cloudflare offers this") ═════════════════════════════════════════════
+    // Cloudflare's Web Search API (AI Gateway, open beta since 2026-10-02), through the AI binding core already has - no model,
+    // no tokens. Prints exactly what came back, so we can see whether a "site:" query stays on that site and whether images come.
+    //   RUN "WEBSEARCH cat tattoos site:pinterest.com"
+    //   RUN "WEBSEARCH cat tattoos site:pinterest.com ::: exa"     another provider (ceramic is the default)
+    case "WEBSEARCH": {
+      let q = rest, provider = "ceramic";
+      const _pm = q.match(/\s*:::\s*(ceramic|exa|linkup)\s*$/i);
+      if (_pm) { provider = _pm[1].toLowerCase(); q = q.slice(0, _pm.index).trim(); }
+      if (!q) return { cmd: "WEBSEARCH", payload: { ok: false, error: "Usage: WEBSEARCH <words> [::: ceramic|exa|linkup]" } };
+      if (!env.AI || typeof env.AI.websearch !== "function") return { cmd: "WEBSEARCH", payload: { ok: false, error: "NO_WEBSEARCH_ON_THE_AI_BINDING - the runtime has no env.AI.websearch" } };
+      const gatewayId = String((await env.AURA_KV.get("config:gateway:name").catch(() => null)) || "default").trim();
+      const _t0 = Date.now();
+      try {
+        const res = await env.AI.websearch({ gatewayId, query: q.slice(0, 1024), provider, limit: 10 });
+        let j = res;
+        if (res && typeof res.json === "function") { const txt = await res.text(); try { j = JSON.parse(txt); } catch { j = { raw: txt.slice(0, 1500), status: res.status }; } }
+        const list = (j && (j.items || j.results || (j.result && (j.result.items || j.result.results)))) || [];
+        const items = (Array.isArray(list) ? list : []).map((x) => ({
+          url: x.url || x.link || null, title: x.title || null,
+          description: String(x.description || x.snippet || "").slice(0, 160) || null,
+          image: x.image || x.image_url || x.imageUrl || x.thumbnail || null }));
+        const onSite = (q.match(/site:([a-z0-9.-]+)/i) || [])[1] || null;
+        console.log("[WEBSEARCH] \"" + q + "\" via " + provider + " - " + items.length + " results, " + items.filter((x) => x.image).length + " with an image" +
+          (onSite ? ", " + items.filter((x) => String(x.url || "").includes(onSite)).length + " on " + onSite : "") + " · " + (Date.now() - _t0) + "ms");
+        return { cmd: "WEBSEARCH", payload: { ok: true, query: q, provider, gateway: gatewayId, ms: Date.now() - _t0, count: items.length,
+          with_image: items.filter((x) => x.image).length, ...(onSite ? { on_site: items.filter((x) => String(x.url || "").includes(onSite)).length } : {}),
+          items, ...(items.length ? { first_raw: JSON.stringify(list[0]).slice(0, 700) } : { raw: JSON.stringify(j).slice(0, 1500) }) } };
+      } catch (e) {
+        return { cmd: "WEBSEARCH", payload: { ok: false, error: String((e && e.message) || e).slice(0, 400), ms: Date.now() - _t0, gateway: gatewayId } };
+      }
     }
     case "GETKV": {
       const key = args[0] || "";

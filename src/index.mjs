@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.738.0-2026-10-23-onme-whole-brief-in-the-log";
+const BUILD = "aura-core-v9.739.0-2026-10-23-1440-wide-copies";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -76534,7 +76534,9 @@ function openAlbum(idx){
       // base64 under `image:<id>`, so the original is read from there (R2 first only if a binding ever appears), and the small
       // copy is kept in KV as raw bytes under `small:<id>_w<w>`. A skip or a failure is now logged, never silent.
       const _wq = parseInt(url.searchParams.get("w") || "", 10);
-      const _w = [240, 480, 720].includes(_wq) ? _wq : 0;
+      // 1440 (v9.739, 2026-10-23, Aaron's Inkit.world banners and heroes): a wide picture on a computer screen, still a fraction of
+      // the 2048 original.
+      const _w = [240, 480, 720, 1440].includes(_wq) ? _wq : 0;
       if (_w && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.728: MEASURED - Photon's get_bytes_webp() is LOSSLESS: 684KB at 480 wide. JPEG 80 measured 5-6x smaller on our
         // pictures, so copies are JPEG, and the key carries .jpg so the lossless copies made under v9.727 are never served.

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.745.0-2026-10-24-imagine-from-inspiration";
+const BUILD = "aura-core-v9.746.0-2026-10-24-inspiration-directions";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58500,8 +58500,12 @@ async function findReference(query, env, opts = {}) {
           // artist when the page says who made it, one line, and the page it is on - so the list can credit and link it.
           input: opts.detail
             ? "Show me " + want + " real photos of real tattoos by real artists: " + q + "." +
-              (Array.isArray(opts.siteNames) && opts.siteNames.length ? " Only from " + opts.siteNames.join(", ") + "." : "") + " Show each image, and after it " +
-              "write these lines:\nTitle: a short name for it\nArtist: the artist's name, only if the page says who made it\n" +
+              (Array.isArray(opts.siteNames) && opts.siteNames.length ? " Only from " + opts.siteNames.join(", ") + "." : "") +
+              // EACH A DIFFERENT DIRECTION (v9.746, 2026-10-24, Aaron, set against ChatGPT's cats): three of our eight cats were black
+              // silhouettes, and some photos were collages with text or a thin strip of skin.
+              " Make each one a different direction, and pick a clear, close photo of one finished tattoo for each - no collages and no text on the picture." +
+              " Show each image, and after it " +
+              "write these lines:\nTitle: a short name for it\nFeel: three words for its mood\nArtist: the artist's name, only if the page says who made it\n" +
               "About: one short line about it\nPage: the link to the page the photo is on"
             : "Show me " + want + " real photos of " + q + ". Show each image, and after each one " +
               "write one short line about it.",
@@ -58514,6 +58518,7 @@ async function findReference(query, env, opts = {}) {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) return { ok: false, error: d?.error?.message || ("http " + r.status),
         provider: "grok", ms: Date.now() - t0 };
+      const _usage = (d && d.usage) || null;
 
       // Grok returns images as MARKDOWN EMBEDS inside its prose - ![alt](url) - not as an array.
       // Fragile to parse, and worth it: the words between the pictures are why each one is there,
@@ -58573,7 +58578,8 @@ async function findReference(query, env, opts = {}) {
         const seg = text.slice(end, next == null ? text.length : next);
         const line = (k) => { const mm = seg.match(new RegExp("^[\\s>*_-]*" + k + "\\s*[:\\-]\\s*(.+)$", "im"));
           return mm ? mm[1].replace(/[*_`]/g, "").trim() : ""; };
-        const t = line("Title"), a = line("Artist"), ab = line("About");
+        const t = line("Title"), a = line("Artist"), ab = line("About"), fe = line("Feel");
+        if (fe) f.feel = fe.replace(/[.]+$/, "").slice(0, 60);
         const pg = (line("Page").match(/https?:\/\/[^\s)\]>"]+/) || seg.match(/\]\((https?:\/\/[^\s)]+)\)/) || [])[0] || "";
         if (t) f.title = t.slice(0, 90);
         if (a && !/^(unknown|not (named|stated|given|listed|credited|specified|mentioned)|n\/?a|none|unnamed|unclear)/i.test(a)) f.artist = a.slice(0, 60);
@@ -58884,7 +58890,7 @@ async function findReference(query, env, opts = {}) {
         return line.replace(/^TATTOO:\s*(yes|no)\s*--\s*/i, "").trim() || null;
       }).filter(Boolean);
 
-      return { ok: true, query: q, found: judged.map(({ fill, saw, ...rest }) => rest),
+      return { ok: true, query: q, found: judged.map(({ fill, saw, ...rest }) => rest), usage: _usage,
         // Derived from the survivors when the eyes described them; the model's prose only when
         // nothing looked, and then it is describing its own unfiltered list, which is honest.
         said: perPic.length === judged.length && perPic.length ? perPic.join("\n\n") : (said || null),
@@ -71986,7 +71992,7 @@ export class PublicEntry extends WorkerEntrypoint {
           [/tattoodo/i, "Tattoodo"], [/reddit|redd\.it/i, "Reddit"], [/tattoolife/i, "Tattoo Life"], [/inkedmag/i, "Inked Magazine"], [/behance/i, "Behance"]];
         const siteOf = (f) => { const h = String(f.page || "") + " " + String(f.image || "") + " " + String(f.source || "");
           const m = SITE.find(([re]) => re.test(h)); return m ? m[1] : (f.source || null); };
-        const _all = (r.found || []).map((f) => ({ image: f.image, title: f.title || null, artist: f.artist || null,
+        const _all = (r.found || []).map((f) => ({ image: f.image, title: f.title || null, feel: f.feel || null, artist: f.artist || null,
           about: f.about || null, from: siteOf(f), page: f.page || null }));
         const items = siteNames.length ? _all.filter((x) => siteNames.includes(x.from)) : _all;
         if (_all.length !== items.length) console.log("[INSPIRE] left out " + (_all.length - items.length) + " not from the five sites: " +
@@ -72000,6 +72006,16 @@ export class PublicEntry extends WorkerEntrypoint {
         const _by = {}; items.forEach((x) => { _by[x.from || "?"] = (_by[x.from || "?"] || 0) + 1; });
         console.log("[INSPIRE] \"" + q + "\" - " + items.length + " found (" + Object.entries(_by).map(([k, v]) => k + " " + v).join(", ") + ") · " +
           items.filter((x) => x.artist).length + " with an artist · " + (Date.now() - _t0) + "ms · " + (r.model || "?") + " · sites " + sites.join(","));
+        // WHAT IT COST, AS xAI REPORTS IT (v9.746, Aaron: "who's charging that - where did you get that number"): the search call's own usage.
+        try {
+          const u = r.usage || {};
+          const ticks = Number(u.cost_in_usd_ticks || u.cost_in_nano_usd || 0);
+          const usd = u.cost_in_usd_ticks ? ticks / 1e10 : (u.cost_in_nano_usd ? ticks / 1e9 : null);
+          console.log("[INSPIRE] usage - in " + (u.input_tokens || u.prompt_tokens || "?") + " · out " + (u.output_tokens || u.completion_tokens || "?") +
+            (u.num_sources_used != null ? " · sources " + u.num_sources_used : "") +
+            (u.server_side_tool_usage_details ? " · tools " + JSON.stringify(u.server_side_tool_usage_details).slice(0, 160) : "") +
+            (usd != null ? " · $" + usd.toFixed(4) + " (xAI)" : " · cost not reported by xAI - raw: " + JSON.stringify(u).slice(0, 300)));
+        } catch {}
         return { ok: true, q, items, ms: Date.now() - _t0 };
       }
       // The photo they tapped, fetched here (their browser cannot read another site's picture) and handed back as their own

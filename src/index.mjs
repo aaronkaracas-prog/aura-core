@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.743.0-2026-10-24-real-world-inspiration";
+const BUILD = "aura-core-v9.744.0-2026-10-24-inspiration-five-sites";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58504,7 +58504,10 @@ async function findReference(query, env, opts = {}) {
               "About: one short line about it\nPage: the link to the page the photo is on"
             : "Show me " + want + " real photos of " + q + ". Show each image, and after each one " +
               "write one short line about it.",
-          tools: [{ type: "web_search", enable_image_search: true }]
+          // THE SITES WE LOOK ON (2026-10-24, Aaron: "define where we're searching from"): Get Inspired passes its list (at most
+          // five - the search tool's own limit), so nothing comes back from anywhere else.
+          tools: [Object.assign({ type: "web_search", enable_image_search: true },
+            Array.isArray(opts.sites) && opts.sites.length ? { allowed_domains: opts.sites.slice(0, 5) } : {})]
         })
       });
       const d = await r.json().catch(() => ({}));
@@ -58596,7 +58599,9 @@ async function findReference(query, env, opts = {}) {
       const JUNK = /(ytimg\.com|youtube\.com|gettyimages|shutterstock|istockphoto|adobe\.com|dreamstime|alamy|123rf|depositphotos)/i;
       const LOWRES = /(pinimg\.com\/\d+x)/i;
       const NEWSY = /(gq-magazine|vogue|cosmopolitan|elle\.|buzzfeed|dailymail|people\.com|preview\.ph|lemon8|popsugar)/i;
-      const clean = found.filter(f => !JUNK.test(f.image) && !LOWRES.test(f.image) &&
+      // Pinterest is one of Get Inspired's own sites, so its pictures are asked for at their full size and never thrown out as thumbnails.
+      if (opts.detail) for (const f of found) f.image = f.image.replace(/(pinimg\.com\/)(\d+x|originals)\//, "$1736x/");
+      const clean = found.filter(f => !JUNK.test(f.image) && (opts.detail || !LOWRES.test(f.image)) &&
                                       !NEWSY.test(f.image + " " + (f.source || "")));
 
       // ══ A NUDGE TOWARD THE HOSTS THAT KEEP EARNING IT ═══════════════════════════════════
@@ -71926,26 +71931,33 @@ export class PublicEntry extends WorkerEntrypoint {
       // "We're looking through out in the real world for inspiration." Their words from the Get Inspired search go to the
       // web search exactly as typed; the list comes back with each photo's title, artist (only when its page names one), one
       // line and the page it is on. Nothing looks at the photos - "we definitely do not need to read every image on the page
-      // until one is selected". Saved per search for 30 days, so the same words are instant for the next person.
+      // until one is selected".
       if (action === "inspire_find") {
         const q = String(b.q || "").replace(/\s+/g, " ").trim().slice(0, 160);
         if (!q) return { ok: false, error: "NO_WORDS" };
         const _t0 = Date.now();
-        const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
-        try {
-          const hit = await env.AURA_KV.get(_k);
-          if (hit) { const j = JSON.parse(hit); console.log("[INSPIRE] \"" + q + "\" - " + (j.items || []).length + " from the saved search"); return { ok: true, q, items: j.items || [], cached: true }; }
-        } catch {}
-        const r = await findReference(q, env, { count: 8, verify: false, detail: true });
+        // WHERE WE LOOK (2026-10-24, Aaron): five sites, a dial - `config:inspire:sites`, a JSON list of domains.
+        let sites = ["pinterest.com", "instagram.com", "tattoodo.com", "reddit.com", "tattoolife.com"];
+        try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:sites")) || "null");
+              if (Array.isArray(j) && j.length) sites = j.map(String).filter(Boolean).slice(0, 5); } catch {}
+        // NOTHING IS SAVED (2026-10-24, Aaron: "we're not saving any of this stuff - all we're doing is discovery"): every search
+        // is new. The list is held one hour only, so a tap can fetch the photo they chose.
+        const r = await findReference(q, env, { count: 8, verify: false, detail: true, sites });
         if (!r || !r.ok) {
           console.log("[INSPIRE] \"" + q + "\" - nothing: " + ((r && r.error) || "no answer") + " · " + (Date.now() - _t0) + "ms");
           return { ok: false, q, error: (r && r.error) || "NOTHING_FOUND" };
         }
+        const SITE = [[/pinterest|pinimg/i, "Pinterest"], [/instagram|cdninstagram|fbcdn/i, "Instagram"], [/tiktok/i, "TikTok"],
+          [/tattoodo/i, "Tattoodo"], [/reddit|redd\.it/i, "Reddit"], [/tattoolife/i, "Tattoo Life"], [/inkedmag/i, "Inked Magazine"], [/behance/i, "Behance"]];
+        const siteOf = (f) => { const h = String(f.page || "") + " " + String(f.image || "") + " " + String(f.source || "");
+          const m = SITE.find(([re]) => re.test(h)); return m ? m[1] : (f.source || null); };
         const items = (r.found || []).map((f) => ({ image: f.image, title: f.title || null, artist: f.artist || null,
-          about: f.about || null, page: f.page || null, source: f.source || null }));
-        try { await env.AURA_KV.put(_k, JSON.stringify({ items, at: new Date().toISOString() }), { expirationTtl: 30 * 86400 }); } catch {}
-        console.log("[INSPIRE] \"" + q + "\" - " + items.length + " found · " + items.filter((x) => x.artist).length + " with an artist · " +
-          items.filter((x) => x.page).length + " with a page · " + (Date.now() - _t0) + "ms · " + (r.model || "?"));
+          about: f.about || null, from: siteOf(f), page: f.page || null }));
+        const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
+        try { await env.AURA_KV.put(_k, JSON.stringify({ items }), { expirationTtl: 3600 }); } catch {}
+        const _by = {}; items.forEach((x) => { _by[x.from || "?"] = (_by[x.from || "?"] || 0) + 1; });
+        console.log("[INSPIRE] \"" + q + "\" - " + items.length + " found (" + Object.entries(_by).map(([k, v]) => k + " " + v).join(", ") + ") · " +
+          items.filter((x) => x.artist).length + " with an artist · " + (Date.now() - _t0) + "ms · " + (r.model || "?") + " · sites " + sites.join(","));
         return { ok: true, q, items, ms: Date.now() - _t0 };
       }
       // The photo they tapped, fetched here (their browser cannot read another site's picture) and handed back as their own

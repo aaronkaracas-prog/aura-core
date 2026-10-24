@@ -1,7 +1,7 @@
-<!doctype html><html lang=en><head><meta charset=utf-8>
+<!doctype html><html lang=en><head><meta charset=utf-8><link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin><link rel=stylesheet href="https://fonts.googleapis.com/css2?family=Kaushan+Script&display=swap">
 <meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name=theme-color content="#000000">
-<title>mytattoo.world</title>
+<title>Inkit.world</title>
 <style>
 /* ══ THE SHELL ════════════════════════════════════════════════════════════════════════════════
    One chrome, five stages. Header, composer and tab bar never move. Only the middle changes -
@@ -42,6 +42,24 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 .job b{display:block;font-size:1.12rem;font-weight:800;line-height:1.15}
 .job small{display:block;color:#c9c9d2;margin-top:4px;font-size:.8rem}
 .job:focus-visible{outline:2px solid var(--violet);outline-offset:2px}
+/* THE NEW CARD STACK (2026-10-23, Aaron's mockup): tall bright pictures, a handwritten two-colour title with a swoosh, a line icon,
+   the description and a round arrow in the card's own colour. The words are the page's, not the picture's - sharp at any size. */
+.jobs .job.jc{flex:0 0 220px;max-width:none;height:auto;aspect-ratio:9/19;border-radius:20px;border:1.5px solid color-mix(in srgb,var(--jc) 45%,#2c2c35);
+  background:#0b0b10;box-shadow:0 0 0 1px rgba(255,255,255,.04),0 10px 28px rgba(0,0,0,.45)}
+.jobs .job.jc img{opacity:1;height:72%;bottom:auto;object-position:center top;-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}
+.jobs .job.jc .jcb{position:absolute;left:0;right:0;bottom:0;padding:48px 16px 16px;display:flex;flex-direction:column;justify-content:flex-end;
+  background:linear-gradient(transparent,rgba(11,11,16,.75) 30%,#0b0b10 55%)}
+.jobs .job.jc .jcb > *{flex:none}
+.jobs .job.jc .jct.one em{display:inline}
+.jobs .job.jc .jci svg{width:40px;height:40px;stroke:#fff;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;margin-bottom:6px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.6))}
+.jobs .job.jc .jct{font-family:'Kaushan Script',cursive;font-weight:400;font-size:2.05rem;line-height:1.02;color:#fff;margin:0;letter-spacing:0;text-shadow:0 2px 8px rgba(0,0,0,.55)}
+.jobs .job.jc .jct em{display:block;font-style:normal;color:var(--jc)}
+.jobs .job.jc .jcs{display:block;width:72%;height:10px;margin:2px 0 8px}
+.jobs .job.jc .jcs path{stroke:var(--jc);stroke-width:3;fill:none;stroke-linecap:round}
+.jobs .job.jc .jcd{display:block;color:#e4e4ec;font-size:.86rem;line-height:1.4;padding-right:40px;min-height:5.6em}
+.jobs .job.jc .jca{position:absolute;right:14px;bottom:14px;width:40px;height:40px;border-radius:50%;background:var(--jc);display:grid;place-items:center}
+.jobs .job.jc .jca svg{width:20px;height:20px;stroke:#0b0b10;fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+@media (max-width:600px){ .jobs .job.jc{flex:0 0 190px} .jobs .job.jc .jct{font-size:1.8rem} .jobs .job.jc .jcd{font-size:.8rem} }
 .row{display:flex;gap:12px;overflow-x:auto;padding:12px 0 6px;scroll-snap-type:x proximity;
   -webkit-overflow-scrolling:touch;scrollbar-width:none}
 .row .tile{flex:0 0 132px;scroll-snap-align:start}
@@ -298,7 +316,7 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 .pick .pbox{max-width:420px;margin:0 auto;aspect-ratio:1;border-radius:16px;overflow:hidden;
   background:var(--picbg);border:1px solid var(--line);touch-action:pan-y}
 .pick .pbox.split{max-width:640px;aspect-ratio:3/2}
-.pick .pbox img{width:100%;height:100%;object-fit:contain;display:block}
+.pick .pbox img{width:100%;height:100%;object-fit:contain;display:block;cursor:zoom-in}
 .pick .nav{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:10px;color:var(--dim);font-size:.85rem}
 .pick .nav button{flex:none;min-height:40px;width:44px;padding:0;font-size:1.2rem}
 .pick h3{font-size:1.2rem;font-weight:800;margin-top:12px}
@@ -698,6 +716,9 @@ nav button:focus-visible{outline:2px solid var(--violet);outline-offset:-3px;bor
 #fs{position:fixed;inset:0;z-index:3000;background:#000;display:none;align-items:center;justify-content:center;cursor:zoom-out}
 #fs.on{display:flex}
 #fs img{max-width:100vw;max-height:100vh;max-height:100dvh;object-fit:contain}
+/* FULL SCREEN IS FULL SCREEN (2026-10-23, Aaron: "it should at least take over the whole screen"): the picture fills the screen even when
+   it is smaller than it - a card cut from a sheet is about 410 pixels and opened at that size in the middle of black. */
+#fs > img.fw{width:100vw;height:100vh;height:100dvh}
 /* ONE DESIGN OFF THE SHEET, FULL SCREEN (2026-10-15, Aaron): each design is drawn phone-shaped (9:16), so it fills the
    phone. The same 1.5% inset as before keeps the next design's edge out. */
 #fs .fq{display:none;position:relative;overflow:hidden;aspect-ratio:9/16;width:min(100vw,calc(100dvh * 9 / 16));background:var(--picbg)}
@@ -1293,6 +1314,13 @@ header{justify-content:flex-start;gap:6px;padding:calc(env(safe-area-inset-top) 
   .door svg{width:24px;height:24px}
 }
 /* THE MOCKUP'S SIZES (2026-10-22, Aaron: "exactly like this"): her card big with the butterfly, two start cards, about four and a half style cards across. */
+.onhero{position:relative;margin:12px 0 4px;border-radius:18px;overflow:hidden;border:1px solid #3b2a5c;background:#0b0b12}
+.onhero img{display:block;width:100%;aspect-ratio:3/2;object-fit:cover}
+.onhero .ohx{position:absolute;left:0;top:0;bottom:0;width:62%;display:flex;flex-direction:column;justify-content:center;padding:0 0 0 6%;
+  background:linear-gradient(90deg,rgba(0,0,0,.75) 0%,rgba(0,0,0,.45) 60%,transparent 100%)}
+.onhero h3{margin:0 0 10px;font-size:clamp(2rem,7vw,3.4rem);line-height:.98;font-weight:900;color:#fff;letter-spacing:-.02em}
+.onhero h3 em{font-style:normal;color:var(--violet)}
+.onhero p{margin:0;max-width:20em;color:#e4e4ec;font-size:clamp(.85rem,2.4vw,1.1rem);line-height:1.4}
 .meet.m2{gap:14px;padding:18px 16px;background:radial-gradient(120% 140% at 15% 30%,#2a1450 0%,#120c22 45%,#0b0b12 100%);border-color:#3b2a5c}
 .meet.m2 img{width:38%;max-width:220px;height:auto;aspect-ratio:1;mix-blend-mode:screen;-webkit-mask-image:radial-gradient(circle,#000 52%,transparent 71%);mask-image:radial-gradient(circle,#000 52%,transparent 71%)}
 .meet.m2 h3{font-size:2.2rem;line-height:1.05;margin:0 0 8px}
@@ -1376,8 +1404,10 @@ header{justify-content:flex-start;gap:6px;padding:calc(env(safe-area-inset-top) 
 .turn .made,.ydes img{border:1.5px solid #fff;padding:6px;background:#000;box-sizing:border-box}
 .psheet{border:1.5px solid #fff;border-radius:16px;padding:6px;background:#000;box-sizing:border-box}
 #p-mine .rail .tile .pic,#favRow .tile .pic,#p-mine .rail.allv .pic{border:1.5px solid #fff;box-sizing:border-box}
-#p-mine .rail.allv .pic{aspect-ratio:15/16 !important;overflow:hidden;background:#000}
-#p-mine .rail.allv .pic img{width:100%;height:100%;object-fit:contain}
+/* THE FRAME FITS THE PICTURE (2026-10-23, Aaron: "the white outline ... can scale perfectly instead of seeing them black on the top
+   and the bottom"): no fixed shape and no black fill - a wide split card gets a wide frame, a tall one a tall frame. */
+#p-mine .rail.allv .pic{aspect-ratio:auto !important;overflow:hidden;background:#fff;min-height:60px}
+#p-mine .rail.allv .pic img{width:100%;height:auto;display:block;object-fit:contain}
 .s41c{border:1.5px solid #fff}
 #styleInfo .simg{border:1.5px solid #fff;border-radius:16px;margin:56px 12px 0;overflow:hidden}
 
@@ -1402,28 +1432,230 @@ button.go,a.go,.chgo,.xgo,.smbtn .p,#styleInfo .go{background:#15151c !important
 /* ══ THE CHAT BOX (2026-10-22, Aaron's Meta AI screenshot): one rounded box - their words on top, growing upward, and one row under
    them: + on the left, the mic and send on the right. The butterfly inside the box is gone (she is on screen already). ══ */
 #composer{flex-wrap:wrap;align-items:flex-end;border-radius:22px;padding:10px 10px 8px 12px;gap:6px 8px}
-#composer .glyph{display:none}
+/* HER BUTTERFLY IN THE CHAT BOX, LEFT OF + (2026-10-23, Aaron). The 💬 note button is gone from the box - a message that starts
+   with "Feedback:" still files a note. */
+#composer .glyph{display:grid;width:34px;height:34px}
+#composer #noteBtn{display:none !important}
 #composer #say{order:-1;flex:1 1 100%;width:100%;min-height:24px;max-height:132px;resize:none;overflow-y:auto;background:none;border:0;outline:none;
   color:var(--ink);font:inherit;font-size:16px;line-height:1.4;padding:4px 2px 2px}
 #composer #say::placeholder{color:#8a8a96}
 #composer #camBtn{margin-right:auto}
 @media (max-width:899px){ #composer{width:auto;margin-left:10px;margin-right:10px} }
 
+/* ══ INKIT.WORLD (2026-10-23, Aaron's mockups) ══════════════════════════════════════════════════════════════════════════
+   The name centred in the header - "Inkit" in the brush script, a heart, ".world" in bold white. */
+header{position:relative}
+header .mark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:baseline;gap:1px;white-space:nowrap;font-size:1.5rem}
+.mark .lg1{font-family:'Kaushan Script',cursive;font-weight:400;color:#e23bff;font-size:1.35em;letter-spacing:0;text-shadow:0 0 14px rgba(226,59,255,.35)}
+.mark .lgh{color:#e23bff;font-size:.62em;margin:0 1px 0 0;transform:translateY(-.55em);display:inline-block}
+.mark .lg2{font-weight:800;color:#fff;letter-spacing:-.02em}
+.dhead .mark{position:static;transform:none;font-size:1.3rem;display:flex;align-items:baseline}
+/* ══ BANNERS AND PAGE HEROES, FITTED (2026-10-23 walk, Aaron: "the hero cards probably a little too small on the phone or a little too
+   big... some of the text overlay is overlaying the image too much"). MEASURED at 375x812: the text sat over the woman's face on
+   Trending; at 1440x900 the first banner was cut off under the chat bar. Now the picture is never cropped into the subject: on a
+   banner only the small line and the title sit on the dark side of the picture, and the description is under it. On a computer the
+   three banners sit side by side, so Home fits one screen. ══ */
+.bnrs{display:grid;gap:12px;margin:16px 0 8px}
+@media (min-width:900px){ .bnrs{grid-template-columns:repeat(3,1fr);gap:16px} }
+.bnr{position:relative;display:block;border-radius:18px;overflow:hidden;border:1px solid color-mix(in srgb,var(--bc) 40%,#2a2a33);background:#0b0b10;cursor:pointer}
+.bnr .bnp{position:relative;aspect-ratio:2048/864;background:#07070a}
+.bnr picture,.bnr img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.bnr .bnp::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.7) 0%,rgba(0,0,0,.35) 40%,rgba(0,0,0,0) 58%)}
+.bnr .bnw{position:absolute;z-index:2;left:14px;top:0;bottom:0;right:46%;display:flex;flex-direction:column;justify-content:center;gap:1px}
+.bnk,.bnk2{font-weight:800;letter-spacing:.3em;text-transform:uppercase;font-size:.66rem;color:#fff}
+.bnt{font-family:'Kaushan Script',cursive;color:var(--bc);font-size:1.7rem;line-height:1.02;text-shadow:0 2px 10px rgba(0,0,0,.7)}
+.bnr .bnd{display:block;padding:10px 64px 12px 14px;color:#cfcbd9;font-size:.82rem;line-height:1.35}
+.bnr .bna{position:absolute;z-index:2;right:12px;bottom:12px;width:42px;height:42px;border-radius:50%;border:0;background:#b02cff;display:grid;place-items:center;cursor:pointer}
+.bnr .bna svg,.scrback svg{width:21px;height:21px;stroke:#fff;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+@media (min-width:900px){ .bnr .bnt{font-size:1.9rem} .bnr .bnd{font-size:.84rem} }
+/* A PAGE'S HERO. Phone: the whole picture, the title on its dark side, the description under it. Computer: a fixed height that leaves
+   the first row on screen, everything on the picture. */
+.scrhero{position:relative;margin:4px 0 6px;border-radius:18px;overflow:hidden;border:1px solid color-mix(in srgb,var(--bc) 40%,#2a2a33);background:#0b0b10}
+.scrhero .shp{position:relative;aspect-ratio:2048/1056;background:#07070a}
+.scrhero picture,.scrhero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:right center;display:block}
+.scrhero .bnw{display:flex;flex-direction:column;gap:2px;padding:12px 14px 0}
+.scrhero .bnt{font-size:2.1rem}
+.scrhero .bnd{color:#e6e3ee;line-height:1.4}
+.scrhero .bnd.dsk{display:none}
+.scrhero .bnd.mob{display:block;padding:4px 14px 14px;font-size:.84rem;color:#cfcbd9}
+.scrback{position:absolute;z-index:3;left:10px;top:10px;width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.55);display:grid;place-items:center;cursor:pointer}
+@media (min-width:900px){
+  .scrhero .shp{aspect-ratio:auto;height:clamp(300px,29vw,420px)}
+  .scrhero .shp::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.78) 0%,rgba(0,0,0,.4) 40%,rgba(0,0,0,0) 62%)}
+  .scrhero .bnw{position:absolute;z-index:2;top:0;bottom:0;left:56px;right:52%;justify-content:center;padding:0}
+  .scrhero .bnt{font-size:3.6rem} .scrhero .bnk{font-size:.85rem}
+  .scrhero .bnd.dsk{display:block;font-size:1rem;margin-top:10px;max-width:28em}
+  .scrhero .bnd.mob{display:none}
+}
+/* THE JOB PAGES (2026-10-23). */
+.sect h2 small{font-weight:600;color:var(--dim);font-size:.75em}
+.tsgrid,.tcgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
+.tscard{display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;position:relative;text-align:left;border-radius:18px;border:1px solid #3a2a55;background:#0e0b16;color:#fff;padding:16px 16px 58px;cursor:pointer;overflow:hidden;min-height:170px;font:inherit}
+.tscard b{display:block;font-size:1.35rem;font-weight:800;margin-bottom:6px}
+.tscard span{display:block;color:#cfcbd9;font-size:.84rem;line-height:1.35;max-width:22em;position:relative;z-index:1}
+.tscard .tsq{display:block;margin-top:10px;font-family:'Kaushan Script',cursive;font-style:normal;color:#e9c8ff;border:2px solid #b02cff;border-radius:18px;padding:8px 12px;font-size:.95rem;box-shadow:0 0 18px rgba(176,44,255,.45)}
+.tscard .tsgo,.tccard span,.pggo{font-style:normal}
+.tscard .tsgo{position:absolute;left:16px;bottom:14px;width:40px;height:40px;border-radius:50%;background:#b02cff;display:grid;place-items:center;font-size:1.2rem;z-index:1}
+.tsshow img{position:absolute;right:-10px;bottom:-10px;width:55%;opacity:.9;border-radius:14px}
+.tsshow span{max-width:55%}
+.tccard{border:1px solid #3a2a55;border-radius:16px;background:#0e0b16;overflow:hidden;padding:0;cursor:pointer;color:#fff;font:inherit}
+.tccard img{display:block;width:100%;aspect-ratio:3/2;object-fit:cover}
+.tccard span{display:block;margin:10px;padding:12px;border:1.5px solid #b02cff;border-radius:14px;font-weight:700}
+.pgbox{border:1px solid #3a2a55;border-radius:18px;background:#0b0911;padding:16px;margin:12px 0}
+.pgbox h3,.pgsearch h3{margin:0 0 4px;font-size:1.25rem;font-weight:800}
+.pgbox p,.pgsearch p{margin:0 0 10px;color:#cfcbd9;font-size:.86rem}
+.pgidea{display:grid;grid-template-columns:42% 1fr;gap:14px;align-items:center}
+.pgidea img{width:100%;border-radius:12px;aspect-ratio:3/2;object-fit:cover}
+.pggo{border:0;border-radius:999px;background:#b02cff;color:#fff;font:inherit;font-weight:800;padding:12px 20px;cursor:pointer}
+.pgtip{border:1px solid #3a2a55;border-radius:14px;padding:12px 14px;color:#cfcbd9;font-size:.84rem;margin:12px 0}
+.pgtips2{display:block;width:100%;text-align:left;border:1px solid #3a2a55;border-radius:14px;background:#0b0911;color:#e9c8ff;font:inherit;font-weight:700;padding:14px;cursor:pointer;margin:12px 0}
+.pgsearch{border:1px solid #6b2bb0;border-radius:18px;background:#0b0911;padding:16px;margin:12px 0}
+.pgsearch div{display:flex;gap:8px;border:1.5px solid #6b2bb0;border-radius:999px;padding:5px 5px 5px 16px}
+.pgsearch input{flex:1;min-width:0;background:none;border:0;outline:none;color:#fff;font:inherit;font-size:16px}
+.pgsearch button{width:42px;height:42px;border-radius:50%;border:0;background:#b02cff;color:#fff;font-size:1.2rem;cursor:pointer}
+.pairs{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:8px 0 12px}
+.pair{position:relative;border-radius:14px;overflow:hidden;background:#0b0911;border:1px solid #2a2433}
+.pair .pp{display:block;width:84%;margin:8px auto 0;aspect-ratio:1;object-fit:cover;border:3px solid #fff;border-radius:6px;transform:rotate(-2deg)}
+.pair .pa{display:block;text-align:center;color:#e23bff;font-style:normal;font-size:1.3rem;line-height:1.2;font-weight:800}
+.pair .pt{display:block;width:100%;aspect-ratio:2/3;object-fit:cover}
+.pgup{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;border:2px dashed #8a2be2;border-radius:18px;padding:16px;margin:12px 0}
+.pgup .pgupi svg{width:40px;height:40px;stroke:#d58cff;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.pgup b{display:block;font-size:1.05rem}
+.pgup span span,.pgup div span{color:#cfcbd9;font-size:.84rem}
+.pgup .pggo{grid-column:1/-1}
+@media (min-width:900px){
+  .pairs{grid-template-columns:repeat(4,1fr)}
+  .pgup{grid-template-columns:auto 1fr auto}
+  .pgup .pggo{grid-column:auto}
+  .tscard{min-height:200px}
+  /* Take / Choose pictures short and wide on a computer, so their buttons show without scrolling (2026-10-23 walk). */
+  .tccard img{aspect-ratio:16/7}
+}
+@media (max-width:600px){ .tccard span{margin:8px;padding:10px 6px;font-size:.86rem;white-space:nowrap;text-align:center} .pair .pt{aspect-ratio:3/4} .tsgrid,.tcgrid{gap:8px} .tscard{padding:12px 12px 56px;min-height:190px} .tscard b{font-size:1.15rem} .tscard span{font-size:.78rem} .tscard .tsq{font-size:.85rem} .pgidea{grid-template-columns:1fr} }
+/* TRENDING TATTOO IDEAS: tall cards of real tattoos on people. */
+.ideat{flex:0 0 150px;background:none;border:0;color:var(--ink);font:inherit;text-align:left;cursor:pointer;padding:0;scroll-snap-align:start}
+.ideat .pic{display:block;width:150px;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:#000;border:1px solid var(--line)}
+.ideat .pic img{width:100%;height:100%;object-fit:cover;display:block}
+.ideat b{display:block;font-size:.82rem;margin-top:6px;font-weight:700}
+@media (min-width:900px){ .ideat{flex-basis:180px} .ideat .pic{width:180px} }
+/* THE JOB CARDS: shorter, so the banners show under them. Phone: two and a bit across. Computer: all six in a line. */
+@media (min-width:900px){ .jobs .job.jc{aspect-ratio:9/15} }
+@media (max-width:600px){ .jobs .job.jc{flex:0 0 160px;aspect-ratio:9/16} .jobs .job.jc .jct{font-size:1.55rem} .jobs .job.jc .jcd{font-size:.74rem;min-height:0;padding-right:36px} .jobs .job.jc .jca{width:34px;height:34px;right:10px;bottom:10px} .jobs .job.jc .jci svg{width:30px;height:30px} }
+/* ON A COMPUTER: a wider page, and all six job cards side by side with no scrolling. */
+@media (min-width:1280px){ :root{--wide:1240px} .jobs .job.jc{flex:1 1 0;min-width:0} }
+/* THE CHAT BAR: her butterfly on the left, the photo button on the right beside send. */
+#composer .glyph{order:0;margin-right:auto}
+#composer #camBtn{order:2;margin-right:0}
+#composer #micBtn{order:3}
+#composer #sendBtn{order:4}
+#composer #addMenu{order:5}
+
 /* MY TATTOOS SHOWS THE WHOLE DESIGN (2026-10-23, Aaron: "it's displaying too big so you can't see the whole tattoo"). */
 #p-mine #mineDone .pic img{object-fit:contain;background:#fff}
 #p-mine #mineGoing .pic img{object-fit:contain;background:#000}
+
+/* ══ THE DESIGN POPS UP OVER THE ROWS (2026-10-24, Aaron) - no second step; closing leaves the rows where they were. ══ */
+#pickPop{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;padding:20px}
+#pickPop.on{display:flex}
+#pickPop .ppbox{position:relative;width:100%;max-width:760px;max-height:calc(100dvh - 40px);overflow-y:auto;background:var(--card);
+  border:1px solid var(--line);border-radius:18px;padding-bottom:18px;overscroll-behavior:contain}
+#pickPop .ppbar{position:sticky;top:0;z-index:6;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 10px 6px 18px;
+  background:linear-gradient(var(--card) 75%,rgba(20,20,24,0))}
+#pickPop .ppcat{font-weight:800;font-size:1rem;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pickPop .x{flex:0 0 auto;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:#1c1c22;color:var(--ink);font:inherit;font-size:1.25rem;line-height:1;cursor:pointer}
+#pickPop .pick{padding-top:0}
+#pickPop .acts.one{display:flex;justify-content:center}
+#pickPop .acts.one .go{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:min(100%,320px)}
+#pickPop .acts.one .go svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+@media (max-width:640px){
+  #pickPop{align-items:stretch;padding:0}
+  #pickPop .ppbox{max-height:100dvh;height:100dvh;border-radius:0;border:0;padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+}
+/* ITS NAME AND TWO SMALL ICONS ON EVERY CARD IN A STYLE'S ROWS (2026-10-24, Aaron). */
+.feed .tile .pic{position:relative}
+.feed .tile .tzm,.feed .tile .ted{position:absolute;bottom:8px;z-index:3;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(12,12,16,.72);border:1px solid rgba(255,255,255,.18);color:#fff;cursor:pointer;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+.feed .tile .tzm{left:8px} .feed .tile .ted{right:8px}
+.feed .tile .tzm svg,.feed .tile .ted svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.feed .tile .ted{background:rgba(124,58,237,.85);border-color:rgba(255,255,255,.28)}
+.feed .tile .tnm{display:block;font-style:normal;font-size:.9rem;font-weight:700;color:var(--ink);text-align:left;padding:7px 4px 0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* The menu's two short lists (2026-10-24). */
+#drawer .dtg{justify-content:space-between}
+#drawer .dch{width:9px;height:9px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin:-4px 4px 0 12px;opacity:.7;transition:transform .15s}
+#drawer .dtg[aria-expanded=true] .dch{transform:rotate(225deg);margin-top:4px}
+#drawer .dsub{padding:0 0 6px}
+#drawer .dsub a{min-height:42px;padding-left:38px;font-size:.95rem;color:#d9d6e3}
+
+/* A page hero with its words drawn in (2026-10-24): the picture alone - 4:3 on a phone, wide on a computer. */
+.scrhero.baked .shp{aspect-ratio:4/3;height:auto}
+.scrhero.baked img{object-position:center}
+@media (min-width:700px){
+  .scrhero.baked .shp{aspect-ratio:2048/864;height:auto}
+  .scrhero.baked .shp::after{display:none}
+}
+
+/* Her style question as a row of styles (2026-10-24). */
+.turn .choose.chs{max-width:100%}
+.turn .choose .chrow{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 8px;scroll-snap-type:x proximity;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.turn .choose .chrow::-webkit-scrollbar{display:none}
+.turn .choose .chc{flex:0 0 92px;width:92px;padding:0;border:0;background:none;color:var(--ink);font:inherit;text-align:center;cursor:pointer;scroll-snap-align:start}
+.turn .choose .chc .pic{display:block;width:92px;height:92px;border-radius:12px;overflow:hidden;background:#fff;border:2px solid #2c2c35}
+.turn .choose .chc .pic img{width:100%;height:100%;object-fit:cover;display:block}
+.turn .choose .chc .pic.txt{display:flex;align-items:center;justify-content:center;background:#18181f;padding:6px}
+.turn .choose .chc .pic.txt i{font-style:normal;font-size:.72rem;line-height:1.2;color:#cfcbd9}
+.turn .choose .chc b{display:block;font-size:.74rem;font-weight:700;line-height:1.2;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.turn .choose .chc.hers .pic{border-color:#4b3a6e}
+.turn .choose .chc.sel .pic{border-color:var(--violet);box-shadow:0 0 0 2px var(--violet)}
+.turn .choose .chc.sel b{color:var(--violet)}
+.turn .choose .chnow{margin:2px 2px 8px;font-size:.88rem;color:#cfcbd9}
+.turn .choose .chnow b{color:var(--ink)}
+.turn .choose .chacts{display:flex;gap:8px}
+.turn .choose .chacts button{flex:1;min-height:44px;border-radius:22px;font:inherit;font-weight:700;font-size:.9rem;cursor:pointer}
+.turn .choose .chshow{background:var(--violet);border:1px solid var(--violet);color:#fff}
+.turn .choose .chown{background:#000;border:1.5px solid var(--violet);color:#fff}
+/* The style's own card (2026-10-24). */
+#stylePop{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center;padding:24px}
+#stylePop.on{display:flex}
+#stylePop .spcard{width:min(100%,380px);background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;cursor:pointer}
+#stylePop img{display:block;width:100%;aspect-ratio:1;object-fit:contain;background:#fff}
+#stylePop .spt{padding:14px 16px 16px}
+#stylePop .spt b{display:block;font-size:1.2rem;font-weight:800}
+#stylePop .spt p{margin:6px 0 10px;color:#cfcbd9;line-height:1.45;font-size:.95rem}
+#stylePop .sphint{display:inline-block;padding:9px 16px;border-radius:20px;background:var(--violet);color:#fff;font-weight:700;font-size:.88rem}
+
+/* The style card with its hero (2026-10-24): the picture carries the name - 4:5, edge to edge, no white frame. */
+#styleInfo .sbig.hero .simg{flex:none;background:#000;border:0;border-radius:0;margin:0 auto;aspect-ratio:4/5;width:min(100%, calc((100dvh - 200px) * 0.8))}
+#styleInfo .sbig.hero .simg img{width:100%;height:100%;max-width:none;max-height:none;object-fit:cover}
+#styleInfo .sbig.hero{justify-content:center}
+#styleInfo .sbig.hero .stxt{padding-top:12px}
+#stylePop.hero img{aspect-ratio:4/5;object-fit:cover;background:#000}
+#stylePop.hero .spt b{display:none}
 </style></head><body>
 
 <header>
   <button class=menu id=menuBtn aria-label="Menu"><svg viewBox="0 0 24 24" aria-hidden=true><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-  <button class=mark id=homeBtn>mytattoo<i>.world</i></button>
+  <button class=mark id=homeBtn aria-label="Inkit.world home"><span class=lg1>Inkit</span><span class=lgh aria-hidden=true>♡</span><span class=lg2>.world</span></button>
   <button class=me id=meBtn aria-label="Account and settings" hidden>A</button>
 </header>
 <div id=drawer aria-hidden=true><div class=din>
-  <div class=dhead><b>mytattoo<i>.world</i></b><button class=dx id=drawerX aria-label=Close>&times;</button></div>
-  <a data-go=new class=hot>+ New tattoo</a>
-  <a data-go=0>Explore</a>
-  <a data-go=1>Design</a>
+  <div class=dhead><b class=mark><span class=lg1>Inkit</span><span class=lgh aria-hidden=true>♡</span><span class=lg2>.world</span></b><button class=dx id=drawerX aria-label=Close>&times;</button></div>
+  <a data-go=sub:new class="hot dtg" aria-expanded=false>+ New tattoo<i class=dch aria-hidden=true></i></a>
+  <div class=dsub data-sub=new hidden>
+    <a data-go=scr:job0>Create your own tattoo</a>
+    <a data-go=scr:job3>See it on you</a>
+    <a data-go=scr:job1>Add to a tattoo I have</a>
+    <a data-go=scr:job2>Cover up a tattoo</a>
+    <a data-go=scr:job6>Turn a photo into a tattoo</a>
+    <a data-go=scr:job4>Get inspired</a>
+  </div>
+  <a data-go=sub:explore class=dtg aria-expanded=false>Explore<i class=dch aria-hidden=true></i></a>
+  <div class=dsub data-sub=explore hidden>
+    <a data-go=scr:trend>What&rsquo;s trending</a>
+    <a data-go=scr:styles>Tattoo styles</a>
+    <a data-go=scr:beyond>Wild ideas</a>
+  </div>
   <a data-go=2>My Tattoos</a>
   <a data-go=saved>Favorites</a>
   <a data-go=3>Tattoo Parlors</a>
@@ -1479,7 +1711,7 @@ button.go,a.go,.chgo,.xgo,.smbtn .p,#styleInfo .go{background:#15151c !important
   <div id=addMenu><button id=addFile>Choose a photo</button><button id=addCam>Take a photo</button></div>
   <input type=file id=fileCam accept="image/*" capture=environment style="display:none">
   <input type=file id=file accept="image/*" style="display:none">
-  <textarea id=say rows=1 placeholder="Tell me what you want…" autocomplete=off></textarea>
+  <textarea id=say rows=1 placeholder="Tell me what you want to create…" autocomplete=off></textarea>
   <button class=note id=noteBtn hidden type=button aria-label="Tell us what isn’t making sense">💬</button>
   <button class=mic id=micBtn type=button aria-label="Speak" hidden><svg viewBox="0 0 24 24" aria-hidden=true><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></button>
   <button class=send id=sendBtn aria-label=Send><svg viewBox="0 0 24 24" aria-hidden=true><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
@@ -1509,6 +1741,7 @@ button.go,a.go,.chgo,.xgo,.smbtn .p,#styleInfo .go{background:#15151c !important
    ══════════════════════════════════════════════════════════════════════════════════════════ */
 /* THE MAGNIFYING GLASS IS THE STANDARD (2026-10-08, Aaron): one icon everywhere means "see it big". */
 var EXP_SVG='<svg viewBox="0 0 24 24" aria-hidden=true><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M10.5 7.5v6M7.5 10.5h6"/></svg>';
+var EDIT_SVG='<svg viewBox="0 0 24 24" aria-hidden=true><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
 var EXP_MINUS_SVG='<svg viewBox="0 0 24 24" aria-hidden=true><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M7.5 10.5h6"/></svg>';
 var TABS = [
   {id:'explore',label:'Explore',icon:'<circle cx="12" cy="12" r="9"/><path d="M15 9l-2 5-5 2 2-5z"/>'},
@@ -1687,7 +1920,12 @@ var AURA_MARK = document.getElementById('auraGlyph').querySelector('img').src;
    ("aaronkaracas+40"), which is never used as a name. */
 function firstName(){
   var n=String((ME && ME.name) || '').trim(); if(!n) return '';
-  if(!/\s/.test(n) && /[+@.\d_]/.test(n)) return '';
+  /* THE START OF THEIR EMAIL WHEN THERE IS NO NAME (2026-10-23, Aaron: "take the beginning of the email address"):
+     "aaronkaracas+40@gmail.com" -> "Aaronkaracas" - the letters before any +, dot, underscore or digit. */
+  if(!/\s/.test(n) && /[+@.\d_]/.test(n)){
+    var lp=n.split('@')[0].split('+')[0], m=lp.match(/^[A-Za-z]+/); if(!m) return '';
+    n=m[0];
+  }
   var f=n.split(/\s+/)[0]; return f.charAt(0).toUpperCase()+f.slice(1);
 }
 /* AURA AT THE TOP OF HOME (2026-10-17, Aaron): the first time, she introduces herself (one of a few, so it is not always the
@@ -1698,15 +1936,18 @@ var HERO_INTROS=[
   'Every great tattoo starts with something you feel. Tell me yours \u2013 or pick something below and let\u2019s explore.'
 ];
 var HERO_PICK=Math.floor(Math.random()*HERO_INTROS.length);
+/* FIRST TIME ON THIS ACCOUNT, NOT THIS PHONE (2026-10-23, Aaron): MEASURED 13:20 - a brand-new login said "Welcome back", because
+   "seen before" was kept per phone. It is kept per account now; the first time: "Welcome, Aaron. What do you want to do today?" */
 function heroHtml(){
-  if(!introSeen()) return '<div class=hero id=hero><h1>Hi, I\u2019m <em>Aura</em>.</h1><p>'+esc(HERO_INTROS[HERO_PICK])+'</p></div>';
   var f=firstName();
+  if(!introSeen()) return '<div class=hero id=hero><h1>Welcome'+(f?', <em>'+esc(f)+'</em>':'')+'.</h1><p>What do you want to do today?</p></div>';
   return '<div class="hero back" id=hero><h1>Welcome back'+(f?', <em>'+esc(f)+'</em>':'')+'.</h1><p>What are we imagining today?</p></div>';
 }
 function paintHero(){ var h=document.getElementById('hero'); if(h) h.outerHTML=heroHtml() }
 var INTRO_KEY='mt_aura_intro_seen';
-function introSeen(){ try{ return localStorage.getItem(INTRO_KEY)==='1' }catch(e){ return false } }
-function introDone(){ var a=document.getElementById('auraIntro'); if(a) a.hidden=true; try{ localStorage.setItem(INTRO_KEY,'1') }catch(e){} }
+function introKey(){ return INTRO_KEY + ':' + String((ME && ME.name) || '').toLowerCase() }
+function introSeen(){ try{ return localStorage.getItem(introKey())==='1' }catch(e){ return false } }
+function introDone(){ var a=document.getElementById('auraIntro'); if(a) a.hidden=true; try{ if(ME && ME.name) localStorage.setItem(introKey(),'1') }catch(e){} }
 (function(){
   var a=document.getElementById('auraIntro'); if(!a) return;
   document.getElementById('auraIntroImg').src = AURA_MARK;
@@ -1734,7 +1975,7 @@ function introDone(){ var a=document.getElementById('auraIntro'); if(a) a.hidden
 /* YOU CAN JUST TALK (2026-10-11, Aaron): while the box is empty and untouched, one human starting point
    at a time, quietly. Only replaces the plain "Talk to Aura..." - never a placeholder that means something. */
 /* ONE PLAIN LINE (2026-10-14, Aaron): "it needs to have some just general... talk to Aura". */
-var HINTS=['Tell me what you want\u2026'];
+var HINTS=['Tell me what you want to create\u2026'];
 var HINT_I=0;
 setInterval(function(){
   var sy=document.getElementById('say'); if(!sy || sy.value || document.activeElement===sy) return;
@@ -1742,7 +1983,7 @@ setInterval(function(){
   /* ONE NAME ONCE THEY HAVE STARTED (2026-10-14, Aaron): the hints rotate on the home screen only; inside a
      conversation the box always says "Talk to Aura..." - a rotating "What's your story?" mid-project read wrong. */
   var th=document.getElementById('thread');
-  if(th && th.classList.contains('up')){ sy.placeholder='Tell me what you want\u2026'; return }
+  if(th && th.classList.contains('up')){ sy.placeholder='Tell me what you want to create\u2026'; return }
   HINT_I=(HINT_I+1)%HINTS.length; sy.placeholder=HINTS[HINT_I];
 }, 4500);
 /* AURA'S PICTURE CARD - see the CSS note. WAIT_ART: her six stage pictures, in order; until they
@@ -1787,11 +2028,15 @@ var GEN_TEXT = {
    does the final placement and sizing, what the files are for. "All done!" keeps its own line. */
 var GEN_TIPS = [
   /* ABOUT THIS TATTOO (2026-10-12, Aaron): what is happening and where it is kept - nothing general. */
-  'Every version is saved in My Tattoos, so you can always go back.',
-  'Everything you lock in is saved in My Tattoos.',
-  'When you lock it in, you get a flat design, a stencil and a print file for your artist.',
+  /* EIGHT, AND ONE OF ONE FIRST (2026-10-23, Aaron: "relevant tips... every tattoo you make is yours"). They change every 7 seconds,
+     starting at a random one. */
+  'Every tattoo I imagine is one of one \u2013 made just for you, never repeated.',
   'Tap the heart on any design to save it to your Favorites.',
+  'Like one but want something changed? Tap Work on this and tell me.',
   'Tap any picture to see it full screen.',
+  'Everything we make is saved in My Tattoos, so you can always come back to it.',
+  'When you lock it in, you get the artwork, the stencils and a print file for your artist.',
+  'Want to see it on you? Put any design on your own photo before you ink it.',
   'Your artist sets the final size and placement.'
 ];
 function genTip(g, st){
@@ -1837,13 +2082,13 @@ function genCardHtml(g){
     if(st.i===5) tx[1] = 'Here\u2019s your '+w+' tattoo. I hope you love it!';
   }
   return '<div class="gencard'+(g.done?' done':'')+'" data-gen=1>'+
-    '<div class=gch><img src="'+AURA_MARK+'" alt="">Aura<button class=gcx data-genx aria-label="Hide">×</button></div>'+
+    /* NO "AURA" HEADER ON THE CARD (2026-10-23, Aaron) - her butterfly is in the chat box. */
     '<div class=gca>'+(art ? '<img class=art src="'+art+'" alt="">' : '<img class=mark src="'+AURA_MARK+'" alt="">')+
       '<span class=sw></span>'+GEN_SPARKS+'</div>'+
     '<h4>'+esc(tx[0])+'</h4>'+
     /* THEIR OWN WORDS, WHEN THEY SAY WHAT TO DO ("Let's give the lion some color"). */
     ((g.asked && st.i<5 && String(g.asked).trim().length>=12) ? '<p class=gcq>\u201c'+esc(genQuote(g.asked))+'\u201d</p>' : '')+
-    '<p class=gcs>'+esc(tx[1])+'</p>'+
+    '<p class=gcs>'+esc(g.reconnect && st.i<5 ? g.reconnect : tx[1])+'</p>'+
     '<div class=gcb><i style="width:'+st.p.toFixed(1)+'%"></i></div>'+
     '<div class=gct>'+(st.i===5?GEN_HEART_SVG:GEN_TIP_SVG)+'<span>Tip: '+esc(genTip(g, st))+'</span></div></div>';
 }
@@ -1854,7 +2099,9 @@ function genStart(pend){
   /* A TAPPED PLACE ON AN ADD-ON DRAWS FOUR TOO (2026-10-18) - the four-ideas words while it works. */
   var _ideasAsk = /^\s*(?:give|show) me some ideas\.?\s*$|^\s*imagine\s+(?:4|four|8|eight)\s+(?:ideas|cover-?ups|in this style)\.?\s*$|^\s*imagine\s+(?:another\s+(?:4|four|8|eight)|(?:4|four|8|eight)\s+more)\.?\s*$/i.test(String(pend.asked||'')) ||
                   (SEE_JOB==='add' && /^\s*i want it to go\s+\S/i.test(String(pend.asked||'')));
-  pend.gen = { t0:Date.now(), kind:_ideasAsk?'ideas':((ONME_ACTIVE||HAD_PHOTO)?'skin':(threadPics().length?'change':'design')), done:false, i:-1,
+  pend.gen = { t0:Date.now(), kind:_ideasAsk?'ideas':(ONME_ACTIVE?'skin':
+    /* INK IT IS DESIGNING, NOT SKIN (2026-10-23, Aaron): their photo is what the tattoo is made from, so the card says designing words. */
+    (INKIT_CHAT?(threadPics().length?'change':'design'):(HAD_PHOTO?'skin':(threadPics().length?'change':'design')))), done:false, i:-1,
                seed:Math.floor(Math.random()*GEN_TIPS.length) };
   GEN_LIVE = pend; clearInterval(GEN_TICK);
   GEN_TICK = setInterval(function(){
@@ -1964,7 +2211,8 @@ var THUMB_OK = null;
    picture. The full picture is still what opens big, what is saved and what is sent anywhere. */
 function thumb(url, w){
   var m = String(url||'').match(/^https:\/\/auras\.guide\/image\/(img_[A-Za-z0-9_-]+)$/);
-  var W = !w || w <= 240 ? 240 : w <= 480 ? 480 : 720;
+  /* 1440 FOR WIDE PICTURES ON A COMPUTER (2026-10-23, core v9.739): the banners and heroes. */
+  var W = !w || w <= 240 ? 240 : w <= 480 ? 480 : w <= 720 ? 720 : 1440;
   return m ? 'https://auras.guide/image/'+m[1]+'?w='+W : url;
 }
 function fullSrc(im){ return im ? (im.getAttribute('data-full') || im.getAttribute('src')) : null }
@@ -2045,7 +2293,7 @@ pager.addEventListener('scroll',function(){
       tabBtns.forEach(function(b){b.classList.toggle('on',+b.dataset.i===at)});
       document.getElementById('say').placeholder =
         at===3?'Ask about a shop, or a city'
-        :'Tell me what you want\u2026';
+        :'Tell me what you want to create\u2026';
     }});
 },{passive:true});
 
@@ -2106,8 +2354,28 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
     {inspire:true, say:"I'm looking for inspiration - I'll show you something I like", t:'Get<br>Inspired', s:'See tattoos people have gotten.',
      img:'https://auras.guide/image/img_mufr9nwhw1my'},
     {browse:true,                                    t:'Imagine<br>It',s:'Thousands of ideas to explore.',
-     img:'https://auras.guide/image/img_mud8136jec30'}
+     img:'https://auras.guide/image/img_mud8136jec30'},
+    /* INK IT (2026-10-23, Aaron): "take a photo of anything and turn it into a tattoo". It opens the new-tattoo start with its own hero
+       and asks for the photo first; the photo goes to her with that reason, and she takes it from there. */
+    {inkit:true, t:'Ink<br>It', s:'Turn any photo into a tattoo.', img:'https://auras.guide/image/img_mvl0f41702kc'}
   ];
+  /* THE NEW CARD STACK (2026-10-23): what each front card says and looks like, by its number in JOBS. */
+  var JC={
+    3:{a:'See It',b:'On You',c:'#d65bff',i:'cam',p:'img_mvl04o2yj4ae',d:'Try it before you ink it. Upload a photo and see how it looks on you.'},
+    0:{a:'Create',b:'New Tattoo',c:'#3aa0ff',i:'bulb',p:'img_mvl08axs48ik',d:'Turn your idea into something amazing. Describe it and we\u2019ll create original designs for you.'},
+    1:{a:'Add to',b:'Existing',c:'#3fe07a',i:'puzzle',p:'img_mvl18pgku8r9',d:'Keep the story going. Upload your tattoo and explore ways to extend or complement it.'},
+    2:{a:'Cover Up',b:'a Tattoo',c:'#ff9a3c',i:'band',p:'img_mvl19g3lzkzk',d:'A fresh start. Upload your tattoo and see cover-up ideas that work with it.'},
+    4:{a:'Get',b:'Inspired',c:'#ff5fb0',i:'find',p:'img_mvl1a9nvdq29',d:'Explore real tattoo examples from around the world. Search any style, subject or idea.'},
+    6:{a:'Ink ',b:'It',one:1,c:'#b45cff',i:'pic',p:'img_mvl0f41702kc',d:'Take a photo of anything and turn it into a tattoo. People, pets, places, memories\u2026 anything.'}
+  };
+  var JC_ICON={
+    cam:'<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/><path d="M2 5l2 1M22 5l-2 1M12 1v2"/>',
+    bulb:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/><path d="M4 4l1.5 1.5M20 4l-1.5 1.5M2 10h2M20 10h2"/>',
+    puzzle:'<path d="M9 3h4v2a2 2 0 1 0 4 0V3h4v6h-2a2 2 0 1 0 0 4h2v6h-6v-2a2 2 0 1 0-4 0v2H5v-6h2a2 2 0 1 0 0-4H5V3z"/>',
+    band:'<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-35 12 12)"/><path d="M10 10.5l.01 0M13 13.5l.01 0M10.5 13l.01 0M13.5 10.8l.01 0"/>',
+    find:'<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l6 6"/><path d="M8 9a3 3 0 0 1 3-2"/>',
+    pic:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 7"/><path d="M18 2v3M16.5 3.5h3"/>'
+  };
   /* Trending is what is moving right now - a doorway, not a taxonomy. A name here can also be a
      permanent category below; that is the point of it. Pictures arrive as they are banked. */
   /* Each trend carries its own picture, drawn for this screen: artwork on black, never a body.
@@ -2180,7 +2448,9 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
      October rebuild, spelled exactly as the catalogue spells it. Nothing older is ever shown. */
   /* RESTACKED (2026-10-09, Aaron): nothing dropped - the trend row is extended with the new collections and
      interwoven (delicate, heavy, colour, black...) so it never reads like the Styles row under it. */
-  var ROW_TREND=["Fine-Line Florals", "Heavy Blackwork", "Patchwork", "Micro Realism", "Neo-Tribal", "Bows & Ribbons", "Cybersigilism", "Y2K Nostalgia", "Blackout", "Micro Tattoos", "Dark Ornamental", "Red Ink", "Sticker Tattoos", "Japanese Fusion", "Embroidered Tattoos", "Biomechanical", "Ignorant Doodle", "Liquid Chrome", "Birth Month Flowers", "Mixed Media", "Organic Body Flow", "Dark Fantasy", "Stained Glass", "Metalwork", "Negative Space", "Brutalism", "Renaissance", "Cyber-Realism", "Neo-Traditional Bold Illustrated"];
+  /* THE FIVE OCTOBER 23 COLLECTIONS (Aaron: "get all of our new categories ... to show up in trending"): newest near the front,
+     one after every older card so the row stays interwoven. Each cover is the test card Aaron approved for it. */
+  var ROW_TREND=["Fine-Line Florals", "Psychedelic Dream Worlds", "Heavy Blackwork", "Cute but Cursed", "Patchwork", "Surreal Mind-Bending Art", "Micro Realism", "Cyberpunk and Alien Symbols", "Neo-Tribal", "Grotesque Dark Fantasy", "Bows & Ribbons", "Cybersigilism", "Y2K Nostalgia", "Blackout", "Micro Tattoos", "Dark Ornamental", "Red Ink", "Sticker Tattoos", "Japanese Fusion", "Embroidered Tattoos", "Biomechanical", "Ignorant Doodle", "Liquid Chrome", "Birth Month Flowers", "Mixed Media", "Organic Body Flow", "Dark Fantasy", "Stained Glass", "Metalwork", "Negative Space", "Brutalism", "Renaissance", "Cyber-Realism", "Neo-Traditional Bold Illustrated"];
   /* THE STYLES IN FAMILIES (2026-10-05, Aaron): most asked for first, then classic, realism, fine and
      delicate, florals, dark and gothic, retro and pop, effects - most popular family to most
      specialised, most asked for first inside each. The home Styles row and the conversation's style
@@ -2198,7 +2468,8 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
      showing everything we have that has 100 images that we created"). The 18 gathered cards (Flowers, Roses, Snakes... built from
      the whole catalogue, old designs included) are gone; every card here is one of the 100-picture sets, opening that set.
      Body Jewelry first - it had no card at all. */
-  var ROW_EXPLORE=["Body Jewelry Tattoos", "Pin-Up Girls", "Pets", "Animals", "Skulls & Skeletons", "Zodiac", "Insects and Butterflies", "Horror", "Witchy and Occult", "Memorials", "Family", "Matching Tattoos", "Lettering & Quotes", "Portraits",
+  /* GODDESSES AND MUSES (2026-10-23, Aaron): the split-card women, out of Pin-Up Girls into their own card beside it. */
+  var ROW_EXPLORE=["Body Jewelry Tattoos", "Pin-Up Girls", "Goddesses and Muses", "Pets", "Animals", "Skulls & Skeletons", "Zodiac", "Insects and Butterflies", "Horror", "Witchy and Occult", "Memorials", "Family", "Matching Tattoos", "Lettering & Quotes", "Portraits",
     "Birth Month Flowers", "Birthstones", "Charms and Keepsakes", "Bows & Ribbons", "Astrology and Birth Charts", "Symbols and Talismans", "Cars", "Motorcycles", "Gaming", "Movies and TV", "Music", "Sports", "Food and Drink", "Holidays", "Warriors", "Science", "Western", "Cannabis Culture", "Where I'm From", "Kids Art", "Fun", "Abstract Art", "Geometric and Patterns", "Things I Love", "Personal Story"];
   /* EVERY COVER IS ITS OWN CATEGORY'S PICTURE (2026-10-06): the catalogue hands back a picture for each
      category, and that is the card. The old covers drawn for this screen are not used. */
@@ -2211,9 +2482,13 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
     "Red Ink":"img_muxg5il6zrlf","Negative Space":"img_muxg5vpw1jj8","Bows & Ribbons":"img_muxg6841y7er",
     "Birth Month Flowers":"img_muxg6kocvhhq","Stained Glass":"img_muxg6yrh1948","Renaissance":"img_muxg7cstvy6q",
     /* the new collections (2026-10-09): the test card Aaron approved for each one */
-    "Body Jewelry Tattoos":"img_mud3fxklar64",
     /* PETS SHOWS A PET (2026-10-23, Aaron: "the pets cover needs to be fixed"): its list handed back a bird flying from a cage. */
-    "Pets":"img_muyrazpukps0","Dark Ornamental":"img_mv1hzhja5mh0","Biomechanical":"img_mv1hztqhngwp","Heavy Blackwork":"img_mv1i09371wg8","Blackout":"img_mv1i0n6k5z6f","Dark Fantasy":"img_mv1i1155p500","Brutalism":"img_mv1i1g5pe9au","Japanese Fusion":"img_mv1ixgvd8t0k","Mixed Media":"img_mv1ixsrjqzz2","Metalwork":"img_mv1jn8bkbn7i"};
+    "Pets":"img_muyrazpukps0",
+    /* SPLIT COVERS IN IMAGINE IT (2026-10-23, Aaron: "any card that we have a dual white and body shot should appear there"): each is
+       the first split card in its own list. The rest of Imagine It already shows one, or has no split card to show. */
+    "Body Jewelry Tattoos":"img_mun59s9v1msx","Matching Tattoos":"img_muytesy8nlcn","Personal Story":"img_muyq80jm0ca9","Goddesses and Muses":"img_muyp9ej33dlu","Memorials":"img_mvkx914byna0",
+    "Psychedelic Dream Worlds":"img_mvkr8sl3k5nf","Cute but Cursed":"img_mvkp0181ap21","Surreal Mind-Bending Art":"img_mvkq970skj4m",
+    "Cyberpunk and Alien Symbols":"img_mvko4li83x8w","Grotesque Dark Fantasy":"img_mvkm2lb3t1kn","Dark Ornamental":"img_mv1hzhja5mh0","Biomechanical":"img_mv1hztqhngwp","Heavy Blackwork":"img_mv1i09371wg8","Blackout":"img_mv1i0n6k5z6f","Dark Fantasy":"img_mv1i1155p500","Brutalism":"img_mv1i1g5pe9au","Japanese Fusion":"img_mv1ixgvd8t0k","Mixed Media":"img_mv1ixsrjqzz2","Metalwork":"img_mv1jn8bkbn7i"};
   function cov(n){ if(HERO[n]) return HERO[n]; var h=byLabel[String(n).toLowerCase()]; return (h && imgIdOf(h.image)) || null }
   /* ONE SET OF STYLE CARDS (2026-10-22 walk, Aaron: "these are not the style cards we just made"): every style card in the chat is one of
      the 41 white cards, and a tap opens its window. */
@@ -2244,30 +2519,173 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
     for(var k=0;k<Math.max(st.length,tr.length);k++){ if(st[k]) out.push(st[k]); if(tr[k]) out.push(tr[k]) }
     return out })()), catTiles=rowTiles(ROW_EXPLORE);
 
+  /* THE BANNERS (2026-10-23, Aaron's Inkit.world mockups): each section opens with its banner - the words are page text over the
+     picture, its row stays right under it. The arrow moves the row along. */
+  function bannerHtml(k){
+    var b={ trend:{ img:'img_mvln63bgednn', row:'trendRow', k:'What\u2019s', t:'Trending', tail:'Right now', c:'#ff3bd4',
+                    d:'See the hottest tattoo ideas, fresh designs, and what people are creating today.' },
+            styles:{ img:'img_mvlnbusner2i', row:'s41Home', k:'Explore', t:'Tattoo Styles', c:'#3aa0ff',
+                    d:'From American Traditional to Japanese, Black & Grey Realism, Fine-Line and more. Find the style that fits you.' },
+            beyond:{ img:'img_mvlncc2cse2l', row:'catRow', k:'Imagine It', t:'Beyond the Usual', c:'#b45cff',
+                    d:'Explore unique concepts, creative themes, memorials, and imaginative tattoo ideas that go further.' } }[k];
+    var u='https://auras.guide/image/'+b.img;
+    return '<div class=bnr data-scr="'+k+'" role=button tabindex=0 style="--bc:'+b.c+'"><div class=bnp>'+
+      '<picture><source media="(min-width:1200px)" srcset="'+esc(thumb(u,1440))+'"><img loading=lazy src="'+esc(thumb(u,720))+'" alt=""></picture>'+
+      '<span class=bnw><span class=bnk>'+esc(b.k)+'</span><span class=bnt>'+esc(b.t)+'</span>'+(b.tail?'<span class=bnk2>'+esc(b.tail)+'</span>':'')+'</span></div>'+
+      '<span class=bnd>'+esc(b.d)+'</span>'+
+      '<button class=bna aria-label="Open"><svg viewBox="0 0 24 24" aria-hidden=true><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>';
+  }
+  /* ══ EVERY BANNER IS ITS OWN PAGE (2026-10-23, Aaron: "the main page it's a one click page... any of those big choices go to that
+     exact page"). Home is the six cards and the three banners, nothing else. A banner opens its page in place of Home: its own hero,
+     then its rows. Back (or the logo) returns to Home. */
+  var SCR = {
+    trend:{ hp:'img_mvmhc93x0z8j', hw:'img_mvmhdcpfz6de', img:'img_mvlndyz76z05', k:'What\u2019s', t:'Trending', c:'#ff3bd4',
+            d:'See the hottest tattoo ideas, fresh designs, and what people are creating right now.',
+            rows:[ ['Trending Right Now', 'trendRow', function(){ return rowTiles(ROW_TREND) }],
+                   ['Trending Tattoo Ideas', 'ideasRow', function(){ return '' }],
+                   ['Popular Subjects', 'catRow', function(){ return catTiles }] ] },
+    styles:{ hp:'img_mvmhdxuhh91i', hw:'img_mvmhenyn7fqy', img:'img_mvlnembcdiv1', k:'Explore', t:'Tattoo Styles', c:'#3aa0ff',
+            d:'From American Traditional to Japanese, Black & Grey Realism, Fine-Line and more. Find the style that fits you.',
+            rows:[ ['Tattoo Styles', 's41Home', null], ['Browse Styles', 'styleRow', function(){ return styleTiles }] ] },
+    beyond:{ hp:'img_mvmhfecjmjjx', hw:'img_mvmhg7cjw6os', img:'img_mvlo2853ey6n', k:'Imagine It', t:'Wild Ideas', c:'#e23bff',
+            d:'Go beyond the styles. Explore the unexpected, the imaginative, and the completely unique.',
+            rows:[ ['Explore Wild Categories', 'wildRow', function(){ return rowTiles(ROW_WILD) }],
+                   ['More to Imagine', 'catRow', function(){ return catTiles }] ] },
+    /* ══ THE SIX JOB PAGES (2026-10-23, Aaron's mockups): a job card opens its page - its own hero, then the ways in. Every button
+       on a page starts the job exactly as the card always did (the card is tapped for it), then opens the camera, the photo
+       picker or the chat box. Nothing about the conversations behind them changes. ══ */
+    job3:{ hp:'img_mvmhgrz06bf5', hw:'img_mvmhhjq82wkc', img:'img_mvkxp2j2zozv', k:'See It', t:'On You', c:'#d65bff',
+            d:'Design a tattoo and see how it looks on your body before you ink it. Real placement. Your body. Your style.',
+            body:function(){ return tellShow(3)+'<div class=sect><h2>What would you like to explore first?</h2></div>'+
+              rowBlock('trendRow', rowTiles(ROW_TREND))+
+              miniBanner('job0','img_mvlncw5tl30m','#e23bff','','Start Creating','Pick a style, get inspired, or just tell us what you want \u2014 and see it on you.') } },
+    job0:{ hp:'img_mvmhi4dwijix', hw:'img_mvmhix8bpzqk', img:'img_mvlnf8yanqvh', k:'Create', t:'Your Own Tattoo', c:'#3aa0ff',
+            d:'Tell us your idea, show us inspiration, and we\u2019ll design something custom just for you.',
+            body:function(){ return tellShow(0)+'<div class=sect><h2>Choose a style <small>(optional)</small></h2></div>'+
+              rowBlock('s41Home', null)+
+              '<p class=pgtip>You can start with a style or skip this step. Aura will design a custom tattoo based on your idea or photos.</p>' } },
+    job1:{ hp:'img_mvmhjieu8obm', hw:'img_mvmhkalluvux', img:'img_mvlngf31b5ag', k:'Build On', t:'Your Ink', c:'#3fe07a',
+            d:'Love the tattoo you have? Let\u2019s make it part of something bigger.',
+            body:function(){ return '<div class=pgbox><h3>Start With Your Tattoo</h3><p>Take a photo of your existing tattoo, or choose one from your photos.</p>'+
+              takeChoose(1,'img_mvlnndaetrwh','img_mvlnny94dxiy')+'</div>'+
+              '<div class="pgbox pgidea"><img loading=lazy src="'+esc(thumb('https://auras.guide/image/img_mvlnok8s1eyb',720))+'" alt=""><div><h3>Already have an idea?</h3>'+
+              '<p>Tell us what you want to add, and describe the tattoo you already have.</p>'+
+              '<button class=pggo data-gojob=1 data-then=focus>Build On My Ink \u2192</button></div></div>'+
+              '<p class=pgtip>We\u2019ll help the new design work with your existing tattoo \u2014 not hide it.</p>' } },
+    job2:{ hp:'img_mvmhku50b5ig', hw:'img_mvmhlmgba3an', img:'img_mvlngx9tjhsv', k:'Cover Up', t:'A New Story', c:'#ff9a3c',
+            d:'Turn a tattoo you\u2019re ready to change into something you\u2019ll love.',
+            body:function(){ return '<div class=pgbox><h3>Show Us the Tattoo to Cover</h3><p>Upload a clear photo of the tattoo you want covered. We\u2019ll design cover-ups that hide it and show you how they look on your body.</p>'+
+              takeChoose(2,'img_mvlnp6n0c4hs','img_mvlnprfki86s')+'</div>'+
+              '<button class=pgtips2 data-pgtips=1>Photo tips for the best results \u2192</button>' } },
+    job4:{ hp:'img_mvmhm8a1kybh', hw:'img_mvmhn3b0t7ng', img:'img_mvlnftvn1m37', k:'Get', t:'Inspired', c:'#ff5fb0',
+            d:'Explore ideas from around the world. Find a style, follow a feeling, or ask Aura to show you something new.',
+            body:function(){ return '<form class=pgsearch data-pgsearch=1><h3>What are you looking for?</h3><p>Describe a style, a subject, a feeling \u2014 or ask Aura for ideas.</p>'+
+              '<div><input name=q placeholder="Show me tribal tattoos" autocomplete=off><button aria-label="Go">\u2192</button></div></form>'+
+              '<div class=sect><h2>Explore Tattoo Styles</h2></div>'+rowBlock('s41Home', null)+
+              miniBanner('beyond','img_mvlndeoi78hs','#e23bff','','Imagine It','Turn a spark of inspiration into your own tattoo idea.') } },
+    job6:{ hp:'img_mvmizwqga9de', hw:'img_mvmj1savd55r', img:'img_mvl1zfq7r7l1', k:'Ink', t:'It.', c:'#b45cff',
+            d:'Turn a photo into a tattoo. People, pets, places, moments\u2026 anything.',
+            /* THE HERO SHOWS THE EXAMPLES (2026-10-24, Aaron: "it's just repetitive ... in the hero image we could emphasize all these
+               things"): the dog, the lake and the toddler are in the hero itself, so the page is the hero and the photo box. */
+            body:function(){ return INKIT_UP } }
+  };
+  /* The upload comes first on Ink It (2026-10-23 walk): at the bottom it took five screens of examples to reach it on a phone. */
+  var INKIT_UP='<div class=pgup><span class=pgupi><svg viewBox="0 0 24 24" aria-hidden=true><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9M18 2v4M16 4h4"/></svg></span>'+
+    '<div><b>Choose a photo</b><span>Upload a photo of a person, pet, place, a moment, or anything you want to turn into a tattoo.</span></div>'+
+    '<button class=pggo data-gojob=6 data-then=file>Upload a Photo</button></div>';
+  var ROW_WILD=["Cute but Cursed","Psychedelic Dream Worlds","Surreal Mind-Bending Art","Grotesque Dark Fantasy","Cyberpunk and Alien Symbols","Dark Fantasy","Biomechanical","Liquid Chrome"];
+  function rowBlock(id, tiles){ var inner = tiles!=null ? '<div class="row" id='+id+'>'+tiles+'</div>' : s41RowHtml(id);
+    return '<div class=rowwrap><button class="arw l" data-row='+id+'>\u2039</button>'+inner+'<button class="arw r" data-row='+id+'>\u203a</button></div>' }
+  function tellShow(i){ return '<div class=sect><h2>How would you like to start?</h2></div><div class=tsgrid>'+
+      '<button class=tscard data-gojob='+i+' data-then=focus><b>Tell me</b><span>Describe your idea, a feeling, a style, or anything on your mind.</span>'+
+        '<i class=tsq>\u201cA delicate butterfly with flowers on my shoulder\u201d</i><em class=tsgo>\u2192</em></button>'+
+      '<button class="tscard tsshow" data-gojob='+i+' data-then=file><img loading=lazy src="'+esc(thumb('https://auras.guide/image/img_mvlnqbo6iadc',480))+'" alt="">'+
+        '<b>Show me</b><span>Upload a photo, screenshot, drawing, or anything that inspires you.</span><em class=tsgo>\u2192</em></button></div>' }
+  function takeChoose(i, a, b){ return '<div class=tcgrid>'+
+      '<button class=tccard data-gojob='+i+' data-then=cam><img loading=lazy src="'+esc(thumb('https://auras.guide/image/'+a,720))+'" alt=""><span>Take a photo \u2192</span></button>'+
+      '<button class=tccard data-gojob='+i+' data-then=file><img loading=lazy src="'+esc(thumb('https://auras.guide/image/'+b,720))+'" alt=""><span>Choose a photo \u2192</span></button></div>' }
+  function miniBanner(scr, img, c, k, t, d){ var u='https://auras.guide/image/'+img;
+    return '<div class=bnrs><div class=bnr data-scr="'+scr+'" role=button tabindex=0 style="--bc:'+c+'"><div class=bnp>'+
+      '<picture><source media="(min-width:1200px)" srcset="'+esc(thumb(u,1440))+'"><img loading=lazy src="'+esc(thumb(u,720))+'" alt=""></picture>'+
+      '<span class=bnw>'+(k?'<span class=bnk>'+esc(k)+'</span>':'')+'<span class=bnt>'+esc(t)+'</span></span></div>'+
+      '<span class=bnd>'+esc(d)+'</span><button class=bna aria-label="Open"><svg viewBox="0 0 24 24" aria-hidden=true><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div></div>' }
+  window.openHomeScreen = function(k){
+    var c=SCR[k]; if(!c) return;
+    var u='https://auras.guide/image/'+c.img, box=document.getElementById('homeScr'), main=document.getElementById('homeMain');
+    if(!box || !main) return;
+    /* ══ THE WORDS ARE IN THE PICTURE (2026-10-24, Aaron: "look at all the space that's being wasted just for that block of text ... UI
+       space on a phone is key"): each page hero is drawn with its own title in it - a phone picture and a wide one - so nothing sits
+       under it. Until a page's two pictures exist, it keeps the picture with the words under it. ══ */
+    var _hp=/^img_/.test(c.hp||'') && /^img_/.test(c.hw||'');
+    if(_hp){ var up='https://auras.guide/image/'+c.hp, uw='https://auras.guide/image/'+c.hw;
+      box.innerHTML='<div class="scrhero baked" style="--bc:'+c.c+'"><div class=shp>'+
+        '<picture><source media="(min-width:700px)" srcset="'+esc(thumb(uw,1440))+'"><img src="'+esc(thumb(up,1440))+'" alt="'+esc(c.k+' '+c.t+'. '+c.d)+'"></picture>'+
+        '<button class=scrback data-scrback=1 aria-label="Back to home"><svg viewBox="0 0 24 24" aria-hidden=true><path d="M15 6l-6 6 6 6"/></svg></button>'+
+        '</div></div>';
+    } else
+    box.innerHTML='<div class=scrhero style="--bc:'+c.c+'"><div class=shp>'+
+        '<picture><source media="(min-width:700px)" srcset="'+esc(thumb(u,1440))+'"><img src="'+esc(thumb(u,720))+'" alt=""></picture>'+
+        '<button class=scrback data-scrback=1 aria-label="Back to home"><svg viewBox="0 0 24 24" aria-hidden=true><path d="M15 6l-6 6 6 6"/></svg></button>'+
+        '</div><span class=bnw><span class=bnk>'+esc(c.k)+'</span><span class=bnt>'+esc(c.t)+'</span><span class="bnd dsk">'+esc(c.d)+'</span></span>'+
+        '<span class="bnd mob">'+esc(c.d)+'</span></div>';
+    box.innerHTML+=
+      (c.body ? c.body() : c.rows.map(function(r){
+        return '<div class=sect><h2>'+esc(r[0])+'</h2></div>'+rowBlock(r[1], r[2] ? r[2]() : null);
+      }).join(''));
+    main.hidden=true; box.hidden=false; wireRows(el);
+    /* TRENDING TATTOO IDEAS (2026-10-23, Aaron's mockup): real tattoos on people - the Get Inspired photos, a card per group. */
+    var ir=document.getElementById('ideasRow');
+    if(ir && INSPIRE) cached('c:'+INSPIRE.label,{category:INSPIRE.label}).then(function(d){
+      INSPIRE_KINDS = (d && d.ok && d.items) || INSPIRE_KINDS || [];
+      var r=document.getElementById('ideasRow'); if(!r) return;
+      /* ONE OF EACH FAMILY FIRST (2026-10-23 walk): the groups come in families - eight "... Body Jewelry" in a row opened the row.
+         Round-robin by family ("Wild Body Jewelry" -> "Body Jewelry"), so the first screen shows variety. */
+      var fam={}, order=[];
+      INSPIRE_KINDS.forEach(function(k,i){ if(!k.image) return; var f=String(k.label||'').split(/\s+/).slice(1).join(' ') || k.label;
+        if(!fam[f]){ fam[f]=[]; order.push(f) } fam[f].push(i) });
+      var mixed=[], more=true; for(var n=0; more; n++){ more=false; order.forEach(function(f){ if(fam[f][n]!=null){ mixed.push(fam[f][n]); more=true } }) }
+      r.innerHTML = mixed.map(function(i){ var k=INSPIRE_KINDS[i]; return '<button class=ideat data-inspk="'+i+'"><span class=pic>'+smImg(k.image,480)+'</span><b>'+esc(k.label)+'</b></button>' }).join('');
+      wireRows(el);
+    });
+    try{ document.getElementById('p-explore').scrollTop=0 }catch(e){}
+  };
+  el.addEventListener('submit', function(e){
+    var f=e.target.closest('[data-pgsearch]'); if(!f) return; e.preventDefault();
+    var q=String((f.q && f.q.value) || '').trim(); if(!q) return;
+    var card=document.querySelector('#homeMain .job[data-job="4"]'); if(!card) return;
+    closeHomeScreen(); window.FROM_PAGE = true; try{ card.click() }finally{ window.FROM_PAGE = false; } QUEUED = q;
+  });
+  window.closeHomeScreen = function(){
+    var box=document.getElementById('homeScr'), main=document.getElementById('homeMain');
+    if(box && !box.hidden){ box.hidden=true; box.innerHTML=''; }
+    if(main) main.hidden=false;
+  };
   el.innerHTML=
+    '<div id=homeMain>'+
     heroHtml()+
-    '<div class=sect><h2>What do you want to do?</h2>'+
-      '<p>Start here. Any idea, any style.</p></div>'+
-    '<div class=jobs>'+ JOBS.map(function(j,i){
+
+    /* SEE IT ON YOU LEADS (2026-10-23, Aaron): shown first; every card keeps its own number, so nothing that opens Create by its
+       number changes. */
+    /* THE JOBS ROW TOO (2026-10-23, Aaron: "the very top nav I cannot scroll over on a computer"). */
+    '<div class=rowwrap><button class="arw l" data-row=jobsRow>\u2039</button>'+
+    '<div class=jobs id=jobsRow>'+ [3,0,1,2,4,6].map(function(i){
+      var j=JOBS[i]; if(!j) return '';
+      var c=JC[i]; if(c) return '<button class="job jc" data-job="'+i+'" style="--jc:'+c.c+'">'+
+        '<img loading=lazy src="'+esc(thumb('https://auras.guide/image/'+c.p,480))+'" alt="">'+
+        '<span class=jcb><span class=jci><svg viewBox="0 0 24 24" aria-hidden=true>'+JC_ICON[c.i]+'</svg></span>'+
+        '<span class="jct'+(c.one?' one':'')+'">'+esc(c.a)+'<em>'+esc(c.b)+'</em></span>'+
+        '<svg class=jcs viewBox="0 0 120 10" preserveAspectRatio=none aria-hidden=true><path d="M2 7 C 30 2, 70 2, 118 5"/></svg>'+
+        '<span class=jcd>'+esc(c.d)+'</span></span>'+
+        '<i class=jca><svg viewBox="0 0 24 24" aria-hidden=true><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></button>';
       var pic=j.img||'';
       return '<button class=job data-job="'+i+'">'+
         (pic?'<img loading=lazy src="'+esc(thumb(pic,480))+'" alt="">':'')+
         '<span class=lab><b>'+j.t+'</b><small>'+esc(j.s)+'</small></span></button>';
-    }).join('') +'</div>'+
-    '<div class=sect><h2>What\u2019s Trending Right Now</h2>'+
-      '<p>What\u2019s happening in tattooing right now.</p></div>'+
-    '<div class=rowwrap><button class="arw l" data-row=trendRow>\u2039</button>'+
-      '<div class="row" id=trendRow>'+trendTiles+'</div>'+
-      '<button class="arw r" data-row=trendRow>\u203a</button></div>'+
-    '<div id=favWrap></div>'+
-    '<div class=sect><h2>Styles</h2>'+
-      '<p>Every look. Find the one that speaks to you.</p></div>'+
-    s41RowHtml()+
-    '<div class=sect><h2>Imagine It</h2>'+
-      '<p>Dive deeper. '+ROW_EXPLORE.length+' subjects, '+(d.pictures||0)+' pictures behind them.</p></div>'+
-    '<div class=rowwrap><button class="arw l" data-row=catRow>\u2039</button>'+
-      '<div class="row" id=catRow>'+catTiles+'</div>'+
-      '<button class="arw r" data-row=catRow>\u203a</button></div>';
+    }).join('') +'</div><button class="arw r" data-row=jobsRow>\u203a</button></div>'+
+    '<div class=bnrs>'+bannerHtml('trend')+bannerHtml('styles')+bannerHtml('beyond')+'</div>'+
+    /* Favorites are not on Home (Aaron's mockup); the holder stays so nothing that fills it breaks. */
+    '<div id=favWrap hidden></div>'+
+    '</div><div id=homeScr hidden></div>';
 
   /* A MOUSE CANNOT SWIPE. The rows scroll by dragging, and a drag is not a tap - anything over a
      few pixels opens nothing. Touch is untouched; the browser already does it better. */
@@ -2275,22 +2693,55 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
   if(FAVS_LOADED) paintFavRow(); else loadFavs();
 
   el.addEventListener('click',function(e){
+    var sb=e.target.closest('[data-scrback]'); if(sb){ closeHomeScreen(); try{ document.getElementById('p-explore').scrollTop=0 }catch(x){} return }
+    var bn=e.target.closest('.bnr[data-scr]'); if(bn){ openHomeScreen(bn.getAttribute('data-scr')); return }
+    if(e.target.closest('#homeScr [data-pgtips]')){ openPhotoTips(); return }
+    var ik=e.target.closest('#homeScr [data-inspk]'); if(ik){ openInspireKind(+ik.getAttribute('data-inspk')); return }
+    var gj=e.target.closest('[data-gojob]'); if(gj){ var gi=gj.getAttribute('data-gojob'), then=gj.getAttribute('data-then');
+      var card=document.querySelector('#homeMain .job[data-job="'+gi+'"]'); if(!card) return;
+      /* FROM A PAGE, THE CHAT DOES NOT SHOW THE START CARDS AGAIN (2026-10-23 walk): "Tell me" on the Create page opened the chat
+         with its own Tell me / Show me and the styles - the page has just shown them. */
+      closeHomeScreen(); window.FROM_PAGE = true; try{ card.click() }finally{ window.FROM_PAGE = false; }
+      /* Straight from the tap, so the phone lets the picker open. */
+      if(then==='file') document.getElementById('file').click();
+      else if(then==='cam') document.getElementById('fileCam').click();
+      else if(then==='focus'){ try{ document.getElementById('say').focus() }catch(x){} }
+      return }
     var j=e.target.closest('.job');
+    /* A REAL TAP ON A CARD OPENS ITS PAGE (2026-10-23). A card tapped by the page itself (a page button, Work on this style,
+       Get Inspired) still starts its job at once - those taps are not the person's, so nothing that already works changes. */
+    if(j && e.isTrusted && SCR['job'+j.dataset.job]){ openHomeScreen('job'+j.dataset.job); return }
     if(j){ var job=JOBS[+j.dataset.job];
       /* ONE TAP, ONE START (2026-10-22, Aaron: "I kept cover up tapped cover up"). MEASURED 14:17: core got "I want to cover up a
          tattoo. I want to create a new tattoo" - a cover-up's words were still waiting when a create start went out, and rode on it.
          Any job tap clears what an earlier one left waiting; Add and Cover Up set their own again below. */
-      JOB_SAY = null; COVER_STYLE = null; ADD_STYLE = null;
-      if(job.browse){ document.getElementById('catRow').scrollIntoView({behavior:'smooth',block:'start'}); return }
+      JOB_SAY = null; COVER_STYLE = null; ADD_STYLE = null; INKIT_CHAT = false;
+      if(job.browse){ openHomeScreen('beyond'); return }
       /* GET INSPIRED OPENS THE CONVERSATION (2026-09-26, Aaron). The card's words are the reason, like
          Add to Existing and Cover Up; she answers and invites them to show her something they like,
          and our inspiration photos are one tap away under her reply. */
       /* GET INSPIRED IS SHOW ME (2026-10-22 walk): it opened the old phone panel and her "go ahead and show me" with offer buttons
          that did not fit. It is now the new-tattoo start with the Show me page under it - one way in, one page. */
+      /* INK IT IS ITS OWN SCREEN (2026-10-23, Aaron: "the styles, everything else on this page - I don't want that there until they
+         start"): the hero, her one line, the photo box. Nothing goes to her until they send the photo; then the reason goes with it
+         and anything they typed, and she says what she sees and what they could do with it. */
+      if(job.inkit){
+        if(CHAT_DONE) finishChat();
+        introDone();
+        thread = []; piece = {}; HAD_PHOTO = false;
+        NEWPROJ=true; DISC='done'; PICK_REF=null; ENTRY='create'; INSPIRE_MODE=false; STYLES_NEXT=false;
+        SEE_JOB=null; SEE_FLOW=false; window.ONME_START=false; window.INKIT_START=false;
+        /* From the Ink It page its hero is already shown - the chat starts with her line. */
+        if(e.isTrusted) thread.push({ inkIt:'hero' }); thread.push({ who:'aura', said:INKIT_HELLO }); thread.push({ inkIt:'box' });
+        JOB_SAY = INKIT_SAY; PICK_LOCAL = true; INKIT_CHAT = true;
+        paintThread();
+        requestAnimationFrame(function(){ var bx=document.getElementById('thread'); if(bx) bx.scrollTop = 0; });
+        return;
+      }
       if(job.inspire){
         var _c0=document.querySelector('.job[data-job="0"]'); if(_c0) _c0.click();
         DISC='done'; PICK_REF=null; ENTRY='inspire'; INSPIRE_MODE=true;
-        thread.push({ showMe:true }); paintThread(); return;
+        if(!window.FROM_PAGE) thread.push({ showMe:true }); paintThread(); return;
       }
       /* A job card sends only what the job is (2026-09-23, Aaron). Its picture is the button, not
          context - "See It On You" sent its mirror photo's words, and she asked for a shoulder photo. */
@@ -2298,7 +2749,9 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
       ENTRY = /people have gotten/i.test(job.say || '') ? 'inspire' : 'create';
       /* EVERY STYLE, THE MOMENT THEY TAP (2026-10-05, Aaron): a new tattoo opens with the whole style
          row under her reply - four to a screen, swipe for the rest - without waiting on her. */
-      STYLES_NEXT = (ENTRY === 'create' && !/add to a tattoo|cover up/i.test(job.say || ''));
+      STYLES_NEXT = (ENTRY === 'create' && !/add to a tattoo|cover up/i.test(job.say || '')) && !window.FROM_PAGE;
+      /* ...nor the four direction cards under her first line (2026-10-23 walk: a row of styles showed under "Tell me"). */
+      if(window.FROM_PAGE) DISC = 'done';
       /* Style cards only for a new tattoo or inspiration (2026-09-25) - never Add to Existing or
          Cover Up, where the first thing that matters is their photo. */
       if(/add to a tattoo|cover up/i.test(job.say || '')) DISC='done';
@@ -2326,7 +2779,7 @@ hello().then(function(){ loadFinishes(); return cached('index',{}) }).then(funct
         return;
       }
       SEE_JOB = /add to a tattoo/i.test(job.say || '') ? 'add' : /cover up/i.test(job.say || '') ? 'cover' : 'onme';
-      window.ONME_START = /see it on me/i.test(job.say || '');
+      window.ONME_START = /see it on me/i.test(job.say || ''); window.INKIT_START = false;
       askAura(job.say); return;
     }
     var t=e.target.closest('.tile'); if(!t) return;
@@ -2494,10 +2947,14 @@ function feedChunk(from,to){
       if(FEED.multi && g) out+='<div class=glab><b>'+esc(gName(g))+'</b></div>';
       out+='<div class=rowwrap><button class="arw l" data-row="grw'+i+'">\u2039</button><div class=grow id="grw'+i+'">';
     }
+    /* ITS NAME AND TWO SMALL ICONS ON EVERY CARD (2026-10-24, Aaron: "how we list the names and how we add like edit this button on
+       the image ... a small little icon"): the magnifier opens it big, the pencil is Work on this - straight from the row. */
     out+='<button class="tile bare" data-i="'+i+'" data-g="'+esc(g)+'" data-v="'+esc(it.value)+'" data-l="'+esc(it.label)+'">'+
-      (it.image ? '<div class="pic sk">'+skImg(it.image, 720, (inGrp++)<3)+'</div>'
+      (it.image ? '<div class="pic sk">'+skImg(it.image, 720, (inGrp++)<3)+
+                    '<span class=tzm role=button data-tzoom=1 aria-label="See it big">'+EXP_SVG+'</span>'+
+                    '<span class=ted role=button data-tedit=1 aria-label="Work on this">'+EDIT_SVG+'</span></div>'
                 : '<div class="pic bare"><span>'+esc(it.label)+'</span></div>')+
-      '<b>'+esc(it.label)+'</b></button>';
+      '<em class=tnm>'+esc(shortName(it.label))+'</em></button>';
   }
   if(i>from) out+='</div><button class="arw r" data-row="grw'+gStart+'">\u203a</button></div>';
   FEED.n=i;
@@ -2625,6 +3082,14 @@ function drawLadder(){
     /* In the flat view a tile IS a design - it skips the kind question entirely. */
     if(here===1 && catAll){
       chosen.kind = null; chosen.leaf = { value:b.dataset.v, label:b.dataset.l };
+      /* The pencil is Work on this, straight from the row (2026-10-24) - the same pick the pop-up's button makes. */
+      if(e.target.closest('[data-tedit]')){
+        var u0=fullSrc(b.querySelector('img'));
+        PICK = { url:u0, label:b.dataset.l, back:1, kind:null, category:(chosen.category && chosen.category.label) || null,
+                 fresh: PICK_FRESH, own: ownOf(b.dataset.l), home: homeCatOf(b.dataset.l) };
+        if(inInspire()) inspirePick('I want to make this one mine'); else useThis();
+        return;
+      }
       pickDesign(fullSrc(b.querySelector('img')), b.dataset.l, 1); return;
     }
     chosen[f] = { value:b.dataset.v, label:b.dataset.l };
@@ -2661,7 +3126,33 @@ function drawLadder(){
    Opening a design from the feed remembers how far down they were. Keep Browsing brings the feed
    back at that spot - or, if they paged to another design with the arrows, at that design. */
 var BACK_TO = null;
+/* ══ NO SECOND STEP - THE DESIGN POPS UP OVER THE ROWS (2026-10-24, Aaron: "we're getting rid of phase step two ... pop up right from
+   that screen to the full screen window and then they'll be able to click the magnifying glass to open it up full screen") ══════════
+   A design tapped in a style's rows opens in a window over them: the design big, left and right through the whole style, its name and
+   what it is, Work on this. The rows are never redrawn underneath, so closing it leaves them exactly where they were. */
+var POP=false;
+function popEl(){
+  var f=document.getElementById('pickPop');
+  if(!f){ f=document.createElement('div'); f.id='pickPop'; f.setAttribute('role','dialog'); f.setAttribute('aria-modal','true');
+    f.innerHTML='<div class=ppbox><div class=ppbar><b class=ppcat></b><button class=x id=popX aria-label="Close">&times;</button></div><div id=popIn></div></div>';
+    f.addEventListener('click', function(e){ if(e.target===f || (e.target.closest && e.target.closest('#popX'))) closePop() });
+    document.body.appendChild(f); }
+  return f;
+}
+function openPop(){ var f=popEl(); POP=true;
+  f.querySelector('.ppcat').textContent=(chosen.category && chosen.category.label) || '';
+  f.classList.add('on'); }
+function closePop(){ if(!POP) return; POP=false; var f=document.getElementById('pickPop'); if(f){ f.classList.remove('on'); f.querySelector('#popIn').innerHTML='' } }
+addEventListener('keydown', function(e){ if(e.key==='Escape' && POP && !document.querySelector('#half.on,#fs.on')) closePop() });
 function pickDesign(url, label, back){
+  if(POP || (back===1 && catAll && chosen.category && step===1)){
+    BACK_TO = null;
+    PICK = { url:url, label:label, back:1, kind:(chosen.kind && chosen.kind.label) || null,
+             category:(chosen.category && chosen.category.label) || null, fresh: PICK_FRESH,
+             own: ownOf(label), home: homeCatOf(label) };
+    if(!POP) openPop();
+    drawPick(); return;
+  }
   /* Paging with the arrows is still the same visit - keep where they came from. */
   if(step===3 && BACK_TO) BACK_TO.now = label; else
   BACK_TO = (back===1 && catAll && chosen.category)
@@ -2862,21 +3353,32 @@ document.addEventListener('click', function(e){
 }, true);
 /* LEFT AND RIGHT THROUGH THE WHOLE CATEGORY (2026-10-06, Aaron): a design made big still swipes to
    the next one and the one before, through every design the row holds. */
-function pickList(){ return (catAll && step===3) ? optsFor(1) : [] }
+function pickList(){ return (catAll && (step===3 || POP)) ? optsFor(1) : [] }
+/* NO BLACK BOX BETWEEN DESIGNS (2026-10-24, Aaron: "when I scroll left or right ... that black box opens up for a second"). The box was
+   rebuilt with the next picture's address before that picture had arrived - black, and a different height, until it did. Now the
+   next picture is fetched first and swapped in once it is here; the ones either side are fetched ahead while they look. */
+var PICK_GO=0;
 function pickMove(dir){
   var L=pickList(); if(!PICK || !L.length) return;
   var i=L.findIndex(function(x){ return x.label===PICK.label }); if(i<0) return;
-  var n=L[(i+dir+L.length)%L.length];
-  chosen.leaf={ value:n.value, label:n.label };
-  pickDesign(n.image||null, n.label, PICK.back);
+  var n=L[(i+dir+L.length)%L.length], my=++PICK_GO, done=false;
+  var go=function(){ if(done || my!==PICK_GO) return; done=true;
+    chosen.leaf={ value:n.value, label:n.label };
+    pickDesign(n.image||null, n.label, PICK.back); };
+  if(!n.image){ go(); return }
+  var im=new Image(); im.onload=go; im.onerror=go; setTimeout(go, 2500); im.src=n.image;
 }
+function pickAhead(L, at){
+  [at-1, at+1, at+2].forEach(function(k){ var x=L[(k+L.length)%L.length]; if(x && x.image){ var im=new Image(); im.src=x.image } });
+}
+var LAST_SPLIT=false;
 function drawPick(){
-  var p = PICK, host = ladHost();
+  var p = PICK, host = POP ? (popEl(), document.getElementById('popIn')) : ladHost();
   var L = pickList(), at = L.findIndex(function(x){ return x.label===p.label });
   if(at>=0 && !p.kind && grpOf(L[at])) p.kind = grpOf(L[at]);
-  host.innerHTML = dots()+sentence()+
+  host.innerHTML = (POP ? '' : dots()+sentence())+
     '<div class=pick>'+
-      (p.url ? '<div class="pbox sp"><img src="'+esc(p.url)+'" alt="">'+
+      (p.url ? '<div class="pbox sp'+(LAST_SPLIT?' split':'')+'"><img src="'+esc(p.url)+'" alt="">'+
         '<button class="plus l" data-half=l aria-label="See the design full screen">'+EXP_SVG+'</button>'+
         '<button class="plus r" data-half=r aria-label="See it on the body full screen">'+EXP_SVG+'</button></div>' : '')+
       (L.length>1 && at>=0 ? '<div class=nav><button id=pickPrev aria-label=Previous>\u2039</button>'+
@@ -2885,11 +3387,13 @@ function drawPick(){
       /* WHAT THIS DESIGN IS (2026-10-08, Aaron): its whole description, two lines, More opens the rest. */
       (String(p.label||'').length > shortName(p.label).length + 3
         ? '<p class=about id=pickAbout>'+esc(p.label)+'</p><button class=aboutmore id=pickMore>More</button>' : '')+
-      '<div class=acts><button id=pickBack>Keep Browsing</button>'+
-      '<button class=go id=pickUse>Work on this</button></div>'+
+      (POP ? '<div class="acts one"><button class=go id=pickUse>'+WORKON_SVG+'<span>Work on this</span></button></div>'
+           : '<div class=acts><button id=pickBack>Keep Browsing</button>'+
+             '<button class=go id=pickUse>Work on this</button></div>')+
     '</div>';
   wireNav(host);
   markSplit(host.querySelector('.pbox'));
+  if(L.length>1 && at>=0) pickAhead(L, at);
   if(host.querySelector('#pickFav')) host.querySelector('#pickFav').onclick=function(){
     toggleFav({ url:p.url, label:p.label, kind:p.kind||null,
                 category:(chosen.category&&chosen.category.label)||p.category||null,
@@ -2914,14 +3418,14 @@ function drawPick(){
     if(ab.scrollHeight <= ab.clientHeight + 2) am.style.display='none';
     am.onclick=function(){ var o=ab.classList.toggle('open'); am.textContent=o?'Less':'More' };
   }
-  host.querySelector('#pickBack').onclick = function(){
+  if(host.querySelector('#pickBack')) host.querySelector('#pickBack').onclick = function(){
     if(BACK_TO && (p.back||1)===1 && catAll && !busy){ BACK_TO.now = p.label; step = 1; drawLadder(); return }
     goStep(Math.min(p.back || 1, chosen.kind ? 2 : 1)) };
   /* A PHOTO IN GET INSPIRED IS NOT A FINISHED DESIGN (2026-09-26, Aaron). Either button sends the
      picture into the conversation exactly like an upload, with their words; she says what it is and
      asks what they want. Nothing is drawn and no artist files start until they decide. */
   if(inInspire()){
-    host.querySelector('#pickUse').onclick = function(){ inspirePick('I want to make this one mine') };
+    host.querySelector('#pickUse').onclick = function(){ closePop(); inspirePick('I want to make this one mine') };
     return;
   }
   host.querySelector('#pickUse').onclick = useThis;
@@ -2935,6 +3439,7 @@ function pickRef(p){ var id = imgIdOf(p.url); return id ? 'https://auras.guide/i
 function useThis(){
   var p = PICK; if(!p || !p.url || busy) return;
   if(!signedIn()) return;
+  closePop();
   INSPIRE_MODE=false; closeLayer();
   /* THE CHOSEN CARD IS CUT FIRST (2026-10-17, Aaron): a split card (design | body) is cut to its design the moment it is
      chosen - the same pixel cut as the four-card sheet, no model. From here the cut IS their tattoo: what shows, what she
@@ -3004,7 +3509,7 @@ function inInspire(){
 }
 /* The picture on each example phone is one of our own inspiration covers; the app names are plain
    words with simple icons - never the apps' own logos. */
-var INSPIRE_KINDS = null, INSPIRE_SEND = false;
+var INSPIRE_KINDS = null, INSPIRE_SEND = false, INKIT_FIRST = false, INKIT_CHAT = false;
 var INSP_APPS = [
   ['TikTok','<path d="M8 5v14l11-7z"/>'],
   ['Instagram','<rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="4"/>'],
@@ -3630,6 +4135,7 @@ function _paintThread(){
     if(t.who==='them' && thread[_ti+1] && thread[_ti+1].doors) return '';
     if(t.files) return filesHtml(t.files);
     if(t.showMe) return (_ti < _lastThem) ? '' : showMeHtml(true);
+    if(t.inkIt) return (_ti < _lastThem) ? '' : inkItHtml(t.inkIt);
     if(t.inspireBtn) return inspirePanel();
     if(t.photoGuide) return photoGuidePanel(t.job);
     if(t.coverStyles) return coverStylesHtml();
@@ -3681,11 +4187,7 @@ function _paintThread(){
       /* ONE SET OF CHOICES (2026-10-14, Aaron): after a style pick her idea cards and the two buttons asked the same thing
          twice - when the buttons are there, the cards are not drawn. */
       (t.ideas && !(t.choices && t.choices.length) ? ideasHtml(t.ideas) : '')+
-      (t.choose && !(_ti < _lastThem) ? '<div class=choose><div class=chq>'+esc(t.choose.question||'Which direction do you want?')+'</div>'+
-        chooseOpts(t.choose.styles).map(function(o){ return '<button class=cho data-cho="'+esc(o.style||'')+'"'+(o.idea?' data-choidea="'+esc(o.idea)+'"':'')+'><i></i><span>'+esc(o.label)+'</span></button>' }).join('')+
-        '<button class=cho data-cho=""><i></i><span>Imagine some ideas for me</span></button>'+
-        '<button class=cho data-cho="" data-choown=1><i></i><span>I\u2019ll tell you my idea</span></button>'+
-        '<button class=chgo disabled>Continue</button></div>' : '')+
+      (t.choose && !(_ti < _lastThem) ? chooseHtml(t.choose) : '')+
       (t.opts ? optsHtml(t, !(_ti < _lastThem)) : '')+
       (t.tabs ? '<div class=ideas>'+t.tabs.map(function(x){ return '<button class=idea data-ch="'+esc(x.act)+'" data-chv="'+esc(x.v||'')+'"><span class=it>'+esc(x.t)+'</span><span class=il>'+esc(x.l)+'</span></button>' }).join('')+'</div>' : '')+
       /* THUMBS OFF (2026-10-14, Aaron): "remove that whole thumbs up thumbs down thing" - the rating code stays
@@ -3825,7 +4327,7 @@ function workOn(url, design){
     paintThread();
   }
   paintWorking(); paintStrip();
-  var sy = document.getElementById('say'); sy.placeholder = 'Tell me what you want\u2026'; sy.focus();
+  var sy = document.getElementById('say'); sy.placeholder = 'Tell me what you want to create\u2026'; sy.focus();
 }
 /* The strip: every picture of this tattoo, newest on the right; the one being worked on is lit. */
 function paintStrip(){
@@ -3931,16 +4433,34 @@ function collapseThread(){
    failed. A streamed reply resolves at once and finishes on the wire, which is what host passes
    straight through. The reader is mt-design's `apiStream`, not a new one. */
 /* Asks core for a turn the page lost, every 5 seconds for up to 4 minutes (v9.572). */
-function recoverTurn(tid){
+/* KEEP TRYING, AND SAY SO (2026-10-23, Aaron: "if my connection fails it keeps trying to make it happen"). MEASURED 12:49: "I choose
+   Wings Of Wonder" never reached core - the page waited 4 minutes for a turn that had never started, and said nothing. Now: while the
+   phone is offline it waits for the connection to come back; every check says "Reconnecting..." on screen; and when core says this
+   turn never arrived (`started:false`, twice), the same turn is sent again once - same id, so core never runs it twice. 15 minutes in all. */
+function recoverTurn(tid, body, pend){
   return new Promise(function(resolve){
-    var n = 0;
+    var n = 0, resent = false, t0 = Date.now();
+    function say(txt){ if(!pend) return; pend.label = txt; if(pend.gen) pend.gen.reconnect = txt; try{ paintThread() }catch(e){} }
     (function ask(){
-      n++;
+      if(Date.now() - t0 > 15*60000) return resolve(null);
+      if(navigator.onLine === false){
+        say('Reconnecting\u2026 waiting for your connection');
+        var on = function(){ removeEventListener('online', on); setTimeout(ask, 800) };
+        addEventListener('online', on); return;
+      }
+      n++; say('Reconnecting\u2026 your tattoo is still being made');
       favCall({ action:'talklast', tid:tid }).then(function(r){
-        if(r && r.done && r.turn) return resolve(r.turn);
-        if(n >= 48) return resolve(null);
+        if(r && r.done && r.turn){ if(pend && pend.gen) pend.gen.reconnect = null; return resolve(r.turn); }
+        if(r && r.started === false && n >= 2 && !resent && body){
+          resent = true; say('Reconnecting\u2026 sending it again');
+          talkStream(body, null, null).then(function(d){
+            if(d && d.ok){ if(pend && pend.gen) pend.gen.reconnect = null; return resolve(d); }
+            setTimeout(ask, 3000);
+          }, function(){ setTimeout(ask, 3000) });
+          return;
+        }
         setTimeout(ask, 5000);
-      }, function(){ if(n >= 48) return resolve(null); setTimeout(ask, 5000); });
+      }, function(){ setTimeout(ask, 5000) });
     })();
   });
 }
@@ -4053,10 +4573,11 @@ function askAura(said){
   var sofar = '';
   var tile = CAME_FROM; CAME_FROM = null;
   var _jobSay = JOB_SAY; JOB_SAY = null;
+  if(_jobSay === INKIT_SAY) INKIT_FIRST = true;
   /* A line that is itself a start never carries another start's words in front of it. */
   if(_jobSay && /^i want to (create|add to|cover up)\b|^i'm looking for inspiration/i.test(String(said||''))) _jobSay = null;
   var _tid = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
-  talkStream({action:'talk',session:SESSION,tid:_tid,said:(_jobSay ? (said ? _jobSay + '. ' + said : _jobSay) : said),
+  var _tb; talkStream(_tb = {action:'talk',session:SESSION,tid:_tid,said:(_jobSay ? (said ? _jobSay + '. ' + said : _jobSay) : said),
               tile: tile || undefined,
               fresh: fresh || undefined,
               /* WHICH VERSION THEY ARE BRANCHING FROM. Absent, she stacks on the last
@@ -4110,7 +4631,7 @@ function askAura(said){
     /* A LOST CONNECTION IS NOT A LOST TURN (2026-10-12, Aaron: "it should not do it regardless"). If the answer
        never arrived, the page keeps waiting and asks core for the finished turn by its id. */
     .catch(function(){ return null })
-    .then(function(d){ return (d && (d.ok || d.error)) ? d : recoverTurn(_tid) })
+    .then(function(d){ return (d && (d.ok || d.error)) ? d : recoverTurn(_tid, _tb, pend) })
     .then(function(d){ return genFinish(pend, d) })
     .then(function(d){
       busy = false; auraBusy(false);
@@ -4168,6 +4689,13 @@ function askAura(said){
         var _xOffer = XPL_OFFER && !_pic; XPL_OFFER = false;
         if(_xp){ var _xq = String(_sayIt||'').match(/[^.!?]+[.!?]+["\u201d\u2019]?\s*/g) || [];
           if(_xq.length > 1 && /\?["\u201d\u2019]?\s*$/.test(_xq[_xq.length-1])) _sayIt = _xq.slice(0, -1).join('').trim(); d.choose = null; }
+        /* HER LINE BEFORE THE CARDS, THE FIXED LINE AFTER (2026-10-23, Aaron: "let me get you these... but they were already there").
+           MEASURED 12:49: her words, written before the eight were drawn ("Let's see what we can make from her..."), were shown under
+           the finished cards. On an eight-card sheet, her words go above the cards and "Here are your designs..." stays below. */
+        if(_grid && d.drew && Array.isArray(d.drew.cards8) && d.drew.cards8.length){
+          var _sp8 = String(_sayIt||'').split(/\n\s*\n/);
+          if(_sp8.length > 1){ thread.push({ who:'aura', said:_sp8.slice(0, -1).join('\n\n').trim() }); _sayIt = _sp8[_sp8.length-1].trim(); }
+        }
         thread.push({ who:'aura', explore:_xp || undefined, said:_sayIt, pic:_pic, grid:_grid, panels:!!(_grid && d.drew && d.drew.panels), bodysheet:!!(_grid && d.drew && d.drew.body_sheet), design:(_pic && d.drew.design) || null, found:_found, cards:_cards, styles:_styles,
           doors:(_styles && !(d.drew && d.drew.image)) || undefined, meetFirst:(_styles && !(d.drew && d.drew.image)) ? (pend.meetFirst != null ? pend.meetFirst : meetFirst()) : undefined,
           info4:(_grid && d.drew && Array.isArray(d.drew.cards)) ? d.drew.cards : null, poss:_poss, base:_base,
@@ -4224,6 +4752,12 @@ function askAura(said){
         /* Once they have said where, the two ways on. */
         /* AFTER A STYLE, TWO CLEAR WAYS ON (2026-10-22 walk: "there's nothing that says let me tell you what I want"): draw now in that
            style, or tell her more. */
+        /* INK IT, AFTER SHE HAS SEEN THE PHOTO (2026-10-23, Aaron: "the simple words to the chat model or show me 8 versions"):
+           Show me 8 versions is the same road as Imagine some designs; or they tell her in their own words. */
+        if(INKIT_FIRST){ INKIT_FIRST = false;
+          /* ONE SET OF BUTTONS (2026-10-23, Aaron: "she's offering the same thing twice"): when her reply already brought its own, ours stay away. */
+          var _hasCh = thread.length && thread[thread.length-1] && thread[thread.length-1].choices;
+          if(!_pic && !_hasCh) thread.push({ who:'aura', choices:[ { t:'Show me some amazing versions', l:'Tattoo designs from your photo', act:'stylego', v:'' }, { t:'I\u2019ll tell you what I want', l:'Type it in the box below', act:'ownidea' } ] }); }
         if(STYLE_ASKED && !_pic){ var _sa = STYLE_ASKED; STYLE_ASKED = null;
           thread.push({ who:'aura', choices:[ { t:'Imagine some designs', l:'In the '+_sa+' style', act:'stylego', v:_sa }, { t:'I\u2019ll tell you more', l:'Type it in the box below', act:'ownidea' } ] }); }
         if(DIR_SENT && !_pic){ DIR_SENT = false;
@@ -4403,9 +4937,11 @@ function inCatalog(lab){ return !!catalogFor(lab) }
    half. A picture three wide by two high is a split card; anything else is shown whole and gets no +.
    Tapping a + fills the screen with that half of the SAME picture - nothing new is drawn. */
 function markSplit(box){
-  if(!box) return; var im=box.querySelector('img'); box.classList.remove('split');
-  if(!im || !im.getAttribute('src')) return;
-  function chk(){ if(im.naturalWidth && im.naturalWidth/im.naturalHeight > 1.3) box.classList.add('split') }
+  if(!box) return; var im=box.querySelector('img');
+  if(!im || !im.getAttribute('src')){ box.classList.remove('split'); return }
+  /* The shape is decided by the picture once it is here - never squared off while it loads (2026-10-24). */
+  function chk(){ if(!im.naturalWidth) return; var sp=im.naturalWidth/im.naturalHeight > 1.3; box.classList.toggle('split', sp);
+    if(box.closest('.pick')) LAST_SPLIT=sp; }
   if(im.complete) chk(); im.addEventListener('load', chk, {once:true});
 }
 var halfEl=document.getElementById('half'), halfImg=document.getElementById('halfImg');
@@ -4460,6 +4996,18 @@ function openFull(src){
   t.onerror=function(){ openHalf(src,'w') };
   t.src=src;
 }
+/* TAP ANYWHERE ON THE PICTURE (2026-10-23, Aaron: "you shouldn't have to just click that magnifying glass - tapping the card anywhere
+   opens it full screen"). The glass buttons stay. On a split card the half that was tapped opens - design on the left, the body on the
+   right; anything else opens whole. The heart and the arrows keep their own taps. */
+document.addEventListener('click', function(e){
+  if(e.target.closest('button,a,.bdg,[role=button]')) return;
+  var bx=e.target.closest('.pick .pbox'); if(!bx) return;
+  var im=bx.querySelector('img'); if(!im || !im.src) return;
+  e.preventDefault(); e.stopPropagation();
+  var r=im.getBoundingClientRect();
+  if(im.naturalWidth && im.naturalWidth/im.naturalHeight > 1.3) openHalf(fullSrc(im), (e.clientX - r.left) < r.width/2 ? 'l' : 'r');
+  else openFull(fullSrc(im));
+}, true);
 function closeHalf(){ halfEl.classList.remove('on'); halfEl.setAttribute('aria-hidden','true') }
 document.addEventListener('click', function(e){
   var b=e.target.closest('[data-half]'); if(!b) return;
@@ -4610,7 +5158,7 @@ function paintMine(){
       function card(p){ var i=ps.indexOf(p);
         return '<button class=tile data-i="'+i+'">'+
           '<div class=pic>'+(p.cover?'<img loading=lazy src="'+esc(thumb(p.cover,480))+'" alt="">':'')+'</div>'+
-          '<b>'+esc((function(t){ t=String(t||'Your tattoo'); if(t.length>40) t=t.slice(0,40).replace(/\s+\S*$/,'').replace(/[\s,;:.-]+$/,'')+'\u2026'; return t.charAt(0).toUpperCase()+t.slice(1) })(p.title))+'</b>'+
+          '<b>'+esc((function(t){ t=pjName(t); if(t.length>40) t=t.slice(0,40).replace(/\s+\S*$/,'').replace(/[\s,;:.-]+$/,'')+'\u2026'; return t })(p.title))+'</b>'+
           '<small>'+esc(String(p.updated||'').slice(0,10))+'</small>'+
           (p.locked ? (p.has_files ? '<small class=st>Artist files ready</small>'
                        : p.files_failed ? '<small class=st>Files didn\u2019t come out</small>' : '<small class="st wait">Aura is making your files\u2026</small>')
@@ -4693,7 +5241,7 @@ function openProjectView(id, keepLook){
       var h='<div class="head phead">'+
         /* BACK TO MY TATTOOS (2026-10-11, Aaron): a way out of a tattoo besides the menu. */
         '<button class=backmine data-backmine=1>\u2190 My Tattoos</button>'+
-        '<h2>'+esc((function(t){ t=String(t||'Your tattoo'); return t.charAt(0).toUpperCase()+t.slice(1) })(pj.title))+
+        '<h2>'+esc(pjName(pj.title))+
           /* HER NAME, AND WHAT IT IS (2026-10-10, Aaron): the title is the name she gave it; the "i" opens
              the description it was made from. */
           (pj.about ? ' <span class=pinf role=button aria-label="About this design">i</span>' : '')+'</h2>'+
@@ -4869,7 +5417,25 @@ function openPlacer(photoUri, designUrl){
     dz.style.cssText='width:'+st.w+'px;height:'+h+'px;left:'+(st.x-st.w/2)+'px;top:'+(st.y-h/2)+'px;transform:rotate('+st.r+'rad)';
     fr.style.cssText=dz.style.cssText;
   }
-  ph.onload=function(){ ready++; lay() }; dz.onload=function(){ ready++; lay() };
+  /* ══ THE BOX IS THE TATTOO, NOT THE PAPER (2026-10-23, Aaron: "it just comes out too big") ══════════════════════════════
+     MEASURED 12:28 (Blueprint Ghost on a chest): the card came with a white margin, so the box they sized was the card and the bike
+     filled about two-thirds of it. The green box on their photo is that same box, and the image model filled all of it - the bike
+     came out about 1.5 times what they saw. The white around the artwork is trimmed off first, so the box hugs the ink and the
+     green box is exactly the tattoo's size. If the picture cannot be read (another site's picture), it is used as it is. */
+  function trimWhite(im){
+    var w=im.naturalWidth, h=im.naturalHeight; if(!w||!h) return null;
+    var c=document.createElement('canvas'); c.width=w; c.height=h; var g=c.getContext('2d'); g.drawImage(im,0,0);
+    var d=g.getImageData(0,0,w,h).data, x0=w, y0=h, x1=-1, y1=-1;
+    for(var y=0;y<h;y++) for(var x=0;x<w;x++){ var o=(y*w+x)*4;
+      if(d[o+3]>16 && (d[o]+d[o+1]+d[o+2])/3<235){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; } }
+    if(x1<0) return null;
+    var p=Math.round(Math.max(w,h)*0.01); x0=Math.max(0,x0-p); y0=Math.max(0,y0-p); x1=Math.min(w-1,x1+p); y1=Math.min(h-1,y1+p);
+    var cw=x1-x0+1, ch=y1-y0+1; if(cw*ch > w*h*0.92) return null;
+    var o2=document.createElement('canvas'); o2.width=cw; o2.height=ch; o2.getContext('2d').drawImage(c,x0,y0,cw,ch,0,0,cw,ch);
+    return o2.toDataURL('image/png');
+  }
+  ph.onload=function(){ ready++; lay() };
+  dz.onload=function(){ if(!dz._trimmed){ dz._trimmed=1; try{ var t=trimWhite(dz); if(t){ dz.src=t; return; } }catch(e){} } ready++; lay() };
   ph.src=photoUri; dz.src=localImg(designUrl);
   var pts={}, last=null, hd=null;
   /* THE BOX (2026-10-15, Aaron: "pinching is difficult... a box around it with a little tab to rotate"): drag the corner to
@@ -4958,11 +5524,17 @@ function openProject(id){
         var l=lines[i], t={ who:l.role==='them'?'them':'aura', said:l.said, photo:l.photo||null };
         if(l.role==='aura' && pi<pics.length){
           var nx=(i+1<lines.length && lines[i+1].ts) ? lines[i+1].ts : null;
-          if(!nx || !pics[pi].ts || pics[pi].ts<=nx){ t.pic=pics[pi].image; t.design=pics[pi].design||null; pi++; }
+          if(!nx || !pics[pi].ts || pics[pi].ts<=nx){ t.pic=pics[pi].image; t.design=pics[pi].design||null;
+            /* AN EIGHT-CARD SHEET COMES BACK AS ITS CARDS (2026-10-23, Aaron) - not the uncut sheet. Sheets saved before core v9.737 have no
+               cards on record and still show as one picture. */
+            if(Array.isArray(pics[pi].cards8) && pics[pi].cards8.length){ t.grid=true; t.cards8=pics[pi].cards8; }
+            pi++; }
         }
         out.push(t);
       }
-      while(pi<pics.length){ out.push({ who:'aura', said:'', pic:pics[pi].image, design:pics[pi].design||null }); pi++; }
+      while(pi<pics.length){ var _lp={ who:'aura', said:'', pic:pics[pi].image, design:pics[pi].design||null };
+        if(Array.isArray(pics[pi].cards8) && pics[pi].cards8.length){ _lp.grid=true; _lp.cards8=pics[pi].cards8; }
+        out.push(_lp); pi++; }
       thread=out;
       var last=pics.length?pics[pics.length-1]:null;
       piece={ url:null, label:pj.title||'your tattoo', style:null,
@@ -5046,6 +5618,8 @@ document.getElementById('threadIn').addEventListener('click', function(e){
     /* SHOW ME IS GET INSPIRED (2026-10-22): the same road - she invites them to show her, the photo card comes with her reply. */
     DISC='done'; PICK_REF=null; ENTRY='inspire'; INSPIRE_MODE=true;
     thread.push({ showMe:true }); paintThread(); return }
+  var ikp=e.target.closest('[data-inkpick],[data-inkcam]'); if(ikp){ if(busy || !signedIn()) return;
+    document.getElementById(ikp.hasAttribute('data-inkcam') ? 'fileCam' : 'file').click(); return }
   var smp=e.target.closest('[data-smpick],[data-smcam]'); if(smp){ if(busy || !signedIn()) return; INSPIRE_SEND=true; INSPIRE_MODE=true; ENTRY='inspire';
     document.getElementById(smp.hasAttribute('data-smcam') ? 'fileCam' : 'file').click(); return }
   var xo=e.target.closest('.xpbox .xo'); if(xo){ var xb=xo.closest('.xpbox'); xb.querySelectorAll('.xo').forEach(function(y){ y.classList.toggle('sel', y===xo) });
@@ -5083,14 +5657,14 @@ document.getElementById('threadIn').addEventListener('click', function(e){
     if(ch.getAttribute('data-ch')==='locknot'){
       thread.push({ who:'them', said:'Fine-tune it' });
       thread.push({ who:'aura', said:'Of course \u2013 let\u2019s keep working on it. What would you like to change?' }); paintThread();
-      var sy2=document.getElementById('say'); if(sy2){ sy2.placeholder='Tell me what you want\u2026'; try{ sy2.focus() }catch(e){} }
+      var sy2=document.getElementById('say'); if(sy2){ sy2.placeholder='Tell me what you want to create\u2026'; try{ sy2.focus() }catch(e){} }
       return }
     if(ch.getAttribute('data-ch')==='change'){
       /* SHE LOOKS AND SUGGESTS (2026-10-11, Aaron): "Aura needs to look at the image when they want to make
          changes and suggest like she just was." The design goes to her with this fixed sentence; core keeps
          it a turn of talk (nothing drawn) and she answers with a few changes that would suit it. */
       if(!PICK_REF) return;
-      var sy=document.getElementById('say'); if(sy) sy.placeholder='Tell me what you want\u2026';
+      var sy=document.getElementById('say'); if(sy) sy.placeholder='Tell me what you want to create\u2026';
       askAura('Fine-tune it'); return }
     /* SHE OFFERS, THEY CHOOSE (2026-10-12, Aaron): after she reacts to their photo - her ideas, or theirs. */
     /* THE CHAT SAYS WHAT THE BUTTON SAYS (2026-10-18, Aaron): core reads "Imagine 8 ideas" the same as "Show me some ideas". */
@@ -5101,13 +5675,15 @@ document.getElementById('threadIn').addEventListener('click', function(e){
     if(ch.getAttribute('data-ch')==='stylego'){ var _gv=ch.getAttribute('data-chv')||''; SAY_SHOWN='Imagine some designs';
       if(SEE_JOB==='cover'){ COVER_STYLE=_gv||COVER_STYLE; askAura('Imagine 8 cover-ups'); return }
       if(SEE_JOB==='add'){ ADD_STYLE=_gv||ADD_STYLE; askAura('Imagine 8 ideas'); return }
+      /* THE BUBBLE SAYS WHAT THEY TAPPED (2026-10-23): Ink It's button is "Show me 8 versions". */
+      if(!_gv && /show me some amazing versions/i.test(ch.textContent||'')) SAY_SHOWN='Show me some amazing versions';
       CHOOSE_NEXT={ style:_gv||null }; askAura('Imagine some ideas for me'); return }
     /* IMAGINE 4 MORE (2026-10-13, Aaron): a fresh four on the same photo. */
     if(ch.getAttribute('data-ch')==='more4'){ SAY_SHOWN = 'Imagine more'; askAura('Imagine 8 more'); return }
     /* IMAGINE 4 POSSIBILITIES (2026-10-16, Aaron): four possibilities of the design they chose; "more" keeps the same design. */
     if(ch.getAttribute('data-ch')==='poss'){ var _pm = ch.getAttribute('data-chv')==='more'; SAY_SHOWN = _pm ? 'Imagine more possibilities' : 'Imagine possibilities'; askAura(_pm ? 'Imagine 8 more possibilities' : 'Imagine 8 possibilities'); return }
     if(ch.getAttribute('data-ch')==='dir'){ DIR_SENT = true; askAura('I want it to go '+ch.getAttribute('data-chv')); return }
-    if(ch.getAttribute('data-ch')==='ownidea'){ var sy3=document.getElementById('say'); if(sy3){ sy3.placeholder='Tell me what you want\u2026'; try{ sy3.focus() }catch(x){} } return }
+    if(ch.getAttribute('data-ch')==='ownidea'){ var sy3=document.getElementById('say'); if(sy3){ sy3.placeholder='Tell me what you want to create\u2026'; try{ sy3.focus() }catch(x){} } return }
     if(ch.getAttribute('data-ch')==='browse') openCard(ch.getAttribute('data-chv'), true, false);
     else askAura("Let's create my own"); return }
   var ib=e.target.closest('[data-inspire]'); if(ib){ openInspire(); return }
@@ -5120,13 +5696,29 @@ document.getElementById('threadIn').addEventListener('click', function(e){
   /* A TAPPED IDEA IS A YES (2026-10-12, Aaron): choosing it means "draw it" - "show me" is core's go-ahead. */
   /* HER CARD (v9.689, 2026-10-21, Aaron): tap a dot to pick, Continue sends it. A style for a cover-up or an add-on goes with the
      ideas on their photo; for a new tattoo it is the style the ideas are drawn in; "Just imagine" is the open go. */
+  var cc=e.target.closest('.choose .chc'); if(cc){ e.preventDefault();
+    if(cc.getAttribute('data-cho')) openStylePop(cc); else chooseChip(cc); return }
+  var csh=e.target.closest('.choose .chshow, .choose .chown'); if(csh){ e.preventDefault(); if(busy) return;
+    var cbx=csh.closest('.choose'), sel=cbx.querySelector('.chc.sel'), st=sel ? (sel.getAttribute('data-cho')||'') : '',
+        idea=sel ? (sel.getAttribute('data-choidea')||'') : '', own=csh.classList.contains('chown');
+    if(idea){ askAura(own ? idea : 'Show me: '+idea); return }
+    if(own){
+      if(st){ if(SEE_JOB==='cover') COVER_STYLE = st; if(SEE_JOB==='add') ADD_STYLE = st;
+        SAY_SHOWN = 'I\u2019ve got my own idea \u2013 '+st; askAura("Let's create my own in the "+st+" style"); return }
+      var _sy2=document.getElementById('say'); if(_sy2){ _sy2.placeholder='Tell me your idea\u2026'; try{ _sy2.focus() }catch(x){} } return }
+    SAY_SHOWN = st ? 'Show me some ideas in '+st : 'Show me some ideas';
+    if(SEE_JOB==='cover'){ if(st) COVER_STYLE = st; askAura('Imagine 8 cover-ups'); return }
+    if(SEE_JOB==='add'){ if(st) ADD_STYLE = st; askAura('Imagine 8 ideas'); return }
+    CHOOSE_NEXT = { style: st || null };
+    /* From a photo (Ink It, Show me) the style rides in their words - the photo's own sentence carries them to the picture. */
+    askAura((st && (INKIT_CHAT || HAD_PHOTO)) ? 'Imagine some ideas for me in the '+st+' style' : 'Imagine some ideas for me'); return }
   var co=e.target.closest('.choose .cho'); if(co){ e.preventDefault(); var cb=co.closest('.choose');
     cb.querySelectorAll('.cho').forEach(function(x){ x.classList.toggle('sel', x===co) });
     var cg=cb.querySelector('.chgo'); if(cg) cg.disabled=false; return }
   var cgo=e.target.closest('.choose .chgo'); if(cgo){ e.preventDefault(); if(busy || cgo.disabled) return;
     var cs=cgo.closest('.choose').querySelector('.cho.sel'); if(!cs) return;
     /* "I'll tell you my idea": the chat box asks them, nothing is sent. */
-    if(cs.hasAttribute('data-choown')){ var _sy=document.getElementById('say'); if(_sy){ _sy.placeholder='Tell me what you want\u2026'; try{ _sy.focus() }catch(x){} } return }
+    if(cs.hasAttribute('data-choown')){ var _sy=document.getElementById('say'); if(_sy){ _sy.placeholder='Tell me what you want to create\u2026'; try{ _sy.focus() }catch(x){} } return }
     /* One of her ideas: their words to talk about. */
     if(cs.getAttribute('data-choidea')){ askAura(cs.getAttribute('data-choidea')); return }
     var st=cs.getAttribute('data-cho')||'';
@@ -5166,7 +5758,7 @@ document.getElementById('threadIn').addEventListener('click', function(e){
     if(_ok==='own'){
       thread.push({ who:'them', said:'My own change' });
       thread.push({ who:'aura', said:'Of course \u2013 let\u2019s keep working on it. What would you like to change?' }); paintThread();
-      var _sy=document.getElementById('say'); if(_sy){ _sy.placeholder='Tell me what you want\u2026'; try{ _sy.focus() }catch(x){} }
+      var _sy=document.getElementById('say'); if(_sy){ _sy.placeholder='Tell me what you want to create\u2026'; try{ _sy.focus() }catch(x){} }
       return }
     if(_ok==='mine'){ if(ob.getAttribute('data-opl')==='pick'){ if(!PICK_REF) return; USE_NEXT = true; }
       LOCK_NEXT = true; askAura('This is my tattoo'); return }
@@ -5175,7 +5767,7 @@ document.getElementById('threadIn').addEventListener('click', function(e){
     try{ ALL_NEXT = JSON.parse(decodeURIComponent(iab.getAttribute('data-ideaall'))) }catch(x){ ALL_NEXT = null }
     askAura('Show me all of them'); return }
   var idb=e.target.closest('[data-idea]'); if(idb){ e.preventDefault(); if(busy) return; askAura('Show me: ' + idb.getAttribute('data-idea')); return }
-  var ido=e.target.closest('[data-ideaown]'); if(ido){ e.preventDefault(); var sy=document.getElementById('say'); sy.placeholder='Tell me what you want\u2026'; try{ sy.focus() }catch(x){} return }
+  var ido=e.target.closest('[data-ideaown]'); if(ido){ e.preventDefault(); var sy=document.getElementById('say'); sy.placeholder='Tell me what you want to create\u2026'; try{ sy.focus() }catch(x){} return }
   var im=e.target.closest('img.made, img.shot, img.ydimg'); if(!im || im.closest('.gridpick')) return;
   openFull(im.getAttribute('data-v') || im.getAttribute('src'));
 });
@@ -5254,6 +5846,14 @@ function precut(src){ if(!src) return; var prev=Promise.resolve();
 var SHEET_CARDS = {};
 /* ADD-ON SHEETS (2026-10-17): full screen shows only the cut - the page's own crop is measured for the tall sheets. */
 var BODY_SHEETS = {};
+/* ══ A NAME, NEVER A SENTENCE (2026-10-24, Aaron: "as the artist files are being created, we're displaying some of the junk information
+   for a moment and then it goes to the right title ... that junk information does not need to ever flash up") ══ Until her name lands,
+   a project's title is the description it was made from ("A hand holds a burning photograph but only the flame..."). A title that reads
+   like a sentence - more than seven words, a full stop inside, or their own words ("I want...") - shows as "Your tattoo" until the name
+   arrives. */
+function pjName(t){ t=String(t||'').replace(/\s+/g,' ').trim();
+  if(!t || t.split(' ').length>7 || /[.!?]\s+\S/.test(t) || /^(i|i'm|i\u2019m|my|here'?s|here\u2019s|let'?s|can)\b/i.test(t) || /^untitled\b/i.test(t)) return 'Your tattoo';
+  return t.charAt(0).toUpperCase()+t.slice(1) }
 function cardTitle(cd){ return String((cd && cd.title) || '').toLowerCase().replace(/(^|[\s-])([a-z])/g, function(m,a,b){ return a+b.toUpperCase() }) }
 function cardAbout(cd){ return [cd && Array.isArray(cd.lines) ? cd.lines.join(' ') : '', (cd && cd.about) || ''].filter(Boolean).join(' \u2014 ') }
 function cardHtml(cd){ return '<b>'+esc(cardTitle(cd) || 'This design')+'</b>'+
@@ -5337,13 +5937,23 @@ function meetFirst(){ var f=true; try{ f = localStorage.getItem(MEET_KEY)!=='1';
 /* THE 41 STYLES (2026-10-22, Aaron): one card each, drawn on white with one formula; the i says what the style is, not the picture. */
 var STYLE41=[["American Traditional", "img_mvjs5ovkudn9", "The classic tattoo look \u2013 thick black outlines, bold simple shapes and a few strong colors. Built to stay clear for decades."], ["Neo-Traditional", "img_mvjs68mib73j", "Traditional's bold outlines with richer color, more depth and decorative detail."], ["Japanese", "img_mvjs0anzl6l0", "Big flowing designs from Japanese tattoo tradition \u2013 koi, dragons, waves and flowers moving together as one piece."], ["Black & Grey Realism", "img_mvjs6sl6rw6f", "Lifelike images shaded only in black and grey, like a photograph in ink."], ["Color Realism", "img_mvjs79fv7mrr", "Lifelike images in full color \u2013 fur, skin and light that look real."], ["Micro Tattoos", "img_mvjs7sd09bz0", "Tiny, delicate designs with very fine lines. Small, subtle and easy to place anywhere."], ["Fine Line", "img_mvjs0voquc52", "Thin, precise black lines and soft shading. Light, elegant and airy."], ["Minimalist", "img_mvjs86raw2bd", "As few lines as possible. Simple shapes that say a lot with very little."], ["Blackwork", "img_mvjs8lt3ocgq", "Bold designs in solid black ink \u2013 strong shapes and high contrast, no color."], ["Blackout", "img_mvjs958052hq", "Large areas filled completely black. Bold, modern, and great for covering old tattoos."], ["Illustrative", "img_mvjs9ktgeinb", "Looks hand-drawn, like a page from an illustrated book \u2013 expressive lines and selective shading."], ["Chicano", "img_mvjsa48757pu", "Smooth black-and-grey shading and fine lines, rooted in Chicano culture \u2013 portraits, faith and family."], ["Geometric", "img_mvjsanxl7d8e", "Built from precise shapes \u2013 triangles, circles and lines in perfect symmetry."], ["Dotwork", "img_mvjsb64zjsmc", "Shading made entirely from tiny dots, giving a soft, textured look."], ["Ornamental", "img_mvjsboi3zh05", "Decorative patterns like jewelry or lace \u2013 mandalas, filigree and symmetry."], ["Watercolor", "img_mvjsc6xuvvut", "Soft splashes and washes of color that look painted with a brush."], ["New School", "img_mvjscouejzwx", "Cartoon-style with exaggerated shapes, thick outlines and bright, loud color."], ["Tribal", "img_mvjsd78si7bb", "Bold flowing black shapes with sharp points, where the empty skin between them is part of the design."], ["Sketch", "img_mvjsdnues00b", "Looks like an artist's pencil drawing, with the rough lines left in on purpose."], ["Etching", "img_mvjse7j6hyxi", "Fine parallel lines and cross-hatching, like an old engraving or printed illustration."], ["Surrealism", "img_mvjsep53josz", "Dreamlike images where real things blend in impossible ways."], ["Biomechanical", "img_mvjsfy6jrm2j", "Machinery and living forms fused together, with deep 3D detail."], ["Dark Fantasy", "img_mvjsgi48xj4f", "Gothic and fantastical \u2013 demons, armor, shadows and dark atmosphere."], ["Medieval", "img_mvjsh15ghop5", "Knights, heraldry and old manuscript art."], ["Renaissance", "img_mvjshl0mlpuv", "Classical art and sculpture in ink \u2013 realistic faces, soft shading, timeless."], ["Stained Glass", "img_mvjsi1kjj5pj", "Bright jewel colors divided by bold black lines, like a church window."], ["Liquid Chrome", "img_mvjsil0fx9dc", "Shapes that look like polished, flowing silver metal."], ["Cybersigilism", "img_mvjsj1du76ed", "Sharp, thin, futuristic strokes that look like digital symbols."], ["Cyberpunk", "img_mvjsjihupx8f", "Futuristic tech and neon color \u2013 androids, circuits and city glow."], ["Patchwork", "img_mvjsk4jkynyx", "Lots of small separate tattoos collected together, like a sticker book."], ["Ignorant Doodle", "img_mvjsknzasaot", "Deliberately simple and goofy, like a doodle in the margin of a notebook."], ["Sticker", "img_mvjsl4m8yles", "Cute, compact designs with a thick outer outline, like a sticker."], ["Embroidered", "img_mvjsln3u67b5", "Looks stitched in thread, like a patch on a jacket."], ["Red Ink", "img_mvjsm58atyrm", "Designs done entirely in red ink \u2013 striking, and softer than black."], ["Negative Space", "img_mvjsmplik3aj", "The empty skin becomes part of the picture, shaped by the ink around it."], ["Brutalism", "img_mvjsn8vnsksc", "Raw, heavy black shapes and harsh, bold composition."], ["Mixed Media", "img_mvjsnr8mi9py", "Several styles combined in one piece \u2013 realism, linework, color and splashes."], ["Y2K Nostalgia", "img_mvjsobq9nl2l", "Late-90s and early-2000s pop \u2013 iridescent colors, sparkles and shine."], ["1980s Airbrush", "img_mvjsowhp7hbq", "Retro neon gradients and glowing sunsets, like an 80s airbrush painting."], ["3D / Optical", "img_mvjspedgfzpv", "Optical illusions that look three-dimensional on flat skin."], ["Abstract", "img_mvjspue831m0", "Not a picture of anything \u2013 shapes, strokes and splashes chosen for feeling and movement."]];
 /* Where an older catalogue list holds the style under its earlier name. */
+/* ══ EACH STYLE ON A PERSON (2026-10-24, Aaron: "change that big image to new hero images for that style with a tattoo placed on the
+   body ... a real pretty huge hero image"): the style's own card design as a real healed tattoo, with TATTOO STYLE and its name drawn in.
+   4:5, one picture for phone and computer. A style without one here keeps its artwork on white. */
+var STYLE_HERO={"American Traditional": "img_mvmmk3ptyyt8", "Neo-Traditional": "img_mvmmkj3aojk2", "Japanese": "img_mvmmky0r6evx", "Black & Grey Realism": "img_mvmmlfpfi2gu", "Micro Tattoos": "img_mvmmma513ncu", "Minimalist": "img_mvmmmoi0di33", "Blackwork": "img_mvmmn1cqo9iz", "Blackout": "img_mvmmngdew3qd", "Illustrative": "img_mvmmnup80tox", "Chicano": "img_mvmmo9k3gp68", "Geometric": "img_mvmmopjzehy5", "Dotwork": "img_mvmmp4zy1wgh", "Ornamental": "img_mvmmplh9hqr2", "Watercolor": "img_mvmmpz3lz9cb", "New School": "img_mvmmqem9xk9m", "Tribal": "img_mvmmqs7ex692", "Sketch": "img_mvmmr6sbf2rh", "Etching": "img_mvmmrm4gzq0v", "Surrealism": "img_mvmmrz81ec9j", "Biomechanical": "img_mvmmseolxo3l", "Medieval": "img_mvmmsv8hjazr", "Renaissance": "img_mvmmta3nq9w0", "Stained Glass": "img_mvmmtoxju3yj", "Cybersigilism": "img_mvmmuhsh0754", "Cyberpunk": "img_mvmmuyij6jz2", "Ignorant Doodle": "img_mvmmvs8yf2rh", "Red Ink": "img_mvmmx8tgeriq", "Negative Space": "img_mvmmxmsh0yr5", "Brutalism": "img_mvmmy1lsvkra", "Mixed Media": "img_mvmmyga9o1eg", "Y2K Nostalgia": "img_mvmmyy8wczbv", "3D / Optical": "img_mvmmzu3hderd", "Abstract": "img_mvmn08255d2e", "Fine Line": "img_mvmmf04gd40h", "Dark Fantasy": "img_mvmmfgemf4af", "Sticker": "img_mvmnc8njf48t", "Patchwork": "img_mvmnyu0tua6l", "Embroidered": "img_mvmnd3o6mgbn", "1980s Airbrush": "img_mvmndl8u0eal", "Liquid Chrome": "img_mvmne2ot4yfx", "Color Realism": "img_mvmnehsze1of"};
 var STYLE41_CAT={'Color Realism':'Colour Realism','Watercolor':'Watercolour','Sticker':'Sticker Tattoos','Embroidered':'Embroidered Tattoos'};
+/* SEE IT ON YOU HAS ITS OWN HERO (2026-10-23, Aaron): the same Create screen, the same steps below it - only the card at the top
+   says what this door is. Approved 2026-10-23. */
+var ONME_HERO='https://auras.guide/image/img_mvkxp2j2zozv';
+var INKIT_HERO='https://auras.guide/image/img_mvl1zfq7r7l1';
 var START2={ tell:'https://auras.guide/image/img_mvjt82gygdn3', show:'https://auras.guide/image/img_mvjt8m93oeun' };
 function meetHtml(t, open){
   var f=firstName();
   var card = '<div class="meet m2"><img src="'+AURA_MARK+'" alt=""><div><h3>'+(t.meetFirst ? 'Hey'+(f?' '+esc(f)+',':',')+' I\u2019m <em>Aura</em>.' : 'Welcome back'+(f?', <em>'+esc(f)+'</em>':'')+'.')+'</h3>'+
     /* SEE IT ON YOU SAYS SO (2026-10-22 walk): it opened the same words as Create. */
     '<p class=m2a>'+(window.ONME_START ? 'Let\u2019s create your tattoo together \u2013 then I\u2019ll show it on you.' : 'Let\u2019s create your tattoo together.')+'</p><p>You can explore a style, tell me what\u2019s on your mind, or show me something that inspires you.</p></div></div>';
+  if(window.ONME_START) card = '<div class=onhero><img src="'+esc(thumb(ONME_HERO,720))+'" alt="">'+
+    '<div class=ohx><h3>See It<br><em>On You.</em></h3><p>Design a tattoo and see how it looks on your body before you ink it.</p></div></div>';
   return card+
     (open ? '<div class=sthd><h4>How would you like to start?</h4></div><div class=start2>'+
       '<button class=startc data-start=tell><img src="'+thumb(START2.tell,480)+'" alt=""><span class=sx><b>Tell me</b><span>An idea, a feeling, a person, a memory, or whatever\u2019s on your mind.</span><i>\u2192</i></span></button>'+
@@ -5353,8 +5963,8 @@ function meetHtml(t, open){
 }
 /* THE 41 STYLE CARDS, ONE ROW EVERYWHERE (2026-10-22 walk): home, the new-tattoo screen, under her replies and on a cover-up or
    add-on - the same white cards, and a tap opens the style's window. */
-function s41RowHtml(){
-  return '<div class=s41>'+STYLE41.map(function(x,i){ return '<button class=s41c data-sinfo="'+i+'"><img loading=lazy src="https://auras.guide/image/'+x[1]+'?w=480" alt="">'+
+function s41RowHtml(id){
+  return '<div class=s41'+(id?' id='+id:'')+'>'+STYLE41.map(function(x,i){ return '<button class=s41c data-sinfo="'+i+'"><img loading=lazy src="https://auras.guide/image/'+x[1]+'?w=480" alt="">'+
     '<span class=sn><span>'+esc(x[0])+'</span></span></button>' }).join('')+'</div>';
 }
 /* A STYLE OPENS FULL SCREEN (2026-10-22, Aaron): the artwork, what the style is, and the choice - Work on this style or Explore
@@ -5374,15 +5984,27 @@ function openStyleInfo(i){
         askAura(_words); return }
       var x2=e.target.closest('[data-sexp]'); if(x2){ o.hidden=true; var nm=x2.getAttribute('data-sexp'); openCard(STYLE41_CAT[nm]||nm, true, false); return }
     }) }
-  o.innerHTML='<div class=sbig><button class=sx2 data-sclose=1 aria-label="Close">\u2715</button>'+
-    '<div class=simg><img src="https://auras.guide/image/'+x[1]+'" alt=""></div>'+
-    '<div class=stxt><h3>'+esc(x[0])+'</h3><p>'+esc(x[2])+'</p>'+
+  var _hero=STYLE_HERO[x[0]];
+  o.innerHTML='<div class="sbig'+(_hero?' hero':'')+'"><button class=sx2 data-sclose=1 aria-label="Close">\u2715</button>'+
+    '<div class=simg><img src="'+(_hero ? esc(thumb('https://auras.guide/image/'+_hero,1440)) : 'https://auras.guide/image/'+x[1])+'" alt="'+esc(x[0])+'"></div>'+
+    '<div class=stxt>'+(_hero ? '' : '<h3>'+esc(x[0])+'</h3>')+'<p>'+esc(x[2])+'</p>'+
     '<div class=row2><button class=go data-swork="'+esc(x[0])+'">Work on this style</button><button data-sexp="'+esc(x[0])+'">Explore this style</button></div></div></div>';
   o.hidden=false;
 }
 /* ══ SHOW ME (2026-10-22, Aaron's mockup) ═══ "Show me" opens this page at once - no wait on her. Their picture goes to her as
    inspiration; her reaction comes back with one fixed question (the explore card) instead of her own. */
 var SHOWME_COLLAGE='https://auras.guide/image/img_mvjx8w0hc7rs', EXPLORE_PIC=false, XPL_OFFER=false;
+/* INK IT'S PHOTO STEP (2026-10-23): one box, the photo first. */
+var INKIT_HELLO = 'I\u2019m here for you. Send me any photo \u2013 a person, a pet, a place, a moment, anything \u2013 and I\u2019ll show you what we could make of it.';
+var INKIT_SAY = 'Here\u2019s a photo I want to turn into a tattoo';
+function inkItHtml(part){
+  if(part==='hero') return '<div class=onhero><img src="'+esc(thumb(INKIT_HERO,720))+'" alt="">'+
+    '<div class=ohx><h3>Ink<br><em>It.</em></h3><p>Take a photo of anything and turn it into a tattoo. People, pets, places, memories\u2026 anything.</p></div></div>';
+  return '<div class="smp inkit"><div class=smbox><b>Choose a photo</b><small>A pet, a place, a person, a moment \u2013 anything you want to turn into a tattoo.</small>'+
+    /* ONE TAP (2026-10-24, Aaron: "the very first box can just bring up the one command that brings up your phone ... we don't need to
+       supply those different steps"): the phone's own menu already offers Take Photo, Photo Library and Choose File. */
+    '<div class=smbtn><button class="p one" data-inkpick=1>Choose a photo</button></div></div></div>';
+}
 function showMeHtml(open){
   return '<div class=smp><div class=smtop><div><h2>Show me<br>what <em>you like.</em></h2>'+
     '<p class=sm1>Take a screenshot, save a photo, share something from Pinterest, Instagram, TikTok, or anywhere.</p></div>'+
@@ -5391,7 +6013,7 @@ function showMeHtml(open){
     '<p class=sm3>We\u2019ll figure it out together \u2661</p>'+
     '<img class=smcol src="'+SHOWME_COLLAGE+'" alt="">'+
     (open ? '<div class=smbox><b>Choose a photo</b><small>Select an image from your phone or take a new photo.</small>'+
-      '<div class=smbtn><button class=p data-smpick=1>Choose from photos</button><button class=o data-smcam=1>Take a photo</button></div>'+
+      '<div class=smbtn><button class="p one" data-smpick=1>Choose a photo</button></div>'+
       '<div class=smapps><span>Pinterest</span><span>\u00b7</span><span>Instagram</span><span>\u00b7</span><span>TikTok</span><span>\u00b7</span><span>Any app or website</span></div></div>'+
       '<p class=smfoot>Screenshot it, save it, or take a picture. Any source. We can work with it.</p>' : '')+'</div>';
 }
@@ -5416,6 +6038,54 @@ function styleIn(txt){
 /* HER CARD SPEAKS OUR NAMES (2026-10-22 walk): she wrote "fine line / realism / black and grey" - lowercase, overlapping. An option that is
    one of our 41 styles is shown by its card name (once); anything more than a style ("black and grey realism rose") is an idea, kept as she
    wrote it with a capital letter, and picking it is something to talk about, not a style. */
+/* ══ HER STYLE QUESTION AS A ROW OF STYLES (2026-10-24, Aaron: "Select style and they can scroll left or right see the different
+   styles but when they tap one can we bring up a pop up that'll show what that style's going to be ... then let it close and now
+   they're on that style. But ... that's not an instant go"). ══ Her picks come first, then every other style. A tap opens that
+   style's card - its picture and what it is; tapping the card chooses it and closes it. Nothing is sent. Under the row: Show me some
+   ideas (drawn in the style they chose, if any) and I've got my own idea (they tell her - in that style, if they chose one). No dots,
+   no Continue. */
+function chooseHtml(c){
+  var opts=chooseOpts(c.styles), have={}, chips=[];
+  opts.forEach(function(o){ if(o.style) have[o.style]=1; chips.push(chipHtml(o, true)) });
+  STYLE41.forEach(function(r){ if(!have[r[0]]) chips.push(chipHtml({ label:r[0], style:r[0] }, false)) });
+  return '<div class="choose chs"><div class=chq>'+esc(c.question||'Pick a style')+'</div>'+
+    '<div class=chrow>'+chips.join('')+'</div>'+
+    '<div class=chnow hidden></div>'+
+    '<div class=chacts><button class=chshow>Show me some ideas</button><button class=chown>I\u2019ve got my own idea</button></div></div>';
+}
+function styleRow(name){ for(var i=0;i<STYLE41.length;i++) if(STYLE41[i][0]===name) return STYLE41[i]; return null }
+function chipHtml(o, hers){ var r=o.style ? styleRow(o.style) : null;
+  return '<button class="chc'+(hers?' hers':'')+'" data-cho="'+esc(o.style||'')+'"'+(o.idea?' data-choidea="'+esc(o.idea)+'"':'')+'>'+
+    (r ? '<span class=pic>'+smImg('https://auras.guide/image/'+r[1], 240)+'</span>' : '<span class="pic txt"><i>'+esc(o.label)+'</i></span>')+
+    '<b>'+esc(o.label)+'</b></button>' }
+function stylePopEl(){
+  var f=document.getElementById('stylePop');
+  if(!f){ f=document.createElement('div'); f.id='stylePop'; f.setAttribute('role','dialog');
+    f.innerHTML='<div class=spcard role=button tabindex=0><img alt=""><div class=spt><b></b><p></p><span class=sphint>Tap to choose this style</span></div></div>';
+    f.addEventListener('click', function(e){
+      var pick = !!(e.target.closest && e.target.closest('.spcard'));
+      var chip = STYLE_POP_CHIP; STYLE_POP_CHIP=null; f.classList.remove('on');
+      if(pick && chip) chooseChip(chip);
+    });
+    document.body.appendChild(f); }
+  return f;
+}
+var STYLE_POP_CHIP=null;
+function openStylePop(chip){
+  var r=styleRow(chip.getAttribute('data-cho')); if(!r) return;
+  var f=stylePopEl(); STYLE_POP_CHIP=chip;
+  var hz=STYLE_HERO[r[0]];
+  f.classList.toggle('hero', !!hz);
+  f.querySelector('img').src=thumb('https://auras.guide/image/'+(hz||r[1]), hz ? 1440 : 720);
+  f.querySelector('.spt b').textContent=r[0]; f.querySelector('.spt p').textContent=r[2]||'';
+  f.classList.add('on');
+}
+function chooseChip(chip){
+  var box=chip.closest('.choose'); if(!box) return;
+  box.querySelectorAll('.chc').forEach(function(x){ x.classList.toggle('sel', x===chip) });
+  var now=box.querySelector('.chnow'), lab=chip.getAttribute('data-cho') || chip.getAttribute('data-choidea') || '';
+  if(now){ now.hidden=!lab; now.innerHTML=lab ? 'Your style: <b>'+esc(lab)+'</b>' : '' }
+}
 function chooseOpts(list){
   var out=[], seen={};
   (list||[]).forEach(function(x){ x=String(x||'').trim(); if(!x) return;
@@ -5727,7 +6397,7 @@ var RECOLOR_NEXT=false;
 document.getElementById('viewWork').onclick=function(){
   if(VIEWING){ if(VIEWING.design) piece.parent=VIEWING.design; piece.made=VIEWING.url; }
   closeView(); paintStrip();
-  var sy=document.getElementById('say'); sy.placeholder='Tell me what you want\u2026'; sy.focus();
+  var sy=document.getElementById('say'); sy.placeholder='Tell me what you want to create\u2026'; sy.focus();
 };
 (function(){ var v=document.getElementById('view'), y0=null;
   v.addEventListener('touchstart',function(e){ y0=e.touches[0].clientY },{passive:true});
@@ -5760,11 +6430,23 @@ document.getElementById('menuBtn').onclick=function(){ drawerUp(true) };
 document.getElementById('drawerX').onclick=function(){ drawerUp(false) };
 drawer.addEventListener('click',function(e){
   var a=e.target.closest('a[data-go]'); if(!a) return;
-  var g=a.getAttribute('data-go'); e.preventDefault(); drawerUp(false);
+  var g=a.getAttribute('data-go'); e.preventDefault();
+  /* ══ THE MENU, ORGANIZED (2026-10-24, Aaron: "+ New tattoo ... that's where they can jump to any portion of anything. Add on cover-up
+     new tattoo"): + New tattoo and Explore open their own short lists; every line in them opens that page, from anywhere. ══ */
+  if(g.indexOf('sub:')===0){ var k=g.slice(4), sb=drawer.querySelector('.dsub[data-sub="'+k+'"]'); if(!sb) return;
+    var open=sb.hidden; drawer.querySelectorAll('.dsub').forEach(function(x){ x.hidden=true });
+    drawer.querySelectorAll('.dtg').forEach(function(x){ x.setAttribute('aria-expanded','false') });
+    sb.hidden=!open; a.setAttribute('aria-expanded', open?'true':'false'); return }
+  drawerUp(false);
+  if(g.indexOf('scr:')===0){ var sk=g.slice(4);
+    try{ closePop() }catch(x){} try{ closeHalf() }catch(x){} try{ closeView() }catch(x){} try{ closePeek() }catch(x){}
+    document.getElementById('homeBtn').onclick();
+    setTimeout(function(){ try{ openHomeScreen(sk) }catch(x){} }, 60);
+    return }
   /* THE MENU ALWAYS WORKS (2026-10-08, Aaron): whatever is open - a picture, a full-screen view, the
      catalogue - is closed first, then they go where they chose. */
   try{ closeHalf() }catch(x){} try{ closeView() }catch(x){} try{ closePeek() }catch(x){}
-  try{ closeLayer() }catch(x){}
+  try{ closePop() }catch(x){} try{ closeLayer() }catch(x){}
   /* + NEW TATTOO OPENS THE NEW-TATTOO SCREEN (2026-10-22 walk): it only went home, scrolled wherever home was left. */
   if(g==='new'){ freshStart(); setTimeout(function(){ var c=document.querySelector('.job[data-job="0"]'); if(c) c.click() }, 60); return }
   if(g==='saved'){ MINE_JUMP='mineSaved'; var mi=-1; for(var k=0;k<TABS.length;k++) if(TABS[k].id==='mine') mi=k; if(mi>=0) tabBtns[mi].click(); return }
@@ -5800,7 +6482,8 @@ document.getElementById('homeBtn').onclick=function(){
   /* HOME FROM ANYWHERE (2026-10-10, Aaron): from a tattoo in My Tattoos the wordmark did nothing.
      Everything open on top is closed first, and the jump is instant - two smooth scrolls at once
      (the pager across, the home tab up) cancel each other in Chrome. */
-  try{ closePeek() }catch(e){} try{ closeLayer() }catch(e){} try{ closeView() }catch(e){} try{ sheetUp(false) }catch(e){}
+  try{ closePop() }catch(e){} try{ closePeek() }catch(e){} try{ closeLayer() }catch(e){} try{ closeView() }catch(e){} try{ sheetUp(false) }catch(e){}
+  try{ closeHomeScreen() }catch(e){}
   try{ if(document.getElementById('thread').classList.contains('up')) collapseThread() }catch(e){}
   MINE_OPEN=false;
   chosen={}; piece={}; sets=null; chosenSet={}; skipped={}; gate=null; reopen=null; showAll=false; catAll=false; step=0;
@@ -5852,7 +6535,7 @@ function clearPhoto(){
   pendingPhoto = null; paintTray();
   var b = document.getElementById('camBtn');
   b.classList.remove('on'); b.innerHTML = CAM_SVG;
-  document.getElementById('say').placeholder = 'Tell me what you want\u2026';
+  document.getElementById('say').placeholder = 'Tell me what you want to create\u2026';
 }
 clearPhoto();
 function takePhoto(f){
@@ -5863,9 +6546,11 @@ function takePhoto(f){
     if(ONME_ACTIVE && ONME_PIC){ PLACE_SRC = uri; openPlacer(uri, ONME_PIC); return }
     pendingPhoto = uri; paintTray();
     var s = document.getElementById('say');
-    s.placeholder = 'Tell me what you want\u2026'; s.focus();
+    s.placeholder = 'Tell me what you want to create\u2026'; s.focus();
     /* From the Get Inspired panel the reason is already said - it goes to her straight away. */
     if(INSPIRE_SEND){ INSPIRE_SEND=false; EXPLORE_PIC=true; askAura("Here's something I like"); }
+    /* Ink It: the photo waits by the box for anything they want to say about it; Send carries the reason in front of their words. */
+    else if(JOB_SAY === INKIT_SAY) s.placeholder = 'Tell me anything about it, or just send\u2026';
   }).catch(function(e){
     thread.push({ who:'aura', said:'I could not open that photo: '+String(e&&e.message||e) });
     paintThread();

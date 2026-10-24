@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.741.0-2026-10-24-ink-it-stays";
+const BUILD = "aura-core-v9.742.0-2026-10-24-her-voice";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -71894,6 +71894,39 @@ export class PublicEntry extends WorkerEntrypoint {
         } catch {}
         if (!/^great choice/i.test(line)) line = "";
         return { ok: !!line, said: line || null };
+      }
+      // ══ HER VOICE (v9.742, 2026-10-24, Aaron: "I want to put my agent into Talk mode ... default and talking so when people go to my app
+      // it's automatically just having a conversation with them") ═══ The page sends each line she says; this speaks it with the voice
+      // model on Workers AI and hands back the sound. Which model is a dial (`config:source:voice:model`), which voice another
+      // (`config:voice:speaker`). The same line in the same voice is kept for a week, so a fixed line costs once.
+      if (action === "speak") {
+        const text = String(b.text || "").replace(/[*_#`>]/g, "").replace(/\s+/g, " ").trim().slice(0, 1500);
+        if (!text) return { ok: false, error: "NO_TEXT" };
+        const vModel = String((await env.AURA_KV.get("config:source:voice:model").catch(() => null)) || "").trim();
+        if (!vModel) return { ok: false, error: "set config:source:voice:model first" };
+        const vSpeaker = String((await env.AURA_KV.get("config:voice:speaker").catch(() => null)) || "").trim();
+        const _vh = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(vModel + "|" + vSpeaker + "|" + text))))
+          .map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 40);
+        const _vk = "voice:" + _vh;
+        const _was = await env.AURA_KV.get(_vk).catch(() => null);
+        if (_was) { console.log("[VOICE] " + text.length + " chars - kept copy, nothing spent"); return { ok: true, audio: _was, type: "audio/mpeg", cached: true }; }
+        const _vt0 = Date.now();
+        try {
+          const out = await env.AI.run(vModel, { text, ...(vSpeaker ? { speaker: vSpeaker } : {}), encoding: "mp3" });
+          let bytes = null;
+          if (out instanceof ReadableStream) bytes = new Uint8Array(await new Response(out).arrayBuffer());
+          else if (out instanceof ArrayBuffer) bytes = new Uint8Array(out);
+          else if (out && typeof out.audio === "string") bytes = Uint8Array.from(atob(out.audio), (c) => c.charCodeAt(0));
+          if (!bytes || !bytes.length) return { ok: false, error: "NO_AUDIO" };
+          let t = ""; for (let k = 0; k < bytes.length; k += 8192) t += String.fromCharCode.apply(null, bytes.subarray(k, k + 8192));
+          const b64 = btoa(t);
+          await env.AURA_KV.put(_vk, b64, { expirationTtl: 7 * 24 * 3600 }).catch(() => {});
+          console.log("[VOICE] spoke " + text.length + " chars in " + (Date.now() - _vt0) + "ms · " + Math.round(bytes.length / 1024) + " KB · voice " + (vSpeaker || "default") + " · ~$" + (text.length * 0.000015).toFixed(5) + (me ? " · who=" + me : ""));
+          return { ok: true, audio: b64, type: "audio/mpeg" };
+        } catch (e) {
+          console.log("[VOICE] failed after " + (Date.now() - _vt0) + "ms: " + String(e?.message ?? e).slice(0, 200));
+          return { ok: false, error: String(e?.message ?? e).slice(0, 200) };
+        }
       }
       // THE PAGE CUTS ONE OF THE FOUR (v9.618): for the heart and "Work on this" on one design of a four sheet.
       if (action === "cut") {

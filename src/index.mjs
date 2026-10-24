@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.739.0-2026-10-23-1440-wide-copies";
+const BUILD = "aura-core-v9.740.0-2026-10-24-test-fixes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60263,6 +60263,11 @@ async function cutAllCards(env, url, copts) {
     const r = Math.max(8, Math.round(Math.min(w, h) * 0.08));
     for (const [cx, cy, dx, dy] of [[0, 0, 1, 1], [w - 1, 0, -1, 1], [0, h - 1, 1, -1], [w - 1, h - 1, -1, -1]]) {
       if (L(cx, cy) >= 60) continue;
+      // ONLY A CORNER OF THE WHITE PANEL (v9.740, 2026-10-24, Aaron: "a little white corner" under the words). MEASURED on the
+      // Thunderbird sheet (img_mvlrdmdicprn): a card cut with its title strip has a BLACK bottom edge, and the bottom two corners
+      // were turned into white squares inside the strip. A corner is whitened only when both edges beside it are the white
+      // panel - a step of r along each edge lands on white. In a title strip that step lands on black, and it is left alone.
+      if (L(cx + dx * Math.min(r, w - 1), cy) < 200 || L(cx, cy + dy * Math.min(r, h - 1)) < 200) continue;
       const seen = new Uint8Array(r * r), st = [[0, 0]];
       while (st.length) {
         const [i, j] = st.pop(); if (i < 0 || j < 0 || i >= r || j >= r || seen[j * r + i]) continue;
@@ -65183,17 +65188,23 @@ async function talkStatePut(env, me, name, raw) {
 // plain data, not the conversation's closures - so each helper is defined once here and both the
 // conversation and the job use the same one. Bodies unchanged.
 function talkReadAct(txt) {
-    let o = null;
+    let o = null, _cut = false;
     try { o = JSON.parse(String(txt || "").trim()); }
-    catch { try { o = repairJson(String(txt || "")); } catch {} }
+    catch { try { o = repairJson(String(txt || "")); _cut = true; } catch {} }
     if (o) o = unwrapSchema(o);
     if (!o || typeof o !== "object") return null;
     // ══ READ WHAT SHE WROTE (2026-10-01, v9.503) ═════════════════════════════════════════════
     // MEASURED (pta_68bfa0feb3429408): twice her answer was thrown away whole - once her words came
     // under `reply`, once she wrote no `say` at all - and the turn became "I lost my train of
     // thought" with nothing drawn. Her words under `reply` or `message` are her words.
-    const _sayRaw = [o.say, o.reply, o.message].find((v) => typeof v === "string" && v.trim());
-    const say = _sayRaw ? String(_sayRaw).trim() : "";
+    // HER WORDS UNDER `text` (v9.740, 2026-10-24): MEASURED 19:05:34 - "What tattoos do I have?" was answered
+    // {"where":"mine","what":"Saved tattoos","text":"You've got one locked in so far: Sunlit Joy..."} - a right answer, thrown away
+    // whole for its key names, and a backup call listed raw titles instead. `text` is her words; `where` is where she takes them.
+    const _sayRaw = [o.say, o.reply, o.message, o.text].find((v) => typeof v === "string" && v.trim());
+    let say = _sayRaw ? String(_sayRaw).trim() : "";
+    // A REPLY THAT STOPPED MID-SENTENCE ENDS AT ITS LAST WHOLE SENTENCE (v9.740): MEASURED 19:05:34 - "...The Thunderbird idea is
+    // still just a". When her JSON had to be repaired (it was cut off), the half sentence at the end is dropped.
+    if (_cut && say && !/[.!?…"')\]]\s*$/.test(say)) { const _m = say.match(/^[\s\S]*[.!?…](?=\s|$)/); if (_m && _m[0].trim().length >= 12) say = _m[0].trim(); }
     if (!say) return null;
     const act = String(o.do || "none").trim().toLowerCase();
     // ══ A FIELD SHE CAN FILL AND NOBODY READS (2026-09-10) ═════════════════════════════
@@ -65227,7 +65238,8 @@ function talkReadAct(txt) {
              directions: strList(o.directions, 4, 80).map((x) => x.replace(/^\s*i want it to go\s+/i, "").replace(/[.\s]+$/, "")),
              where_to: (typeof o.where_to === "string") ? o.where_to.trim().slice(0, 160) : "",
              // WHERE SHE TAKES THEM (v9.664): one of the places her world's purpose names - a short name, nothing else.
-             go: (typeof o.go === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.go.trim())) ? o.go.trim().toLowerCase() : "",
+             go: (typeof o.go === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.go.trim())) ? o.go.trim().toLowerCase()
+               : (typeof o.where === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.where.trim())) ? o.where.trim().toLowerCase() : "",
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
              // first version of this field took that name, and the duplicate key silently lost.
              lines: Array.isArray(o.lines) ? o.lines.map((x) => parseInt(x, 10)).filter((x) => x > 0).slice(0, 6) : [],
@@ -65933,15 +65945,21 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
         const spoken = tnow.filter((e) => e && e.said && e.role);
         hist = spoken.slice(-12).map((e) => ({ role: e.role, said: e.said }));
       }
+      // ══ THEIR TATTOOS BY NAME, NOT BY THEIR FIRST SENTENCE (v9.740, 2026-10-24, Aaron) ══════════════════════════════════════
+      // MEASURED 19:05 (pta_4ae7b7f58621a7e8): "What tattoos do I have?" was answered with "I want to create a new tattoo, and I'd like
+      // to see it on me when it's (2026-10-24), untitled (202..." - a project with no name is titled by their first words, a project
+      // with no picture is not a tattoo, and the dates were UTC (10-24 at 7pm on the 23rd in LA). Only projects with a picture are
+      // listed; a title that is a sentence of theirs reads "a design not named yet"; no dates.
+      const _pjName = (t) => { const v = String(t || "").replace(/\s+/g, " ").trim();
+        return (!v || /^(untitled|i\b|i'|my\b|let'?s\b|can\b|here'?s\b)/i.test(v) || v.split(" ").length > 7) ? "a design not named yet" : "\"" + v + "\""; };
+      const _pjShown = _earlierPjs.filter((x) => x && (x.count == null ? !!x.cover : Number(x.count) > 0));
       const _projNote = me
         ? "\n\nTHE TATTOO YOU ARE ON NOW: " +
-          (_workPj && _workPj.title ? "\"" + _workPj.title + "\"" : "nothing made yet") +
-          (_workPj && _workPj.started ? " (started " + String(_workPj.started).slice(0, 10) + ")" : "") +
+          (_workPj && (_workPj.pictures || []).length ? _pjName(_workPj.title) : "nothing made yet") +
           (_workPj && _workPj.locked ? ", locked in - their artist's files are made" : "") + "." +
-          (_earlierPjs.length
-            ? "\nTHEIR EARLIER TATTOOS WITH YOU - finished, kept in My Tattoos; bring one up only if they do:\n" +
-              _earlierPjs.map((x) => "  - " + (x.title || "untitled") + " (" + String(x.started || "").slice(0, 10) +
-                (x.locked ? ", locked in" : "") + ")").join("\n")
+          (_pjShown.length
+            ? "\nTHEIR EARLIER TATTOOS WITH YOU - kept in My Tattoos; bring one up only if they do:\n" +
+              _pjShown.map((x) => "  - " + _pjName(x.title) + (x.locked ? " (locked in)" : "")).join("\n")
             : "")
         : "";
       // ══ TWO CALLS, ONE WAIT (2026-08-24) ═══════════════════════════════════════════════
@@ -66643,7 +66661,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // that asks something is answered first; their words that say show me still go.
       const _askedQ = (() => { const t = String(said || "").trim();
         return /\?\s*$/.test(t) || /^(what|what'?s|whats|how|why|where|when|who|which|can|could|is|are|was|do|does|did|will|would|should|have you|any)\b/i.test(t); })();
-      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo && !_askedQ) || !!(opts && opts.choose_go);
+      // ══ A NEW JOB IS NOT A YES (v9.740, 2026-10-24, Aaron) ═══════════════════════════════════════════════════════════════
+      // MEASURED 19:07 (pta_4ae7b7f58621a7e8): "I have a old tattoo that I don't like and I wanna cover it up" came after her offer to
+      // show the Thunderbird, counted as a yes, and eight Thunderbirds were drawn - she was never asked. Words that name what they
+      // want to DO with a tattoo they have (cover it, add to it, rework it) are a new job, never an answer to an offer. The turn
+      // goes to her; her guidance asks for the photo of the tattoo.
+      const _namesJob = /\b(cover(ing|ed)?[\s-]*(it|this|that|them|the old one|my tattoo)?[\s-]*up|cover-?ups?|add(ing)?\s+(on\s+)?to\s+(my|a|an|the|this|that)\s+(\w+\s+)?tattoo|(an?|my)\s+(old|existing|current|faded)\s+tattoo|rework(ing)?\s+(my|a|an|the|this|that)\s+(\w+\s+)?tattoo|fix\s+(my|an?)\s+(\w+\s+)?tattoo)\b/i.test(String(said || ""));
+      if (_namesJob && _offeredShow) { try { console.log("[TURN:GO] they named a job (cover-up / add-on / rework) - not a yes to her offer"); } catch {} }
+      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo && !_askedQ && !_namesJob) || !!(opts && opts.choose_go);
       // DRAWING NOTES ONLY WHEN THEY SAID GO (2026-10-02, v9.514, Aaron): on a talking turn these sat
       // where her ideas should be - "every picture starts from their photo", "one picture, never four" -
       // while nothing was being drawn. The draw guard already uses these words; so do the notes.
@@ -67124,7 +67149,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           let _pa = "";
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _pa = String(tnow[i].said || ""); break; } }
           const _off = _offeredShow;
-          _notYet = !(_off && !_saidNo);
+          _notYet = !(_off && !_saidNo && !_namesJob);
         }
       } catch {}
       // WHY YOU ARE HERE (v9.664, 2026-10-18, Aaron: "she needs to know why she's here, what she's doing ... and where to take
@@ -68165,7 +68190,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "aura") { _prevAura = String(tnow[i].said || ""); break; } }
         const _offered = _offeredShow;
         const _goWords = _theirGo;
-        if (!(_goWords || (_offered && !_saidNo))) {
+        if (!(_goWords || (_offered && !_saidNo && !_namesJob))) {
           act = "none"; _goBlocked = true;
           console.log("[TURN:GO] no go-ahead in their words - nothing drawn" + (_offered ? " (she had offered; their reply was not a yes)" : ""));
         }
@@ -68562,7 +68587,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // back as four versions in a numbered 2x2 on white, in the design's own style. PROVEN by command on the tribal
       // butterfly (img_mv88a12rku5n). After "I want to change something" their next words are that change. Picking a
       // number is the existing grid pick, untouched. "Imagine 4 more" on such a grid redoes the same change.
-      let _designGrid = false, _designWords = null, _designParent = null;
+      let _designGrid = false, _designWords = null, _designParent = null, _inkFirstTurn = false;
       try {
         const _newJob = !["add", "cover", "rework"].includes(String(jobNow || ""));
         let _await = false, _lastChange = null, _lastParent = null;
@@ -69850,6 +69875,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_inkFirst) {
               _dg = "This is my photo. I want to turn it into a tattoo: ____. Show me 8 different tattoo designs made from it. Make number 1 the closest to the photo. For the others, be bold and imaginative. Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down";
               try { const _k = String((await env.AURA_KV.get("config:frame:inkit:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
+              _inkFirstTurn = true;
               try { console.log("[TURN:DESIGN] the first eight from their photo - the photo sentence, not the change sentence"); } catch {}
             }
             if (_designWords === "__poss__") {
@@ -70116,7 +70142,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 _done = "Here are some possibilities for your design. Heart the ones you like - they're saved in your favorites. Tap Work on this when one feels right.";
                 try { const _k = String((await env.AURA_KV.get("config:say:poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
-              const _hers = (!_fixedSay && acted && acted.say) ? String(acted.say).trim() : "";
+              // HER WORDS WERE WRITTEN BEFORE THE EIGHT FROM THE PHOTO EXISTED (v9.740, 2026-10-24, Aaron: "she's saying things and
+              // has no clue what's gonna come back"). MEASURED 18:58 (swing photo): she wrote "my instinct is a fine line black and grey
+              // portrait... Let me show you that on a clean design" and eight different bold designs came back under it. On the first
+              // sheet from a photo only the fixed line goes; her words to a change of a design on screen still stand.
+              const _hers = (!_fixedSay && !_inkFirstTurn && acted && acted.say) ? String(acted.say).trim() : "";
+              if (_inkFirstTurn && acted && acted.say) { try { console.log("[TURN:WORDS] her words before the eight from the photo were not shown: \"" + String(acted.say).slice(0, 200) + "\""); } catch {} }
               _reaction = _hers ? (_hers + "\n\n" + _done) : _done;
             } else if (_ideasGrid) {
               let _done = (_fixedWhy === "more") ? "Here are more for you. Your favorites are saved - tap Work on this on the one that's closest and we'll make it yours." : "Here are your designs. Heart the ones you like - they're saved in your favorites and we can work from any of them. Tap Work on this when one feels right.";
@@ -70753,6 +70784,24 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         _said = _reaction;
       } else if (drew && drew.she_looked && /^\s*WRONG\b/i.test(drew.she_looked)) {
         _said += " One thing I can see: " + drew.she_looked.replace(/^\s*WRONG\b[\s:,.-]*/i, "").replace(/\.?$/, ".");
+      }
+      // ══ NOTHING WAS DRAWN, SO NOTHING IS "HERE" (v9.740, 2026-10-24, Aaron) ════════════════════════════════════════════════
+      // MEASURED 19:02:54 (pta_4ae7b7f58621a7e8): "...an old Ford Thunderbird, and I thought that would be cool to have as a tattoo"
+      // was answered "Here it is." with nothing drawn - her reply came without words and this file filled in "Here it is." for
+      // her. The net above only ran when the go guard blocked a drawing. This one runs on every turn that made nothing: a
+      // sentence that says a picture is here comes out; if nothing is left, she offers to show it (`config:say:offer_show`).
+      if (!(drew && (drew.image || drew.for_the_artist || drew.failed || drew.used)) && _said) {
+        const _claimPic = /(^|[.!?]\s+)[^.!?]*\b(here it is|here you go|here (it|they) comes?|here'?s (it|your (design|tattoo|picture|drawing|designs)|the (design|picture|drawing))|take a look|check it out|have a look)\b[^.!?]*[.!?]?/gi;
+        const _was = _said;
+        let _now = _said.replace(_claimPic, "$1").replace(/\s{2,}/g, " ").trim();
+        if (_now !== _was.trim()) {
+          if (!_now) {
+            _now = "Want me to show you some designs of it?";
+            try { const _k = String((await env.AURA_KV.get("config:say:offer_show")) || "").trim(); if (_k) _now = _k; } catch {}
+          }
+          console.log("[TURN:WORDS] nothing was drawn - \"" + _was.slice(0, 160) + "\" became \"" + _now.slice(0, 160) + "\"");
+          _said = _now;
+        }
       }
       // (The note about artist sheets being redone is no longer said to them - the files are made
       // quietly at the end and are not part of the conversation. It stays in `drew.she_checked`.)

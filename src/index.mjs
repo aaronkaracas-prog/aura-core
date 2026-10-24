@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.740.0-2026-10-24-test-fixes";
+const BUILD = "aura-core-v9.741.0-2026-10-24-ink-it-stays";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -70957,6 +70957,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
         } catch {}
       }
+      const _goOut = !!(acted && acted.go && !_fixedWhy &&
+        !((acted.go === "new" && (_newFlow || ["new", "from"].includes(String(jobNow || "")) || _freshPhoto)) || acted.go === String(jobNow || "")));
+      if (acted && acted.go) { try { console.log("[TURN:GO-TO] she named \"" + acted.go + "\" - " + (_goOut ? "the page takes them there" : "not sent (they are already there" + (_freshPhoto ? ", their photo just arrived" : "") + ")") + (me ? " · who=" + me : "")); } catch {} }
       const spent = costTapClose(_tap);
       // `act` is what was DONE this turn (2026-09-30). It reported her field, so a turn stopped by the
       // ask-first guard said "draw" with nothing drawn. Her field is kept beside it when they differ.
@@ -71014,7 +71017,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                // WHERE SHE TAKES THEM (v9.664): the page goes there - the same as tapping that place.
                // NOT TO WHERE THEY ALREADY ARE (v9.690): MEASURED 06:48 - in a new tattoo she sent go "new", which would have
                // moved them to a fresh Create New Tattoo screen mid-conversation.
-               ...(acted && acted.go && !_fixedWhy && !((acted.go === "new" && (_newFlow || String(jobNow || "") === "new")) || acted.go === String(jobNow || "")) ? { go: acted.go } : {}),
+               // A PHOTO TURNED INTO A TATTOO IS ALREADY A NEW TATTOO (v9.741, 2026-10-24, Aaron: "I just added a photo to ink it and
+               // Aura came back with a reply and then it went right back to the main screen"). MEASURED 08:09:02 (pta_a473263a74ff1fa0):
+               // on Ink It's photo she named "new" as her place; the page did what tapping Create New Tattoo does and the photo and her
+               // question were left behind. "new" is not sent from Ink It, nor on the turn their photo arrives.
+               ...(_goOut ? { go: acted.go } : {}),
                // HER PLACES (v9.655): on an add-on photo, the page shows each as a button.
                ...((Array.isArray(acted.directions) && acted.directions.length) ? { directions: acted.directions } : {}),
                ...(_herTurn ? { her_turn: _herTurn } : {}),

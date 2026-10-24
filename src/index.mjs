@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.744.0-2026-10-24-inspiration-five-sites";
+const BUILD = "aura-core-v9.745.0-2026-10-24-imagine-from-inspiration";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58499,7 +58499,8 @@ async function findReference(query, env, opts = {}) {
           // GET INSPIRED, THE REAL WORLD (2026-10-24, Aaron, from his ChatGPT screens): each photo comes with its name, the
           // artist when the page says who made it, one line, and the page it is on - so the list can credit and link it.
           input: opts.detail
-            ? "Show me " + want + " real photos of real tattoos by real artists: " + q + ". Show each image, and after it " +
+            ? "Show me " + want + " real photos of real tattoos by real artists: " + q + "." +
+              (Array.isArray(opts.siteNames) && opts.siteNames.length ? " Only from " + opts.siteNames.join(", ") + "." : "") + " Show each image, and after it " +
               "write these lines:\nTitle: a short name for it\nArtist: the artist's name, only if the page says who made it\n" +
               "About: one short line about it\nPage: the link to the page the photo is on"
             : "Show me " + want + " real photos of " + q + ". Show each image, and after each one " +
@@ -60829,6 +60830,12 @@ const POSS_SENTENCE = "This is my tattoo design. Show me 4 different designs of 
 // img_mvek89wntjco) and 18:43 (add-on, img_mvelc5g1ys5k): one draw each at 1280x3584, eight whole pictures, eight lines, cut clean.
 // The ending is a setting per kind (`config:frame:sheet8:body` - on their photo, `config:frame:sheet8:flat` - artwork on white).
 const SHEET8_BODY = "Show the whole tattoo in every picture, nothing cut off at the edges. Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture the same shape as my photo, each picture in a clean white frame with rounded corners, with a wide black gap between them. No text, no titles, no numbers, no words anywhere on the page. In your written reply, list the 8 designs in order, left to right and top to bottom, one per line, as: TITLE | first line | second line.";
+// ══ IMAGINE FROM THIS - A REAL TATTOO FOUND ON GET INSPIRED, MADE INTO 8 (2026-10-24, Aaron) ═══════════════════════════════════
+// PROVEN 14:00 by command (Flare, high, 1440x3120, the samurai back piece from inkppl.com): eight complete designs, each whole with its
+// own shape and white around it - The Warrior closest, then dragon, tiger, koi, hannya, serpent, crane, journey; every title spelled
+// right. Aaron: "this is my inspiration ... make me a complete tattoo" - the photo may be part of a tattoo, so the model is told only
+// that it is inspiration and that each design is complete. Only "Imagine from this" uses it. A setting: `config:frame:inspire:grid`.
+const INSPIRE8_SENTENCE = "This is my inspiration. Make me 8 different complete tattoo designs from it - each one a finished design with its own outer shape, shown whole with white space all around it, nothing cut off at the edges. Make the first one the closest to my inspiration. For the others, be bold and imaginative. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is a white panel with one complete tattoo design centred in it - not on skin - in a clean white frame with rounded corners, and under the panel, on the black, a short title in bold white capital letters, and under it two short lines in white describing the design. No numbers anywhere.";
 const SHEET8_FLAT = "Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture a white panel with the whole tattoo artwork as large as it fits - not on skin - in a clean white frame with rounded corners, with a wide black gap between them. No text, no titles, no numbers, no words anywhere on the page. In your written reply, list the 8 designs in order, left to right and top to bottom, one per line, as: TITLE | first line | second line.";
 // THE DIRECT ENDING (v9.708): the words each card carries are drawn under it - nothing writes a reply, nobody lists them after.
 const SHEET8_DIRECT = "Use color wherever it works. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is a white panel with the whole tattoo artwork as large as it fits - not on skin - in a clean white frame with rounded corners, and under the panel, on the black, a short title in bold white capital letters, and under it two short lines in white describing the design. No numbers anywhere.";
@@ -66203,7 +66210,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       let wantRef = String((opts && opts.ref) || "").trim();
       // When their photo arrived (talk-state:ref `at`) - an add-on's words are their lines from here on.
       let _refAt = null;
-      const _bodyRefNow = !(opts && (opts.pick || opts.use || opts.inspire || opts.name || opts.tile));
+      const _bodyRefNow = !(opts && (opts.pick || opts.use || opts.inspire || opts.inspire_go || opts.name || opts.tile));
       let _bodyPhoto = false;
       // ══ A SPLIT CARD IS WORKED ON BY ITS LEFT HALF (2026-09-26, Aaron) ══════════════════════
       // A split card is one picture: the design alone on white on the LEFT, the same design on a body on the
@@ -67276,7 +67283,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           _newStyle = String(_ds.new_style || "").trim() || null;
           let _dzP = null;
           if (opts && opts.placed && refUrl) { try { _dzP = _pre ? await _pre.design : null; } catch {} }
-          if (opts && opts.placed && refUrl && _dzP && _dzP.image && _dzP.design && _dzP.design !== refDesign) {
+          if (opts && opts.inspire_go && refUrl && refDesign) {
+            // ══ IMAGINE FROM THIS (v9.745, 2026-10-24, Aaron: "if someone clicks on it there's no asking questions - that goes right
+            // into inspiration of 8 tiles"). The real tattoo they chose on Get Inspired, our one sentence, the eight. She is not called.
+            _fixedWhy = "inspire8"; _fixedSay = await _fx("inspire_coming8", "Imagining tattoos from your inspiration now.");
+            _newFlow = false; _lastDesignChange = "";
+            try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "new_flow", "");
+                  await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "await_idea", ""); } catch {}
+            console.log("[TURN:INSPIRE] Imagine from this - eight from their inspiration, she is not called" + (me ? " · who=" + me : ""));
+          } else if (opts && opts.placed && refUrl && _dzP && _dzP.image && _dzP.design && _dzP.design !== refDesign) {
             // ══ THEY PLACED IT THEMSELVES (v9.613, 2026-10-15, Aaron) ═══════════════════════════════════════
             // "Let the user do whatever they want with it - size it, rotate it... once they say here's where I want it the image
             // model gets the exact spot." The page sends their photo with the design laid on it where they put it. She is not
@@ -67724,7 +67739,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // THE FIXED LINE SHOWS AT ONCE (v9.607): MEASURED 18:45 - "Here they come..." was ready at the tap and reached the page
       // only with the finished picture, 32s later. It goes out the way her streamed words do, then the work starts.
       if (_fixedSay && !acted && onDelta) { try { await onDelta(_fixedSay); } catch {} }
-      if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : _fixedWhy === "poss" ? "change" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
+      if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : (_fixedWhy === "poss" || _fixedWhy === "inspire8") ? "change" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
                                          prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
       if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",
                                         act: "none", prompt: "", use: [], brief: null };
@@ -68628,7 +68643,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         if (me && _await && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
           try { await talkStatePut(env, me, "await_change", ""); } catch {}
         }
-        if (_newJob && (hasParent || refDesign) && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo) {
+        if (_fixedWhy === "inspire8" && refDesign) {
+          act = "change"; _designGrid = true; _designWords = "__inspire__"; _designParent = refDesign;
+        } else if (_newJob && (hasParent || refDesign) && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo) {
           if (_fixedWhy === "poss") {
             // FOUR POSSIBILITIES OF THE CHOSEN DESIGN (v9.628): the first time, the design on screen; "4 more" keeps the same
             // design they chose, not the sheet of possibilities.
@@ -68650,7 +68667,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
           }
         }
-        if (_designGrid) console.log(_designWords === "__poss__" ? "[TURN:DESIGN] four possibilities of the chosen design, through the chat model" + (_designParent ? " (4 more, same design " + _designParent + ")" : "")
+        if (_designGrid && _designWords === "__inspire__") console.log("[TURN:DESIGN] eight from their inspiration (Imagine from this), image model only");
+        else if (_designGrid) console.log(_designWords === "__poss__" ? "[TURN:DESIGN] four possibilities of the chosen design, through the chat model" + (_designParent ? " (4 more, same design " + _designParent + ")" : "")
           : "[TURN:DESIGN] four versions of their change, image model only: \"" + String(_designWords).slice(0, 200) + "\"");
       } catch {}
 
@@ -69899,12 +69917,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // to change it: ..." with their PHOTO attached, and the chat model answered "The attachment is a beach photo rather than
             // a tattoo design". The first sheet from a photo has its own sentence (`config:frame:inkit:grid`, "____" is their
             // words); every change after it - a design is on screen by then - keeps the change sentence above, untouched.
-            const _inkFirst = (typeof _fromPic !== "undefined" && _fromPic) && !_drewNow() && _designWords !== "__poss__";
+            const _inkFirst = (typeof _fromPic !== "undefined" && _fromPic) && !_drewNow() && _designWords !== "__poss__" && _designWords !== "__inspire__";
             if (_inkFirst) {
               _dg = "This is my photo. I want to turn it into a tattoo: ____. Show me 8 different tattoo designs made from it. Make number 1 the closest to the photo. For the others, be bold and imaginative. Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down";
               try { const _k = String((await env.AURA_KV.get("config:frame:inkit:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
               _inkFirstTurn = true;
               try { console.log("[TURN:DESIGN] the first eight from their photo - the photo sentence, not the change sentence"); } catch {}
+            }
+            if (_designWords === "__inspire__") {
+              _dg = INSPIRE8_SENTENCE;
+              try { const _k = String((await env.AURA_KV.get("config:frame:inspire:grid")) || "").trim(); if (_k) _dg = _k; } catch {}
             }
             if (_designWords === "__poss__") {
               // FOUR POSSIBILITIES (v9.628, Aaron): its own sentence, a setting (`config:frame:design:possibilities`).
@@ -70001,7 +70023,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // 14:45: the cover-up 8 took 63.2s, about 25s of it the chat model writing its own brief before anything was drawn. Their photo
           // (and the card they chose, when there is one) and our sentence go to the image model with the words printed under each picture,
           // the same road and the same three settings as the possibilities sheet. config:source:sheet8:route = thread brings the chat model back.
-          const _bodyDirect = !_possDirect && _ideasGrid && !_designGrid && _sentNow && (await sheet8Route(env)) === "direct";
+          const _inspDirect = _designGrid && _designWords === "__inspire__" && !!_sentNow;
+          if (_inspDirect) {
+            const _pz = await sheet8DirectSize(env);
+            _viaNow = null; _asNow = "design_evolve"; _canvasNow = { width: _pz.width, height: _pz.height }; _sizeNow = null;
+            _qualNow = await sheet8DirectQuality(env); _modelNow = await sheet8Model(env); _rawNow = true;
+            _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+            _wordsFrom = "inspire+eight+direct";
+          }
+          const _bodyDirect = !_possDirect && !_inspDirect && _ideasGrid && !_designGrid && _sentNow && (await sheet8Route(env)) === "direct";
           if (_bodyDirect) {
             _sentNow = await toEight(env, _sentNow, "bodydirect");
             const _pz = await sheet8DirectSize(env);
@@ -70009,7 +70039,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _qualNow = await sheet8DirectQuality(env); _modelNow = await sheet8Model(env); _rawNow = true;
             _seedNow = 1 + Math.floor(Math.random() * 2000000000);
             _wordsFrom = String(_wordsFrom || "sheet") + "+eight+direct";
-          } else if (!_possDirect && (_ideasGrid || _designGrid) && _sentNow) {
+          } else if (!_possDirect && !_inspDirect && (_ideasGrid || _designGrid) && _sentNow) {
             _sentNow = await toEight(env, _sentNow, _designGrid ? "flat" : "body");
             _viaNow = "thread"; _asNow = null; _canvasNow = null; _sizeNow = await sheet8Size(env); _qualNow = await sheet8Quality(env);
             _wordsFrom = String(_wordsFrom || "sheet") + "+eight";
@@ -70205,7 +70235,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
           // CUT THE MOMENT IT COMES BACK (v9.678): the eight cards, each with its words.
           let _eight = null;
-          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, (_possDirect || _bodyDirect) ? { printed: true } : null);
+          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, (_possDirect || _bodyDirect || _inspDirect) ? { printed: true } : null);
           // THE ADD-ON FOUR ARE MARKED (v9.651): a pick off this sheet is cut out of it, never redrawn (cutBodyPanel).
           if (_ideasGrid && cp?.ok && cp.image_url) {
             const _bsid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
@@ -71942,7 +71972,12 @@ export class PublicEntry extends WorkerEntrypoint {
               if (Array.isArray(j) && j.length) sites = j.map(String).filter(Boolean).slice(0, 5); } catch {}
         // NOTHING IS SAVED (2026-10-24, Aaron: "we're not saving any of this stuff - all we're doing is discovery"): every search
         // is new. The list is held one hour only, so a tap can fetch the photo they chose.
-        const r = await findReference(q, env, { count: 8, verify: false, detail: true, sites });
+        // THE SITES BY NAME TOO (v9.745): MEASURED 13:41 - with only the search tool's site limit, 7 of 8 came from elsewhere (inkppl,
+        // shop sites, image hosts). The sentence names them, and anything not from one of them is left out.
+        const _nameOf = (d) => ({ "pinterest.com": "Pinterest", "instagram.com": "Instagram", "tiktok.com": "TikTok", "tattoodo.com": "Tattoodo",
+          "reddit.com": "Reddit", "tattoolife.com": "Tattoo Life", "inkedmag.com": "Inked Magazine", "behance.net": "Behance" })[String(d).replace(/^www\./, "").toLowerCase()] || null;
+        const siteNames = sites.map(_nameOf).filter(Boolean);
+        const r = await findReference(q, env, { count: 8, verify: false, detail: true, sites, siteNames });
         if (!r || !r.ok) {
           console.log("[INSPIRE] \"" + q + "\" - nothing: " + ((r && r.error) || "no answer") + " · " + (Date.now() - _t0) + "ms");
           return { ok: false, q, error: (r && r.error) || "NOTHING_FOUND" };
@@ -71951,8 +71986,15 @@ export class PublicEntry extends WorkerEntrypoint {
           [/tattoodo/i, "Tattoodo"], [/reddit|redd\.it/i, "Reddit"], [/tattoolife/i, "Tattoo Life"], [/inkedmag/i, "Inked Magazine"], [/behance/i, "Behance"]];
         const siteOf = (f) => { const h = String(f.page || "") + " " + String(f.image || "") + " " + String(f.source || "");
           const m = SITE.find(([re]) => re.test(h)); return m ? m[1] : (f.source || null); };
-        const items = (r.found || []).map((f) => ({ image: f.image, title: f.title || null, artist: f.artist || null,
+        const _all = (r.found || []).map((f) => ({ image: f.image, title: f.title || null, artist: f.artist || null,
           about: f.about || null, from: siteOf(f), page: f.page || null }));
+        const items = siteNames.length ? _all.filter((x) => siteNames.includes(x.from)) : _all;
+        if (_all.length !== items.length) console.log("[INSPIRE] left out " + (_all.length - items.length) + " not from the five sites: " +
+          _all.filter((x) => !items.includes(x)).map((x) => x.from || "?").join(", "));
+        if (!items.length) {
+          console.log("[INSPIRE] \"" + q + "\" - nothing from the five sites · " + (Date.now() - _t0) + "ms");
+          return { ok: false, q, error: "NOTHING_FROM_THE_SITES" };
+        }
         const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
         try { await env.AURA_KV.put(_k, JSON.stringify({ items }), { expirationTtl: 3600 }); } catch {}
         const _by = {}; items.forEach((x) => { _by[x.from || "?"] = (_by[x.from || "?"] || 0) + 1; });
@@ -72142,7 +72184,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -72171,7 +72213,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // THE TURN RUNS AS A JOB, THIS CONNECTION ONLY RELAYS IT (v9.681). Same options as the turn below, as plain data.
         const _tOpts = {
           tid: b.tid ? String(b.tid).slice(0, 40) : null,
-          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire };
+          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go };
         const _jobId = (me && _tOpts.tid && await talkJobsOn(env))
           ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;
         if (_jobId) {
@@ -72237,7 +72279,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

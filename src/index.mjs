@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.747.0-2026-10-24-cloudflare-websearch-test";
+const BUILD = "aura-core-v9.748.0-2026-10-24-inspiration-on-cloudflare";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13942,7 +13942,10 @@ async function successionGate(env) {
     //   RUN "WEBSEARCH cat tattoos site:pinterest.com"
     //   RUN "WEBSEARCH cat tattoos site:pinterest.com ::: exa"     another provider (ceramic is the default)
     case "WEBSEARCH": {
-      let q = rest, provider = "ceramic";
+      let q = rest, provider = "ceramic", wantPics = false;
+      //   RUN "WEBSEARCH cat tattoos site:tattoodo.com ::: pictures"    also opens each result and reads its own picture
+      const _pp = q.match(/\s*:::\s*pictures\s*$/i);
+      if (_pp) { wantPics = true; q = q.slice(0, _pp.index).trim(); }
       const _pm = q.match(/\s*:::\s*(ceramic|exa|linkup)\s*$/i);
       if (_pm) { provider = _pm[1].toLowerCase(); q = q.slice(0, _pm.index).trim(); }
       if (!q) return { cmd: "WEBSEARCH", payload: { ok: false, error: "Usage: WEBSEARCH <words> [::: ceramic|exa|linkup]" } };
@@ -13958,11 +13961,17 @@ async function successionGate(env) {
           url: x.url || x.link || null, title: x.title || null,
           description: String(x.description || x.snippet || "").slice(0, 160) || null,
           image: x.image || x.image_url || x.imageUrl || x.thumbnail || null }));
+        if (wantPics) {
+          const _pt0 = Date.now();
+          const pics = await Promise.all(items.map((x) => x.url ? pagePicture(x.url) : Promise.resolve({ ok: false })));
+          items.forEach((x, i) => { const p = pics[i] || {}; x.page_picture = p.image || null; x.page_status = p.status || p.error || null; });
+          console.log("[WEBSEARCH] pictures read from " + items.length + " pages - " + items.filter((x) => x.page_picture).length + " found · " + (Date.now() - _pt0) + "ms");
+        }
         const onSite = (q.match(/site:([a-z0-9.-]+)/i) || [])[1] || null;
         console.log("[WEBSEARCH] \"" + q + "\" via " + provider + " - " + items.length + " results, " + items.filter((x) => x.image).length + " with an image" +
           (onSite ? ", " + items.filter((x) => String(x.url || "").includes(onSite)).length + " on " + onSite : "") + " · " + (Date.now() - _t0) + "ms");
         return { cmd: "WEBSEARCH", payload: { ok: true, query: q, provider, gateway: gatewayId, ms: Date.now() - _t0, count: items.length,
-          with_image: items.filter((x) => x.image).length, ...(onSite ? { on_site: items.filter((x) => String(x.url || "").includes(onSite)).length } : {}),
+          with_image: items.filter((x) => x.image).length, ...(wantPics ? { with_page_picture: items.filter((x) => x.page_picture).length } : {}), ...(onSite ? { on_site: items.filter((x) => String(x.url || "").includes(onSite)).length } : {}),
           items, ...(items.length ? { first_raw: JSON.stringify(list[0]).slice(0, 700) } : { raw: JSON.stringify(j).slice(0, 1500) }) } };
       } catch (e) {
         return { cmd: "WEBSEARCH", payload: { ok: false, error: String((e && e.message) || e).slice(0, 400), ms: Date.now() - _t0, gateway: gatewayId } };
@@ -58473,6 +58482,34 @@ async function lookAtWall(env, found, keep) {
     model: route.model, look_ms: Date.now() - t0 };
 }
 
+// ══ A PAGE'S OWN PICTURE (v9.748, 2026-10-24) ══════════════════════════════════════════════════════════════════════════════
+// The picture a page names as its own (og:image, then twitter:image) - a plain download of the page, no browser, no model.
+// MEASURED 15:15: Cloudflare's search returned ten Tattoodo tattoo pages with titles and no pictures; each page is one tattoo.
+async function pagePicture(url) {
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; InkItBot/1.0; +https://inkit.world)", "Accept": "text/html" }, redirect: "follow" });
+    if (!r.ok) return { ok: false, status: r.status };
+    const html = (await r.text()).slice(0, 400000);
+    const meta = (k) => { const m = html.match(new RegExp('<meta[^>]+(?:property|name)=["\']' + k + '["\'][^>]*content=["\']([^"\']+)', "i")) ||
+                                   html.match(new RegExp('<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:property|name)=["\']' + k + '["\']', "i"));
+                          return m ? m[1].replace(/&amp;/g, "&").trim() : ""; };
+    let img = meta("og:image") || meta("og:image:url") || meta("twitter:image");
+    if (img && !/^https?:\/\//i.test(img)) { try { img = new URL(img, url).href; } catch { img = ""; } }
+    return { ok: !!img, image: img || null, title: meta("og:title") || null, about: meta("og:description") || null, status: r.status };
+  } catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 120) }; }
+}
+// One Cloudflare web search (AI Gateway). The provider is a dial, `config:inspire:search:provider` (ceramic | exa | linkup).
+async function cfWebSearch(env, query, provider, limit) {
+  const gatewayId = String((await env.AURA_KV.get("config:gateway:name").catch(() => null)) || "default").trim();
+  if (!env.AI || typeof env.AI.websearch !== "function") return { ok: false, error: "NO_WEBSEARCH_ON_THE_AI_BINDING" };
+  const res = await env.AI.websearch({ gatewayId, query: String(query).slice(0, 1024), provider: provider || "ceramic", limit: limit || 10 });
+  let j = res;
+  if (res && typeof res.json === "function") { const txt = await res.text(); try { j = JSON.parse(txt); } catch { return { ok: false, error: txt.slice(0, 300) }; } }
+  if (j && j.ok === false) return { ok: false, error: (j.error && (j.error.message || j.error.code)) || "SEARCH_FAILED" };
+  const list = (j && (j.items || j.results)) || [];
+  return { ok: true, items: (Array.isArray(list) ? list : []).map((x) => ({ url: x.url || null, title: x.title || null, description: x.description || null, image: x.image || null })) };
+}
+
 async function findReference(query, env, opts = {}) {
   const t0 = Date.now();
   const q = String(query || "").trim();
@@ -72009,6 +72046,43 @@ export class PublicEntry extends WorkerEntrypoint {
         let sites = ["pinterest.com", "instagram.com", "tattoodo.com", "reddit.com", "tattoolife.com"];
         try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:sites")) || "null");
               if (Array.isArray(j) && j.length) sites = j.map(String).filter(Boolean).slice(0, 5); } catch {}
+        // ══ ON CLOUDFLARE'S OWN SEARCH (v9.748, 2026-10-24, Aaron: "let's go with Tattoodo for now and see how it works") ═══════════
+        // MEASURED 15:15-15:22: Cloudflare's search (ceramic) found ten single-tattoo Tattoodo pages for "cat tattoos" in half a second
+        // for $0.00025; Pinterest and Reddit came back as boards and threads, not photos. Each Tattoodo page names its own picture.
+        // No model, no tokens. Dials: `config:inspire:engine` (cloudflare | grok - grok is the search before this),
+        // `config:inspire:cf_sites` (JSON list, default ["tattoodo.com"]), `config:inspire:search:provider` (ceramic | exa | linkup).
+        const _engine = String((await env.AURA_KV.get("config:inspire:engine").catch(() => null)) || "cloudflare").trim().toLowerCase();
+        if (_engine !== "grok") {
+          let cfSites = ["tattoodo.com"];
+          try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sites")) || "null"); if (Array.isArray(j) && j.length) cfSites = j.map(String).filter(Boolean).slice(0, 5); } catch {}
+          const prov = String((await env.AURA_KV.get("config:inspire:search:provider").catch(() => null)) || "ceramic").trim().toLowerCase();
+          const _w = /\btattoos?\b/i.test(q) ? q : q + " tattoo";
+          const _res = await Promise.all(cfSites.map((d) => cfWebSearch(env, _w + " site:" + d, prov, 10).catch((e) => ({ ok: false, error: String(e && e.message || e) }))));
+          const _bad = _res.filter((x) => !x.ok).map((x) => x.error);
+          // One tattoo per page: on Tattoodo that is /tattoos/<number>; an artist list or a city page is not a tattoo.
+          const _pages = []; const _seenU = new Set();
+          _res.forEach((x, k) => (x.ok ? x.items : []).forEach((it) => {
+            const u = String(it.url || ""); if (!u || _seenU.has(u)) return;
+            if (/tattoodo\.com/i.test(u) && !/\/tattoos\/\d+/.test(u)) return;
+            _seenU.add(u); _pages.push({ ...it, site: cfSites[k] });
+          }));
+          const _pics = await Promise.all(_pages.slice(0, 10).map((it) => pagePicture(it.url)));
+          const _nm = { "tattoodo.com": "Tattoodo", "pinterest.com": "Pinterest", "reddit.com": "Reddit", "tattoolife.com": "Tattoo Life", "inkedmag.com": "Inked Magazine", "behance.net": "Behance" };
+          const items = _pages.slice(0, 10).map((it, i) => ({ p: _pics[i] || {}, it })).filter((x) => x.p.image).slice(0, 8).map(({ p, it }) => {
+            const clean = (t) => String(t || "").replace(/\s*[•|-]\s*Tattoodo\s*$/i, "").trim();
+            const about = String(p.about || "");
+            return { image: p.image, title: clean(it.title || p.title) || null, feel: null, artist: null,
+                     about: (about && !/cookies|similar technologies/i.test(about)) ? about.slice(0, 160) : null,
+                     from: _nm[String(it.site).replace(/^www\./, "")] || it.site, page: it.url };
+          });
+          const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
+          try { await env.AURA_KV.put(_k, JSON.stringify({ items }), { expirationTtl: 3600 }); } catch {}
+          const _cost = { ceramic: 0.00025, linkup: 0.005, exa: 0.007 }[prov] || 0;
+          console.log("[INSPIRE] cloudflare search \"" + _w + "\" on " + cfSites.join(",") + " via " + prov + " - " + _pages.length + " tattoo pages, " +
+            items.length + " with a picture · " + (Date.now() - _t0) + "ms · $" + (_cost * cfSites.length).toFixed(5) + " (no model)" + (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 200) : ""));
+          if (!items.length) return { ok: false, q, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };
+          return { ok: true, q, items, ms: Date.now() - _t0 };
+        }
         // NOTHING IS SAVED (2026-10-24, Aaron: "we're not saving any of this stuff - all we're doing is discovery"): every search
         // is new. The list is held one hour only, so a tap can fetch the photo they chose.
         // THE SITES BY NAME TOO (v9.745): MEASURED 13:41 - with only the search tool's site limit, 7 of 8 came from elsewhere (inkppl,

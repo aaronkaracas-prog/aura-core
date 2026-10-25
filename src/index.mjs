@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.759.0-2026-10-24-aura-names-every-tattoo";
+const BUILD = "aura-core-v9.760.0-2026-10-25-aura-reads-the-inspiration";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -69342,9 +69342,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // step, in her own words, never one stock phrase ("it looks like software").
             const rx = await proxyToAgent(env,
               (isGrid
-                ? "[This is the picture you just made for them: four directions for their tattoo. " +
-                  "Look at it. In one or two short lines, say what makes each direction different" + (flat ? "" : " and where on their body it goes") + ", then ask " +
-                  "which one grabs them, or whether you should imagine 4 more - in your own words. Do not offer to lock anything in yet."
+                // THE PAGE HAS EIGHT, NOT FOUR (v9.760, 2026-10-25, Aaron: "here's your 4 versions" - the sheets have been eight since
+                // v9.737; this line still told her four, and she said four).
+                ? "[This is the picture you just made for them: a page of different directions for their tattoo. " +
+                  "Look at it. In one or two short lines, say what makes the directions different" + (flat ? "" : " and where on their body they go") + ", then ask " +
+                  "which one grabs them, or whether you should imagine more - in your own words. Do not offer to lock anything in yet."
                 : "[This is the picture you just made for them. Look at it. Tell them what you think of it " +
                   "in one warm line, then ask whether this is the one - their tattoo - or whether they want to " +
                   "change something, in your own words, different each time. Never say 'lock it in'.") +
@@ -70048,6 +70050,25 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_designWords === "__inspire__") {
               _dg = INSPIRE8_SENTENCE;
               try { const _k = String((await env.AURA_KV.get("config:frame:inspire:grid")) || "").trim(); if (_k) _dg = _k; } catch {}
+              // ══ SHE LOOKS AT IT FIRST (v9.760, 2026-10-25, Aaron: "have Aura look at the photos, just get some context from it, and
+              // pass it on to the eight"). MEASURED 23:34: a found photo of a woman with a spiderweb tattoo across her stomach, many
+              // tattoos and a man behind her - the image model was told only "This is my inspiration" and drew from the whole picture.
+              // Aura looks at the photo and says in one sentence what the tattoo in it is; her sentence goes into the first line:
+              // "This is my inspiration: <hers>." Nothing else in the sentence changes. If she cannot be reached, it goes as before.
+              if (refUrl && me) {
+                const _rt0 = Date.now(); let _read = "";
+                try {
+                  const q = await proxyToAgent(env, "[FOR YOU, NOT THEM. They found this picture while looking for tattoo ideas and want tattoo designs made from it." +
+                    " In one short sentence, say what the tattoo in it is and what makes it stand out - the tattoo itself, not the person, their clothes or the room." +
+                    " If there is more than one tattoo, the one that stands out most.]", false, me + "_side", refUrl, world);
+                  let _sayTxt = ""; try { const _j = JSON.parse(String((q && q.reply) || "")); if (_j && typeof _j.say === "string") _sayTxt = _j.say; } catch {}
+                  if (!_sayTxt) { const _m = String((q && q.reply) || "").match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (_m) { try { _sayTxt = JSON.parse('"' + _m[1] + '"'); } catch {} } }
+                  _read = String(_sayTxt || ((q && !q.failed) ? q.reply : "") || "").replace(/\s+/g, " ").trim();
+                  if (/^\s*[{\[]/.test(_read) || _read.length > 300) _read = "";
+                } catch {}
+                if (_read && /^This is my inspiration\./.test(_dg)) _dg = _dg.replace(/^This is my inspiration\./, "This is my inspiration: " + _read.replace(/[\s.]+$/, "") + ".");
+                try { console.log("[INSPIRE] Aura read the photo (" + (Date.now() - _rt0) + "ms): " + (_read ? "\"" + _read + "\"" : "nothing - sent as before") + " · who=" + me); } catch {}
+              }
             }
             if (_designWords === "__poss__") {
               // FOUR POSSIBILITIES (v9.628, Aaron): its own sentence, a setting (`config:frame:design:possibilities`).
@@ -72358,7 +72379,8 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!Array.isArray(list)) list = [];
         if (action === "fav") {
           const it = (b.item && typeof b.item === "object") ? b.item : {};
-          const url = String(it.url || "").trim().slice(0, 300);
+          // (v9.760) up to 1,000 - a DeviantArt picture's address alone is ~600 letters; cut at 300 a saved inspiration was a dead link.
+          const url = String(it.url || "").trim().slice(0, 1000);
           if (!/^https:\/\//i.test(url)) return { ok: false, error: "BAD_URL" };
           // ONE OF THE FOUR (v9.616, 2026-10-15, Aaron): a heart on one design of a four-panel sheet keeps the sheet's own
           // picture and which of the four (1-4) - nothing new is drawn or saved; the page shows only that quarter. Each of the

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.755.0-2026-10-24-brave-no-article-covers";
+const BUILD = "aura-core-v9.756.0-2026-10-24-brave-no-shops";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -58521,8 +58521,17 @@ async function braveImages(env, query, count) {
   if (!r.ok || !j) return { ok: false, error: "brave http " + r.status + " " + txt.slice(0, 200) };
   // NO ARTICLE COVERS (v9.755, MEASURED 20:58 - "realistic tattoos" gave 20, 2 were collages: "105 Super Realistic Tattoos That Are
   // Purely Amazing", picture "...-fb-png__700.jpg"). A title that starts with a count, or a share picture, is the article, not one tattoo.
-  const _cover = (x) => /^\s*\d{2,}\s/.test(String(x.title || "")) || /fb-png|[-_]fb\.(jpe?g|png)/i.test(String((x.properties && x.properties.url) || ""));
-  return { ok: true, items: (Array.isArray(j.results) ? j.results : []).filter((x) => !_cover(x)).map((x) => ({
+  // (v9.756, MEASURED 21:15 - "30+ Cybersigilism Tattoo Designs for..." got through on its "+") a count with a "+" is a cover too.
+  const _cover = (x) => /^\s*\d{2,}\+?\s/.test(String(x.title || "")) || /fb-png|[-_]fb\.(jpe?g|png)/i.test(String((x.properties && x.properties.url) || ""));
+  // NO SHOPS, NO STOCK PHOTOS (v9.756, MEASURED 21:14-21:15 - Etsy, Amazon and Adobe Stock came back; Aaron: "we're gonna do that Etsy
+  // Amazon thing"). They sell stick-on tattoos, prints and watermarked drawings - not real tattoos. The list is a dial:
+  // `config:inspire:skip_sites` (comma-separated, replaces this one).
+  let _skip = ["amazon.", "etsy.com", "ebay.", "stock.adobe.com", "shutterstock.com", "istockphoto.com", "dreamstime.com", "alamy.com",
+               "freepik.com", "vecteezy.com", "123rf.com", "depositphotos.com", "gettyimages."];
+  try { const k = String((await env.AURA_KV.get("config:inspire:skip_sites")) || "").trim(); if (k) _skip = k.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean); } catch {}
+  const _shop = (x) => { const h = String((x.meta_url && x.meta_url.hostname) || x.source || "").toLowerCase().replace(/^www\./, "");
+    return _skip.some((d) => h === d || h.startsWith(d) || h.endsWith("." + d) || (d.endsWith(".") && h.includes(d))); };
+  return { ok: true, items: (Array.isArray(j.results) ? j.results : []).filter((x) => !_cover(x) && !_shop(x)).map((x) => ({
     url: x.url || null, title: x.title || null, description: x.source || null,
     image: (x.properties && x.properties.url) || (x.thumbnail && x.thumbnail.src) || null,
     thumb: (x.thumbnail && x.thumbnail.src) || null,
@@ -72127,6 +72136,10 @@ export class PublicEntry extends WorkerEntrypoint {
           const _VAGUE = new Set(["most","popular","best","top","trending","new","latest","unique","beautiful","cute","small","big","simple","good","famous","amazing"]);
           const _subj = _kw.split(" ").filter((w) => w.length > 2 && !_VAGUE.has(w) && !["and","with","for","of"].includes(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
           const _onSubject = (t) => !_subj.length || _subj.some((w) => w.length > 2 && String(t).toLowerCase().includes(w));
+          // ONE NAME PER SITE (v9.756, MEASURED 21:14 - a Pinterest pin found by Brave said "From pinterest.com", the others "From Pinterest").
+          const _siteName = (h) => { h = String(h || "").toLowerCase().replace(/^www\./, "");
+            const named = sources.find((s2) => s2.site && s2.name && h === String(s2.site).split("/")[0].replace(/^www\./, ""));
+            if (named) return named.name; if (/(^|\.)pinterest\./.test(h)) return "Pinterest"; return h; };
           const _seen = new Set();
           const _gather = (src, res) => { const out = [];
             res.forEach((x) => {
@@ -72173,7 +72186,7 @@ export class PublicEntry extends WorkerEntrypoint {
               const ab = String(x.about || "");
               items.push({ image: x.img, title: clean(x.it.title || x.title2) || null, feel: null, artist: null,
                 about: (ab && !/cookies|similar technologies|autocomplete|^find your next tattoo\.?$/i.test(ab.trim())) ? ab.slice(0, 160) : null,
-                from: (x.it.src.provider === "brave" && x.it.host) ? String(x.it.host).replace(/^www\./, "") : x.it.src.name, page: x.it.url,
+                from: (x.it.src.provider === "brave" && x.it.host) ? _siteName(x.it.host) : x.it.src.name, page: x.it.url,
                 ...(x.it.thumb ? { thumb: x.it.thumb } : {}) }); }
           }
           const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);

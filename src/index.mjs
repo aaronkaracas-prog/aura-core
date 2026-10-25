@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.764.0-2026-10-25-split-cut-at-the-seam";
+const BUILD = "aura-core-v9.765.0-2026-10-25-design-only-tiles";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -71975,7 +71975,11 @@ export class PublicEntry extends WorkerEntrypoint {
       }
       const stage = me ? "pta" : null;
       const PUBLIC = new Set(["catalog", "finishes", "tiles", "row"]);
-      if (!me && !PUBLIC.has(action)) return { ok: false, error: "SIGN_IN", signin: true,
+      // THE DESIGN HALF IS SHOWN, NOT DONE (v9.765, 2026-10-25, Aaron: "I do not wanna show that body image until they're in the
+      // catalog"): the home tiles show a split card's design only - the same pixel cut a chosen card gets, cached per picture - so a
+      // visitor who has not signed in sees it too. Only the split cut; cutting one of the four still needs the person.
+      const PUBLIC_CUT = action === "cut" && !!b.split;
+      if (!me && !PUBLIC.has(action) && !PUBLIC_CUT) return { ok: false, error: "SIGN_IN", signin: true,
         say: "Sign in to keep going - it takes one tap." };
       // ══ HELLO — A HUMAN EXISTS BEFORE ANYTHING ELSE DOES (2026-08-24) ═══════════════════════
       //

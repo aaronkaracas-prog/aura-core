@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.762.0-2026-10-25-discover-page";
+const BUILD = "aura-core-v9.763.0-2026-10-25-badass-and-bad-bitch";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67329,7 +67329,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         styles: "Tattoo Styles - they are browsing the tattoo styles.",
         beyond: "Wild Ideas - they are browsing unusual tattoo ideas.",
         // DISCOVER (v9.762, 2026-10-25, Aaron): the fourth home banner - every category, styles and subjects, in rows.
-        discover: "Discover Endless Imagination - they are browsing every category we have: every style and every subject (pets, family, zodiac, cars, memorials and more)."
+        discover: "Discover Endless Imagination - they are browsing every category we have: every style and every subject (pets, family, zodiac, cars, memorials and more).",
+        // BAD BITCH AND BADASS (v9.763, 2026-10-25, Aaron): two front-page banners - bold, heavily tattooed looks for her and for him.
+        badbitch: "For The Bad Bitch - bold, fierce tattoos for women: dark women, warrior women, cowgirls, Chicana, heavy blackwork, dark romance. Not soft or delicate.",
+        badass: "For The Badass - bold, heavy tattoos for men: samurai, Vikings, knights, outlaws, beasts, cars, motorcycles, heavy blackwork."
       };
       const _where = (opts && opts.page && _PAGES[opts.page]) ? _PAGES[opts.page] : "";
       if (_where) { try { console.log("[TURN:PAGE] they are on " + opts.page + (me ? " · who=" + me : "")); } catch {} }

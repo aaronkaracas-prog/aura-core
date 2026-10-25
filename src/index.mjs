@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.753.0-2026-10-24-inspiration-wider-by-pictures";
+const BUILD = "aura-core-v9.755.0-2026-10-24-brave-no-article-covers";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13946,9 +13946,17 @@ async function successionGate(env) {
       //   RUN "WEBSEARCH cat tattoos site:tattoodo.com ::: pictures"    also opens each result and reads its own picture
       const _pp = q.match(/\s*:::\s*pictures\s*$/i);
       if (_pp) { wantPics = true; q = q.slice(0, _pp.index).trim(); }
-      const _pm = q.match(/\s*:::\s*(ceramic|exa|linkup)\s*$/i);
+      const _pm = q.match(/\s*:::\s*(ceramic|exa|linkup|brave)\s*$/i);
       if (_pm) { provider = _pm[1].toLowerCase(); q = q.slice(0, _pm.index).trim(); }
       if (!q) return { cmd: "WEBSEARCH", payload: { ok: false, error: "Usage: WEBSEARCH <words> [::: ceramic|exa|linkup]" } };
+      //   RUN "WEBSEARCH realistic tattoos ::: brave"     Brave's image search (v9.754)
+      if (provider === "brave") {
+        const _bt0 = Date.now(); const b = await braveImages(env, q, 20);
+        console.log("[WEBSEARCH] brave images \"" + q + "\" - " + (b.ok ? b.items.length + " pictures" : b.error) + " · " + (Date.now() - _bt0) + "ms");
+        return { cmd: "WEBSEARCH", payload: { ok: b.ok, query: q, provider, ms: Date.now() - _bt0, count: b.ok ? b.items.length : 0,
+          by_site: b.ok ? b.items.reduce((m, x) => { m[x.host || "?"] = (m[x.host || "?"] || 0) + 1; return m; }, {}) : undefined,
+          items: b.ok ? b.items.map((x) => ({ title: x.title, site: x.host, image: x.image, page: x.url })) : undefined, error: b.ok ? undefined : b.error } };
+      }
       if (!env.AI || typeof env.AI.websearch !== "function") return { cmd: "WEBSEARCH", payload: { ok: false, error: "NO_WEBSEARCH_ON_THE_AI_BINDING - the runtime has no env.AI.websearch" } };
       const gatewayId = String((await env.AURA_KV.get("config:gateway:name").catch(() => null)) || "default").trim();
       const _t0 = Date.now();
@@ -58498,6 +58506,28 @@ async function pagePicture(url) {
     return { ok: !!img, image: img || null, title: meta("og:title") || null, about: meta("og:description") || null, status: r.status };
   } catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 120) }; }
 }
+// ══ BRAVE IMAGE SEARCH (v9.754, 2026-10-24, Aaron: "if I go to google.com and type in realistic tattoos it brings me up a bunch of
+// images"). Google's own image API is closed to new customers and ends 2027-01-01; Brave's image search is the legitimate "Images tab" -
+// a grid of pictures from its own index of the web. Looked at by hand 20:28 on search.brave.com: "realistic tattoos" gave single, close
+// tattoo photos (mostly boredpanda.com). Key: `secret:brave_search`. $5 per 1,000 searches. No model.
+async function braveImages(env, query, count) {
+  const key = await getSecret(env, "brave_search");
+  if (!key) return { ok: false, error: "NO_BRAVE_KEY - secret:brave_search is empty" };
+  const u = "https://api.search.brave.com/res/v1/images/search?q=" + encodeURIComponent(String(query).slice(0, 400)) +
+            "&count=" + Math.max(1, Math.min(200, Number(count) || 20)) + "&safesearch=strict";
+  const r = await fetch(u, { headers: { "Accept": "application/json", "X-Subscription-Token": String(key).trim() } });
+  const txt = await r.text();
+  let j = null; try { j = JSON.parse(txt); } catch {}
+  if (!r.ok || !j) return { ok: false, error: "brave http " + r.status + " " + txt.slice(0, 200) };
+  // NO ARTICLE COVERS (v9.755, MEASURED 20:58 - "realistic tattoos" gave 20, 2 were collages: "105 Super Realistic Tattoos That Are
+  // Purely Amazing", picture "...-fb-png__700.jpg"). A title that starts with a count, or a share picture, is the article, not one tattoo.
+  const _cover = (x) => /^\s*\d{2,}\s/.test(String(x.title || "")) || /fb-png|[-_]fb\.(jpe?g|png)/i.test(String((x.properties && x.properties.url) || ""));
+  return { ok: true, items: (Array.isArray(j.results) ? j.results : []).filter((x) => !_cover(x)).map((x) => ({
+    url: x.url || null, title: x.title || null, description: x.source || null,
+    image: (x.properties && x.properties.url) || (x.thumbnail && x.thumbnail.src) || null,
+    thumb: (x.thumbnail && x.thumbnail.src) || null,
+    host: (x.meta_url && x.meta_url.hostname) || x.source || null })) };
+}
 // One Cloudflare web search (AI Gateway). The provider is a dial, `config:inspire:search:provider` (ceramic | exa | linkup).
 async function cfWebSearch(env, query, provider, limit) {
   const gatewayId = String((await env.AURA_KV.get("config:gateway:name").catch(() => null)) || "default").trim();
@@ -72063,16 +72093,18 @@ export class PublicEntry extends WorkerEntrypoint {
           // that is how a good one is told from a bad one, no model. Taken in turn, one from each, up to 8.
           // The dial: `config:inspire:cf_sources` - [{"site","provider","variants","only"}]; "only" is a pattern a page address must have.
           let sources = [
+            // (v9.754) Brave's image search - pictures from across the web, the "Images tab"; each one says the site it came from.
+            { site: "", provider: "brave", variants: 1, only: "", name: "Brave" },
             { site: "tattoodo.com", provider: "ceramic", variants: 3, only: "/tattoos/\\d+", name: "Tattoodo" },
             { site: "pinterest.com/pin", provider: "exa", variants: 1, only: "/pin/", name: "Pinterest" },
             { site: "inkedmag.com", provider: "exa", variants: 1, only: "", name: "Inked Magazine", widen: false }];
-          try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && x.site).slice(0, 5); } catch {}
+          try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && (x.site || x.provider === "brave")).slice(0, 6); } catch {}
           // KEYWORDS (v9.749): MEASURED 15:46 - "Show me cat tattoos" found articles, "cat tattoo" found tattoos. Their talk words come out.
           const _TALK = new Set(["show","me","some","any","few","i","im","i'm","want","wanna","to","see","can","could","you","please","find","look",
             "looking","give","get","fun","cool","awesome","nice","great","really","ideas","idea","inspiration","designs","design","tattoos","tattoo",
             "pictures","picture","photos","photo","examples","like","would","love","just","maybe","a","an","the","let's","lets","us","my"]);
           const _kw = String(q).toLowerCase().replace(/[^a-z0-9&' -]+/g, " ").split(/\s+/).filter((w) => w && !_TALK.has(w)).join(" ").trim() || String(q).trim();
-          const _COST = { ceramic: 0.00025, linkup: 0.005, exa: 0.007 };
+          const _COST = { ceramic: 0.00025, linkup: 0.005, exa: 0.007, brave: 0.005 };
           const _JUNKPIC = /logo|default_open_graph|\/opengraph\.|placeholder|blank\.(png|jpg)/i;
           const _counts = [], _bad = []; let _spend = 0;
           // HOW EXA IS ASKED (v9.752): a dial, `config:inspire:exa_words` - "____" is their words (empty = "____ tattoo"). Exa reads by
@@ -72082,6 +72114,9 @@ export class PublicEntry extends WorkerEntrypoint {
           const _search = (src, words) => {
             const qs = ((src.provider || "ceramic") === "exa" ? [_exaWords.replace("____", words)] : [words + " tattoo", words + " tattoo design", words + " tattoos"])
               .slice(0, Math.max(1, Math.min(3, Number(src.variants) || 1)));
+            if (src.provider === "brave") { _spend += _COST.brave;
+              const bq = words + " tattoo";
+              return Promise.all([braveImages(env, bq, 20).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
             return Promise.all(qs.map((qq) => { _spend += _COST[src.provider] || 0;
               return cfWebSearch(env, qq + " site:" + src.site, src.provider || "ceramic", 10).then((r) => ({ ...r, q: qq }))
                 .catch((e) => ({ ok: false, error: String((e && e.message) || e), q: qq })); }));
@@ -72113,7 +72148,7 @@ export class PublicEntry extends WorkerEntrypoint {
           let perSource = await Promise.all(sources.map(async (src) => _gather(src, await _search(src, _kw))));
           // The picture: the one the search returned, or the page's own; a logo or a blank share image does not count.
           // SHOW MORE (v9.752): up to 12 a source and 24 in all go back; the page shows 8 at a time.
-          const _pics = (list) => Promise.all(list.slice(0, 12).map(async (it) => {
+          const _pics = (list) => Promise.all(list.slice(0, 16).map(async (it) => {
             let img = it.image && !_JUNKPIC.test(it.image) ? it.image : null, about = null, title2 = null;
             if (!img) { const p = await pagePicture(it.url); if (p.image && !_JUNKPIC.test(p.image)) img = p.image; about = p.about; title2 = p.title; }
             return img ? { it, img, about, title2 } : null; })).then((a) => a.filter(Boolean));
@@ -72137,7 +72172,9 @@ export class PublicEntry extends WorkerEntrypoint {
               const clean = (t) => String(t || "").split(/\s+\|\s+/)[0].replace(/\s*[•|-]\s*(Tattoodo|InkedMag|Inked Magazine|Pinterest)\s*$/i, "").trim();
               const ab = String(x.about || "");
               items.push({ image: x.img, title: clean(x.it.title || x.title2) || null, feel: null, artist: null,
-                about: (ab && !/cookies|similar technologies|autocomplete|^find your next tattoo\.?$/i.test(ab.trim())) ? ab.slice(0, 160) : null, from: x.it.src.name, page: x.it.url }); }
+                about: (ab && !/cookies|similar technologies|autocomplete|^find your next tattoo\.?$/i.test(ab.trim())) ? ab.slice(0, 160) : null,
+                from: (x.it.src.provider === "brave" && x.it.host) ? String(x.it.host).replace(/^www\./, "") : x.it.src.name, page: x.it.url,
+                ...(x.it.thumb ? { thumb: x.it.thumb } : {}) }); }
           }
           const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
           try { await env.AURA_KV.put(_k, JSON.stringify({ items }), { expirationTtl: 3600 }); } catch {}
@@ -72197,17 +72234,22 @@ export class PublicEntry extends WorkerEntrypoint {
         const url = String(b.url || "").trim();
         const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
         let listed = false;
-        try { const j = JSON.parse((await env.AURA_KV.get(_k)) || "{}"); listed = (j.items || []).some((x) => x && x.image === url); } catch {}
+        let _thumb = null;
+        try { const j = JSON.parse((await env.AURA_KV.get(_k)) || "{}"); const hit = (j.items || []).find((x) => x && x.image === url); listed = !!hit; _thumb = (hit && hit.thumb) || null; } catch {}
         if (!listed || !/^https:\/\//i.test(url)) return { ok: false, error: "NOT_FROM_THE_SEARCH" };
         try {
           const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" }, redirect: "follow" });
           const type = String(r.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-          if (!r.ok || !/^image\//.test(type)) { console.log("[INSPIRE] take failed: http " + r.status + " " + type + " " + url.slice(0, 120)); return { ok: false, error: "COULD_NOT_OPEN" }; }
-          const buf = new Uint8Array(await r.arrayBuffer());
+          let rr = r, tt = type;
+          // (v9.754) a site that refuses its full-size picture to us - Brave's own copy of it instead.
+          if ((!rr.ok || !/^image\//.test(tt)) && _thumb) { rr = await fetch(_thumb, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" } });
+            tt = String(rr.headers.get("content-type") || "").split(";")[0].trim().toLowerCase(); console.log("[INSPIRE] full picture refused - Brave's copy used"); }
+          if (!rr.ok || !/^image\//.test(tt)) { console.log("[INSPIRE] take failed: http " + rr.status + " " + tt + " " + url.slice(0, 120)); return { ok: false, error: "COULD_NOT_OPEN" }; }
+          const buf = new Uint8Array(await rr.arrayBuffer());
           if (buf.length > 6 * 1024 * 1024 || buf.length < 2000) return { ok: false, error: "COULD_NOT_OPEN" };
           let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
           console.log("[INSPIRE] took " + Math.round(buf.length / 1024) + "KB from " + url.slice(0, 120));
-          return { ok: true, photo: "data:" + type + ";base64," + btoa(bin) };
+          return { ok: true, photo: "data:" + tt + ";base64," + btoa(bin) };
         } catch (e) {
           console.log("[INSPIRE] take failed: " + String((e && e.message) || e).slice(0, 120));
           return { ok: false, error: "COULD_NOT_OPEN" };

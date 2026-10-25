@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.758.0-2026-10-24-inspire-show-everything";
+const BUILD = "aura-core-v9.759.0-2026-10-24-aura-names-every-tattoo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -63653,11 +63653,15 @@ export class PtaDurableObject {
     // for the "i" on the page.
     // A CARD'S NAME STANDS (v9.626): the design they picked off the four names the tattoo and its "i"; a later pick replaces
     // it, a name made up afterwards does not.
-    if (pt.card_named && pt.name_final) { pj.card_named = true; pj.title = String(pt.name_final).slice(0, 80);
-                                          if (pt.about) pj.about = String(pt.about).slice(0, 800); }
+    // HER NAME ALWAYS WINS (v9.759, 2026-10-24, Aaron: "Aura's names always take priority"): a name she gave replaces a card's
+    // name, and a card picked afterwards does not replace hers. Her later name (at This Is My Tattoo) replaces her earlier one.
+    if (pt.her_name && pt.name_final) { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
+                                        pj.title = String(pt.name_final).slice(0, 80); pj.her_named = true; pj.card_named = false; }
+    else if (pt.card_named && pt.name_final) { if (!pj.her_named) { pj.card_named = true; pj.title = String(pt.name_final).slice(0, 80); }
+                                          if (pt.about && !pj.her_named) pj.about = String(pt.about).slice(0, 800); }
     else {
     if (pt.about && !pj.about) pj.about = String(pt.about).slice(0, 800);
-    if (pt.name_final && !pj.card_named) { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
+    if (pt.name_final && !pj.card_named && !pj.her_named) { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
                          pj.title = String(pt.name_final).slice(0, 80); }
     }
     if (pt.files) { pj.files = pt.files; pj.files_failed = false; }
@@ -71107,13 +71111,45 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // is what the tattoo is, never what just happened to it.
                   if (n && /^(locked( in)?|your tattoo|tattoo|untitled|name|none|n\/a)$/i.test(n.trim())) n = "";
                   if (n || c) {
-                    await projectAppend(env, me, _pidN, { ...(n ? { name_final: n } : {}), ...(c ? { details: { colour: c } } : {}) });
+                    await projectAppend(env, me, _pidN, { ...(n ? { name_final: n, her_name: true } : {}), ...(c ? { details: { colour: c } } : {}) });
                   }
                   console.log("[NAME] she named it (behind the reply): " + (n || "?") + " | colour: " + (c || "?"));
                   // WHY NO NAME (v9.605): MEASURED 17:00:37 "named it: ?" - her answer is logged whole when no name is read.
                   if (!n) console.log("[NAME] no name read from her answer: \"" + String((q && (q.reply || q.failed)) || "(nothing)").replace(/\s+/g, " ").slice(0, 400) + "\"");
                 } catch (e) { try { console.log("[NAME] naming failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
               })());
+            }
+            // ══ SHE NAMES IT AS SOON AS THERE IS A PICTURE (v9.759, 2026-10-24, Aaron: "every tattoo is called Your tattoo even when
+            // Aura has named it - Aura's names always take priority"). MEASURED 22:35 on My Tattoos: 13 of 15 tattoos said "Your
+            // tattoo" - she named a tattoo only when it was locked in, and a tattoo still being worked on had no name at all. The
+            // first time a tattoo has a design she looks at it and names it, once, behind the reply - nobody waits. At This Is My
+            // Tattoo she names it again from the final design, and that name replaces this one. One small model call per tattoo.
+            // A sheet of four or eight is not one tattoo - she names the one they pick from it.
+            const _imgFirst = (drew && drew.image && !drew.for_the_artist && !drew.pending && !drew.on_me && !drew.four_directions &&
+                               !(Array.isArray(drew.cards8) && drew.cards8.length)) ? drew.image : null;
+            if (act !== "artist" && _pid && _imgFirst && typeof _waitUntil === "function") {
+              const _pidE = _pid, _mark = "pjnamed:" + _pid;
+              let _done = null; try { _done = await env.AURA_KV.get(_mark); } catch {}
+              if (!_done) {
+                try { await env.AURA_KV.put(_mark, "1", { expirationTtl: 60 * 60 * 24 * 90 }); } catch {}
+                _waitUntil((async () => {
+                  try {
+                    const q = await proxyToAgent(env, "[FOR YOU, NOT THEM. This is the tattoo design they are working on." +
+                      " Reply with exactly one line. NAME: a name for it, two to five words, the way a person would name it.]",
+                      false, me + "_side", _imgFirst, world);
+                    let _sayTxt = ""; try { const _j = JSON.parse(String((q && q.reply) || "")); if (_j && typeof _j.say === "string") _sayTxt = _j.say; } catch {}
+                    if (!_sayTxt) { const _m = String((q && q.reply) || "").match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (_m) { try { _sayTxt = JSON.parse('"' + _m[1] + '"'); } catch {} } }
+                    const raw = (q && q.reply && !q.failed) ? (_sayTxt ? _sayTxt + "\n" : "") + String(q.reply) : "";
+                    const clean = (x) => String(x || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 60);
+                    let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
+                    if (!n && _sayTxt) { const _one = String(_sayTxt).trim(); if (_one && !/[\n:]/.test(_one) && _one.split(/\s+/).length <= 7) n = clean(_one); }
+                    if (n && (n.split(/\s+/).length > 7 || /^(locked( in)?|your tattoo|tattoo|untitled|name|none|n\/a)$/i.test(n.trim()))) n = "";
+                    if (n) await projectAppend(env, me, _pidE, { name_final: n, her_name: true });
+                    else { try { await env.AURA_KV.delete(_mark); } catch {} }
+                    console.log("[NAME] she named it from its first design: " + (n || "? - " + String((q && (q.reply || q.failed)) || "(nothing)").replace(/\s+/g, " ").slice(0, 200)) + (me ? " · who=" + me : ""));
+                  } catch (e) { try { await env.AURA_KV.delete(_mark); } catch {} try { console.log("[NAME] first-design naming failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+                })());
+              }
             }
           }
           if (stage === "pta") {

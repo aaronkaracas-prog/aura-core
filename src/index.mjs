@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.752.0-2026-10-24-inspiration-on-subject";
+const BUILD = "aura-core-v9.753.0-2026-10-24-inspiration-wider-by-pictures";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -72065,7 +72065,7 @@ export class PublicEntry extends WorkerEntrypoint {
           let sources = [
             { site: "tattoodo.com", provider: "ceramic", variants: 3, only: "/tattoos/\\d+", name: "Tattoodo" },
             { site: "pinterest.com/pin", provider: "exa", variants: 1, only: "/pin/", name: "Pinterest" },
-            { site: "inkedmag.com", provider: "exa", variants: 1, only: "", name: "Inked Magazine" }];
+            { site: "inkedmag.com", provider: "exa", variants: 1, only: "", name: "Inked Magazine", widen: false }];
           try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && x.site).slice(0, 5); } catch {}
           // KEYWORDS (v9.749): MEASURED 15:46 - "Show me cat tattoos" found articles, "cat tattoo" found tattoos. Their talk words come out.
           const _TALK = new Set(["show","me","some","any","few","i","im","i'm","want","wanna","to","see","can","could","you","please","find","look",
@@ -72102,30 +72102,34 @@ export class PublicEntry extends WorkerEntrypoint {
                 // ONLY TATTOOS (v9.751, Aaron: "we're only interested in tattoo images"): the page has to say it is a tattoo - its address,
                 // its title or its own words. A page about something else is left out before its picture is ever fetched.
                 if (!/tattoo|\bink(ed)?\b/i.test(u + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) return;
-                if (!_onSubject(u.replace(/[-_/]+/g, " ") + " " + (it.title || ""))) return;
+                // (v9.753) the description too - MEASURED 17:22: Pinterest puts the subject in its tags, so 6 of 10 "tribal realism" pins whose
+                // titles did not say it were dropped.
+                if (!_onSubject(u.replace(/[-_/]+/g, " ") + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) return;
                 _seen.add(u); out.push({ ...it, src }); n++; });
               _counts.push(src.name + " \"" + x.q + "\" " + x.items.length + "/" + n);
             });
             return out; };
           // Each source on its own words, all at once.
           let perSource = await Promise.all(sources.map(async (src) => _gather(src, await _search(src, _kw))));
-          // WIDER WHEN THIN (v9.749): fewer than four, and more than one word - the cheap sources search each word on its own.
-          let _closest = false;
-          const _words = _kw.split(" ").filter((w) => w.length > 2);
-          if (perSource.reduce((a, b) => a + b.length, 0) < 4 && _words.length > 1) {
-            _closest = true;
-            const _wide = await Promise.all(sources.map(async (src, k) => {
-              if ((src.provider || "ceramic") !== "ceramic") return [];
-              const more = await Promise.all(_words.slice(0, 3).map((w) => _search({ ...src, variants: 1 }, w)));
-              return more.flatMap((r) => _gather(src, r)); }));
-            perSource = perSource.map((list, k) => list.concat(_wide[k] || []));
-          }
           // The picture: the one the search returned, or the page's own; a logo or a blank share image does not count.
           // SHOW MORE (v9.752): up to 12 a source and 24 in all go back; the page shows 8 at a time.
-          const withPics = await Promise.all(perSource.map((list) => Promise.all(list.slice(0, 12).map(async (it) => {
+          const _pics = (list) => Promise.all(list.slice(0, 12).map(async (it) => {
             let img = it.image && !_JUNKPIC.test(it.image) ? it.image : null, about = null, title2 = null;
             if (!img) { const p = await pagePicture(it.url); if (p.image && !_JUNKPIC.test(p.image)) img = p.image; about = p.about; title2 = p.title; }
-            return img ? { it, img, about, title2 } : null; })).then((a) => a.filter(Boolean))));
+            return img ? { it, img, about, title2 } : null; })).then((a) => a.filter(Boolean));
+          let withPics = await Promise.all(perSource.map(_pics));
+          // WIDER WHEN THIN - BY WHAT WILL BE SHOWN (v9.753): MEASURED 17:22 - "tribal realism" found 6, counted before the pictures, so it
+          // never widened, and 3 were shown. Now: fewer than 8 with a picture and more than one word, each source searches each word on its own.
+          let _closest = false;
+          const _words = _kw.split(" ").filter((w) => w.length > 2 && !["and","with","for","the"].includes(w));
+          if (withPics.reduce((a, b) => a + b.length, 0) < 8 && _words.length > 1) {
+            _closest = true;
+            const _wide = await Promise.all(sources.map(async (src) => {
+              if (src.widen === false) return [];   // Inked's covers are mostly the logo - widening it costs and rarely adds one
+              const more = await Promise.all(_words.slice(0, 3).map((w) => _search({ ...src, variants: 1 }, w)));
+              return _pics(more.flatMap((r) => _gather(src, r))); }));
+            withPics = withPics.map((list, k) => list.concat(_wide[k] || []));
+          }
           // In turn, one from each source.
           const items = []; const _seenImg = new Set();
           for (let r = 0; items.length < 24 && withPics.some((l) => l.length > r); r++) {

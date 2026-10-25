@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.761.0-2026-10-25-aura-knows-the-page";
+const BUILD = "aura-core-v9.762.0-2026-10-25-discover-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -67327,7 +67327,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         job4: "Get Inspired - they are looking at real tattoos from around the world for ideas. A photo from them here is something that inspires them.",
         trend: "What's Trending - they are browsing trending tattoo ideas.",
         styles: "Tattoo Styles - they are browsing the tattoo styles.",
-        beyond: "Wild Ideas - they are browsing unusual tattoo ideas."
+        beyond: "Wild Ideas - they are browsing unusual tattoo ideas.",
+        // DISCOVER (v9.762, 2026-10-25, Aaron): the fourth home banner - every category, styles and subjects, in rows.
+        discover: "Discover Endless Imagination - they are browsing every category we have: every style and every subject (pets, family, zodiac, cars, memorials and more)."
       };
       const _where = (opts && opts.page && _PAGES[opts.page]) ? _PAGES[opts.page] : "";
       if (_where) { try { console.log("[TURN:PAGE] they are on " + opts.page + (me ? " · who=" + me : "")); } catch {} }

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.763.0-2026-10-25-badass-and-bad-bitch";
+const BUILD = "aura-core-v9.764.0-2026-10-25-split-cut-at-the-seam";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -60127,11 +60127,34 @@ async function tatRenderFor(env, kindOrLeaf) {
 // Exact match still wins, so nothing that resolved before resolves differently.
 // The left half of a split card, trimmed to where the ink is. Cached per picture, so the same
 // card always gives the same address (My Tattoos records the address once).
+// ══ THE CUT GOES WHERE THE PAPER ENDS (v9.764, 2026-10-25, Aaron) ══════════════════════════════════════
+// MEASURED on 61 catalogue cards: 44 split exactly in the middle, 17 did not - from 47.9% across to 53%, both ways.
+// The model draws the card as one picture, so each card's line is its own. A cow skull whose horns ran past the middle
+// lost a horn to a middle cut. The line is the column where the white design paper stops and the photograph starts:
+// the biggest drop in white from just left of a column to just right of it, between 35% and 75% across. No clear drop
+// - the middle, as before.
+function splitSeamX(px, W, H) {
+  const wf = new Float32Array(W);
+  for (let x = 0; x < W; x++) {
+    let n = 0, t = 0;
+    for (let y = 0; y < H; y += 2) { const o = (y * W + x) * 4; t++; if (px[o] >= 235 && px[o + 1] >= 235 && px[o + 2] >= 235) n++; }
+    wf[x] = t ? n / t : 0;
+  }
+  let best = -1, bx = Math.floor(W / 2);
+  for (let x = Math.max(6, Math.floor(W * 0.35)); x < Math.min(W - 7, Math.floor(W * 0.75)); x++) {
+    let a = 0, b = 0;
+    for (let k = 1; k <= 6; k++) { a += wf[x - k]; b += wf[x + k]; }
+    const d = (a - b) / 6;
+    if (d > best) { best = d; bx = x; }
+  }
+  return best >= 0.5 ? bx : Math.floor(W / 2);
+}
 async function splitCardLeft(env, url, onlyWide) {
   const id = (String(url).match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
   if (!id) return null;
   if (onlyWide && /^img_s/.test(id)) return null;   // already a cut - never cut a cut
-  const was = await env.AURA_KV.get("splitcut:" + id).catch(() => null);
+  // splitcut2: cuts made at the middle before v9.764 are made again at the real line.
+  const was = await env.AURA_KV.get("splitcut2:" + id).catch(() => null);
   if (was) return was;
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return null;
@@ -60140,15 +60163,16 @@ async function splitCardLeft(env, url, onlyWide) {
   // At lock-in only a picture still in the split shape (wide: design | body) is cut. An edit that
   // came back as plain flat artwork is left whole.
   if (onlyWide && W < H * 1.2) { try { im.free(); } catch {} return null; }
-  const xmax = Math.max(1, Math.floor(W / 2) - Math.round(W * 0.01));
   const px = im.get_raw_pixels();
+  const seam = splitSeamX(px, W, H);
+  const xmax = Math.max(1, seam - Math.round(W * 0.004));
   // ══ WIDE IS NOT ENOUGH - THE RIGHT HALF HAS TO BE A BODY (2026-10-07, v9.539, Aaron) ═════════
   // MEASURED: an edit came back wide (1536x1024) as plain flat artwork, centred on white, with no
   // body half at all. "Wide" said split, so it was cut down the middle and the artist got half a
   // design. A real split card's right half is a photograph - skin, clothes, grey backdrop - and
   // almost none of it is paper white. If most of the right half is white, it is not a split card.
   if (onlyWide) {
-    const xr = Math.min(W - 1, Math.floor(W / 2) + Math.round(W * 0.01));
+    const xr = Math.min(W - 1, seam + Math.round(W * 0.01));
     let tot = 0, wht = 0;
     for (let y = 0; y < H; y += 4) {
       for (let x = xr; x < W; x += 4) {
@@ -60181,7 +60205,8 @@ async function splitCardLeft(env, url, onlyWide) {
     .map((x) => x.toString(16).padStart(2, "0")).join("");
   await env.AURA_KV.put("image:" + nid, btoa(t));
   const out = "https://" + (await imageHost(env)) + "/image/" + nid;
-  await env.AURA_KV.put("splitcut:" + id, out).catch(() => {});
+  await env.AURA_KV.put("splitcut2:" + id, out).catch(() => {});
+  console.log("[SPLIT] line at " + (seam / W * 100).toFixed(1) + "% across (" + seam + " of " + W + ") -> " + out);
   return out;
 }
 

@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.757.0-2026-10-24-deviantart-tumblr";
+const BUILD = "aura-core-v9.758.0-2026-10-24-inspire-show-everything";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -72130,7 +72130,7 @@ export class PublicEntry extends WorkerEntrypoint {
               .slice(0, Math.max(1, Math.min(3, Number(src.variants) || 1)));
             if (src.provider === "brave") { _spend += _COST.brave;
               const bq = words + " tattoo";
-              return Promise.all([braveImages(env, bq, 20).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
+              return Promise.all([braveImages(env, bq, 50).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
             return Promise.all(qs.map((qq) => { _spend += _COST[src.provider] || 0;
               return cfWebSearch(env, qq + " site:" + src.site, src.provider || "ceramic", 10).then((r) => ({ ...r, q: qq }))
                 .catch((e) => ({ ok: false, error: String((e && e.message) || e), q: qq })); }));
@@ -72165,8 +72165,11 @@ export class PublicEntry extends WorkerEntrypoint {
           // Each source on its own words, all at once.
           let perSource = await Promise.all(sources.map(async (src) => _gather(src, await _search(src, _kw))));
           // The picture: the one the search returned, or the page's own; a logo or a blank share image does not count.
-          // SHOW MORE (v9.752): up to 12 a source and 24 in all go back; the page shows 8 at a time.
-          const _pics = (list) => Promise.all(list.slice(0, 16).map(async (it) => {
+          // SHOW MORE (v9.752): the page shows 8 at a time.
+          // EVERYTHING THAT PASSED (v9.758, MEASURED 21:36 - "new school": 34 passed, 24 sent, 10 thrown away after being found and paid
+          // for; Aaron: "let's move up the number then the user can decide how far it wants to keep going"). Brave is asked for 50 (the
+          // same $0.005 a search); every picture that passes goes back, up to 150, and "Show more" walks through them.
+          const _pics = (list) => Promise.all(list.slice(0, 60).map(async (it) => {
             let img = it.image && !_JUNKPIC.test(it.image) ? it.image : null, about = null, title2 = null;
             if (!img) { const p = await pagePicture(it.url); if (p.image && !_JUNKPIC.test(p.image)) img = p.image; about = p.about; title2 = p.title; }
             return img ? { it, img, about, title2 } : null; })).then((a) => a.filter(Boolean));
@@ -72185,8 +72188,8 @@ export class PublicEntry extends WorkerEntrypoint {
           }
           // In turn, one from each source.
           const items = []; const _seenImg = new Set();
-          for (let r = 0; items.length < 24 && withPics.some((l) => l.length > r); r++) {
-            for (const list of withPics) { const x = list[r]; if (!x || _seenImg.has(x.img) || items.length >= 24) continue; _seenImg.add(x.img);
+          for (let r = 0; items.length < 150 && withPics.some((l) => l.length > r); r++) {
+            for (const list of withPics) { const x = list[r]; if (!x || _seenImg.has(x.img) || items.length >= 150) continue; _seenImg.add(x.img);
               const clean = (t) => String(t || "").split(/\s+\|\s+/)[0].replace(/\s*[•|-]\s*(Tattoodo|InkedMag|Inked Magazine|Pinterest)\s*$/i, "").trim();
               const ab = String(x.about || "");
               items.push({ image: x.img, title: clean(x.it.title || x.title2) || null, feel: null, artist: null,

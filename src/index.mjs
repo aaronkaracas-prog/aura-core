@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.756.0-2026-10-24-brave-no-shops";
+const BUILD = "aura-core-v9.757.0-2026-10-24-deviantart-tumblr";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -72106,7 +72106,11 @@ export class PublicEntry extends WorkerEntrypoint {
             { site: "", provider: "brave", variants: 1, only: "", name: "Brave" },
             { site: "tattoodo.com", provider: "ceramic", variants: 3, only: "/tattoos/\\d+", name: "Tattoodo" },
             { site: "pinterest.com/pin", provider: "exa", variants: 1, only: "/pin/", name: "Pinterest" },
-            { site: "inkedmag.com", provider: "exa", variants: 1, only: "", name: "Inked Magazine", widen: false }];
+            { site: "inkedmag.com", provider: "exa", variants: 1, only: "", name: "Inked Magazine", widen: false },
+            // (v9.757, MEASURED 21:27 - "dragon": DeviantArt 10 of 10 tattoo pieces with pictures; Tumblr real artists' posts, 10 of 10 with
+            // pictures. Behance left out - mostly general art: a 3D model, a photoshoot, a profile banner.) Single posts only.
+            { site: "deviantart.com", provider: "exa", variants: 1, only: "/art/", name: "DeviantArt" },
+            { site: "tumblr.com", provider: "exa", variants: 1, only: "tumblr\\.com/[^/?#]+/\\d+|/post/\\d+", name: "Tumblr" }];
           try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && (x.site || x.provider === "brave")).slice(0, 6); } catch {}
           // KEYWORDS (v9.749): MEASURED 15:46 - "Show me cat tattoos" found articles, "cat tattoo" found tattoos. Their talk words come out.
           const _TALK = new Set(["show","me","some","any","few","i","im","i'm","want","wanna","to","see","can","could","you","please","find","look",
@@ -72114,7 +72118,8 @@ export class PublicEntry extends WorkerEntrypoint {
             "pictures","picture","photos","photo","examples","like","would","love","just","maybe","a","an","the","let's","lets","us","my"]);
           const _kw = String(q).toLowerCase().replace(/[^a-z0-9&' -]+/g, " ").split(/\s+/).filter((w) => w && !_TALK.has(w)).join(" ").trim() || String(q).trim();
           const _COST = { ceramic: 0.00025, linkup: 0.005, exa: 0.007, brave: 0.005 };
-          const _JUNKPIC = /logo|default_open_graph|\/opengraph\.|placeholder|blank\.(png|jpg)/i;
+          // (v9.757) a Tumblr profile's small round photo ("avatar_..._128") is not a post's picture.
+          const _JUNKPIC = /logo|default_open_graph|\/opengraph\.|placeholder|blank\.(png|jpg)|\/avatar_/i;
           const _counts = [], _bad = []; let _spend = 0;
           // HOW EXA IS ASKED (v9.752): a dial, `config:inspire:exa_words` - "____" is their words (empty = "____ tattoo"). Exa reads by
           // meaning, so a phrase like "a photo of a finished ____ tattoo" may pull single tattoos over articles - set it once WEBSEARCH shows it.

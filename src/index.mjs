@@ -106,7 +106,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.765.0-2026-10-25-design-only-tiles";
+const BUILD = "aura-core-v9.766.0-2026-10-27-evolve-once-mark";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -71095,7 +71095,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        // AN EIGHT-CARD SHEET KEEPS ITS CARDS (v9.737, 2026-10-23, Aaron): reopening the tattoo shows the cut cards
                        // with their titles, not the uncut sheet.
                        ...(drew.four_directions ? { grid: true } : {}),
-                       ...(Array.isArray(drew.cards8) && drew.cards8.length ? { cards8: drew.cards8 } : {}) }] : []) ],
+                       ...(Array.isArray(drew.cards8) && drew.cards8.length ? { cards8: drew.cards8 } : {}),
+                       // EVOLVE ONCE (v9.766, 2026-10-27, Aaron: "they cannot keep evolving that image"): a set of 8 new takes on a design
+                       // is marked, so a tattoo reopened from My Tattoos knows it was already evolved and does not offer it again.
+                       ...(drew.possibilities ? { poss: true } : {}) }] : []) ],
               // Named from its first picture - the words it was drawn from, up to the first comma.
               // A catalogue pick is named after the design they chose ("Micro-Real Lion").
               // Her brief's subject when she has one ("geisha with hannya mask") - the words a picture

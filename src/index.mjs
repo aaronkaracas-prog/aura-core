@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.770.0-2026-10-29-logo-in-card";
+const BUILD = "aura-core-v9.771.0-2026-10-29-logo-beside-words";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -163,28 +163,96 @@ function composeCatalogCard(card, info, logoBytes) {
   const title = tt ? _wrap(tt, tS, maxW, 1) : [];
   const lS = Math.round(W * 0.034), lG = Math.round(lS * 1.42);
   const body = _wrap(_txtClean(((info && info.lines) || []).join(" ")), lS, maxW, 3);
-  // v9.770 (Aaron: "it looks like I'm using two pieces ... I don't want to extend this card ... stick it in the upper left"): the logo is
-  // stamped INTO the card, upper left, just inside the card's own outline - nothing is added under it. A card whose words are drawn in
-  // it (the white cards) keeps its exact size; a card whose words we write gets only the words band under it, no logo row.
+  // v9.771 (Aaron, 08:29: "place it to the left of the description"): the logo sits in the words box, to the left of the words.
+  // On a card whose words the image model drew in an outlined box (the white cards), the box is found (its top and bottom edges),
+  // the drawn words are taken as one block and, only if they would not fit beside the logo, made smaller to fit - never stretched -
+  // and set to the right of the logo; the logo fills the box's height on the left. The card keeps its exact size. A card whose words
+  // we write gets them in a band under it, the logo on the left of that band. No box found - the logo goes upper left, as in v9.770.
   const _own = !title.length && !body.length;
-  const gapTop = Math.round(W * 0.05), tH = Math.round(W * 0.052 * 1.15);
-  const tY = Hc + gapTop, bY = tY + tH + Math.round(W * 0.016);
-  const H = _own ? Hc : bY + Math.max(1, body.length) * lG + Math.round(W * 0.04);
+  const lg0 = PhotonImage.new_from_byteslice(logoBytes);
+  const _ar = lg0.get_width() / lg0.get_height();
+  const _stamp = (img, x, y, h) => { const lh = Math.max(8, Math.round(h)), lw = Math.round(lh * _ar);
+    const lg = photonResize(lg0, lw, lh, PhotonSampling.Lanczos3);
+    try { photonWatermark(img, lg, BigInt(Math.round(x)), BigInt(Math.round(y))); } catch { photonWatermark(img, lg, Math.round(x), Math.round(y)); }
+    try { lg.free(); } catch {} return lw; };
+  if (_own) {
+    const px = card.get_raw_pixels();
+    const lum = (x, y) => { const o = (y * W + x) * 4; return (px[o] + px[o + 1] + px[o + 2]) / 3; };
+    const bt = _boxTop(lum, 0, W, 0, Hc);
+    let done = false;
+    if (bt > 0) {
+      // the box: its left and right edge from the top line, its bottom edge the next thin line across it
+      let a = -1, b = -1, cur = 0, st = -1, best = 0;
+      for (let x = 0; x < W; x++) { if (lum(x, bt) < 110) { if (!cur) st = x; cur++; if (cur > best) { best = cur; a = st; b = x + 1; } } else cur = 0; }
+      const rowDark = (y) => { let n = 0, d = 0; for (let x = a; x < b; x += 2) { n++; if (lum(x, y) < 110) d++; } return d / n; };
+      let t = bt; while (t < Hc - 1 && rowDark(t) > 0.5) t++;
+      // the bottom edge is one unbroken dark line nearly the box's width - a line of words never is, however bold
+      const runAcross = (y) => { let best = 0, cur = 0; for (let x = a; x < b; x++) { if (lum(x, y) < 110) { cur++; if (cur > best) best = cur; } else cur = 0; } return best; };
+      let bb = -1; for (let y = t + 8; y < Hc; y++) if (runAcross(y) >= (b - a) * 0.85) { bb = y; break; }
+      const colDark = (x, y0, y1) => { let n = 0, d = 0; for (let y = y0; y < y1; y++) { n++; if (lum(x, y) < 110) d++; } return d / n; };
+      if (bb > t + 20) {
+        let il = a; while (il < b && colDark(il, t, bb) > 0.5) il++;
+        let ir = b - 1; while (ir > il && colDark(ir, t, bb) > 0.5) ir--;
+        const iy0 = t + 1, iy1 = bb - 1, ix0 = il + 2, ix1 = ir - 2;
+        // the drawn words: their ink, inside the box
+        let wx0 = ix1, wx1 = ix0, wy0 = iy1, wy1 = iy0;
+        for (let y = iy0; y < iy1; y++) for (let x = ix0; x < ix1; x++) if (lum(x, y) < 160) { if (x < wx0) wx0 = x; if (x > wx1) wx1 = x; if (y < wy0) wy0 = y; if (y > wy1) wy1 = y; }
+        const ih = iy1 - iy0, iw = ix1 - ix0;
+        if (wx1 > wx0 && wy1 > wy0 && ih > 20 && iw > 60) {
+          const m = Math.max(4, Math.round(ih * 0.12)), lh = ih - 2 * m, lw = Math.round(lh * _ar);
+          const tx0 = ix0 + m + lw + m, tw = ix1 - m - tx0, th = ih - 2 * m;
+          const ww = wx1 - wx0 + 1, wh = wy1 - wy0 + 1;
+          const sc = Math.min(1, tw / ww, th / wh);
+          if (tw > iw * 0.4 && sc > 0.55) {
+            // the words block, lifted out, made smaller only if needed
+            const blk = new Uint8Array(ww * wh * 4);
+            for (let y = 0; y < wh; y++) for (let x = 0; x < ww; x++) { const so = ((wy0 + y) * W + (wx0 + x)) * 4, to = (y * ww + x) * 4;
+              blk[to] = px[so]; blk[to + 1] = px[so + 1]; blk[to + 2] = px[so + 2]; blk[to + 3] = 255; }
+            const bi0 = new PhotonImage(blk, ww, wh);
+            const nw = Math.max(1, Math.round(ww * sc)), nh = Math.max(1, Math.round(wh * sc));
+            const bi = sc < 1 ? photonResize(bi0, nw, nh, PhotonSampling.Lanczos3) : bi0;
+            const bp = bi.get_raw_pixels();
+            // clear the inside of the box, then set the words to the right of the logo, centred in that space
+            for (let y = iy0; y < iy1; y++) for (let x = ix0; x < ix1; x++) { const o = (y * W + x) * 4; px[o] = px[o + 1] = px[o + 2] = 255; }
+            const ox = tx0 + Math.round((tw - nw) / 2), oy = iy0 + Math.round((ih - nh) / 2);
+            for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) { const so = (y * nw + x) * 4, to = ((oy + y) * W + (ox + x)) * 4;
+              px[to] = bp[so]; px[to + 1] = bp[so + 1]; px[to + 2] = bp[so + 2]; }
+            try { if (bi !== bi0) bi.free(); } catch {} try { bi0.free(); } catch {}
+            const out = new PhotonImage(px, W, Hc);
+            _stamp(out, ix0 + m, iy0 + m, lh);
+            try { lg0.free(); } catch {}
+            return out;
+          }
+        }
+      }
+    }
+    // no box found, or no room beside the words: upper left, inside the card's outline (v9.770)
+    const out = new PhotonImage(px, W, Hc);
+    _stamp(out, W * 0.065, W * 0.05, Math.round(W * 0.24 / _ar));
+    try { lg0.free(); } catch {}
+    return out;
+  }
+  // our own words: a band under the design - the logo on the left, the title and lines to its right
+  const lH = Math.round(W * 0.15), lW = Math.round(lH * _ar), gap = Math.round(W * 0.04);
+  const tx = pad + lW + gap, tmax = W - pad - tx;
+  let tS2 = Math.round(W * 0.046); const tt2 = _txtClean(info && info.title).toUpperCase();
+  while (tS2 > Math.round(W * 0.032) && _txtW(tt2, tS2) > tmax) tS2--;
+  const title2 = _wrap(tt2, tS2, tmax, 1), lS2 = Math.round(W * 0.03), lG2 = Math.round(lS2 * 1.4);
+  const body2 = _wrap(_txtClean(((info && info.lines) || []).join(" ")), lS2, tmax, 3);
+  const textH = Math.round(tS2 * 1.2) + Math.round(W * 0.012) + body2.length * lG2;
+  const bandH = Math.max(lH, textH) + Math.round(W * 0.07);
+  const H = Hc + bandH;
   const px = new Uint8Array(W * H * 4).fill(255);
   px.set(card.get_raw_pixels(), 0);
-  const hy = Hc + Math.round(gapTop * 0.4);
-  if (!_own) for (let x = pad; x < W - pad; x++) { const o = (hy * W + x) * 4; px[o] = px[o + 1] = px[o + 2] = 228; }
+  const hy = Hc + Math.round(W * 0.015);
+  for (let x = pad; x < W - pad; x++) { const o = (hy * W + x) * 4; px[o] = px[o + 1] = px[o + 2] = 228; }
   const out = new PhotonImage(px, W, H);
-  // An Rgba is used up by the call it is passed to - a new one every time. The title is drawn a few times a pixel apart (bold).
-  const bold = Math.max(1, Math.round(tS / 18));
-  title.forEach((t) => { for (let b = 0; b <= bold; b++) _Photon.draw_text_with_color(out, t, pad + b, tY + (tH - Math.round(tS * 1.15)), tS, new _Photon.Rgba(17, 17, 17, 255)); });
-  body.forEach((t, i) => _Photon.draw_text_with_color(out, t, pad, bY + i * lG, lS, new _Photon.Rgba(80, 80, 88, 255)));
-  const lg0 = PhotonImage.new_from_byteslice(logoBytes);
-  const lw = Math.round(W * 0.24), lh = Math.round(lg0.get_height() * lw / lg0.get_width());
-  const lg = photonResize(lg0, lw, lh, PhotonSampling.Lanczos3);
-  const lx = Math.round(W * 0.065), ly = Math.round(W * 0.05);
-  try { photonWatermark(out, lg, BigInt(lx), BigInt(ly)); } catch { photonWatermark(out, lg, lx, ly); }
-  try { lg.free(); } catch {} try { lg0.free(); } catch {}
+  const y0 = Hc + Math.round((bandH - textH) / 2) + Math.round(W * 0.01);
+  const bold = Math.max(1, Math.round(tS2 / 18));
+  title2.forEach((t) => { for (let k = 0; k <= bold; k++) _Photon.draw_text_with_color(out, t, tx + k, y0, tS2, new _Photon.Rgba(17, 17, 17, 255)); });
+  body2.forEach((t, i) => _Photon.draw_text_with_color(out, t, tx, y0 + Math.round(tS2 * 1.2) + Math.round(W * 0.012) + i * lG2, lS2, new _Photon.Rgba(80, 80, 88, 255)));
+  _stamp(out, pad, Hc + Math.round((bandH - lH) / 2) + Math.round(W * 0.01), lH);
+  try { lg0.free(); } catch {}
   return out;
 }
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
@@ -77253,9 +77321,9 @@ function openAlbum(idx){
       // v9.768: `mark=2` is the same as `mark=1` - a new address, so a phone that kept the old small-logo copy asks again.
       const _mk = ["1", "2"].includes(url.searchParams.get("mark") || "");
       // v9.768: `card=1` - the catalog card (the design, its title and lines and the logo in a white band under it). See composeCatalogCard.
-      if (["1", "2"].includes(url.searchParams.get("card") || "") && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
+      if (["1", "2", "3"].includes(url.searchParams.get("card") || "") && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.770: kept under _c2 - the copies with the logo underneath (_c1) are never served again
-        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c2.jpg";
+        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c3.jpg";
         const _chave = await env.AURA_KV.getWithMetadata(_ck, { type: "arrayBuffer" }).catch(() => null);
         if (_chave && _chave.value) return new Response(_chave.value, { headers: { "content-type": "image/jpeg", "content-length": String(_chave.value.byteLength),
           "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept", "x-card": "yes" } });

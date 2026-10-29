@@ -64,6 +64,8 @@ import { PhotonImage, crop as photonCrop, grayscale, gaussian_blur, threshold as
          grayscale_human_corrected as photonGrayHuman,
          resize as photonResize, SamplingFilter as PhotonSampling, watermark as photonWatermark }
   from "@cf-wasm/photon";
+// v9.768: the whole module too, so the text tools are looked up when used - a Photon without them serves the plain stamped card.
+import * as _Photon from "@cf-wasm/photon";
 
 // ══ THE STENCIL TRACER (2026-10-03, v9.526, Aaron) ════════════════════════════════════════════════
 // potrace (GPL-2.0, Peter Selinger's algorithm, JS port by Iwasaki - npm `potrace` 2.1.8), bundled
@@ -106,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.767.0-2026-10-29-inkit-logo-mark";
+const BUILD = "aura-core-v9.768.0-2026-10-29-catalog-cards";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -119,12 +121,67 @@ async function inkitStamp(env, img) {
   if (!_BRAND_PNG) { try { console.log("[MARK] no logo stored under brand:inkit-logo - picture served without it"); } catch {} return false; }
   const W = img.get_width(), H = img.get_height();
   const lg0 = PhotonImage.new_from_byteslice(_BRAND_PNG);
-  const lw = Math.max(40, Math.round(W * 0.16)), lh = Math.max(1, Math.round(lg0.get_height() * lw / lg0.get_width()));
+  // v9.768 (Aaron: "it's too small ... in the left corner and larger"): 16% of the width -> 26%, still bottom-left.
+  const lw = Math.max(40, Math.round(W * 0.26)), lh = Math.max(1, Math.round(lg0.get_height() * lw / lg0.get_width()));
   const lg = photonResize(lg0, lw, lh, PhotonSampling.Lanczos3);
-  const m = Math.round(W * 0.025), x = m, y = Math.max(0, H - lh - m);
+  const m = Math.round(W * 0.03), x = m, y = Math.max(0, H - lh - m);
   try { photonWatermark(img, lg, BigInt(x), BigInt(y)); } catch { photonWatermark(img, lg, x, y); }
   try { lg.free(); } catch {} try { lg0.free(); } catch {}
   return true;
+}
+// ══ THE CATALOG CARD (v9.768, 2026-10-29, Aaron: "the image that I would want to be saved would be the lower images with the
+// description with Inkit.world in the white so that way when I have this massive catalog going out there it'll still have the
+// description going with it") ═══════════════════════════════════════════════════════════════════════════════════════════════
+// `/image/<card id>?card=1` hands back ONE picture: the card's design, a white band under it with the card's title and its lines, and
+// the Inkit.world logo in that white band - made here in the worker with Photon, no image model, no cost. The words come from
+// `cardinfo:<card id>` (written when the eight are cut) or, for cards cut before this, from the sheet's `sheet8:` list (`s=` and `n=`
+// on the address). The band is the same height on every card so a row lines up. The original card is never touched.
+// Text widths are Photon's font (Roboto) measured once at size 100, per character, so a line is wrapped before it is drawn.
+const _ADV = {"0":0.479,"1":0.479,"2":0.479,"3":0.479,"4":0.479,"5":0.479,"6":0.479,"7":0.479,"8":0.479,"9":0.479," ":0.212,"!":0.22,"\"":0.273,"#":0.526,"$":0.479,"%":0.625,"&":0.531,"'":0.149,"(":0.292,")":0.297,"*":0.367,"+":0.484,",":0.168,"-":0.236,".":0.225,"/":0.352,":":0.207,";":0.181,"<":0.434,"=":0.468,">":0.446,"?":0.403,"@":0.767,"A":0.557,"B":0.532,"C":0.556,"D":0.56,"E":0.485,"F":0.472,"G":0.582,"H":0.608,"I":0.233,"J":0.471,"K":0.535,"L":0.459,"M":0.745,"N":0.608,"O":0.587,"P":0.538,"Q":0.587,"R":0.526,"S":0.507,"T":0.509,"U":0.553,"V":0.543,"W":0.757,"X":0.535,"Y":0.512,"Z":0.511,"[":0.227,"\\":0.35,"]":0.227,"^":0.357,"_":0.385,"`":0.264,"a":0.464,"b":0.479,"c":0.447,"d":0.482,"e":0.453,"f":0.297,"g":0.479,"h":0.47,"i":0.207,"j":0.204,"k":0.432,"l":0.207,"m":0.748,"n":0.471,"o":0.487,"p":0.479,"q":0.485,"r":0.289,"s":0.44,"t":0.279,"u":0.471,"v":0.413,"w":0.642,"x":0.423,"y":0.404,"z":0.423,"{":0.289,"|":0.208,"}":0.289,"~":0.581};
+function _txtClean(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+  .replace(/[–—]/g, "-").replace(/…/g, "...").replace(/[^\x20-\x7e]/g, "").replace(/\s+/g, " ").trim(); }
+function _txtW(s, size) { let w = 0; for (const ch of s) w += (_ADV[ch] || 0.5); return w * size; }
+function _wrap(s, size, maxW, maxLines) {
+  const words = s.split(" ").filter(Boolean), out = []; let cur = "";
+  for (const wd of words) { const t = cur ? cur + " " + wd : wd;
+    if (_txtW(t, size) <= maxW || !cur) cur = t; else { out.push(cur); cur = wd; } }
+  if (cur) out.push(cur);
+  if (out.length > maxLines) { const k = out.slice(0, maxLines); let last = k[maxLines - 1];
+    while (last && _txtW(last + "...", size) > maxW) last = last.replace(/\s*\S+$/, "");
+    k[maxLines - 1] = (last || k[maxLines - 1]) + "..."; return k; }
+  return out;
+}
+// card: PhotonImage of the design (already at its final width); info {title, lines[]}; logoBytes: PNG bytes.
+// Returns a new PhotonImage (caller frees). The white band under the design is the same height on every card, so a row lines up.
+function composeCatalogCard(card, info, logoBytes) {
+  if (typeof _Photon.draw_text_with_color !== "function" || typeof _Photon.Rgba !== "function") return null;
+  const W = card.get_width(), Hc = card.get_height();
+  const pad = Math.round(W * 0.06), maxW = W - pad * 2;
+  let tS = Math.round(W * 0.052); const tMin = Math.round(W * 0.04);
+  let tt = _txtClean(info && info.title).toUpperCase();
+  while (tS > tMin && _txtW(tt, tS) > maxW) tS--;
+  const title = tt ? _wrap(tt, tS, maxW, 1) : [];
+  const lS = Math.round(W * 0.034), lG = Math.round(lS * 1.42);
+  const body = _wrap(_txtClean(((info && info.lines) || []).join(" ")), lS, maxW, 3);
+  const lg0 = PhotonImage.new_from_byteslice(logoBytes);
+  const lw = Math.round(W * 0.26), lh = Math.round(lg0.get_height() * lw / lg0.get_width());
+  const gapTop = Math.round(W * 0.05), tH = Math.round(W * 0.052 * 1.15);
+  const tY = Hc + gapTop, bY = tY + tH + Math.round(W * 0.016), lY = bY + 3 * lG + Math.round(W * 0.025);
+  const H = lY + lh + Math.round(W * 0.035);
+  const px = new Uint8Array(W * H * 4).fill(255);
+  px.set(card.get_raw_pixels(), 0);
+  const hy = Hc + Math.round(gapTop * 0.4);
+  for (let x = pad; x < W - pad; x++) { const o = (hy * W + x) * 4; px[o] = px[o + 1] = px[o + 2] = 228; }
+  const out = new PhotonImage(px, W, H);
+  // An Rgba is used up by the call it is passed to - a new one every time. The title is drawn a few times a pixel apart (bold).
+  const bold = Math.max(1, Math.round(tS / 18));
+  title.forEach((t) => { for (let b = 0; b <= bold; b++) _Photon.draw_text_with_color(out, t, pad + b, tY + (tH - Math.round(tS * 1.15)), tS, new _Photon.Rgba(17, 17, 17, 255)); });
+  body.forEach((t, i) => _Photon.draw_text_with_color(out, t, pad, bY + i * lG, lS, new _Photon.Rgba(80, 80, 88, 255)));
+  const lg = photonResize(lg0, lw, lh, PhotonSampling.Lanczos3);
+  const lx = Math.max(0, pad - Math.round(lw * 0.04));
+  try { photonWatermark(out, lg, BigInt(lx), BigInt(lY)); } catch { photonWatermark(out, lg, lx, lY); }
+  try { lg.free(); } catch {} try { lg0.free(); } catch {}
+  return out;
 }
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
@@ -61066,6 +61123,9 @@ async function eightCards(env, sheetUrl, said, eopts) {
       ...(ok ? { title: lines[k].title, lines: lines[k].lines } : {}) }));
     const sid = (String(sheetUrl).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
     if (sid) { try { await env.AURA_KV.put("sheet8:" + sid, JSON.stringify(cards)); } catch {} }
+    // v9.768: each card's words under its own picture id, so its catalog card can be made from the card alone.
+    if (ok && !_printed) { try { await Promise.all(cards.map((c) => { const cid = (String(c.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+      return cid && c.title ? env.AURA_KV.put("cardinfo:" + cid, JSON.stringify({ title: c.title, lines: c.lines || [], sheet: sid || null, n: c.n })).catch(() => {}) : null; })); } catch {} }
     console.log("[CUT8] " + cards.length + " cards off " + sid + (_printed ? " · words drawn on the cards, artwork kept apart: " + cards.filter((x) => x.art).length + " of " + cards.length
       : ok ? " · words matched by order" : " · words not used: " + lines.length + " lines for " + cards.length + " cards") + " · " + ((Date.now() - _c8T0) / 1000).toFixed(1) + "s");
     return cards;
@@ -77136,11 +77196,52 @@ function openAlbum(idx){
       // the 2048 original.
       const _w = [240, 480, 720, 1440].includes(_wq) ? _wq : 0;
       // v9.767: `mark=1` - the same copy with the Inkit.world logo stamped bottom-left, kept under its own key. Full size when no `w`.
-      const _mk = url.searchParams.get("mark") === "1";
-      if ((_w || _mk) && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
+      // v9.768: `mark=2` is the same as `mark=1` - a new address, so a phone that kept the old small-logo copy asks again.
+      const _mk = ["1", "2"].includes(url.searchParams.get("mark") || "");
+      // v9.768: `card=1` - the catalog card (the design, its title and lines and the logo in a white band under it). See composeCatalogCard.
+      if (url.searchParams.get("card") === "1" && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
+        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c1.jpg";
+        const _chave = await env.AURA_KV.getWithMetadata(_ck, { type: "arrayBuffer" }).catch(() => null);
+        if (_chave && _chave.value) return new Response(_chave.value, { headers: { "content-type": "image/jpeg", "content-length": String(_chave.value.byteLength),
+          "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept", "x-card": "yes" } });
+        try {
+          let _info = null;
+          try { _info = JSON.parse((await env.AURA_KV.get("cardinfo:" + id)) || "null"); } catch {}
+          const _sid = String(url.searchParams.get("s") || ""), _n = parseInt(url.searchParams.get("n") || "", 10);
+          if (!(_info && _info.title) && /^img_[A-Za-z0-9_-]+$/.test(_sid) && _n >= 1 && _n <= 8) {
+            try { const _k8 = JSON.parse((await env.AURA_KV.get("sheet8:" + _sid)) || "null"); const _c = Array.isArray(_k8) ? _k8[_n - 1] : null;
+              // only when that card really is this picture, and its words were not already drawn into it
+              if (_c && _c.title && !_c.printed && String(_c.image || "").indexOf(id) >= 0) _info = { title: _c.title, lines: _c.lines || [] }; } catch {}
+          }
+          if (!_BRAND_PNG) { const b = await env.AURA_KV.get("brand:inkit-logo", { type: "arrayBuffer" }).catch(() => null); if (b) _BRAND_PNG = new Uint8Array(b); }
+          let _src = null;
+          { const _b = await env.AURA_KV.get(`image:${id}`).catch(() => null); if (_b) _src = Uint8Array.from(atob(_b), (c) => c.charCodeAt(0)); }
+          if (_src && _BRAND_PNG) {
+            const _im = PhotonImage.new_from_byteslice(_src);
+            const _W = _im.get_width(), _H = _im.get_height();
+            const _sm = _W !== _cw ? photonResize(_im, _cw, Math.max(1, Math.round(_H * _cw / _W)), PhotonSampling.Lanczos3) : _im;
+            const _cc = composeCatalogCard(_sm, _info || {}, _BRAND_PNG);
+            if (_cc) {
+              const _out = _cc.get_bytes_jpeg(86);
+              try { _cc.free(); } catch {} try { if (_sm !== _im) _sm.free(); } catch {} try { _im.free(); } catch {}
+              // kept only when it carries its words - a card whose words could not be found is made again next time
+              const _keep = !!(_info && _info.title);
+              if (_keep) await env.AURA_KV.put(_ck, _out, { metadata: { ct: "image/jpeg", w: _cw, card: 1 } }).catch(() => {});
+              return new Response(_out, { headers: { "content-type": "image/jpeg", "content-length": String(_out.length),
+                "cache-control": _keep ? "public, max-age=31536000, immutable" : "no-store", "x-small-copy": "made", "x-card": _keep ? "yes" : "no-words" } });
+            }
+            try { if (_sm !== _im) _sm.free(); } catch {} try { _im.free(); } catch {}
+            try { console.log("[CARD] " + id + " not made: this Photon has no text tools - the stamped card goes"); } catch {}
+          } else { try { console.log("[CARD] " + id + " not made: " + (_src ? "no logo under brand:inkit-logo" : "no original under image:" + id)); } catch {} }
+        } catch (e) { try { console.log("[CARD] " + id + " not made: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+        // anything that went wrong: the stamped copy instead (below)
+        url.searchParams.set("mark", "1");
+      }
+      const _mk2 = _mk || ["1", "2"].includes(url.searchParams.get("mark") || "");
+      if ((_w || _mk2) && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.728: MEASURED - Photon's get_bytes_webp() is LOSSLESS: 684KB at 480 wide. JPEG 80 measured 5-6x smaller on our
         // pictures, so copies are JPEG, and the key carries .jpg so the lossless copies made under v9.727 are never served.
-        const _tk = "small:" + id + "_w" + (_w || "full") + (_mk ? "_m" : "") + ".jpg";
+        const _tk = "small:" + id + "_w" + (_w || "full") + (_mk2 ? "_m2" : "") + ".jpg";
         const _have = await env.AURA_KV.getWithMetadata(_tk, { type: "arrayBuffer" }).catch(() => null);
         if (_have && _have.value) return new Response(_have.value, { headers: { "content-type": (_have.metadata && _have.metadata.ct) || "image/jpeg",
           "content-length": String(_have.value.byteLength), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });
@@ -77156,15 +77257,15 @@ function openAlbum(idx){
             if (_w && _W > _w) _sm = photonResize(_im, _w, Math.max(1, Math.round(_H * _w / _W)), PhotonSampling.Lanczos3);
             // A mark that could not be stamped is served once without the logo and never kept, so it is tried again next time.
             let _stamped = false;
-            if (_mk) { try { _stamped = await inkitStamp(env, _sm); } catch (e) { try { console.log("[MARK] " + id + " stamp failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} } }
+            if (_mk2) { try { _stamped = await inkitStamp(env, _sm); } catch (e) { try { console.log("[MARK] " + id + " stamp failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} } }
             const _out = _sm.get_bytes_jpeg(_w ? 80 : 88);
             try { if (_sm !== _im) _sm.free(); } catch {}
             try { _im.free(); } catch {}
             const _ct = "image/jpeg";
-            if (!_mk || _stamped) await env.AURA_KV.put(_tk, _out, { metadata: { ct: _ct, w: _w, from: _W + "x" + _H, mark: _mk ? 1 : 0 } })
+            if (!_mk2 || _stamped) await env.AURA_KV.put(_tk, _out, { metadata: { ct: _ct, w: _w, from: _W + "x" + _H, mark: _mk2 ? 1 : 0 } })
               .catch((e) => { try { console.log("[SMALL] " + id + " w" + _w + " made but not kept: " + String(e?.message ?? e).slice(0, 160)); } catch {} });
             return new Response(_out, { headers: { "content-type": _ct, "content-length": String(_out.length),
-              "cache-control": (!_mk || _stamped) ? "public, max-age=31536000, immutable" : "no-store", "x-small-copy": "made", "x-mark": _mk ? (_stamped ? "yes" : "no") : "off" } });
+              "cache-control": (!_mk2 || _stamped) ? "public, max-age=31536000, immutable" : "no-store", "x-small-copy": "made", "x-mark": _mk2 ? (_stamped ? "yes" : "no") : "off" } });
           }
         } catch (e) { try { console.log("[SMALL] " + id + " w" + _w + " not made: " + String(e?.message ?? e).slice(0, 160) + " - the original goes"); } catch {} }
       }

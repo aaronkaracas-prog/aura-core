@@ -62,7 +62,7 @@ import { PhotonImage, crop as photonCrop, grayscale, gaussian_blur, threshold as
          edge_detection as photonEdges, laplace as photonLaplace,
          dither as photonDither, halftone as photonHalftone,
          grayscale_human_corrected as photonGrayHuman,
-         resize as photonResize, SamplingFilter as PhotonSampling }
+         resize as photonResize, SamplingFilter as PhotonSampling, watermark as photonWatermark }
   from "@cf-wasm/photon";
 
 // ══ THE STENCIL TRACER (2026-10-03, v9.526, Aaron) ════════════════════════════════════════════════
@@ -106,7 +106,26 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.766.0-2026-10-27-evolve-once-mark";
+const BUILD = "aura-core-v9.767.0-2026-10-29-inkit-logo-mark";
+// ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
+// eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
+// The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
+// the first time it is asked for and kept beside the small copies. Everything that works on a picture - the lock, the artist files,
+// stencils, PDFs, redraws, colour - still reads the clean original, so the one they keep never carries the logo. The logo is one PNG
+// under `brand:inkit-logo` (black "ink", pink "it", ".world", transparent - no box; every picture comes back on white).
+let _BRAND_PNG = null;
+async function inkitStamp(env, img) {
+  if (!_BRAND_PNG) { const b = await env.AURA_KV.get("brand:inkit-logo", { type: "arrayBuffer" }).catch(() => null); if (b) _BRAND_PNG = new Uint8Array(b); }
+  if (!_BRAND_PNG) { try { console.log("[MARK] no logo stored under brand:inkit-logo - picture served without it"); } catch {} return false; }
+  const W = img.get_width(), H = img.get_height();
+  const lg0 = PhotonImage.new_from_byteslice(_BRAND_PNG);
+  const lw = Math.max(40, Math.round(W * 0.16)), lh = Math.max(1, Math.round(lg0.get_height() * lw / lg0.get_width()));
+  const lg = photonResize(lg0, lw, lh, PhotonSampling.Lanczos3);
+  const m = Math.round(W * 0.025), x = m, y = Math.max(0, H - lh - m);
+  try { photonWatermark(img, lg, BigInt(x), BigInt(y)); } catch { photonWatermark(img, lg, x, y); }
+  try { lg.free(); } catch {} try { lg0.free(); } catch {}
+  return true;
+}
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -77116,10 +77135,12 @@ function openAlbum(idx){
       // 1440 (v9.739, 2026-10-23, Aaron's Inkit.world banners and heroes): a wide picture on a computer screen, still a fraction of
       // the 2048 original.
       const _w = [240, 480, 720, 1440].includes(_wq) ? _wq : 0;
-      if (_w && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
+      // v9.767: `mark=1` - the same copy with the Inkit.world logo stamped bottom-left, kept under its own key. Full size when no `w`.
+      const _mk = url.searchParams.get("mark") === "1";
+      if ((_w || _mk) && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.728: MEASURED - Photon's get_bytes_webp() is LOSSLESS: 684KB at 480 wide. JPEG 80 measured 5-6x smaller on our
         // pictures, so copies are JPEG, and the key carries .jpg so the lossless copies made under v9.727 are never served.
-        const _tk = "small:" + id + "_w" + _w + ".jpg";
+        const _tk = "small:" + id + "_w" + (_w || "full") + (_mk ? "_m" : "") + ".jpg";
         const _have = await env.AURA_KV.getWithMetadata(_tk, { type: "arrayBuffer" }).catch(() => null);
         if (_have && _have.value) return new Response(_have.value, { headers: { "content-type": (_have.metadata && _have.metadata.ct) || "image/jpeg",
           "content-length": String(_have.value.byteLength), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });
@@ -77132,15 +77153,18 @@ function openAlbum(idx){
             const _im = PhotonImage.new_from_byteslice(_src);
             const _W = _im.get_width(), _H = _im.get_height();
             let _sm = _im;
-            if (_W > _w) _sm = photonResize(_im, _w, Math.max(1, Math.round(_H * _w / _W)), PhotonSampling.Lanczos3);
-            const _out = _sm.get_bytes_jpeg(80);
+            if (_w && _W > _w) _sm = photonResize(_im, _w, Math.max(1, Math.round(_H * _w / _W)), PhotonSampling.Lanczos3);
+            // A mark that could not be stamped is served once without the logo and never kept, so it is tried again next time.
+            let _stamped = false;
+            if (_mk) { try { _stamped = await inkitStamp(env, _sm); } catch (e) { try { console.log("[MARK] " + id + " stamp failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} } }
+            const _out = _sm.get_bytes_jpeg(_w ? 80 : 88);
             try { if (_sm !== _im) _sm.free(); } catch {}
             try { _im.free(); } catch {}
             const _ct = "image/jpeg";
-            await env.AURA_KV.put(_tk, _out, { metadata: { ct: _ct, w: _w, from: _W + "x" + _H } })
+            if (!_mk || _stamped) await env.AURA_KV.put(_tk, _out, { metadata: { ct: _ct, w: _w, from: _W + "x" + _H, mark: _mk ? 1 : 0 } })
               .catch((e) => { try { console.log("[SMALL] " + id + " w" + _w + " made but not kept: " + String(e?.message ?? e).slice(0, 160)); } catch {} });
             return new Response(_out, { headers: { "content-type": _ct, "content-length": String(_out.length),
-              "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "made" } });
+              "cache-control": (!_mk || _stamped) ? "public, max-age=31536000, immutable" : "no-store", "x-small-copy": "made", "x-mark": _mk ? (_stamped ? "yes" : "no") : "off" } });
           }
         } catch (e) { try { console.log("[SMALL] " + id + " w" + _w + " not made: " + String(e?.message ?? e).slice(0, 160) + " - the original goes"); } catch {} }
       }

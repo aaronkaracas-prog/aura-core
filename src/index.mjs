@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.768.0-2026-10-29-catalog-cards";
+const BUILD = "aura-core-v9.769.0-2026-10-29-white-cards";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -166,12 +166,14 @@ function composeCatalogCard(card, info, logoBytes) {
   const lg0 = PhotonImage.new_from_byteslice(logoBytes);
   const lw = Math.round(W * 0.26), lh = Math.round(lg0.get_height() * lw / lg0.get_width());
   const gapTop = Math.round(W * 0.05), tH = Math.round(W * 0.052 * 1.15);
-  const tY = Hc + gapTop, bY = tY + tH + Math.round(W * 0.016), lY = bY + 3 * lG + Math.round(W * 0.025);
+  // v9.769: a card whose words are drawn in it (the white cards) gets the logo alone under it - no title space, no lines space.
+  const _own = !title.length && !body.length;
+  const tY = Hc + gapTop, bY = tY + tH + Math.round(W * 0.016), lY = _own ? Hc + Math.round(W * 0.035) : bY + 3 * lG + Math.round(W * 0.025);
   const H = lY + lh + Math.round(W * 0.035);
   const px = new Uint8Array(W * H * 4).fill(255);
   px.set(card.get_raw_pixels(), 0);
   const hy = Hc + Math.round(gapTop * 0.4);
-  for (let x = pad; x < W - pad; x++) { const o = (hy * W + x) * 4; px[o] = px[o + 1] = px[o + 2] = 228; }
+  if (!_own) for (let x = pad; x < W - pad; x++) { const o = (hy * W + x) * 4; px[o] = px[o + 1] = px[o + 2] = 228; }
   const out = new PhotonImage(px, W, H);
   // An Rgba is used up by the call it is passed to - a new one every time. The title is drawn a few times a pixel apart (bold).
   const bold = Math.max(1, Math.round(tS / 18));
@@ -60427,6 +60429,37 @@ async function cutPanel(env, url, n) {
   return out;
 }
 
+// ══ WHITE CARDS: WHERE THE DESIGN ENDS AND ITS FRAME (v9.769, 2026-10-29) ═══════════════════════════════════════════════
+// PROVEN on img_mvtlh9fj8smi (the first white-card sheet): the box's top edge found on all eight cards (rows 629/1397/2163/2931
+// of 3120), every one 1-2 pixels thick with white above and below; the card's own outline sits about 20 pixels inside its edge.
+function _boxTop(lum, x0, x1, top, bot) {
+  const cw = x1 - x0, ch = bot - top;
+  const longRun = (y) => { let best = 0, cur = 0, a = -1, bs = -1, be = -1;
+    for (let x = x0; x < x1; x++) { if (lum(x, y) < 110) { if (!cur) a = x; cur++; if (cur > best) { best = cur; bs = a; be = x + 1; } } else cur = 0; }
+    return { len: best, a: bs, b: be }; };
+  const lightFrac = (y, a, b) => { let n = 0, l = 0; for (let x = a; x < b; x += 2) { n++; if (lum(x, y) > 180) l++; } return n ? l / n : 0; };
+  for (let y = top + Math.round(ch * 0.55); y < bot - 6; y++) {
+    const r = longRun(y); if (r.len < cw * 0.5) continue;
+    let t = 1; while (t < 8 && y + t < bot && longRun(y + t).len >= cw * 0.5) t++;
+    if (t >= 8) { y += t; continue; }            // a solid dark area in the design, not a line
+    if (lightFrac(y - 3, r.a, r.b) > 0.8 && lightFrac(y + t + 2, r.a, r.b) > 0.8) return y;
+    y += t;
+  }
+  return -1;
+}
+// The thin outline just inside a card's edge (within its outer 8%): the design is taken from inside it. None found - the edges stay.
+function _innerFrame(lum, x0, x1, top, bot) {
+  const cw = x1 - x0, ch = bot - top, mx = Math.max(4, Math.round(cw * 0.08)), my = Math.max(4, Math.round(ch * 0.08));
+  const colDark = (x) => { let n = 0, d = 0; for (let y = top; y < bot; y += 2) { n++; if (lum(x, y) < 110) d++; } return d / n; };
+  const rowDark = (y) => { let n = 0, d = 0; for (let x = x0; x < x1; x += 2) { n++; if (lum(x, y) < 110) d++; } return d / n; };
+  let L = x0, R = x1, T = top;
+  for (let x = x0; x < x0 + mx; x++) if (colDark(x) > 0.7) L = x + 1;
+  for (let x = x1 - 1; x >= x1 - mx; x--) if (colDark(x) > 0.7) R = x;
+  for (let y = top; y < top + my; y++) if (rowDark(y) > 0.6) T = y + 1;
+  const pad = 3;
+  return { x0: L > x0 ? L + pad : x0, x1: R < x1 ? R - pad : x1, top: T > top ? T + pad : top };
+}
+
 // ══ CUT EVERY CARD OFF A SHEET, HOWEVER MANY (v9.674, 2026-10-18, Aaron) ═══════════════════════════════
 // "When we get four cards back we should chop it up instantly ... then we can display it anywhere." The cutter above knows one
 // layout - four quarters. This one reads the page itself: the columns are where white runs top to bottom, each card's white
@@ -60546,18 +60579,30 @@ async function cutAllCards(env, url, copts) {
         for (let r = 0; r < 3 && allBlack; r++) { let b = 0, n = 0; for (let x = x0; x < x1; x += 2) { n++; if (lum(x, y + r) < 40) b++; } if (b / n <= 0.97) allBlack = false; }
         if (allBlack) artBot = y;
       }
-      if (artBot > top) {
-        const ah = artBot - top, adst = new Uint8Array(cw * ah * 4);
-        for (let y = 0; y < ah; y++) for (let x = 0; x < cw; x++) {
-          const so = ((top + y) * W + (x0 + x)) * 4, to = (y * cw + x) * 4;
+      // WHITE CARDS (v9.769): the words sit in an outlined box on white, so there is no black run - the design ends at the box's top
+      // edge: a thin dark line across at least half the card, below its middle, with white just above and just below it.
+      let ax0 = x0, ax1 = x1, aTop = top;
+      if (artBot < 0) {
+        const _bt = _boxTop(lum, x0, x1, top, bot);
+        if (_bt > top) {
+          artBot = _bt;
+          // the card's own outline is a thin frame just inside its edge - the design is cut from inside it, so no line travels with it
+          const fr = _innerFrame(lum, x0, x1, top, artBot);
+          ax0 = fr.x0; ax1 = fr.x1; aTop = fr.top;
+        }
+      }
+      if (artBot > aTop) {
+        const acw = ax1 - ax0, ah = artBot - aTop, adst = new Uint8Array(acw * ah * 4);
+        for (let y = 0; y < ah; y++) for (let x = 0; x < acw; x++) {
+          const so = ((aTop + y) * W + (ax0 + x)) * 4, to = (y * acw + x) * 4;
           adst[to] = px[so]; adst[to + 1] = px[so + 1]; adst[to + 2] = px[so + 2]; adst[to + 3] = 255;
         }
-        _whiteCorners(adst, cw, ah);
-        const ac = new PhotonImage(adst, cw, ah); const abts = ac.get_bytes(); try { ac.free(); } catch {}
+        _whiteCorners(adst, acw, ah);
+        const ac = new PhotonImage(adst, acw, ah); const abts = ac.get_bytes(); try { ac.free(); } catch {}
         let at = ""; for (let j = 0; j < abts.length; j += 8192) at += String.fromCharCode.apply(null, abts.subarray(j, j + 8192));
         const aid = "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
         _puts.push(env.AURA_KV.put("image:" + aid, btoa(at)));
-        card.art_url = "https://" + host + "/image/" + aid; card.art_size = cw + "x" + ah;
+        card.art_url = "https://" + host + "/image/" + aid; card.art_size = acw + "x" + ah;
       }
     }
     _allPuts.push(..._puts);
@@ -61053,10 +61098,14 @@ const SHEET8_BODY = "Show the whole tattoo in every picture, nothing cut off at 
 // own shape and white around it - The Warrior closest, then dragon, tiger, koi, hannya, serpent, crane, journey; every title spelled
 // right. Aaron: "this is my inspiration ... make me a complete tattoo" - the photo may be part of a tattoo, so the model is told only
 // that it is inspiration and that each design is complete. Only "Imagine from this" uses it. A setting: `config:frame:inspire:grid`.
-const INSPIRE8_SENTENCE = "This is my inspiration. Make me 8 different complete tattoo designs from it - each one a finished design with its own outer shape, shown whole with white space all around it, nothing cut off at the edges. Make the first one the closest to my inspiration. For the others, be bold and imaginative. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is a white panel with one complete tattoo design centred in it - not on skin - in a clean white frame with rounded corners, and under the panel, on the black, a short title in bold white capital letters, and under it two short lines in white describing the design. No numbers anywhere.";
+const INSPIRE8_SENTENCE = "This is my inspiration. Make me 8 different complete tattoo designs from it - each one a finished design with its own outer shape, shown whole with white space all around it, nothing cut off at the edges. Make the first one the closest to my inspiration. For the others, be bold and imaginative. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is all white with a thin black outline around it: one complete tattoo design centred at the top - not on skin - and under it, inside a box with a thin black outline, a short title in bold black capital letters, and under it two short lines in black describing the design. No numbers anywhere.";
 const SHEET8_FLAT = "Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture a white panel with the whole tattoo artwork as large as it fits - not on skin - in a clean white frame with rounded corners, with a wide black gap between them. No text, no titles, no numbers, no words anywhere on the page. In your written reply, list the 8 designs in order, left to right and top to bottom, one per line, as: TITLE | first line | second line.";
 // THE DIRECT ENDING (v9.708): the words each card carries are drawn under it - nothing writes a reply, nobody lists them after.
-const SHEET8_DIRECT = "Use color wherever it works. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is a white panel with the whole tattoo artwork as large as it fits - not on skin - in a clean white frame with rounded corners, and under the panel, on the black, a short title in bold white capital letters, and under it two short lines in white describing the design. No numbers anywhere.";
+// WHITE CARDS, BLACK WORDS IN A BOX (v9.769, 2026-10-29, Aaron: "white background with black text boxed in with a black outline ...
+// we'll get rid of the black background"). PROVEN 06:45 by SHOW_IT img_mvtlh9fj8smi ("this is good"): eight white cards, each
+// outlined, the words in black in an outlined box under the design. The black gaps between the cards stay - the cutter finds the
+// cards by them; nobody sees them. The design is split from its words at the box's top edge (cutAllCards).
+const SHEET8_DIRECT = "Use color wherever it works. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is all white with a thin black outline around it: the whole tattoo artwork as large as it fits at the top - not on skin - and under it, inside a box with a thin black outline, a short title in bold black capital letters, and under it two short lines in black describing the design. No numbers anywhere.";
 // MEDIUM UNTIL AARON SAYS OTHERWISE (2026-10-18): low gave near-copies on the photo roads. A setting, `config:edit:sheet8:quality`.
 async function sheet8Quality(env) { try { const k = String((await env.AURA_KV.get("config:edit:sheet8:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(k)) return k; } catch {} return "medium"; }
 // THE NEW-TATTOO SHEET'S OWN IMAGE MODEL (v9.693, 2026-10-21, Aaron): `config:source:sheet8:model` - empty means the shared
@@ -61078,7 +61127,7 @@ async function sheet8DirectSize(env) { let w = 1440, h = 3120; try { const m = S
 // ON THEIR PHOTO, STRAIGHT TO THE IMAGE MODEL (v9.721, 2026-10-22, Aaron: "why are we writing a brief for a cover up ... we're literally
 // supposed to be saying here's the tattoo I have, here's what I want to do with it"). The body ending with the words printed under each
 // picture, as the direct new-tattoo ending does - nothing writes a reply, so nothing has to. Setting: config:frame:sheet8:bodydirect.
-const SHEET8_BODY_DIRECT = "Show the whole tattoo in every picture, nothing cut off at the edges. Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture the same shape as my photo, in a clean white frame with rounded corners, with a wide black gap between them, and under each picture, on the black, a short title in bold white capital letters, and under it two short lines in white describing the design. No numbers anywhere.";
+const SHEET8_BODY_DIRECT = "Show the whole tattoo in every picture, nothing cut off at the edges. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is all white with a thin black outline around it: the picture at the top, the same shape as my photo, and under it, inside a box with a thin black outline, a short title in bold black capital letters, and under it two short lines in black describing the design. No numbers anywhere.";
 // Their opening stays word for word; the four-card layout at its end comes off, and the one ending goes on.
 async function toEight(env, sentence, kind) {
   let s = String(sentence || "").trim();
@@ -61126,6 +61175,9 @@ async function eightCards(env, sheetUrl, said, eopts) {
     // v9.768: each card's words under its own picture id, so its catalog card can be made from the card alone.
     if (ok && !_printed) { try { await Promise.all(cards.map((c) => { const cid = (String(c.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
       return cid && c.title ? env.AURA_KV.put("cardinfo:" + cid, JSON.stringify({ title: c.title, lines: c.lines || [], sheet: sid || null, n: c.n })).catch(() => {}) : null; })); } catch {} }
+    // v9.769: a card whose words are drawn in it is marked too, so its catalog card is made from the card alone
+    if (_printed) { try { await Promise.all(cards.map((c) => { const cid = (String(c.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+      return cid ? env.AURA_KV.put("cardinfo:" + cid, JSON.stringify({ printed: true, sheet: sid || null, n: c.n })).catch(() => {}) : null; })); } catch {} }
     console.log("[CUT8] " + cards.length + " cards off " + sid + (_printed ? " · words drawn on the cards, artwork kept apart: " + cards.filter((x) => x.art).length + " of " + cards.length
       : ok ? " · words matched by order" : " · words not used: " + lines.length + " lines for " + cards.length + " cards") + " · " + ((Date.now() - _c8T0) / 1000).toFixed(1) + "s");
     return cards;
@@ -77208,10 +77260,12 @@ function openAlbum(idx){
           let _info = null;
           try { _info = JSON.parse((await env.AURA_KV.get("cardinfo:" + id)) || "null"); } catch {}
           const _sid = String(url.searchParams.get("s") || ""), _n = parseInt(url.searchParams.get("n") || "", 10);
-          if (!(_info && _info.title) && /^img_[A-Za-z0-9_-]+$/.test(_sid) && _n >= 1 && _n <= 8) {
+          if (!(_info && (_info.title || _info.printed)) && /^img_[A-Za-z0-9_-]+$/.test(_sid) && _n >= 1 && _n <= 8) {
             try { const _k8 = JSON.parse((await env.AURA_KV.get("sheet8:" + _sid)) || "null"); const _c = Array.isArray(_k8) ? _k8[_n - 1] : null;
               // only when that card really is this picture, and its words were not already drawn into it
-              if (_c && _c.title && !_c.printed && String(_c.image || "").indexOf(id) >= 0) _info = { title: _c.title, lines: _c.lines || [] }; } catch {}
+              if (_c && _c.title && !_c.printed && String(_c.image || "").indexOf(id) >= 0) _info = { title: _c.title, lines: _c.lines || [] };
+              // v9.769: a card whose words the image model drew in it - its own words travel with it, the logo goes under it
+              if (_c && _c.printed && String(_c.image || "").indexOf(id) >= 0) _info = { printed: true }; } catch {}
           }
           if (!_BRAND_PNG) { const b = await env.AURA_KV.get("brand:inkit-logo", { type: "arrayBuffer" }).catch(() => null); if (b) _BRAND_PNG = new Uint8Array(b); }
           let _src = null;
@@ -77220,12 +77274,29 @@ function openAlbum(idx){
             const _im = PhotonImage.new_from_byteslice(_src);
             const _W = _im.get_width(), _H = _im.get_height();
             const _sm = _W !== _cw ? photonResize(_im, _cw, Math.max(1, Math.round(_H * _cw / _W)), PhotonSampling.Lanczos3) : _im;
-            const _cc = composeCatalogCard(_sm, _info || {}, _BRAND_PNG);
+            // v9.769: a card cut before the white cards carries its words in white on a black strip at its foot - the strip is turned
+            // white with black words (every pixel flipped), so its words read on white like the new ones. Rows count as the strip when
+            // they are mostly dark, from the bottom up; only a strip between 8% and 40% of the card's height is touched.
+            if (_info && _info.printed) { try {
+              const sw = _sm.get_width(), sh = _sm.get_height(), sp = _sm.get_raw_pixels();
+              const darkRow = (y) => { let n = 0, d = 0; for (let x = 0; x < sw; x += 2) { n++; const o = (y * sw + x) * 4; if ((sp[o] + sp[o + 1] + sp[o + 2]) / 3 < 60) d++; } return d / n; };
+              let y = sh - 1; while (y > 0 && darkRow(y) > 0.6) y--;
+              const st = y + 1, sH = sh - st;
+              if (sH >= sh * 0.08 && sH <= sh * 0.4) {
+                for (let k = st * sw * 4; k < sp.length; k += 4) { sp[k] = 255 - sp[k]; sp[k + 1] = 255 - sp[k + 1]; sp[k + 2] = 255 - sp[k + 2]; }
+                const _fl = new PhotonImage(sp, sw, sh); const _cc0 = composeCatalogCard(_fl, {}, _BRAND_PNG); try { _fl.free(); } catch {}
+                if (_cc0) { const _out0 = _cc0.get_bytes_jpeg(86); try { _cc0.free(); } catch {} try { if (_sm !== _im) _sm.free(); } catch {} try { _im.free(); } catch {}
+                  await env.AURA_KV.put(_ck, _out0, { metadata: { ct: "image/jpeg", w: _cw, card: 1, flipped: 1 } }).catch(() => {});
+                  return new Response(_out0, { headers: { "content-type": "image/jpeg", "content-length": String(_out0.length),
+                    "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "made", "x-card": "flipped" } }); }
+              }
+            } catch (e) { try { console.log("[CARD] " + id + " strip not flipped: " + String(e?.message ?? e).slice(0, 120)); } catch {} } }
+            const _cc = composeCatalogCard(_sm, (_info && _info.printed) ? {} : (_info || {}), _BRAND_PNG);
             if (_cc) {
               const _out = _cc.get_bytes_jpeg(86);
               try { _cc.free(); } catch {} try { if (_sm !== _im) _sm.free(); } catch {} try { _im.free(); } catch {}
               // kept only when it carries its words - a card whose words could not be found is made again next time
-              const _keep = !!(_info && _info.title);
+              const _keep = !!(_info && (_info.title || _info.printed));
               if (_keep) await env.AURA_KV.put(_ck, _out, { metadata: { ct: "image/jpeg", w: _cw, card: 1 } }).catch(() => {});
               return new Response(_out, { headers: { "content-type": "image/jpeg", "content-length": String(_out.length),
                 "cache-control": _keep ? "public, max-age=31536000, immutable" : "no-store", "x-small-copy": "made", "x-card": _keep ? "yes" : "no-words" } });

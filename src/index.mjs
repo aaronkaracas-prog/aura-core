@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.769.0-2026-10-29-white-cards";
+const BUILD = "aura-core-v9.770.0-2026-10-29-logo-in-card";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -163,13 +163,13 @@ function composeCatalogCard(card, info, logoBytes) {
   const title = tt ? _wrap(tt, tS, maxW, 1) : [];
   const lS = Math.round(W * 0.034), lG = Math.round(lS * 1.42);
   const body = _wrap(_txtClean(((info && info.lines) || []).join(" ")), lS, maxW, 3);
-  const lg0 = PhotonImage.new_from_byteslice(logoBytes);
-  const lw = Math.round(W * 0.26), lh = Math.round(lg0.get_height() * lw / lg0.get_width());
-  const gapTop = Math.round(W * 0.05), tH = Math.round(W * 0.052 * 1.15);
-  // v9.769: a card whose words are drawn in it (the white cards) gets the logo alone under it - no title space, no lines space.
+  // v9.770 (Aaron: "it looks like I'm using two pieces ... I don't want to extend this card ... stick it in the upper left"): the logo is
+  // stamped INTO the card, upper left, just inside the card's own outline - nothing is added under it. A card whose words are drawn in
+  // it (the white cards) keeps its exact size; a card whose words we write gets only the words band under it, no logo row.
   const _own = !title.length && !body.length;
-  const tY = Hc + gapTop, bY = tY + tH + Math.round(W * 0.016), lY = _own ? Hc + Math.round(W * 0.035) : bY + 3 * lG + Math.round(W * 0.025);
-  const H = lY + lh + Math.round(W * 0.035);
+  const gapTop = Math.round(W * 0.05), tH = Math.round(W * 0.052 * 1.15);
+  const tY = Hc + gapTop, bY = tY + tH + Math.round(W * 0.016);
+  const H = _own ? Hc : bY + Math.max(1, body.length) * lG + Math.round(W * 0.04);
   const px = new Uint8Array(W * H * 4).fill(255);
   px.set(card.get_raw_pixels(), 0);
   const hy = Hc + Math.round(gapTop * 0.4);
@@ -179,9 +179,11 @@ function composeCatalogCard(card, info, logoBytes) {
   const bold = Math.max(1, Math.round(tS / 18));
   title.forEach((t) => { for (let b = 0; b <= bold; b++) _Photon.draw_text_with_color(out, t, pad + b, tY + (tH - Math.round(tS * 1.15)), tS, new _Photon.Rgba(17, 17, 17, 255)); });
   body.forEach((t, i) => _Photon.draw_text_with_color(out, t, pad, bY + i * lG, lS, new _Photon.Rgba(80, 80, 88, 255)));
+  const lg0 = PhotonImage.new_from_byteslice(logoBytes);
+  const lw = Math.round(W * 0.24), lh = Math.round(lg0.get_height() * lw / lg0.get_width());
   const lg = photonResize(lg0, lw, lh, PhotonSampling.Lanczos3);
-  const lx = Math.max(0, pad - Math.round(lw * 0.04));
-  try { photonWatermark(out, lg, BigInt(lx), BigInt(lY)); } catch { photonWatermark(out, lg, lx, lY); }
+  const lx = Math.round(W * 0.065), ly = Math.round(W * 0.05);
+  try { photonWatermark(out, lg, BigInt(lx), BigInt(ly)); } catch { photonWatermark(out, lg, lx, ly); }
   try { lg.free(); } catch {} try { lg0.free(); } catch {}
   return out;
 }
@@ -77251,8 +77253,9 @@ function openAlbum(idx){
       // v9.768: `mark=2` is the same as `mark=1` - a new address, so a phone that kept the old small-logo copy asks again.
       const _mk = ["1", "2"].includes(url.searchParams.get("mark") || "");
       // v9.768: `card=1` - the catalog card (the design, its title and lines and the logo in a white band under it). See composeCatalogCard.
-      if (url.searchParams.get("card") === "1" && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
-        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c1.jpg";
+      if (["1", "2"].includes(url.searchParams.get("card") || "") && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
+        // v9.770: kept under _c2 - the copies with the logo underneath (_c1) are never served again
+        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c2.jpg";
         const _chave = await env.AURA_KV.getWithMetadata(_ck, { type: "arrayBuffer" }).catch(() => null);
         if (_chave && _chave.value) return new Response(_chave.value, { headers: { "content-type": "image/jpeg", "content-length": String(_chave.value.byteLength),
           "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept", "x-card": "yes" } });

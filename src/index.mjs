@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.771.0-2026-10-29-logo-beside-words";
+const BUILD = "aura-core-v9.772.0-2026-10-30-favorites-keep-card";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -72641,7 +72641,8 @@ export class PublicEntry extends WorkerEntrypoint {
           // ONE OF THE FOUR (v9.616, 2026-10-15, Aaron): a heart on one design of a four-panel sheet keeps the sheet's own
           // picture and which of the four (1-4) - nothing new is drawn or saved; the page shows only that quarter. Each of the
           // four is its own favourite.
-          const q = [1, 2, 3, 4].includes(Number(it.q)) ? Number(it.q) : null;
+          // v9.772: a sheet has 8 cards - a heart on cards 5-8 kept no number, so after a reload its heart showed empty.
+          const q = [1, 2, 3, 4, 5, 6, 7, 8].includes(Number(it.q)) ? Number(it.q) : null;
           const at = list.findIndex((x) => x && x.url === url && (Number(x.q) || null) === q);
           const on = (b.on === undefined) ? at < 0 : !!b.on;
           if (at >= 0) list.splice(at, 1);
@@ -72651,7 +72652,9 @@ export class PublicEntry extends WorkerEntrypoint {
             trend: !!it.trend, ...(q ? { q } : {}),
             ...(/^https:\/\//i.test(String(it.from || "")) ? { from: String(it.from).slice(0, 300) } : {}),
             // What the design is, from the card the chat model wrote (v9.626) - for its "i".
-            ...(it.about ? { about: String(it.about).slice(0, 800) } : {}), ts: Date.now() });
+            ...(it.about ? { about: String(it.about).slice(0, 800) } : {}),
+            // v9.772 (Aaron, the favorites): the catalog card it was saved with - logo, title and lines - is what Favorites shows.
+            ...(/^https:\/\//i.test(String(it.card || "")) ? { card: String(it.card).slice(0, 1000) } : {}), ts: Date.now() });
           list = list.slice(0, 1000);
           await talkStatePut(env, me, "favorites", JSON.stringify(list));
         }

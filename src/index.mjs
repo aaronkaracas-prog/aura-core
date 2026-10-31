@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.773.0-2026-10-31-clean-edges-finalize";
+const BUILD = "aura-core-v9.774.0-2026-10-31-no-edge-lines";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -268,11 +268,17 @@ function _cleanEdges(img) {
   const rowDark = (y, x0, x1) => { let n = 0, d = 0; for (let x = x0; x < x1; x += 2) { n++; if (L(x, y) < 90) d++; } return n ? d / n : 0; };
   const colDark = (x, y0, y1) => { let n = 0, d = 0; for (let y = y0; y < y1; y += 2) { n++; if (L(x, y) < 90) d++; } return n ? d / n : 0; };
   let t = 0, b = H, l = 0, r = W; const my = Math.max(2, Math.round(H * 0.02)), mx = Math.max(2, Math.round(W * 0.02));
+  // v9.774 (Aaron, 2026-10-31: "I don't wanna see black lines in between images and the screen"): a GREY hairline too - an edge line
+  // whose average is clearly darker than the white just inside it (the card's anti-aliased border), not only a black one.
+  const rowMean = (y, x0, x1) => { let n = 0, s2 = 0; for (let x = x0; x < x1; x += 2) { n++; s2 += L(x, y); } return n ? s2 / n : 255; };
+  const colMean = (x, y0, y1) => { let n = 0, s2 = 0; for (let y = y0; y < y1; y += 2) { n++; s2 += L(x, y); } return n ? s2 / n : 255; };
+  const lineRow = (y, yIn) => (rowDark(y, l, r) > 0.35 && rowDark(yIn, l, r) < 0.2) || (rowMean(y, l, r) < 225 && rowMean(yIn, l, r) > 238);
+  const lineCol = (x, xIn) => (colDark(x, t, b) > 0.35 && colDark(xIn, t, b) < 0.2) || (colMean(x, t, b) < 225 && colMean(xIn, t, b) > 238);
   for (let k = 0; k < 3; k++) {
-    while (t < my && rowDark(t, l, r) > 0.35 && rowDark(Math.min(H - 1, t + 3), l, r) < 0.2) t++;
-    while (H - b < my && rowDark(b - 1, l, r) > 0.35 && rowDark(Math.max(0, b - 4), l, r) < 0.2) b--;
-    while (l < mx && colDark(l, t, b) > 0.35 && colDark(Math.min(W - 1, l + 3), t, b) < 0.2) l++;
-    while (W - r < mx && colDark(r - 1, t, b) > 0.35 && colDark(Math.max(0, r - 4), t, b) < 0.2) r--;
+    while (t < my && lineRow(t, Math.min(H - 1, t + 3))) t++;
+    while (H - b < my && lineRow(b - 1, Math.max(0, b - 4))) b--;
+    while (l < mx && lineCol(l, Math.min(W - 1, l + 3))) l++;
+    while (W - r < mx && lineCol(r - 1, Math.max(0, r - 4))) r--;
   }
   const cw = r - l, ch = b - t;
   const out = new Uint8Array(cw * ch * 4);
@@ -77376,11 +77382,11 @@ function openAlbum(idx){
       const _w = [240, 480, 720, 1440].includes(_wq) ? _wq : 0;
       // v9.767: `mark=1` - the same copy with the Inkit.world logo stamped bottom-left, kept under its own key. Full size when no `w`.
       // v9.768: `mark=2` is the same as `mark=1` - a new address, so a phone that kept the old small-logo copy asks again.
-      const _mk = ["1", "2"].includes(url.searchParams.get("mark") || "");
+      const _mk = ["1", "2", "3", "4"].includes(url.searchParams.get("mark") || "");
       // v9.768: `card=1` - the catalog card (the design, its title and lines and the logo in a white band under it). See composeCatalogCard.
-      if (["1", "2", "3", "4"].includes(url.searchParams.get("card") || "") && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
+      if (["1", "2", "3", "4", "5"].includes(url.searchParams.get("card") || "") && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.770: kept under _c2 - the copies with the logo underneath (_c1) are never served again
-        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c4.jpg";
+        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c5.jpg";
         const _chave = await env.AURA_KV.getWithMetadata(_ck, { type: "arrayBuffer" }).catch(() => null);
         if (_chave && _chave.value) return new Response(_chave.value, { headers: { "content-type": "image/jpeg", "content-length": String(_chave.value.byteLength),
           "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept", "x-card": "yes" } });
@@ -77438,12 +77444,12 @@ function openAlbum(idx){
         // anything that went wrong: the stamped copy instead (below)
         url.searchParams.set("mark", "1");
       }
-      const _mk2 = _mk || ["1", "2"].includes(url.searchParams.get("mark") || "");
+      const _mk2 = _mk || ["1", "2", "3", "4"].includes(url.searchParams.get("mark") || "");
       if ((_w || _mk2) && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.728: MEASURED - Photon's get_bytes_webp() is LOSSLESS: 684KB at 480 wide. JPEG 80 measured 5-6x smaller on our
         // pictures, so copies are JPEG, and the key carries .jpg so the lossless copies made under v9.727 are never served.
         // v9.773: _m3 - the logo right in the corner and the edges cleaned; the _m2 copies are never served again
-        const _tk = "small:" + id + "_w" + (_w || "full") + (_mk2 ? "_m3" : "") + ".jpg";
+        const _tk = "small:" + id + "_w" + (_w || "full") + (_mk2 ? "_m4" : "") + ".jpg";
         const _have = await env.AURA_KV.getWithMetadata(_tk, { type: "arrayBuffer" }).catch(() => null);
         if (_have && _have.value) return new Response(_have.value, { headers: { "content-type": (_have.metadata && _have.metadata.ct) || "image/jpeg",
           "content-length": String(_have.value.byteLength), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });

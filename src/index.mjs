@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.772.0-2026-10-30-favorites-keep-card";
+const BUILD = "aura-core-v9.773.0-2026-10-31-clean-edges-finalize";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -124,7 +124,8 @@ async function inkitStamp(env, img) {
   // v9.768 (Aaron: "it's too small ... in the left corner and larger"): 16% of the width -> 26%, still bottom-left.
   const lw = Math.max(40, Math.round(W * 0.26)), lh = Math.max(1, Math.round(lg0.get_height() * lw / lg0.get_width()));
   const lg = photonResize(lg0, lw, lh, PhotonSampling.Lanczos3);
-  const m = Math.round(W * 0.03), x = m, y = Math.max(0, H - lh - m);
+  // v9.773 (Aaron: "the inkit logo to the lower left as far as we can"): 3% in from the edges -> 1%.
+  const m = Math.max(2, Math.round(W * 0.01)), x = m, y = Math.max(0, H - lh - m);
   try { photonWatermark(img, lg, BigInt(x), BigInt(y)); } catch { photonWatermark(img, lg, x, y); }
   try { lg.free(); } catch {} try { lg0.free(); } catch {}
   return true;
@@ -254,6 +255,45 @@ function composeCatalogCard(card, info, logoBytes) {
   _stamp(out, pad, Hc + Math.round((bandH - lH) / 2) + Math.round(W * 0.01), lH);
   try { lg0.free(); } catch {}
   return out;
+}
+// ══ NO BLACK LINES, NO DARK CORNERS (v9.773, 2026-10-31, Aaron: "wherever we can get rid of ... black lines or rounded edges") ══════
+// A design cut off a sheet can carry the sheet's black at its edges: a thin dark line along an edge (the panel's anti-aliased border) and
+// dark wedges in its corners (the panel's rounded corners on the black page). Before a copy is stamped or made into a catalog card, an
+// edge line is trimmed off - only a line: dark across the edge with light just inside it, at most 2% of the picture - and a dark wedge
+// joined to a corner turns white, only where both edges beside that corner are light. A photo or a design dark to its edges is untouched.
+function _cleanEdges(img) {
+  const W = img.get_width(), H = img.get_height(); if (W < 40 || H < 40) return img;
+  const px = img.get_raw_pixels();
+  const L = (x, y) => { const o = (y * W + x) * 4; return (px[o] + px[o + 1] + px[o + 2]) / 3; };
+  const rowDark = (y, x0, x1) => { let n = 0, d = 0; for (let x = x0; x < x1; x += 2) { n++; if (L(x, y) < 90) d++; } return n ? d / n : 0; };
+  const colDark = (x, y0, y1) => { let n = 0, d = 0; for (let y = y0; y < y1; y += 2) { n++; if (L(x, y) < 90) d++; } return n ? d / n : 0; };
+  let t = 0, b = H, l = 0, r = W; const my = Math.max(2, Math.round(H * 0.02)), mx = Math.max(2, Math.round(W * 0.02));
+  for (let k = 0; k < 3; k++) {
+    while (t < my && rowDark(t, l, r) > 0.35 && rowDark(Math.min(H - 1, t + 3), l, r) < 0.2) t++;
+    while (H - b < my && rowDark(b - 1, l, r) > 0.35 && rowDark(Math.max(0, b - 4), l, r) < 0.2) b--;
+    while (l < mx && colDark(l, t, b) > 0.35 && colDark(Math.min(W - 1, l + 3), t, b) < 0.2) l++;
+    while (W - r < mx && colDark(r - 1, t, b) > 0.35 && colDark(Math.max(0, r - 4), t, b) < 0.2) r--;
+  }
+  const cw = r - l, ch = b - t;
+  const out = new Uint8Array(cw * ch * 4);
+  for (let y = 0; y < ch; y++) out.set(px.subarray(((t + y) * W + l) * 4, ((t + y) * W + r) * 4), y * cw * 4);
+  const Lo = (x, y) => { const o = (y * cw + x) * 4; return (out[o] + out[o + 1] + out[o + 2]) / 3; };
+  const R = Math.max(6, Math.round(Math.min(cw, ch) * 0.06));
+  let changed = t > 0 || l > 0 || b < H || r < W;
+  for (const [cx, cy, dx, dy] of [[0, 0, 1, 1], [cw - 1, 0, -1, 1], [0, ch - 1, 1, -1], [cw - 1, ch - 1, -1, -1]]) {
+    if (Lo(cx, cy) >= 200) continue;
+    if (Lo(cx + dx * Math.min(R, cw - 1), cy) < 170 || Lo(cx, cy + dy * Math.min(R, ch - 1)) < 170) continue;
+    const seen = new Uint8Array(R * R), st = [[0, 0]];
+    while (st.length) {
+      const [i, j] = st.pop(); if (i < 0 || j < 0 || i >= R || j >= R || seen[j * R + i]) continue;
+      seen[j * R + i] = 1; const x = cx + dx * i, y = cy + dy * j;
+      if (Lo(x, y) >= 200) continue;
+      const o = (y * cw + x) * 4; out[o] = out[o + 1] = out[o + 2] = 255; changed = true;
+      st.push([i + 1, j], [i, j + 1], [i - 1, j], [i, j - 1]);
+    }
+  }
+  if (!changed) return img;
+  return new PhotonImage(out, cw, ch);
 }
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
@@ -70422,7 +70462,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _seedNow = 1 + Math.floor(Math.random() * 2000000000);
             _wordsFrom = "inspire+eight+direct";
           }
-          const _bodyDirect = !_possDirect && !_inspDirect && _ideasGrid && !_designGrid && _sentNow && (await sheet8Route(env)) === "direct";
+          // ══ EVERY SHEET THE SAME WHITE CARDS (v9.773, 2026-10-31, Aaron: "make all these changes and the ones you recommended") ══
+          // A change of a design (Fine-tune it, or their own words with a design on screen) and the first eight from a photo still went
+          // through the chat model: no words on the cards, the words added by us under them - a different look from every other sheet.
+          // Now they go straight to the image model with the same white-card ending, like the new-tattoo, possibilities and on-you sheets.
+          // config:source:sheet8:route = thread brings the chat model back for all of them.
+          const _changeDirect = !_possDirect && !_inspDirect && _designGrid && _sentNow && (await sheet8Route(env)) === "direct";
+          if (_changeDirect) {
+            _sentNow = await toEight(env, _sentNow, "direct");
+            const _pz = await sheet8DirectSize(env);
+            _viaNow = null; _asNow = "design_evolve"; _canvasNow = { width: _pz.width, height: _pz.height }; _sizeNow = null;
+            _qualNow = await sheet8DirectQuality(env); _modelNow = await sheet8Model(env); _rawNow = true;
+            _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+            _wordsFrom = String(_wordsFrom || "sheet") + "+eight+direct";
+          }
+          const _bodyDirect = !_possDirect && !_inspDirect && !_changeDirect && _ideasGrid && !_designGrid && _sentNow && (await sheet8Route(env)) === "direct";
           if (_bodyDirect) {
             _sentNow = await toEight(env, _sentNow, "bodydirect");
             const _pz = await sheet8DirectSize(env);
@@ -70430,7 +70484,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _qualNow = await sheet8DirectQuality(env); _modelNow = await sheet8Model(env); _rawNow = true;
             _seedNow = 1 + Math.floor(Math.random() * 2000000000);
             _wordsFrom = String(_wordsFrom || "sheet") + "+eight+direct";
-          } else if (!_possDirect && !_inspDirect && (_ideasGrid || _designGrid) && _sentNow) {
+          } else if (!_possDirect && !_inspDirect && !_changeDirect && (_ideasGrid || _designGrid) && _sentNow) {
             _sentNow = await toEight(env, _sentNow, _designGrid ? "flat" : "body");
             _viaNow = "thread"; _asNow = null; _canvasNow = null; _sizeNow = await sheet8Size(env); _qualNow = await sheet8Quality(env);
             _wordsFrom = String(_wordsFrom || "sheet") + "+eight";
@@ -70585,10 +70639,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_designGrid) {
               // FOUR VERSIONS OF A CHANGE (v9.605, Aaron): her own words to their change stay - she was called before it
               // was drawn - and the same fixed line as the first four follows. No look: the titles are in the picture.
-              let _done = (_fixedWhy === "more") ? "Here are more for you. Your favorites are saved - tap Work on this on the one that's closest and we'll make it yours." : "Here are your designs. Heart the ones you like - they're saved in your favorites and we can work from any of them. Tap Work on this when one feels right.";
+              let _done = (_fixedWhy === "more") ? "Here are more for you. Select the one that's closest, then tap Finalize This Design to make it yours." : "Here are your designs. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours - or Imagine More Possibilities for 8 new takes on it.";
               try { const _k = String((await env.AURA_KV.get("config:say:eight_done")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_designWords === "__poss__") {
-                _done = "Here are some possibilities for your design. Heart the ones you like - they're saved in your favorites. Tap Work on this when one feels right.";
+                _done = "Here are some possibilities for your design. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours.";
                 try { const _k = String((await env.AURA_KV.get("config:say:poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               // HER WORDS WERE WRITTEN BEFORE THE EIGHT FROM THE PHOTO EXISTED (v9.740, 2026-10-24, Aaron: "she's saying things and
@@ -70599,13 +70653,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (_inkFirstTurn && acted && acted.say) { try { console.log("[TURN:WORDS] her words before the eight from the photo were not shown: \"" + String(acted.say).slice(0, 200) + "\""); } catch {} }
               _reaction = _hers ? (_hers + "\n\n" + _done) : _done;
             } else if (_ideasGrid) {
-              let _done = (_fixedWhy === "more") ? "Here are more for you. Your favorites are saved - tap Work on this on the one that's closest and we'll make it yours." : "Here are your designs. Heart the ones you like - they're saved in your favorites and we can work from any of them. Tap Work on this when one feels right.";
+              let _done = (_fixedWhy === "more") ? "Here are more for you. Select the one that's closest, then tap Finalize This Design to make it yours." : "Here are your designs. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours - or Imagine More Possibilities for 8 new takes on it.";
               try { const _k = String((await env.AURA_KV.get("config:say:ideas_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_addonPoss && _addonChangeWords) {
-                _done = "Here are some versions of that on you. Heart the ones you like - they're saved in your favorites. Tap Work on this when one feels right.";
+                _done = "Here are some versions of that on you. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours.";
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_change_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               } else if (_addonPoss) {
-                _done = "Here are some possibilities on you. Heart the ones you like - they're saved in your favorites. Tap Work on this when one feels right.";
+                _done = "Here are some possibilities on you. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours.";
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               _reaction = _done;
@@ -70626,7 +70680,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
           // CUT THE MOMENT IT COMES BACK (v9.678): the eight cards, each with its words.
           let _eight = null;
-          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, (_possDirect || _bodyDirect || _inspDirect) ? { printed: true } : null);
+          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, (_possDirect || _bodyDirect || _inspDirect || _changeDirect) ? { printed: true } : null);
           // THE ADD-ON FOUR ARE MARKED (v9.651): a pick off this sheet is cut out of it, never redrawn (cutBodyPanel).
           if (_ideasGrid && cp?.ok && cp.image_url) {
             const _bsid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
@@ -70949,7 +71003,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // reading them back added ~20s and told them nothing new. One fixed line instead (config:say:four_done).
             let _lk2 = null;
             if (_newSentence) {
-              _reaction = (_fixedWhy === "more") ? "Here are more for you. Your favorites are saved - tap Work on this on the one that's closest and we'll make it yours." : "Here are your designs. Heart the ones you like - they're saved in your favorites and we can work from any of them. Tap Work on this when one feels right.";
+              _reaction = (_fixedWhy === "more") ? "Here are more for you. Select the one that's closest, then tap Finalize This Design to make it yours." : "Here are your designs. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours - or Imagine More Possibilities for 8 new takes on it.";
               try { const _k = String((await env.AURA_KV.get("config:say:eight_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
             } else {
               _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);
@@ -77324,9 +77378,9 @@ function openAlbum(idx){
       // v9.768: `mark=2` is the same as `mark=1` - a new address, so a phone that kept the old small-logo copy asks again.
       const _mk = ["1", "2"].includes(url.searchParams.get("mark") || "");
       // v9.768: `card=1` - the catalog card (the design, its title and lines and the logo in a white band under it). See composeCatalogCard.
-      if (["1", "2", "3"].includes(url.searchParams.get("card") || "") && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
+      if (["1", "2", "3", "4"].includes(url.searchParams.get("card") || "") && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.770: kept under _c2 - the copies with the logo underneath (_c1) are never served again
-        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c3.jpg";
+        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c4.jpg";
         const _chave = await env.AURA_KV.getWithMetadata(_ck, { type: "arrayBuffer" }).catch(() => null);
         if (_chave && _chave.value) return new Response(_chave.value, { headers: { "content-type": "image/jpeg", "content-length": String(_chave.value.byteLength),
           "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept", "x-card": "yes" } });
@@ -77347,7 +77401,9 @@ function openAlbum(idx){
           if (_src && _BRAND_PNG) {
             const _im = PhotonImage.new_from_byteslice(_src);
             const _W = _im.get_width(), _H = _im.get_height();
-            const _sm = _W !== _cw ? photonResize(_im, _cw, Math.max(1, Math.round(_H * _cw / _W)), PhotonSampling.Lanczos3) : _im;
+            let _sm = _W !== _cw ? photonResize(_im, _cw, Math.max(1, Math.round(_H * _cw / _W)), PhotonSampling.Lanczos3) : _im;
+            // v9.773: no black line along an edge, no dark corners - one white card (the seam Aaron saw under the design)
+            try { const _cl = _cleanEdges(_sm); if (_cl !== _sm) { if (_sm !== _im) { try { _sm.free(); } catch {} } _sm = _cl; } } catch {}
             // v9.769: a card cut before the white cards carries its words in white on a black strip at its foot - the strip is turned
             // white with black words (every pixel flipped), so its words read on white like the new ones. Rows count as the strip when
             // they are mostly dark, from the bottom up; only a strip between 8% and 40% of the card's height is touched.
@@ -77386,7 +77442,8 @@ function openAlbum(idx){
       if ((_w || _mk2) && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.728: MEASURED - Photon's get_bytes_webp() is LOSSLESS: 684KB at 480 wide. JPEG 80 measured 5-6x smaller on our
         // pictures, so copies are JPEG, and the key carries .jpg so the lossless copies made under v9.727 are never served.
-        const _tk = "small:" + id + "_w" + (_w || "full") + (_mk2 ? "_m2" : "") + ".jpg";
+        // v9.773: _m3 - the logo right in the corner and the edges cleaned; the _m2 copies are never served again
+        const _tk = "small:" + id + "_w" + (_w || "full") + (_mk2 ? "_m3" : "") + ".jpg";
         const _have = await env.AURA_KV.getWithMetadata(_tk, { type: "arrayBuffer" }).catch(() => null);
         if (_have && _have.value) return new Response(_have.value, { headers: { "content-type": (_have.metadata && _have.metadata.ct) || "image/jpeg",
           "content-length": String(_have.value.byteLength), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });
@@ -77402,6 +77459,7 @@ function openAlbum(idx){
             if (_w && _W > _w) _sm = photonResize(_im, _w, Math.max(1, Math.round(_H * _w / _W)), PhotonSampling.Lanczos3);
             // A mark that could not be stamped is served once without the logo and never kept, so it is tried again next time.
             let _stamped = false;
+            if (_mk2) { try { const _cl = _cleanEdges(_sm); if (_cl !== _sm) { if (_sm !== _im) { try { _sm.free(); } catch {} } _sm = _cl; } } catch {} }
             if (_mk2) { try { _stamped = await inkitStamp(env, _sm); } catch (e) { try { console.log("[MARK] " + id + " stamp failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} } }
             const _out = _sm.get_bytes_jpeg(_w ? 80 : 88);
             try { if (_sm !== _im) _sm.free(); } catch {}

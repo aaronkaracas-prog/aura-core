@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.774.0-2026-10-31-no-edge-lines";
+const BUILD = "aura-core-v9.775.0-2026-10-31-artist-files-memory";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -10834,12 +10834,10 @@ async function processCommand(line, env, isOp) {
           why: String(e && e.message || e).slice(0, 200) } };
       } finally { if (pBrowser) { try { await pBrowser.close(); } catch {} } }
 
+      // v9.775: kept as raw bytes under docb: (see artistPdf).
       const pdfArr = new Uint8Array(pdfBytes);
-      let pb = ""; for (let i = 0; i < pdfArr.length; i += 8192) {
-        pb += String.fromCharCode.apply(null, pdfArr.subarray(i, i + 8192));
-      }
       const docId = "doc_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      await env.AURA_KV.put("doc:" + docId, btoa(pb)).catch(() => {});
+      await env.AURA_KV.put("docb:" + docId, pdfArr).catch(() => {});
       const pHost = await imageHost(env);
       return { cmd: "PRINT", payload: { ok: true, doc: docId,
         pdf: "https://" + pHost + "/doc/" + docId,
@@ -60991,6 +60989,22 @@ async function artistPdf(env, o) {
         if (L.pVec) { L.gid = "a" + (vecN++); defs += '<g id="' + L.gid + '">' + L.pVec + "</g>"; anyVec = true; }
         laid[it.url] = L;
       }
+      // ══ TOO BUSY TO TRACE: BY ADDRESS, LIKE THE SHADING GUIDE (v9.775, 2026-10-31) ═══════════════════════════════════════════
+      // MEASURED 08:33-08:36 (pta_ed8bd7cc93dfd9b7, Samurai Tiger with Dragon and Peonies): the linework traced to 1,837,195 characters,
+      // over the 800,000 line, so it went in as pixels - written into the page as base64 twice (normal and mirrored). The page came to
+      // 17,633 KB and all three tries were killed: "Worker exceeded memory limit". A stencil that is not traced now goes in by its
+      // address, exactly as the shading guide and the colour design do (v9.718): the browser fetches it, nothing of it is held here.
+      if (it.trace && L && !L.pVec && !it.colour) {
+        L.pSlices = [];   // its pixel pages are not used - let them go
+        const start = page, flip = it.mirror ? "transform:scaleX(-1);" : "";
+        body += '<div class="art" style="height:10in"><img style="' + flip + 'max-height:10in;max-width:7.5in;width:auto;height:auto" src="' + esc(it.url) + '"></div>';
+        page++;
+        if (!first) first = L;
+        if (_tall == null) _tall = Number(pn.inches) || null;
+        guide.push([(pn.name ? pn.name + " - " : "") + it.label, "page " + start +
+          (Number(pn.inches) ? " - planned at about " + Number(pn.inches).toFixed(0) + " in" + (pn.long ? " on its longest side" : " tall") : "")]);
+        continue;
+      }
       if (!it.colour && !first) first = L;
       if (!it.colour && _tall == null) _tall = Number(pn.inches) || null;
       const land = L.pOrient === "landscape", flip = it.mirror ? "transform:scaleX(-1);" : "";
@@ -61067,10 +61081,10 @@ async function artistPdf(env, o) {
     try { console.log("[ARTIST] PDF timing - page " + Math.round(html.length / 1024) + "KB, browser+layout " + ((_t1 - _t0) / 1000).toFixed(1) + "s, pdf " + ((Date.now() - _t1) / 1000).toFixed(1) + "s"); } catch {}
   } catch (e) { return { ok: false, error: "COULD_NOT_RENDER", why: String(e && e.message || e).slice(0, 200) }; }
   finally { if (br) { try { await br.close(); } catch {} } }
+  // v9.775: kept as raw bytes under docb: - the string copy and the base64 copy were two more copies of the PDF in memory.
   const arr = new Uint8Array(pdfBytes);
-  let pb = ""; for (let i = 0; i < arr.length; i += 8192) pb += String.fromCharCode.apply(null, arr.subarray(i, i + 8192));
   const docId = "doc_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  await env.AURA_KV.put("doc:" + docId, btoa(pb)).catch(() => {});
+  await env.AURA_KV.put("docb:" + docId, arr).catch(() => {});
   console.log("[ARTIST-PDF] " + docId + " · " + (page - 3) + " pages after the job sheet and how-to · " + guide.map((g) => g[0] + ": " + g[1]).join(" | ").slice(0, 900));
   return { ok: true, doc: docId, pdf: "https://" + (await imageHost(env)) + "/doc/" + docId, pages: page - 1, sheets: page - 3,
            inches: (o.panels && o.panels[0] && Number(o.panels[0].inches)) || (first ? Number(first.pTallIn.toFixed(2)) : null), vector: anyVec, guide, panels: perPanel };
@@ -77506,9 +77520,13 @@ function openAlbum(idx){
     // bytes are not an image.
     if (url.pathname.startsWith("/doc/") && request.method === "GET") {
       const did = url.pathname.slice("/doc/".length).replace(/\.pdf$/, "");
-      const b64d = await env.AURA_KV.get("doc:" + did).catch(() => null);
-      if (!b64d) return new Response("Not found", { status: 404 });
-      const db = Uint8Array.from(atob(b64d), (c) => c.charCodeAt(0));
+      // v9.775: new PDFs are raw bytes under docb:, older ones base64 under doc:.
+      let db = null;
+      const _raw = await env.AURA_KV.get("docb:" + did, { type: "arrayBuffer" }).catch(() => null);
+      if (_raw) db = new Uint8Array(_raw);
+      else { const b64d = await env.AURA_KV.get("doc:" + did).catch(() => null);
+        if (!b64d) return new Response("Not found", { status: 404 });
+        db = Uint8Array.from(atob(b64d), (c) => c.charCodeAt(0)); }
       return new Response(db, { headers: { "content-type": "application/pdf",
         "content-disposition": 'inline; filename="' + did + '.pdf"',
         // THE PAGE CAN SAVE IT (2026-10-09, v9.551, Aaron): mytattoo.world fetches the print file from

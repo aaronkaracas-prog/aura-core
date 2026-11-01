@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.780.0-2026-11-01-change-says-what";
+const BUILD = "aura-core-v9.781.0-2026-11-01-style-colours";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61300,6 +61300,13 @@ async function sheet8DirectSize(env) { let w = 1440, h = 3120; try { const m = S
 // picture, as the direct new-tattoo ending does - nothing writes a reply, so nothing has to. Setting: config:frame:sheet8:bodydirect.
 const SHEET8_BODY_DIRECT = "Show the whole tattoo in every picture, nothing cut off at the edges. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is all white with a thin black outline around it: the picture at the top, the same shape as my photo, and under it, inside a box with a thin black outline, a short title in bold black capital letters, and under it two short lines in black describing the design. No numbers anywhere.";
 // Their opening stays word for word; the four-card layout at its end comes off, and the one ending goes on.
+// Her words, never cut mid-word: up to `max` characters, ending on her last whole sentence when they have to be shortened.
+function _wholeSentences(t, max) {
+  const s = String(t || "").replace(/\s+/g, " ").trim();
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max), m = cut.match(/^[\s\S]*[.!?\u2026](?=\s|$)/);
+  return (m && m[0].length > max / 3) ? m[0].trim() : cut.replace(/\s+\S*$/, "").trim();
+}
 async function toEight(env, sentence, kind) {
   let s = String(sentence || "").trim();
   s = s.replace(/\bShow me (?:4|four)\b/gi, "Show me 8").replace(/\bthese (?:4|four) ideas\b/gi, "these ideas")
@@ -61315,9 +61322,17 @@ async function toEight(env, sentence, kind) {
   try { const k = String((await env.AURA_KV.get("config:frame:sheet8:" + _kn)) || "").trim(); if (k) end = k; } catch {}
   // A STYLE DECIDES THE COLOUR (v9.723, 2026-10-22). MEASURED 15:50: "in the Black & Grey Realism style" with "Use colour wherever it
   // works" drew a green-and-blue hummingbird. When a style is named, the colour line comes out of the sentence and the ending.
-  if (/\bin the [^.]{2,80} style\b/i.test(s)) {
+  // THE STYLE'S OWN COLOURS (v9.781, 2026-11-01). MEASURED 11:04 img_mvy77rdfqjz7: "all in the Japanese style" with the colour line
+  // taken out drew all 8 in black and white. The colour line is now REPLACED, not deleted: "Use the colours the <style> style is known
+  // for." - one sentence for every style, so Japanese comes out in colour and Black & Grey Realism stays grey. Setting:
+  // config:frame:sheet8:style_colour (needs {name}).
+  const _stm8 = s.match(/\bin the ([^.]{2,80}?) style\b/i);
+  if (_stm8) {
     const _col = /\s*Use colou?r wherever it works[^.]*\.\s*/gi;
     s = s.replace(_col, " ").replace(/\s{2,}/g, " ").trim(); end = end.replace(_col, " ").replace(/\s{2,}/g, " ").trim();
+    let _sc = "Use the colors the {name} style is known for.";
+    try { const k = String((await env.AURA_KV.get("config:frame:sheet8:style_colour")) || "").trim(); if (k.includes("{name}")) _sc = k; } catch {}
+    end = _sc.replace("{name}", _stm8[1].trim()) + " " + end;
   }
   return s.replace(/[\s]+$/, "") + " " + end;
 }
@@ -67920,7 +67935,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               let _hRest = _hm ? _hm[2] : "";
               const _hIdea = (_hRest.match(/^\s*IDEA:\s*(.+)/i) || [])[1] || "";
               if (_hIdea) _hRest = _hRest.replace(/^\s*IDEA:\s*.+\n?/i, "");
-              const _hSay = _hRest.replace(/\s+/g, " ").trim().slice(0, 400);
+              // HER WORDS END ON A WHOLE SENTENCE (v9.781). MEASURED 11:03: cut at 400 characters mid-word - "I'm imagining some designs f".
+              const _hSay = _wholeSentences(_hRest, 1200);
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
               if (_hIdea.trim()) {
                 _heardIdea = _hIdea.replace(/\s+/g, " ").trim().slice(0, 400);
@@ -67989,7 +68005,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 "adding. Never put a number in your words. Plain words only, no lists.";
               const _cq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _cMs)),
                 callBrain({ system: _cSys, user: _s.slice(0, 600), max_tokens: 400, ...(_cModel ? { model: _cModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
-              const _cSay = String((_cq && _cq.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, "").replace(/\s+/g, " ").trim().slice(0, 400);
+              const _cSay = _wholeSentences(String((_cq && _cq.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, ""), 1200);
               const _cSec = ((Date.now() - _cT0) / 1000).toFixed(1);
               if (_cSay && !(_cq && _cq.late)) {
                 const _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again.");

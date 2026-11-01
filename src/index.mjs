@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.778.0-2026-11-01-new-tattoo-heard-until-drawn";
+const BUILD = "aura-core-v9.779.0-2026-11-01-new-tattoo-drawn-marker";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67736,7 +67736,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn"]); } catch {}
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
           // because "design_change" from the 9:50 test was still set.
@@ -67752,7 +67752,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // offered ideas and a "Which direction feels right to you?" style card - two more steps. After a style pick the next thing
                   // they type was already drawn (v9.701); the Create greeting now waits for their idea the same way. Her DRAW/TALK judgement
                   // (v9.702) still decides when there is nothing yet to imagine from.
-                  await talkStatePut(env, me, "await_idea", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : ""); } catch {}
+                  await talkStatePut(env, me, "await_idea", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : "");
+                  // v9.779: nothing drawn in this tattoo yet (set to 1 the moment anything is drawn or chosen in it - see "last" below)
+                  await talkStatePut(env, me, "new_drawn", ""); } catch {}
             _ds = /^i want to create a new tattoo\.?$/i.test(_s) ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
@@ -67876,7 +67878,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // had already passed; it went to her as chat (17.9s), no drawing, and the style card. In a new tattoo with nothing drawn and
           // nothing chosen yet, every line now goes through her hearing step (v9.702): her reaction and DRAW - or TALK when there is
           // truly nothing to imagine from yet.
-          } else if (_newFlow && (String(_ds.await_idea || "") === "1" || !hasLive) && _s && !_bodyPhoto &&
+          // v9.779: MEASURED 10:16 - v9.778 tested "nothing drawn" with hasLive, which also counts the LAST TATTOO's design (talk-state
+          // "last" carries across tattoos), so on Aaron's account it was never true and "I just became a navy seal ... I also like skulls"
+          // went to her as chat (18.5s). "Nothing drawn in THIS tattoo" is now its own marker: cleared when the new tattoo starts, set the
+          // moment anything is drawn or chosen in it.
+          } else if (_newFlow && (String(_ds.await_idea || "") === "1" || String(_ds.new_drawn || "") !== "1") && _s && !_bodyPhoto &&
                      !(opts && (opts.inspire || opts.pick || opts.use || opts.tile || opts.name || opts.choose_go || opts.new_now)) &&
                      !/^i want to (create|add|cover)/i.test(_s) && !/^i like the .+ style\.?$/i.test(_s) && !/^i want number [1-8]\.?$/i.test(_s) &&
                      !/^i like this one\b/i.test(_s)) {
@@ -71205,6 +71211,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             JSON.stringify({ design: drew.design, image: drew.image,
                              subject: (intent && intent.subject) || null,
                              at: new Date().toISOString() }));
+          await talkStatePut(env, me, "new_drawn", "1");
         } catch {}
         // ══ A RECORD OF THE DESIGN SHE DREW (2026-09-23) ══════════════════════════════════════
         // "The piece on screen" is also where an arriving photo goes - right for an add-on, where the
@@ -71257,6 +71264,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             JSON.stringify({ design: refDesign, image: refUrl || null,
                              subject: (intent && intent.subject) || null,
                              at: new Date().toISOString() }));
+          await talkStatePut(env, me, "new_drawn", "1");
         } catch {}
       }
 

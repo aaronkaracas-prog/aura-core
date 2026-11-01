@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.776.0-2026-11-01-card-edges-box";
+const BUILD = "aura-core-v9.777.0-2026-11-01-create-draws-idea";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67721,7 +67721,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
       let _heardIdea = null;
-      let _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null;
+      let _heardTalk = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -67746,7 +67746,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // THE NEW-TATTOO FLOW MARKER (v9.604): set only by the Create New Tattoo opener, cleared by every other start.
                   await talkStatePut(env, me, "new_flow", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : "");
                   await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "new_start", "");
-                  await talkStatePut(env, me, "await_idea", ""); } catch {}
+                  // ══ CREATE WITHOUT A STYLE IS WAITING FOR THEIR IDEA TOO (v9.777, 2026-11-01, Aaron: "I told her what I was, she's offering
+                  // to show me some ideas ... I literally did already") ═══ MEASURED 09:19: "I'm a professional chef and I love butterflies and
+                  // golden retrievers ... I just got one of my five star Michelin rating" after the Create greeting went to her as chat; she
+                  // offered ideas and a "Which direction feels right to you?" style card - two more steps. After a style pick the next thing
+                  // they type was already drawn (v9.701); the Create greeting now waits for their idea the same way. Her DRAW/TALK judgement
+                  // (v9.702) still decides when there is nothing yet to imagine from.
+                  await talkStatePut(env, me, "await_idea", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : ""); } catch {}
             _ds = /^i want to create a new tattoo\.?$/i.test(_s) ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
@@ -67819,7 +67825,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const _dq = { tell: "What's on your mind? Tell me anything - an idea, a feeling, a person, a memory - or pick one of the styles above if one catches your eye.", idea: "Tell me what you're imagining.", mean: "What would you like your tattoo to express?",
                           memory: "What's a moment you'd like to keep with you?", someone: "Who are you thinking of?" }[_dk];
             _fixedWhy = "door"; _fixedSay = await _fx("door_" + _dk, _dq);
-            try { await talkStatePut(env, me, "await_idea", ""); } catch {}
+            // v9.777: after Tell me / I have an idea, what they type is their idea and is drawn, as after the Create greeting
+            try { await talkStatePut(env, me, "await_idea", (_dk === "tell" || _dk === "idea") ? "1" : ""); } catch {}
             console.log("[TURN:DOOR] " + _dk + " - her first question, fixed" + (me ? " · who=" + me : ""));
           } else if ((_stm = _s.match(/^i like the (.+) style\.?$/i))) {
             _fixedWhy = "style"; _fixedSay = (await _fx("style_pick", "____ - great pick. Explore the designs made in this style, or create your own with me.")).replace("____", _stm[1]);
@@ -67909,7 +67916,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);
               if (_hDo === "TALK") {
                 _fixedWhy = null; _fixedSay = null;
-                try { await talkStatePut(env, me, "await_idea", ""); } catch {}
+                // v9.777: still waiting for their idea - the next thing they say is heard the same way, and drawn when there is one
+                try { await talkStatePut(env, me, "await_idea", "1"); } catch {} _heardTalk = true;
                 console.log("[TURN:HEARD] " + _hSec + "s - TALK, nothing drawn; the turn goes to her · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "DRAW" && _hSay) {
                 _fixedSay = _hSay;
@@ -68044,7 +68052,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
           }
           // The wait for their idea ends at any other fixed step (v9.699) - only the line right after Create your own is drawn as-is.
-          if (_fixedWhy !== "create_own" && _fixedWhy !== "style" && String(_ds.await_idea || "") === "1") { try { await talkStatePut(env, me, "await_idea", ""); } catch {} }
+          if (_fixedWhy !== "create_own" && _fixedWhy !== "style" && _fixedWhy !== "door" && _fixedWhy !== "new" && !_heardTalk && String(_ds.await_idea || "") === "1") { try { await talkStatePut(env, me, "await_idea", ""); } catch {} }
           if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
           // WHY THE PLACEMENT WAITED FOR HER (v9.612): on any turn after they asked to see it on them, each condition is logged.
           if (_fixedWhy !== "onme" && (carriedObj && carriedObj.on_me === true || refHeld)) {

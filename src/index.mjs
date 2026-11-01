@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.779.0-2026-11-01-new-tattoo-drawn-marker";
+const BUILD = "aura-core-v9.780.0-2026-11-01-change-says-what";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67973,6 +67973,30 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _fixedSay = await _fx("addon_change8", "On it - imagining that change on you now.");
           } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && (!_bodyPhoto || String((carriedObj && carriedObj.job) || "").toLowerCase() === "from")) {
             _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining that change for you now.");
+            // ══ SHE SAYS WHAT SHE IS CHANGING (v9.780, 2026-11-01, Aaron: "when I evolve this into two dragon heads she's just coming back
+            // with that standard 100% line ... she could have said here's your two dragon heads, this will look awesome. Aura should always
+            // come back with some context of what she's doing") ═══ One short call before the drawing, the same model and time limit as her
+            // hearing step (config:source:heard:model, else her talk model; config:talk:heard_ms): she says back the change in her own words
+            // and that she is imagining it now; the line "every one is 100% unique and 100% yours" (config:say:unique_tail) follows. No answer
+            // in time - the fixed line stands, as before. Nothing about the drawing changes.
+            try {
+              let _cMs = 8000; try { const _cv = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(_cv) && _cv >= 0) _cMs = _cv; } catch {}
+              let _cModel = null; try { _cModel = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+              const _cT0 = Date.now();
+              const _cSys = "You are Aura, the tattoo designer on mytattoo.world. Someone is changing the tattoo design they chose, and they just " +
+                "told you the change they want. In one or two short, warm sentences, in your own words: say back the change they asked for, so " +
+                "they know you got it, and tell them you're imagining their new versions now. Only what they asked for - nothing you are " +
+                "adding. Never put a number in your words. Plain words only, no lists.";
+              const _cq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _cMs)),
+                callBrain({ system: _cSys, user: _s.slice(0, 600), max_tokens: 400, ...(_cModel ? { model: _cModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+              const _cSay = String((_cq && _cq.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, "").replace(/\s+/g, " ").trim().slice(0, 400);
+              const _cSec = ((Date.now() - _cT0) / 1000).toFixed(1);
+              if (_cSay && !(_cq && _cq.late)) {
+                const _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again.");
+                _fixedSay = _cSay + (_tail ? " " + _tail : "");
+                console.log("[TURN:CHANGE-SAY] " + _cSec + "s - her words: \"" + _cSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+              } else console.log("[TURN:CHANGE-SAY] " + _cSec + "s - no answer in " + _cMs + "ms - the fixed line goes" + (me ? " · who=" + me : ""));
+            } catch (e) { try { console.log("[TURN:CHANGE-SAY] failed - the fixed line goes: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
           } else if (_bodyPhoto && /^\s*imagine\s+(?:4|four|8|eight)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s) && await (async () => {
                        // FOUR POSSIBILITIES OF A CHOSEN ADD-ON (v9.661, 2026-10-18, Aaron): "the same way we do tattoos ... a version
                        // that was on their chest or on their arm, then they can evolve it from there". Their photo and the card they

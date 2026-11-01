@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.775.0-2026-10-31-artist-files-memory";
+const BUILD = "aura-core-v9.776.0-2026-11-01-card-edges-box";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -179,17 +179,15 @@ function composeCatalogCard(card, info, logoBytes) {
   if (_own) {
     const px = card.get_raw_pixels();
     const lum = (x, y) => { const o = (y * W + x) * 4; return (px[o] + px[o + 1] + px[o + 2]) / 3; };
-    const bt = _boxTop(lum, 0, W, 0, Hc);
-    let done = false;
-    if (bt > 0) {
-      // the box: its left and right edge from the top line, its bottom edge the next thin line across it
-      let a = -1, b = -1, cur = 0, st = -1, best = 0;
-      for (let x = 0; x < W; x++) { if (lum(x, bt) < 110) { if (!cur) st = x; cur++; if (cur > best) { best = cur; a = st; b = x + 1; } } else cur = 0; }
+    // v9.776 (2026-11-01, Aaron: "the inconsistency on the logo"): MEASURED on Celestial Gold - the model drew the box's top line with
+    // a gap where the cross runs into it, so no unbroken top line was found and the logo fell back onto the art. The box is now found
+    // from its BOTTOM line up its two sides (see _boxFind), so art touching or breaking the top line no longer matters.
+    const bx = _boxFind(lum, W, Hc);
+    if (bx) {
+      const a = bx.a, b = bx.b;
       const rowDark = (y) => { let n = 0, d = 0; for (let x = a; x < b; x += 2) { n++; if (lum(x, y) < 110) d++; } return d / n; };
-      let t = bt; while (t < Hc - 1 && rowDark(t) > 0.5) t++;
-      // the bottom edge is one unbroken dark line nearly the box's width - a line of words never is, however bold
-      const runAcross = (y) => { let best = 0, cur = 0; for (let x = a; x < b; x++) { if (lum(x, y) < 110) { cur++; if (cur > best) best = cur; } else cur = 0; } return best; };
-      let bb = -1; for (let y = t + 8; y < Hc; y++) if (runAcross(y) >= (b - a) * 0.85) { bb = y; break; }
+      let t = bx.top; while (t < bx.bot - 1 && rowDark(t) > 0.3) t++;
+      const bb = bx.bot;
       const colDark = (x, y0, y1) => { let n = 0, d = 0; for (let y = y0; y < y1; y++) { n++; if (lum(x, y) < 110) d++; } return d / n; };
       if (bb > t + 20) {
         let il = a; while (il < b && colDark(il, t, bb) > 0.5) il++;
@@ -227,9 +225,9 @@ function composeCatalogCard(card, info, logoBytes) {
         }
       }
     }
-    // no box found, or no room beside the words: upper left, inside the card's outline (v9.770)
+    // no box found, or no room beside the words: v9.776 - no logo on the card rather than one on the art (the full-size picture
+    // still carries its logo in the lower left)
     const out = new PhotonImage(px, W, Hc);
-    _stamp(out, W * 0.065, W * 0.05, Math.round(W * 0.24 / _ar));
     try { lg0.free(); } catch {}
     return out;
   }
@@ -267,18 +265,26 @@ function _cleanEdges(img) {
   const L = (x, y) => { const o = (y * W + x) * 4; return (px[o] + px[o + 1] + px[o + 2]) / 3; };
   const rowDark = (y, x0, x1) => { let n = 0, d = 0; for (let x = x0; x < x1; x += 2) { n++; if (L(x, y) < 90) d++; } return n ? d / n : 0; };
   const colDark = (x, y0, y1) => { let n = 0, d = 0; for (let y = y0; y < y1; y += 2) { n++; if (L(x, y) < 90) d++; } return n ? d / n : 0; };
-  let t = 0, b = H, l = 0, r = W; const my = Math.max(2, Math.round(H * 0.02)), mx = Math.max(2, Math.round(W * 0.02));
-  // v9.774 (Aaron, 2026-10-31: "I don't wanna see black lines in between images and the screen"): a GREY hairline too - an edge line
-  // whose average is clearly darker than the white just inside it (the card's anti-aliased border), not only a black one.
   const rowMean = (y, x0, x1) => { let n = 0, s2 = 0; for (let x = x0; x < x1; x += 2) { n++; s2 += L(x, y); } return n ? s2 / n : 255; };
   const colMean = (x, y0, y1) => { let n = 0, s2 = 0; for (let y = y0; y < y1; y += 2) { n++; s2 += L(x, y); } return n ? s2 / n : 255; };
-  const lineRow = (y, yIn) => (rowDark(y, l, r) > 0.35 && rowDark(yIn, l, r) < 0.2) || (rowMean(y, l, r) < 225 && rowMean(yIn, l, r) > 238);
-  const lineCol = (x, xIn) => (colDark(x, t, b) > 0.35 && colDark(xIn, t, b) < 0.2) || (colMean(x, t, b) < 225 && colMean(xIn, t, b) > 238);
-  for (let k = 0; k < 3; k++) {
-    while (t < my && lineRow(t, Math.min(H - 1, t + 3))) t++;
-    while (H - b < my && lineRow(b - 1, Math.max(0, b - 4))) b--;
-    while (l < mx && lineCol(l, Math.min(W - 1, l + 3))) l++;
-    while (W - r < mx && lineCol(r - 1, Math.max(0, r - 4))) r--;
+  // v9.776 (2026-11-01, Aaron: "cards 5, 7 and 8 ... they have a line on it"): MEASURED on his phone screenshots - The Sacred and The
+  // Broken carry a SOLID black line 3-4 pixels thick down the card's side (the sheet's black gap, taken with the card), then a grey
+  // halo, then the card's white. v9.773 only trimmed a line with light 3 pixels in, so a line thicker than 3 pixels was never touched.
+  // Now each side walks in over the dark line, however thick (up to 4% of the picture), then over its grey halo (up to 1.2% more),
+  // and trims it all - only when what is inside is light, so a photo or a design dark to its edge is still untouched.
+  let t = 0, b = H, l = 0, r = W;
+  const side = (n, max, halo, dark, mean) => {
+    let i = 0; while (i < max && (dark(i) > 0.35 || mean(i) < 225)) i++;
+    let j = i; while (j < i + halo && j < max && mean(j) < 248) j++;
+    return (j > 0 && mean(Math.min(n - 1, j + 2)) > 238) ? j : 0;
+  };
+  const my = Math.max(2, Math.round(H * 0.04)), mx = Math.max(2, Math.round(W * 0.04));
+  const hy = Math.max(1, Math.round(H * 0.012)), hx = Math.max(1, Math.round(W * 0.012));
+  for (let k = 0; k < 2; k++) {
+    t = Math.max(t, side(H, my, hy, (i) => rowDark(i, l, r), (i) => rowMean(i, l, r)));
+    b = Math.min(b, H - side(H, my, hy, (i) => rowDark(H - 1 - i, l, r), (i) => rowMean(H - 1 - i, l, r)));
+    l = Math.max(l, side(W, mx, hx, (i) => colDark(i, t, b), (i) => colMean(i, t, b)));
+    r = Math.min(r, W - side(W, mx, hx, (i) => colDark(W - 1 - i, t, b), (i) => colMean(W - 1 - i, t, b)));
   }
   const cw = r - l, ch = b - t;
   const out = new Uint8Array(cw * ch * 4);
@@ -298,6 +304,15 @@ function _cleanEdges(img) {
       st.push([i + 1, j], [i, j + 1], [i - 1, j], [i, j - 1]);
     }
   }
+  // v9.776: the card's own white is often 250-253, a shade off the page's pure white, so its edge showed as a faint line on the white
+  // box. When the picture sits on white (its outer ring light), near-white turns pure white and its outer 2 pixels are made white.
+  { const rg = Math.max(2, Math.round(Math.min(cw, ch) * 0.02)); let n = 0, s3 = 0;
+    for (let x = 0; x < cw; x += 3) for (const y of [0, rg, ch - 1, ch - 1 - rg]) { n++; s3 += Lo(x, y); }
+    for (let y = 0; y < ch; y += 3) for (const x of [0, rg, cw - 1, cw - 1 - rg]) { n++; s3 += Lo(x, y); }
+    if (n && s3 / n > 240) {
+      for (let o = 0; o < out.length; o += 4) if (out[o] >= 242 && out[o + 1] >= 242 && out[o + 2] >= 242) { out[o] = out[o + 1] = out[o + 2] = 255; }
+      for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) if (x < 2 || y < 2 || x >= cw - 2 || y >= ch - 2) { const o = (y * cw + x) * 4; out[o] = out[o + 1] = out[o + 2] = 255; }
+      changed = true; } }
   if (!changed) return img;
   return new PhotonImage(out, cw, ch);
 }
@@ -60561,6 +60576,32 @@ function _boxTop(lum, x0, x1, top, bot) {
   }
   return -1;
 }
+// ══ THE WORDS BOX, FOUND FROM THE BOTTOM (v9.776, 2026-11-01) ══════════════════════════════════════════════════════════════
+// The box's bottom line (a long dark run with white just above it, low in the card), then its two sides followed upward to where they
+// end - that is the top. A box taller than 40% of the card is the card's own outline, not the words box, and the search goes on up.
+// Returns {a, b, top, bot} (bot = first row of the bottom line) or null.
+function _boxFind(lum, W, H) {
+  const run = (y) => { let best = 0, cur = 0, s0 = -1, bs = -1, be = -1;
+    for (let x = 0; x < W; x++) { if (lum(x, y) < 110) { if (!cur) s0 = x; cur++; if (cur > best) { best = cur; bs = s0; be = x + 1; } } else cur = 0; }
+    return { len: best, a: bs, b: be }; };
+  const lightFrac = (y, a, b) => { if (y < 0) return 0; let n = 0, l = 0; for (let x = a; x < b; x += 2) { n++; if (lum(x, y) > 180) l++; } return n ? l / n : 0; };
+  const up = (xc, y0) => { let top = y0;
+    for (let x = Math.max(0, xc - 3); x <= Math.min(W - 1, xc + 3); x++) {
+      let last = y0, y = y0 - 1; while (y >= 0 && y > last - 5) { if (lum(x, y) < 110) last = y; y--; }
+      if (last < top) top = last; }
+    return top; };
+  for (let y = H - 1; y > H * 0.5; y--) {
+    const r = run(y); if (r.len < W * 0.5) continue;
+    let t = 1; while (t < 8 && run(y - t).len >= W * 0.5) t++;
+    if (t >= 8) { y -= t; continue; }
+    const y0 = y - t + 1;
+    if (lightFrac(y0 - 3, r.a, r.b) < 0.6) { y -= t; continue; }
+    const tl = up(r.a + 1, y0), tr = up(r.b - 2, y0), hh = y0 - Math.max(tl, tr);
+    if (Math.abs(tl - tr) <= H * 0.03 && hh > H * 0.06 && hh < H * 0.4) return { a: r.a, b: r.b, top: Math.min(tl, tr), bot: y0 };
+    y -= t;
+  }
+  return null;
+}
 // The thin outline just inside a card's edge (within its outer 8%): the design is taken from inside it. None found - the edges stay.
 function _innerFrame(lum, x0, x1, top, bot) {
   const cw = x1 - x0, ch = bot - top, mx = Math.max(4, Math.round(cw * 0.08)), my = Math.max(4, Math.round(ch * 0.08));
@@ -77396,11 +77437,12 @@ function openAlbum(idx){
       const _w = [240, 480, 720, 1440].includes(_wq) ? _wq : 0;
       // v9.767: `mark=1` - the same copy with the Inkit.world logo stamped bottom-left, kept under its own key. Full size when no `w`.
       // v9.768: `mark=2` is the same as `mark=1` - a new address, so a phone that kept the old small-logo copy asks again.
-      const _mk = ["1", "2", "3", "4"].includes(url.searchParams.get("mark") || "");
+      const _mk = ["1", "2", "3", "4", "5"].includes(url.searchParams.get("mark") || "");
       // v9.768: `card=1` - the catalog card (the design, its title and lines and the logo in a white band under it). See composeCatalogCard.
-      if (["1", "2", "3", "4", "5"].includes(url.searchParams.get("card") || "") && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
+      if (["1", "2", "3", "4", "5", "6"].includes(url.searchParams.get("card") || "") && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.770: kept under _c2 - the copies with the logo underneath (_c1) are never served again
-        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c5.jpg";
+        // v9.776: _c6 - the edge lines trimmed however thick, the words box found from its bottom; no _c5 copy is served again
+        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c6.jpg";
         const _chave = await env.AURA_KV.getWithMetadata(_ck, { type: "arrayBuffer" }).catch(() => null);
         if (_chave && _chave.value) return new Response(_chave.value, { headers: { "content-type": "image/jpeg", "content-length": String(_chave.value.byteLength),
           "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept", "x-card": "yes" } });
@@ -77458,12 +77500,12 @@ function openAlbum(idx){
         // anything that went wrong: the stamped copy instead (below)
         url.searchParams.set("mark", "1");
       }
-      const _mk2 = _mk || ["1", "2", "3", "4"].includes(url.searchParams.get("mark") || "");
+      const _mk2 = _mk || ["1", "2", "3", "4", "5"].includes(url.searchParams.get("mark") || "");
       if ((_w || _mk2) && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.728: MEASURED - Photon's get_bytes_webp() is LOSSLESS: 684KB at 480 wide. JPEG 80 measured 5-6x smaller on our
         // pictures, so copies are JPEG, and the key carries .jpg so the lossless copies made under v9.727 are never served.
         // v9.773: _m3 - the logo right in the corner and the edges cleaned; the _m2 copies are never served again
-        const _tk = "small:" + id + "_w" + (_w || "full") + (_mk2 ? "_m4" : "") + ".jpg";
+        const _tk = "small:" + id + "_w" + (_w || "full") + (_mk2 ? "_m5" : "") + ".jpg";
         const _have = await env.AURA_KV.getWithMetadata(_tk, { type: "arrayBuffer" }).catch(() => null);
         if (_have && _have.value) return new Response(_have.value, { headers: { "content-type": (_have.metadata && _have.metadata.ct) || "image/jpeg",
           "content-length": String(_have.value.byteLength), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });

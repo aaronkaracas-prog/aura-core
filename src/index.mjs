@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.782.0-2026-11-01-says-back-what-they-said";
+const BUILD = "aura-core-v9.783.0-2026-11-01-says-back-then-draws";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -8694,6 +8694,8 @@ async function processCommand(line, env, isOp) {
                                      tkSaid.slice(0, 2000), [], { noBook: tkNoBook, noBrief: tkNoBrief, ref: tkRef, world: tkWorld, tile: tkTile,
                                        fresh: tkFlag("FRESH"), lock: tkFlag("LOCK"), use: tkFlag("USE"), own: tkFlag("OWN"),
                                        pick: tkFlag("PICK"), inspire: tkFlag("INSPIRE"), from: tkFrom,
+                                       // (v9.783) Imagine it after her said-back is GO; one of her two directions is HEARD A / HEARD B
+                                       heard_go: tkFlag("GO"), heard_pick: ((tkId.match(/\bHEARD\s+([AB])\b/i) || [])[1] || null),
                                        ...(tkChoose ? { choose_go: true, choose_style: String(tkChoose[1] || "").trim() || null } : {}) });
         if (tkOut && typeof tkOut === "object") tkOut.turn_seconds = Math.round((Date.now() - tkT0) / 100) / 10;
         return { cmd: "TALK", payload: { ...tkOut, pta: tkPta,
@@ -67736,7 +67738,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
       let _heardIdea = null;
-      let _heardTalk = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null;
+      let _heardTalk = false, _heardOut = null, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -67751,7 +67753,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks"]); } catch {}
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
           // because "design_change" from the 9:50 test was still set.
@@ -67769,7 +67771,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // (v9.702) still decides when there is nothing yet to imagine from.
                   await talkStatePut(env, me, "await_idea", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : "");
                   // v9.779: nothing drawn in this tattoo yet (set to 1 the moment anything is drawn or chosen in it - see "last" below)
-                  await talkStatePut(env, me, "new_drawn", ""); } catch {}
+                  await talkStatePut(env, me, "new_drawn", ""); await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
             _ds = /^i want to create a new tattoo\.?$/i.test(_s) ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
@@ -67897,6 +67899,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // "last" carries across tattoos), so on Aaron's account it was never true and "I just became a navy seal ... I also like skulls"
           // went to her as chat (18.5s). "Nothing drawn in THIS tattoo" is now its own marker: cleared when the new tattoo starts, set the
           // moment anything is drawn or chosen in it.
+          // ══ THEIR YES DRAWS WHAT SHE SAID BACK (v9.783, 2026-11-01, Aaron: "she'd come back with OK awesome, dragons, butterflies, let's
+          // do that ... so it'll never be automatic draw" / "once there's a clear choice she draws right away") ═══ Imagine it (or one of her
+          // two choices) is their go: the idea line she said back - the one they just read and did not correct - is drawn, in their style.
+          } else if (_newFlow && opts && (opts.heard_go || opts.heard_pick) && (String(_ds.go_idea || "") || String(_ds.go_picks || ""))) {
+            let _gi = String(_ds.go_idea || ""), _gk = "";
+            if (opts.heard_pick) { try { const _gp = JSON.parse(String(_ds.go_picks || "{}")); _gk = String(opts.heard_pick).toUpperCase().slice(0, 1); if (_gp[_gk] && _gp[_gk].idea) _gi = String(_gp[_gk].idea); } catch {} }
+            if (_gi) {
+              _heardIdea = _gi.slice(0, 1200);
+              _fixedWhy = "four_new"; _fixedSay = await _fx("eight_go", "On it - I'm imagining your designs now. Every one is 100% unique and 100% yours.");
+              if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
+              try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea })));
+                    await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
+              console.log("[TURN:GO] " + (_gk ? "they chose " + _gk : "Imagine it") + " - drawn from the idea she said back: \"" + _heardIdea.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
+            }
           } else if (_newFlow && (String(_ds.await_idea || "") === "1" || String(_ds.new_drawn || "") !== "1") && _s && !_bodyPhoto &&
                      !(opts && (opts.inspire || opts.pick || opts.use || opts.tile || opts.name || opts.choose_go || opts.new_now)) &&
                      !/^i want to (create|add|cover)/i.test(_s) && !/^i like the .+ style\.?$/i.test(_s) && !/^i want number [1-8]\.?$/i.test(_s) &&
@@ -67905,7 +67921,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // to the image model") ═══ MEASURED 14:18: "I'm a professional surfer I like butterflies and I have a golden retriever"
             // went to her (15.6s) and she asked which of the three should lead - nothing drawn. Their words go straight to the 8,
             // in the style they picked, with the fixed coming line. She is not called.
-            _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "On it - imagining some designs for you now.");
+            // NEVER AN AUTOMATIC DRAW (v9.783): if she does not answer in time, a fixed line asks, and their own words are what Imagine it draws.
+            _fixedWhy = "heard_ready"; _fixedSay = await _fx("heard_ready", "Love it - want me to imagine it?");
+            _heardOut = { go: true };
+            try { await talkStatePut(env, me, "go_idea", ((_told ? _told.replace(/\n+/g, ". ") + ". " : "") + _s).slice(0, 1200)); await talkStatePut(env, me, "go_picks", ""); } catch {}
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
             // ══ SHE HEARS THEM FIRST (v9.702, 2026-10-21, Aaron: "Aura needs to acknowledge them when they talk ... if someone
             // just said my mom died ... she needs to have a conversation, discuss what they're saying and then show them their
@@ -67917,26 +67936,35 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               let _hMs = 8000; try { const _hv = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(_hv) && _hv >= 0) _hMs = _hv; } catch {}
               let _hModel = null; try { _hModel = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
               const _hT0 = Date.now();
+              // SHE SAYS IT BACK, THEY SAY YES (v9.783, 2026-11-01, Aaron - wording approved 12:23). READY: the idea line (their own
+              // words about the tattoo, copied) and her said-back with Imagine it; CHOOSE: two directions, a tap draws; TALK: as before.
               const _hSys = "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
                 (_newStyle ? " (in the " + _newStyle + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
                 "tattoo artist would: brief, in your own words. If they shared something personal or hard, acknowledge it first, simply. " +
-                // SAYS BACK WHAT THEY SAID (v9.782, 2026-11-01, Aaron). MEASURED 11:17: she promised "an anchor or trident motif" the image
-                // model never heard, ended "I'm already picturing a few concepts" over the page's own imagining line, and her IDEA line
-                // copied a voice-typing slip ("drag and skulls") so 6 of the 8 had no dragon.
-                "Then say back what they want in their tattoo, and the style you'll make it in when they picked one - only what they " +
-                "said, nothing you are adding. Never put a number in your words.\n\n" +
-                "Answer in exactly this shape. First line: DRAW, or TALK. Second line: IDEA: the tattoo they want, in one line and in their own " +
-                "words - with any obvious typo or misheard word fixed - only what they want in the tattoo, nothing they asked or chatted about, nothing you are suggesting. Then your words on the next line.\n" +
-                "DRAW when there is anything in what they said to imagine a tattoo from. TALK only when there is nothing yet to imagine " +
-                "from (for example they only shared a feeling) - then your words are your reply to them, with no mention of designs.";
+                "Never put a number in your words.\n\n" +
+                "Answer in exactly this shape. First line: READY, CHOOSE, or TALK.\n\n" +
+                "READY when you know what they want in the tattoo. Second line: IDEA: their own words about the tattoo, copied exactly - " +
+                "leave out only what isn't about the tattoo. Then your words: say back what they want, and the style when they picked one, " +
+                "in your own voice, and ask if you should imagine it. Name everything in the IDEA line, and nothing that isn't in it.\n\n" +
+                "CHOOSE when they are torn between directions. Then two lines, A: and B: - each one the button words, a few words, then = " +
+                "and that whole tattoo idea in their own words. Then your words: one short question asking which one.\n\n" +
+                "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.";
               const _hq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _hMs)),
                 callBrain({ system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\nWhat they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
               const _hRaw = String((_hq && _hq.text) || "").trim();
-              const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(DRAW|TALK)\W*\s*([\s\S]*)$/i);
-              const _hDo = _hm ? _hm[1].toUpperCase() : null;
+              const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\s*([\s\S]*)$/i);
+              let _hDo = _hm ? _hm[1].toUpperCase() : null; if (_hDo === "DRAW") _hDo = "READY";
               let _hRest = _hm ? _hm[2] : "";
               const _hIdea = (_hRest.match(/^\s*IDEA:\s*(.+)/i) || [])[1] || "";
               if (_hIdea) _hRest = _hRest.replace(/^\s*IDEA:\s*.+\n?/i, "");
+              // her two directions: "A: button words = the whole idea"
+              const _hPicks = {};
+              for (const _k of ["A", "B"]) {
+                const _pm = _hRest.match(new RegExp("^\\s*" + _k + "\\s*[:.)-]\\s*(.+)$", "im"));
+                if (_pm) { const _pp = _pm[1].split(/\s+=\s+|\s*=\s*/); const _t = String(_pp[0] || "").replace(/[*"]/g, "").trim().slice(0, 40), _id = String(_pp.slice(1).join(" ") || _pp[0] || "").trim().slice(0, 600);
+                  if (_t && _id) _hPicks[_k] = { t: _t, idea: _id }; _hRest = _hRest.replace(_pm[0], ""); }
+              }
+              if (_hDo === "CHOOSE" && !(_hPicks.A && _hPicks.B)) _hDo = _hIdea ? "READY" : null;
               // HER WORDS END ON A WHOLE SENTENCE (v9.781). MEASURED 11:03: cut at 400 characters mid-word - "I'm imagining some designs f".
               const _hSay = _wholeSentences(_hRest, 1200);
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
@@ -67946,18 +67974,25 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               }
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);
               if (_hDo === "TALK") {
-                _fixedWhy = null; _fixedSay = null;
+                _fixedWhy = null; _fixedSay = null; _heardOut = null;
+                try { await talkStatePut(env, me, "go_idea", ""); } catch {}
                 // v9.777: still waiting for their idea - the next thing they say is heard the same way, and drawn when there is one
                 try { await talkStatePut(env, me, "await_idea", "1"); } catch {} _heardTalk = true;
                 console.log("[TURN:HEARD] " + _hSec + "s - TALK, nothing drawn; the turn goes to her · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
-              } else if (_hDo === "DRAW" && _hSay) {
-                _fixedSay = _hSay;
-                console.log("[TURN:HEARD] " + _hSec + "s - DRAW · her words before the designs: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
+              } else if (_hDo === "READY" && _hSay) {
+                _fixedWhy = "heard_ready"; _fixedSay = _hSay; _heardOut = { go: true };
+                // with no IDEA line of hers, their own words (already kept above) are what Imagine it draws
+                if (_heardIdea) { try { await talkStatePut(env, me, "go_idea", _heardIdea); await talkStatePut(env, me, "go_picks", ""); } catch {} }
+                console.log("[TURN:HEARD] " + _hSec + "s - READY, nothing drawn until Imagine it · the idea: " + (_heardIdea ? "\"" + _heardIdea + "\"" : "(none from her - their own words wait)") + " · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
+              } else if (_hDo === "CHOOSE" && _hSay) {
+                _fixedWhy = "heard_choose"; _fixedSay = _hSay; _heardOut = { picks: [{ k: "A", t: _hPicks.A.t }, { k: "B", t: _hPicks.B.t }] };
+                try { await talkStatePut(env, me, "go_picks", JSON.stringify(_hPicks)); await talkStatePut(env, me, "go_idea", ""); } catch {}
+                console.log("[TURN:HEARD] " + _hSec + "s - CHOOSE, a tap draws · A: " + _hPicks.A.t + " = \"" + _hPicks.A.idea + "\" · B: " + _hPicks.B.t + " = \"" + _hPicks.B.idea + "\" · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
               } else {
                 // WHY IT WAS NOT USED IS LOGGED (v9.703): MEASURED 16:57 - "no usable answer" in 4.0s and nothing said what came back.
                 console.log("[TURN:HEARD] " + _hSec + "s - " + (_hq && _hq.late ? "no answer in " + _hMs + "ms" :
                   "not usable: " + (_hq && _hq.ok === false ? "error " + String(_hq.error || "?").slice(0, 160) : "came back \"" + _hRaw.slice(0, 200) + "\"") +
-                  " · model " + String((_hq && _hq.model) || _hModel || talkModel || "default")) + " - the fixed line goes" + (me ? " · who=" + me : ""));
+                  " · model " + String((_hq && _hq.model) || _hModel || talkModel || "default")) + " - the fixed line asks, their own words wait for Imagine it" + (me ? " · who=" + me : ""));
               }
             } catch {}
           } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {
@@ -68107,7 +68142,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             }
           }
           // The wait for their idea ends at any other fixed step (v9.699) - only the line right after Create your own is drawn as-is.
-          if (_fixedWhy !== "create_own" && _fixedWhy !== "style" && _fixedWhy !== "door" && _fixedWhy !== "new" && !_heardTalk && String(_ds.await_idea || "") === "1") { try { await talkStatePut(env, me, "await_idea", ""); } catch {} }
+          if (_fixedWhy !== "create_own" && _fixedWhy !== "style" && _fixedWhy !== "door" && _fixedWhy !== "new" && _fixedWhy !== "heard_ready" && _fixedWhy !== "heard_choose" && !_heardTalk && String(_ds.await_idea || "") === "1") { try { await talkStatePut(env, me, "await_idea", ""); } catch {} }
           if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
           // WHY THE PLACEMENT WAITED FOR HER (v9.612): on any turn after they asked to see it on them, each condition is logged.
           if (_fixedWhy !== "onme" && (carriedObj && carriedObj.on_me === true || refHeld)) {
@@ -71659,6 +71694,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             ideas: null,   // NO IDEA CARDS (v9.684, 2026-10-19, Aaron): her reply and the chat box are the whole screen
             choose: (acted && acted.choose && !_fixedWhy && !(drew && drew.image)) ? acted.choose : null,
             offer: (!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_said)) || undefined,
+            heard: (_heardOut && !(drew && drew.image)) ? _heardOut : undefined,
             directions: (Array.isArray(acted.directions) && acted.directions.length) ? acted.directions : null,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
             // THE SAME ANSWER EITHER WAY (v9.634, 2026-10-16, Aaron: "there should not be two paths"): the whole `drew` as it
@@ -71678,6 +71714,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                // HER OFFER, ONE TAP (v9.691, 2026-10-21, Aaron: "there's never a reason to type unless you're changing what the moment
                // is"): when she offers to show ideas and there is no card, the page puts "Show me some ideas" / "Talk to me" under it.
                ...(!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_said) ? { offer: true } : {}),
+               // SHE SAID IT BACK (v9.783): Imagine it, or her two directions - the page puts them under her words.
+               ...(_heardOut && !(drew && drew.image) ? { heard: _heardOut } : {}),
                // WHERE SHE TAKES THEM (v9.664): the page goes there - the same as tapping that place.
                // NOT TO WHERE THEY ALREADY ARE (v9.690): MEASURED 06:48 - in a new tattoo she sent go "new", which would have
                // moved them to a fresh Create New Tattoo screen mid-conversation.
@@ -72932,7 +72970,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -72961,7 +72999,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // THE TURN RUNS AS A JOB, THIS CONNECTION ONLY RELAYS IT (v9.681). Same options as the turn below, as plain data.
         const _tOpts = {
           tid: b.tid ? String(b.tid).slice(0, 40) : null,
-          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null };
+          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null };
         const _jobId = (me && _tOpts.tid && await talkJobsOn(env))
           ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;
         if (_jobId) {
@@ -73027,7 +73065,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

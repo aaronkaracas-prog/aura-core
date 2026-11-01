@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.785.0-2026-11-01-every-style-described";
+const BUILD = "aura-core-v9.786.0-2026-11-01-who-and-why-stay";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68011,11 +68011,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // words about the tattoo, copied) and her said-back with Imagine it; CHOOSE: two directions, a tap draws; TALK: as before.
               const _hSys = "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
                 (_newStyle ? " (in the " + _newStyle + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
-                "tattoo artist would: brief, in your own words. If they shared something personal or hard, acknowledge it first, simply. " +
+                "tattoo artist would: brief, in your own words. If they shared something personal or hard, your words start there, simply. " +
                 "Never put a number in your words.\n\n" +
                 "Answer in exactly this shape. First line: READY, CHOOSE, or TALK.\n\n" +
+                // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
+                // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
                 "READY when you know what they want in the tattoo. Second line: IDEA: their own words about the tattoo, copied exactly - " +
-                "leave out only what isn't about the tattoo. Then your words: say back what they want, and the style when they picked one, " +
+                "including who it is for and why; leave out only questions to you and chat that has nothing to do with the tattoo. " +
+                "Then your words: if they shared something personal or hard, start there, simply - then say back what they want, and the style when they picked one, " +
                 "in your own voice, and ask if you should imagine it. Name everything in the IDEA line, and nothing that isn't in it.\n\n" +
                 // v9.784: MEASURED 12:56 - everything fitted one tattoo, she asked anyway, her two ideas dropped Christina and Sienna, and
                 // her words were only "Which concept speaks to you more?"

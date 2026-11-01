@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.781.0-2026-11-01-style-colours";
+const BUILD = "aura-core-v9.782.0-2026-11-01-says-back-what-they-said";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67920,11 +67920,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _hSys = "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
                 (_newStyle ? " (in the " + _newStyle + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
                 "tattoo artist would: brief, in your own words. If they shared something personal or hard, acknowledge it first, simply. " +
-                "Then react to their idea and loosely name the kinds of things you'll bring in from what they said - general, never " +
-                "detailed, because you can't know exactly how each design will come out. End by telling them you're imagining some " +
-                "designs for them now. Never put a number in your words.\n\n" +
+                // SAYS BACK WHAT THEY SAID (v9.782, 2026-11-01, Aaron). MEASURED 11:17: she promised "an anchor or trident motif" the image
+                // model never heard, ended "I'm already picturing a few concepts" over the page's own imagining line, and her IDEA line
+                // copied a voice-typing slip ("drag and skulls") so 6 of the 8 had no dragon.
+                "Then say back what they want in their tattoo, and the style you'll make it in when they picked one - only what they " +
+                "said, nothing you are adding. Never put a number in your words.\n\n" +
                 "Answer in exactly this shape. First line: DRAW, or TALK. Second line: IDEA: the tattoo they want, in one line and in their own " +
-                "words - only what they want in the tattoo, nothing they asked or chatted about, nothing you are suggesting. Then your words on the next line.\n" +
+                "words - with any obvious typo or misheard word fixed - only what they want in the tattoo, nothing they asked or chatted about, nothing you are suggesting. Then your words on the next line.\n" +
                 "DRAW when there is anything in what they said to imagine a tattoo from. TALK only when there is nothing yet to imagine " +
                 "from (for example they only shared a feeling) - then your words are your reply to them, with no mention of designs.";
               const _hq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _hMs)),

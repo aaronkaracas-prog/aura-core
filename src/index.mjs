@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.777.0-2026-11-01-create-draws-idea";
+const BUILD = "aura-core-v9.778.0-2026-11-01-new-tattoo-heard-until-drawn";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67869,7 +67869,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               ? (await _fx("create_own", "Love it - tell me what you want in your ____ piece.")).replace("____", _newStyle)
               : await _fx("create_own_nostyle", "Love it - tell me what you want in your tattoo.");
             try { await talkStatePut(env, me, "await_idea", "1"); } catch {}
-          } else if (_newFlow && String(_ds.await_idea || "") === "1" && _s && !_bodyPhoto &&
+          // ══ UNTIL THE FIRST DESIGNS EXIST, EVERY LINE IS HEARD FOR AN IDEA (v9.778, 2026-11-01, Aaron: "again, this should've been an
+          // instant draw - you should've come back with this response and then said here you go") ═══ MEASURED 10:06 (pta_ed8bd7cc93dfd9b7):
+          // "I just passed in the service now I'm in Navy SEAL ... something that works with what my fellow SEALs have gotten" was the
+          // SECOND line of a new tattoo (Kathy, Noah, sunflowers and bumblebees came first, at 09:58, before v9.777), so the one-line wait
+          // had already passed; it went to her as chat (17.9s), no drawing, and the style card. In a new tattoo with nothing drawn and
+          // nothing chosen yet, every line now goes through her hearing step (v9.702): her reaction and DRAW - or TALK when there is
+          // truly nothing to imagine from yet.
+          } else if (_newFlow && (String(_ds.await_idea || "") === "1" || !hasLive) && _s && !_bodyPhoto &&
                      !(opts && (opts.inspire || opts.pick || opts.use || opts.tile || opts.name || opts.choose_go || opts.new_now)) &&
                      !/^i want to (create|add|cover)/i.test(_s) && !/^i like the .+ style\.?$/i.test(_s) && !/^i want number [1-8]\.?$/i.test(_s) &&
                      !/^i like this one\b/i.test(_s)) {

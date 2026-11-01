@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.784.0-2026-11-01-names-never-lost";
+const BUILD = "aura-core-v9.785.0-2026-11-01-every-style-described";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61324,6 +61324,60 @@ function _wholeSentences(t, max) {
   const cut = s.slice(0, max), m = cut.match(/^[\s\S]*[.!?\u2026](?=\s|$)/);
   return (m && m[0].length > max / 3) ? m[0].trim() : cut.replace(/\s+\S*$/, "").trim();
 }
+// ══ EVERY STYLE SAYS WHAT IT LOOKS LIKE (v9.785, 2026-11-01, Aaron: "we need to do that across the board on every style so we don't
+// get it mixed") ═══ MEASURED 13:08 (img_mvybn68n0pqu): "all in the New School style" drew bold-outlined realism, not cartoon New School.
+// Each of the 41 styles carries one line of how it LOOKS - line, shading, color, shape, never subjects (a subject here would land in every
+// design) - put right after its name wherever a style is named in a sentence to the image model. Setting: config:style:look:<name>.
+const STYLE_LOOK = {
+  "American Traditional": "thick black outlines, bold simple shapes, solid flat fills and a few strong colors",
+  "Neo-Traditional": "bold outlines with richer color, more depth and decorative detail",
+  "Japanese": "big, bold, flowing compositions in the traditional Japanese irezumi way, strong outlines and rich flat color, everything moving together as one piece",
+  "Black & Grey Realism": "lifelike, shaded only in black and grey, like a photograph in ink",
+  "Color Realism": "lifelike and photographic, in full color with real light and shadow",
+  "Micro Tattoos": "tiny and delicate, with very fine lines",
+  "Fine Line": "thin, precise black lines and soft, light shading",
+  "Minimalist": "as few clean lines as possible, simple shapes and open space",
+  "Blackwork": "bold designs in solid black ink, high contrast, no color",
+  "Blackout": "large areas filled completely with solid black",
+  "Illustrative": "hand-drawn like a page from an illustrated book, expressive linework with selective shading",
+  "Chicano": "smooth black-and-grey shading and fine lines, in the Chicano tradition",
+  "Geometric": "built from precise geometric shapes, lines and symmetry",
+  "Dotwork": "shading made entirely from tiny dots, soft and textured",
+  "Ornamental": "decorative patterns like jewelry or lace, with symmetry and filigree",
+  "Watercolor": "soft splashes and washes of color that look painted with a brush",
+  "New School": "cartoon-style with exaggerated shapes, thick outlines and bright, loud color",
+  "Tribal": "bold, flowing solid black shapes with sharp points, where the empty skin between them is part of the design",
+  "Sketch": "like an artist's pencil drawing, with the rough lines left in on purpose",
+  "Etching": "fine parallel lines and cross-hatching, like an old engraving",
+  "Surrealism": "dreamlike, with real things blending in impossible ways",
+  "Biomechanical": "machinery and living forms fused together with deep 3D detail",
+  "Dark Fantasy": "gothic and dramatic, with dark atmosphere and deep shadows",
+  "Medieval": "like an illuminated medieval manuscript, with flat color, gold and ornate linework",
+  "Renaissance": "like a classical Renaissance painting or sculpture, with soft, realistic shading",
+  "Stained Glass": "bright jewel colors divided by bold black lines, like a church window",
+  "Liquid Chrome": "polished, flowing, reflective silver metal",
+  "Cybersigilism": "sharp, thin, flowing futuristic strokes like digital sigils",
+  "Cyberpunk": "futuristic and high-tech, with glowing neon color",
+  "Patchwork": "many small, separate tattoos collected together like a sticker book",
+  "Ignorant Doodle": "deliberately simple and goofy, like a doodle in the margin of a notebook",
+  "Sticker": "cute, compact shapes with a thick outer outline, like a sticker",
+  "Embroidered": "looks stitched in thread, like an embroidered patch",
+  "Red Ink": "done entirely in red ink",
+  "Negative Space": "the empty skin becomes part of the picture, shaped by the ink around it",
+  "Brutalism": "raw, heavy black shapes and harsh, bold composition",
+  "Mixed Media": "several tattoo styles combined in one piece - realism, linework, color and splashes",
+  "Y2K Nostalgia": "late-90s and early-2000s pop, with iridescent colors, sparkles and shine",
+  "1980s Airbrush": "retro airbrushed neon gradients and glowing light, like an 80s airbrush painting",
+  "3D / Optical": "optical illusions that look three-dimensional on flat skin",
+  "Abstract": "loose abstract shapes, strokes and splashes chosen for feeling and movement"
+};
+const STYLE_LOOK_ALIAS = {"Colour Realism": "Color Realism", "Watercolour": "Watercolor", "Sticker Tattoos": "Sticker", "Embroidered Tattoos": "Embroidered", "Abstract Art": "Abstract"};
+async function styleLook(env, name) {
+  const nm = String(name || "").trim(), key = STYLE_LOOK_ALIAS[nm] || nm;
+  try { const k = String((await env.AURA_KV.get("config:style:look:" + key.toLowerCase())) || "").trim(); if (k) return k; } catch {}
+  if (STYLE_LOOK[key]) return STYLE_LOOK[key];
+  const ci = Object.keys(STYLE_LOOK).find((x) => x.toLowerCase() === key.toLowerCase()); return ci ? STYLE_LOOK[ci] : "";
+}
 async function toEight(env, sentence, kind) {
   let s = String(sentence || "").trim();
   s = s.replace(/\bShow me (?:4|four)\b/gi, "Show me 8").replace(/\bthese (?:4|four) ideas\b/gi, "these ideas")
@@ -61345,6 +61399,8 @@ async function toEight(env, sentence, kind) {
   // config:frame:sheet8:style_colour (needs {name}).
   const _stm8 = s.match(/\bin the ([^.]{2,80}?) style\b/i);
   if (_stm8) {
+    const _lk = await styleLook(env, _stm8[1]);
+    if (_lk) s = s.replace(/\bin the ([^.]{2,80}?) style\b/i, (m) => m + " - " + _lk);
     const _col = /\s*Use colou?r wherever it works[^.]*\.\s*/gi;
     s = s.replace(_col, " ").replace(/\s{2,}/g, " ").trim(); end = end.replace(_col, " ").replace(/\s{2,}/g, " ").trim();
     let _sc = "Use the colors the {name} style is known for.";

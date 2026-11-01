@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.786.0-2026-11-01-who-and-why-stay";
+const BUILD = "aura-core-v9.787.0-2026-11-01-her-words-stream";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -896,6 +896,60 @@ async function callBrain({ system, user, messages = null, max_tokens = 2000, mod
   return { ok: true, text: d?.choices?.[0]?.message?.content || "", structured: null,
            provider: route.provider, model: route.model,
            usage: { in: d?.usage?.prompt_tokens || 0, out: d?.usage?.completion_tokens || 0 } };
+}
+
+// ══ HER WORDS AS SHE WRITES THEM - ONE PLACE FOR EVERY STEP (v9.787, 2026-11-01, Aaron: "I want to kind of keep it fixed in one place
+// ... let's try the streaming") ═══ The same call as callBrain - same route, same model dials - but the text arrives piece by piece to
+// `onText` while it is written, the way Project Think streams every turn (streamText). MEASURED 13:31/14:05: the hearing step waited
+// 9.6-11.5s for her whole answer on @cf/openai/gpt-oss-120b before a single word showed. On the Workers AI binding the answer streams
+// (`stream: true`); the shapes it may come in - classic `response`, Chat Completions `choices[0].delta.content`, Responses
+// `response.output_text.delta` - are all read, and her private reasoning (`reasoning_content`, `*.reasoning*` events) never is. Any
+// other provider, or a stream that gives nothing readable, falls back to callBrain and hands the whole text over at once - the caller
+// sees the same thing either way, only later. Returns what callBrain returns, plus `streamed: true` when it really streamed.
+async function callBrainStream(args, env, onText) {
+  env = env || _BRAIN_ENV;
+  const route = await _brainRoute(env, args && args.model);
+  const give = async (t) => { if (t && typeof onText === "function") { try { await onText(t); } catch {} } };
+  if (route.provider === "workers-ai" && env?.AI?.run && !(args && args.image)) {
+    const msgs = [];
+    if (args.system) msgs.push({ role: "system", content: String(args.system) });
+    msgs.push({ role: "user", content: String(args.user || "") });
+    const cap = Math.max(16, Math.min(16000, parseInt(args.max_tokens, 10) || 2000));
+    let text = "", firstShape = null;
+    try {
+      costTapNeuron();
+      const st = await env.AI.run(route.model, { max_tokens: cap, messages: msgs, stream: true,
+        ...(args.temperature != null ? { temperature: args.temperature } : {}) });
+      if (st && typeof st.getReader === "function") {
+        const rd = st.getReader(), dec = new TextDecoder(); let buf = "";
+        for (;;) {
+          const { done, value } = await rd.read(); if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let nl;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+            if (!line.startsWith("data:")) continue;
+            const data = line.slice(5).trim(); if (!data || data === "[DONE]") continue;
+            let d = null; try { d = JSON.parse(data); } catch { continue; }
+            if (!firstShape) firstShape = Object.keys(d || {}).slice(0, 6).join(",") + (d && d.type ? " type=" + d.type : "");
+            let piece = "";
+            if (typeof d?.response === "string") piece = d.response;
+            else if (d?.choices?.[0]?.delta && typeof d.choices[0].delta.content === "string") piece = d.choices[0].delta.content;
+            else if (typeof d?.type === "string" && /output_text\.delta$/.test(d.type) && typeof d.delta === "string") piece = d.delta;
+            if (piece) { text += piece; await give(piece); }
+          }
+        }
+        if (text.trim()) return { ok: true, text, structured: null, provider: route.provider, model: route.model, usage: { in: 0, out: 0 }, streamed: true, shape: firstShape };
+      }
+      try { console.log("[BRAIN:STREAM] nothing readable came back streamed (" + (firstShape || "no events") + ") - asking again without streaming"); } catch {}
+    } catch (e) {
+      try { console.log("[BRAIN:STREAM] streaming failed: " + String(e?.message ?? e).slice(0, 160) + " - asking again without streaming"); } catch {}
+    }
+    if (text) return { ok: true, text, structured: null, provider: route.provider, model: route.model, usage: { in: 0, out: 0 }, streamed: true, shape: firstShape };
+  }
+  const r = await callBrain(args, env);
+  if (r && r.ok && r.text) await give(String(r.text));
+  return r;
 }
 
 
@@ -67809,7 +67863,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
       let _heardIdea = null;
-      let _heardTalk = false, _heardOut = null, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null;
+      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -68026,8 +68080,30 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 "it is READY. Then two lines, A: and B: - each one the button words, a few words, then = and that whole tattoo idea in " +
                 "their own words, copied exactly. Then your words: say back what they want, then one short question asking which one.\n\n" +
                 "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.";
-              const _hq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _hMs)),
-                callBrain({ system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\nWhat they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+              // ══ HER SAID-BACK STREAMS (v9.787) ═══ Her answer starts with its label line (and the IDEA / A / B lines) - those never
+              // reach the page; from her first line of words on, each piece goes out as she writes it. A TALK answer is not streamed
+              // (that turn goes to her as a conversation). Once her words have started, the time limit no longer cuts her off.
+              let _hStarted = false;
+              const _hFeed = (() => { let raw = "", label = null, sent = 0;
+                return async (t) => {
+                  raw += String(t || "");
+                  const body = raw.replace(/^\s*```[a-z]*\s*/i, "");
+                  if (label === null) { const m = body.match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\n/i); if (!m) { if (body.length > 60) label = "?"; return; } label = m[1].toUpperCase(); }
+                  if (label !== "READY" && label !== "CHOOSE" && label !== "DRAW") return;
+                  const afterLabel = body.replace(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\n/i, "");
+                  let at = 0, start = -1;
+                  for (;;) {
+                    const nl = afterLabel.indexOf("\n", at), line = nl < 0 ? afterLabel.slice(at) : afterLabel.slice(at, nl);
+                    if (/^\s*(IDEA|A|B)\s*[:.)-]/i.test(line) || (!line.trim() && nl >= 0)) { if (nl < 0) return; at = nl + 1; continue; }
+                    if (nl < 0 && line.trim().length < 6) return;   // too short yet to know it is not "IDEA:" coming in
+                    start = at; break;
+                  }
+                  const words = afterLabel.slice(start);
+                  if (words.length > sent && onDelta) { const add = words.slice(sent); sent = words.length; _hStarted = true; _heardStreamed = true; try { await onDelta(add); } catch {} }
+                }; })();
+              const _hLate = new Promise((r) => setTimeout(function tick() { if (!_hStarted) r({ late: true }); else setTimeout(() => r({ late: true }), 45000); }, _hMs));
+              const _hArgs = { system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\nWhat they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) };
+              const _hq = await Promise.race([_hLate, onDelta ? callBrainStream(_hArgs, env, _hFeed) : callBrain(_hArgs, env)]);
               const _hRaw = String((_hq && _hq.text) || "").trim();
               const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\s*([\s\S]*)$/i);
               let _hDo = _hm ? _hm[1].toUpperCase() : null; if (_hDo === "DRAW") _hDo = "READY";
@@ -68075,7 +68151,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 _fixedWhy = "heard_ready"; _fixedSay = _hSay; _heardOut = { go: true };
                 // with no IDEA line of hers, their own words (already kept above) are what Imagine it draws
                 if (_heardIdea) { try { await talkStatePut(env, me, "go_idea", _heardIdea); await talkStatePut(env, me, "go_picks", ""); } catch {} }
-                console.log("[TURN:HEARD] " + _hSec + "s - READY, nothing drawn until Imagine it · the idea: " + (_heardIdea ? "\"" + _heardIdea + "\"" : "(none from her - their own words wait)") + " · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hq && _hq.streamed ? " (streamed" + (_hq.shape ? ", " + _hq.shape : "") + ")" : "") + " - READY, nothing drawn until Imagine it · the idea: " + (_heardIdea ? "\"" + _heardIdea + "\"" : "(none from her - their own words wait)") + " · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "CHOOSE" && _hSay) {
                 _fixedWhy = "heard_choose"; _fixedSay = _hSay; _heardOut = { picks: [{ k: "A", t: _hPicks.A.t }, { k: "B", t: _hPicks.B.t }] };
                 try { await talkStatePut(env, me, "go_picks", JSON.stringify(_hPicks)); await talkStatePut(env, me, "go_idea", ""); } catch {}
@@ -68399,7 +68475,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // The tap (above): her words come from the line written once the files have started.
       // THE FIXED LINE SHOWS AT ONCE (v9.607): MEASURED 18:45 - "Here they come..." was ready at the tap and reached the page
       // only with the finished picture, 32s later. It goes out the way her streamed words do, then the work starts.
-      if (_fixedSay && !acted && onDelta) { try { await onDelta(_fixedSay); } catch {} }
+      if (_fixedSay && !acted && onDelta && !_heardStreamed) { try { await onDelta(_fixedSay); } catch {} }
       if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : (_fixedWhy === "poss" || _fixedWhy === "inspire8") ? "change" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
                                          prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
       if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",

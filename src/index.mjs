@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.783.0-2026-11-01-says-back-then-draws";
+const BUILD = "aura-core-v9.784.0-2026-11-01-names-never-lost";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61302,6 +61302,21 @@ async function sheet8DirectSize(env) { let w = 1440, h = 3120; try { const m = S
 // picture, as the direct new-tattoo ending does - nothing writes a reply, so nothing has to. Setting: config:frame:sheet8:bodydirect.
 const SHEET8_BODY_DIRECT = "Show the whole tattoo in every picture, nothing cut off at the edges. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is all white with a thin black outline around it: the picture at the top, the same shape as my photo, and under it, inside a box with a thin black outline, a short title in bold black capital letters, and under it two short lines in black describing the design. No numbers anywhere.";
 // Their opening stays word for word; the four-card layout at its end comes off, and the one ending goes on.
+// THE NAMES (AND NUMBERS) IN WHAT THEY SAID (v9.784): a capitalised word that is not an everyday word, or a number - "Christina",
+// "Sienna", "Kathy", "1987". What the idea that is drawn must still hold.
+const _NAME_STOP = new Set(("i im ive id ill my mine me the a an and but so or we our us it its this that these those she he her his him they " +
+  "their them you your also just not oh yes no ok okay hi hey please thanks thank can could would should will want wanted like love loved " +
+  "in on at for with of to from if when what which who why how maybe something some one two then now mom dad mum mother father wife husband " +
+  "son daughter baby kids kid children family brother brothers sister sisters there here as be is was were am are been have has had do does " +
+  "did get got make made really very honestly anyway well let lets im also all any every each more most other another first second last").split(" "));
+function _namesOf(t) {
+  const out = []; const seen = new Set();
+  for (const m of String(t || "").matchAll(/\b([A-Z][a-z\u00C0-\u00FF]+(?:['\u2019]s)?|\d{2,4})\b/g)) {
+    const w = m[1].replace(/['\u2019]s$/, ""), k = w.toLowerCase();
+    if (_NAME_STOP.has(k) || seen.has(k)) continue; seen.add(k); out.push(w);
+  }
+  return out;
+}
 // Her words, never cut mid-word: up to `max` characters, ending on her last whole sentence when they have to be shortened.
 function _wholeSentences(t, max) {
   const s = String(t || "").replace(/\s+/g, " ").trim();
@@ -67946,8 +67961,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 "READY when you know what they want in the tattoo. Second line: IDEA: their own words about the tattoo, copied exactly - " +
                 "leave out only what isn't about the tattoo. Then your words: say back what they want, and the style when they picked one, " +
                 "in your own voice, and ask if you should imagine it. Name everything in the IDEA line, and nothing that isn't in it.\n\n" +
-                "CHOOSE when they are torn between directions. Then two lines, A: and B: - each one the button words, a few words, then = " +
-                "and that whole tattoo idea in their own words. Then your words: one short question asking which one.\n\n" +
+                // v9.784: MEASURED 12:56 - everything fitted one tattoo, she asked anyway, her two ideas dropped Christina and Sienna, and
+                // her words were only "Which concept speaks to you more?"
+                "CHOOSE only when what they want points two different ways that one tattoo can't hold - if it can all go in one tattoo, " +
+                "it is READY. Then two lines, A: and B: - each one the button words, a few words, then = and that whole tattoo idea in " +
+                "their own words, copied exactly. Then your words: say back what they want, then one short question asking which one.\n\n" +
                 "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.";
               const _hq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _hMs)),
                 callBrain({ system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\nWhat they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
@@ -67965,11 +67983,26 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   if (_t && _id) _hPicks[_k] = { t: _t, idea: _id }; _hRest = _hRest.replace(_pm[0], ""); }
               }
               if (_hDo === "CHOOSE" && !(_hPicks.A && _hPicks.B)) _hDo = _hIdea ? "READY" : null;
+              // ══ NO NAME OF THEIRS IS EVER LOST (v9.784, 2026-11-01, Aaron) ═══ MEASURED 12:57 (img_mvyb9tld69dc): her choice said
+              // "children's names" and all 8 drew "EMMA · NOAH · LILY" - his daughters are Christina and Sienna. A check, not an instruction:
+              // every name (and every number) in what they told her must be in the idea that is drawn; when one is missing, their own
+              // words are drawn instead of her line.
+              const _theirs = ((_told ? _told.replace(/\n+/g, ". ") + ". " : "") + _s).slice(0, 1200);
+              let _ideaLost = false;
+              // a plural or a voice-typed capital ("Dragons", "Roses") still counts when the idea holds the word itself
+              const _lost = (idea) => { const _il = String(idea || "").toLowerCase();
+                return _namesOf(_theirs).filter((n) => { const k = n.toLowerCase(), st = k.length > 4 ? k.replace(/(es|s)$/, "") : k; return !_il.includes(k) && !_il.includes(st); }); };
+              if (_hIdea && _hIdea.trim()) { const _lm = _lost(_hIdea); if (_lm.length) {
+                console.log("[TURN:NAMES] her idea left out " + _lm.join(", ") + " - their own words are drawn instead" + (me ? " · who=" + me : ""));
+                _ideaLost = true; } }
+              for (const _k of ["A", "B"]) { if (_hPicks[_k]) { const _lm = _lost(_hPicks[_k].idea); if (_lm.length) {
+                console.log("[TURN:NAMES] her choice " + _k + " left out " + _lm.join(", ") + " - their own words go with it" + (me ? " · who=" + me : ""));
+                _hPicks[_k].idea = (_theirs + ". " + _hPicks[_k].t).slice(0, 1300); } } }
               // HER WORDS END ON A WHOLE SENTENCE (v9.781). MEASURED 11:03: cut at 400 characters mid-word - "I'm imagining some designs f".
               const _hSay = _wholeSentences(_hRest, 1200);
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
               if (_hIdea.trim()) {
-                _heardIdea = _hIdea.replace(/\s+/g, " ").trim().slice(0, 400);
+                _heardIdea = _ideaLost ? _theirs : _hIdea.replace(/\s+/g, " ").trim().slice(0, 400);
                 try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }))); } catch {}
               }
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);

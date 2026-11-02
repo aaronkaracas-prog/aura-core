@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.807.0-2026-11-02-cut-pick-runs-direct";
+const BUILD = "aura-core-v9.808.0-2026-11-02-lock-runs-direct";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -64625,6 +64625,16 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         try { console.log("[WORKFLOW] progress write failed: " + kvTrouble); } catch {}
       }
     };
+    // HER NAME AND COLOUR AT LOCK-IN AS THEIR OWN JOB (v9.808): no retries - one reading, one write.
+    if (String(event.payload?.mode || "") === "lock_name") {
+      const d = event.payload?.data || {};
+      try {
+        return await step.do("lock_name", { retries: { limit: 0, delay: "1 second" }, timeout: "5 minutes" }, async () => {
+          try { await lockNameAndColour(this.env, d.me, d.pid, d.img, d.desc || "", d.world || null); return { ok: true }; }
+          catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 300) }; }
+        });
+      } catch (e) { try { console.log("[NAME] its job stopped: " + String(e?.message ?? e).slice(0, 200)); } catch {} return { ok: false }; }
+    }
     // A TURN AS ITS OWN JOB (v9.681): no retries - a second go would draw and charge twice.
     if (String(event.payload?.mode || "") === "talk_turn") {
       const d = event.payload?.data || {};
@@ -66232,6 +66242,67 @@ async function talkJobsOn(env) {
   try { const k = String((await env.AURA_KV.get("config:talk:durable")) || "").trim().toLowerCase(); if (["0", "off", "no", "false"].includes(k)) return false; } catch {}
   return true;
 }
+// ══ HER NAME AND COLOUR AT LOCK-IN, ONE IMPLEMENTATION (v9.808, 2026-11-02) ═══ The same step as before, lifted out of auraTalk
+// unchanged so it can run behind a turn inside a job, or as its own job when the lock-in turn ran directly (it takes 15-25s;
+// work left behind a direct reply is cut off at 30s).
+async function lockNameAndColour(env, me, _pidN, _imgN, _descN, world) {
+  const readAct = talkReadAct, _verdict = talkVerdict;
+  try {
+    // SHE NAMES IT AND READS ITS COLOUR (v9.565) - behind the reply, nobody waits.
+    const q = await proxyToAgent(env, "[FOR YOU, NOT THEM. They just locked in the tattoo in this picture." +
+      (_descN ? " It is described as: \"" + _descN + "\"." : "") +
+      " Reply with exactly two lines. NAME: a name for it, two to five words, the way a person would name it." +
+      " COLOUR: its colour treatment in a few words, as you see it (for example black and grey, full colour," +
+      " black and grey with red accents).]",
+      // HER SIDE NOTEBOOK (2026-10-12, v9.573): MEASURED 07:08 - this request sat in her conversation,
+      // and her next chat reply to a photo was "NAME: Blush Floral Arm Sleeve COLOUR: ...". Side jobs
+      // go to her own second instance, never into the conversation with them.
+      false, me + "_side", _imgN, world);
+    // HER WORDS, NOT HER ENVELOPE (v9.662, 2026-10-18): MEASURED 08:05:57 - she answered {"say":"NAME: Norse Wolf and
+    // Ravens Sleeve\nCOLOUR: black and grey",...}; read raw, the "\n" was two letters, the name ran into the colour,
+    // passed seven words and was thrown away. The text inside "say" is read first.
+    let _sayTxt = ""; try { const _j = JSON.parse(String((q && q.reply) || "")); if (_j && typeof _j.say === "string") _sayTxt = _j.say; } catch {}
+    if (!_sayTxt) { const _m = String((q && q.reply) || "").match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (_m) { try { _sayTxt = JSON.parse('"' + _m[1] + '"'); } catch {} } }
+    const raw = (q && q.reply && !q.failed) ? (_sayTxt ? _sayTxt + "\n" : "") + String(q.reply) + "\n" + String(_verdict(q.reply, readAct(q.reply)) || "") : "";
+    const clean = (x) => String(x || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 60);
+    let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
+    // HER NAME WITHOUT A LABEL (v9.666, 2026-10-18): MEASURED 11:18:51 - she answered {"say":"Roses and Butterflies Trail"},
+    // just the name, and it was thrown away for having no "NAME:". A short plain line is the name.
+    // v9.795: MEASURED 17:47:54 - she answered "Hummingbird Heart Wreath" as a plain line (no envelope, no label) and it
+    // was thrown away. A short plain line is her name however it comes.
+    // v9.796: MEASURED 18:08:24 - "RJ Lighthouse Keeper" and "Full color with golden beam accents" came as two plain lines,
+    // no labels: the first line is her name, the second her colour.
+    let _plainColour = "";
+    if (!n && (_sayTxt || (q && q.reply && !q.failed))) {
+      const _ls = String(_sayTxt || q.reply).split(/\n+/).map((x) => x.trim()).filter(Boolean);
+      if (_ls[0] && !/[:{}]/.test(_ls[0]) && _ls[0].split(/\s+/).length <= 7) { n = clean(_ls[0]); if (_ls[1] && !/[:{}]/.test(_ls[1])) _plainColour = _ls[1]; } }
+    // THE COLOUR WHOLE (v9.663, 2026-10-18): MEASURED - "bold red, gold and teal-green American traditi" on the job
+    // sheet; it was read to 60 letters and cut mid-word. Read to 120; if that is where it stops, it ends at a word.
+    let c = String((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,120})/i) || [])[1] || _plainColour || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 120);
+    if (c.length >= 118) c = c.replace(/\s+\S*$/, "").replace(/[\s,;:.-]+$/, "");
+    if (n && n.split(/\s+/).length > 7) n = "";
+    // NOT A STATUS AS A NAME (2026-10-11, v9.566): MEASURED - a tattoo was titled "Locked In". A name
+    // is what the tattoo is, never what just happened to it.
+    if (n && /^(locked( in)?|your tattoo|tattoo|untitled|name|none|n\/a)$/i.test(n.trim())) n = "";
+    if (n || c) {
+      await projectAppend(env, me, _pidN, { ...(n ? { name_final: n, her_name: true } : {}), ...(c ? { details: { colour: c } } : {}) });
+    }
+    console.log("[NAME] she named it (behind the reply): " + (n || "?") + " | colour: " + (c || "?"));
+    // WHY NO NAME (v9.605): MEASURED 17:00:37 "named it: ?" - her answer is logged whole when no name is read.
+    if (!n) console.log("[NAME] no name read from her answer: \"" + String((q && (q.reply || q.failed)) || "(nothing)").replace(/\s+/g, " ").slice(0, 400) + "\"");
+  } catch (e) { try { console.log("[NAME] naming failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+}
+
+async function startLockNameJob(env, data) {
+  try {
+    if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
+    const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: "lock_name", data } });
+    return (inst && inst.id) ? inst.id : null;
+  } catch (e) {
+    try { console.log("[NAME] its own job did not start - it runs behind the reply: " + String(e?.message ?? e).slice(0, 160)); } catch {}
+    return null;
+  }
+}
 async function startTalkJob(env, data) {
   try {
     if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
@@ -66260,7 +66331,7 @@ async function runTalkJob(env, d) {
   await live(true);
   let out;
   try {
-    out = await auraTalk(env, me, d.stage, d.said, d.hist, { ...(d.opts || {}), world: worldFor(d.host),
+    out = await auraTalk(env, me, d.stage, d.said, d.hist, { ...(d.opts || {}), in_job: true, world: worldFor(d.host),
       waitUntil: (pr) => { pend.push(Promise.resolve(pr).catch(() => null)); },
       onDelta: async (t) => { text += String(t || ""); await live(false); },
       onStage: async (st, w) => { stg = String(st || ""); what = String(w || ""); await live(true); } });
@@ -71953,52 +72024,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (act === "artist" && !_herName && typeof _waitUntil === "function" && _imgForName) {
               const _pidN = _pid, _imgN = _imgForName;
               const _descN = (opts && opts.name) ? String(opts.name).slice(0, 400) : "";
-              _waitUntil((async () => {
-                try {
-                  // SHE NAMES IT AND READS ITS COLOUR (v9.565) - behind the reply, nobody waits.
-                  const q = await proxyToAgent(env, "[FOR YOU, NOT THEM. They just locked in the tattoo in this picture." +
-                    (_descN ? " It is described as: \"" + _descN + "\"." : "") +
-                    " Reply with exactly two lines. NAME: a name for it, two to five words, the way a person would name it." +
-                    " COLOUR: its colour treatment in a few words, as you see it (for example black and grey, full colour," +
-                    " black and grey with red accents).]",
-                    // HER SIDE NOTEBOOK (2026-10-12, v9.573): MEASURED 07:08 - this request sat in her conversation,
-                    // and her next chat reply to a photo was "NAME: Blush Floral Arm Sleeve COLOUR: ...". Side jobs
-                    // go to her own second instance, never into the conversation with them.
-                    false, me + "_side", _imgN, world);
-                  // HER WORDS, NOT HER ENVELOPE (v9.662, 2026-10-18): MEASURED 08:05:57 - she answered {"say":"NAME: Norse Wolf and
-                  // Ravens Sleeve\nCOLOUR: black and grey",...}; read raw, the "\n" was two letters, the name ran into the colour,
-                  // passed seven words and was thrown away. The text inside "say" is read first.
-                  let _sayTxt = ""; try { const _j = JSON.parse(String((q && q.reply) || "")); if (_j && typeof _j.say === "string") _sayTxt = _j.say; } catch {}
-                  if (!_sayTxt) { const _m = String((q && q.reply) || "").match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (_m) { try { _sayTxt = JSON.parse('"' + _m[1] + '"'); } catch {} } }
-                  const raw = (q && q.reply && !q.failed) ? (_sayTxt ? _sayTxt + "\n" : "") + String(q.reply) + "\n" + String(_verdict(q.reply, readAct(q.reply)) || "") : "";
-                  const clean = (x) => String(x || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 60);
-                  let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
-                  // HER NAME WITHOUT A LABEL (v9.666, 2026-10-18): MEASURED 11:18:51 - she answered {"say":"Roses and Butterflies Trail"},
-                  // just the name, and it was thrown away for having no "NAME:". A short plain line is the name.
-                  // v9.795: MEASURED 17:47:54 - she answered "Hummingbird Heart Wreath" as a plain line (no envelope, no label) and it
-                  // was thrown away. A short plain line is her name however it comes.
-                  // v9.796: MEASURED 18:08:24 - "RJ Lighthouse Keeper" and "Full color with golden beam accents" came as two plain lines,
-                  // no labels: the first line is her name, the second her colour.
-                  let _plainColour = "";
-                  if (!n && (_sayTxt || (q && q.reply && !q.failed))) {
-                    const _ls = String(_sayTxt || q.reply).split(/\n+/).map((x) => x.trim()).filter(Boolean);
-                    if (_ls[0] && !/[:{}]/.test(_ls[0]) && _ls[0].split(/\s+/).length <= 7) { n = clean(_ls[0]); if (_ls[1] && !/[:{}]/.test(_ls[1])) _plainColour = _ls[1]; } }
-                  // THE COLOUR WHOLE (v9.663, 2026-10-18): MEASURED - "bold red, gold and teal-green American traditi" on the job
-                  // sheet; it was read to 60 letters and cut mid-word. Read to 120; if that is where it stops, it ends at a word.
-                  let c = String((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,120})/i) || [])[1] || _plainColour || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 120);
-                  if (c.length >= 118) c = c.replace(/\s+\S*$/, "").replace(/[\s,;:.-]+$/, "");
-                  if (n && n.split(/\s+/).length > 7) n = "";
-                  // NOT A STATUS AS A NAME (2026-10-11, v9.566): MEASURED - a tattoo was titled "Locked In". A name
-                  // is what the tattoo is, never what just happened to it.
-                  if (n && /^(locked( in)?|your tattoo|tattoo|untitled|name|none|n\/a)$/i.test(n.trim())) n = "";
-                  if (n || c) {
-                    await projectAppend(env, me, _pidN, { ...(n ? { name_final: n, her_name: true } : {}), ...(c ? { details: { colour: c } } : {}) });
-                  }
-                  console.log("[NAME] she named it (behind the reply): " + (n || "?") + " | colour: " + (c || "?"));
-                  // WHY NO NAME (v9.605): MEASURED 17:00:37 "named it: ?" - her answer is logged whole when no name is read.
-                  if (!n) console.log("[NAME] no name read from her answer: \"" + String((q && (q.reply || q.failed)) || "(nothing)").replace(/\s+/g, " ").slice(0, 400) + "\"");
-                } catch (e) { try { console.log("[NAME] naming failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
-              })());
+              // (v9.808) a lock-in that ran directly has no job behind it to finish this in - it gets its own job; inside a job it runs
+              // behind the turn as before. If its job cannot start, it runs behind the reply as it always did.
+              let _nameJob = null;
+              if (!(opts && opts.in_job)) _nameJob = await startLockNameJob(env, { me, pid: _pidN, img: _imgN, desc: _descN, world: world || null });
+              if (_nameJob) { try { console.log("[NAME] her name and colour run as their own job " + _nameJob + (me ? " · who=" + me : "")); } catch {} }
+              else _waitUntil(lockNameAndColour(env, me, _pidN, _imgN, _descN, world));
             }
             // ══ SHE NAMES IT AS SOON AS THERE IS A PICTURE (v9.759, 2026-10-24, Aaron: "every tattoo is called Your tattoo even when
             // Aura has named it - Aura's names always take priority"). MEASURED 22:35 on My Tattoos: 13 of 15 tattoos said "Your
@@ -73437,6 +73468,16 @@ export class PublicEntry extends WorkerEntrypoint {
               console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - a pick off " + _ps + ", its cards already cut, no job to wait for · who=" + me);
             }
           } catch {}
+        }
+        // ══ LOCKING IN RUNS STRAIGHT AWAY TOO (v9.808, 2026-11-02, Aaron: go) ═══ MEASURED 05:29:24 -> 05:29:31.5: the lock-in took 7.5s on the
+        // page (4.2s the night before) - its job took 2.0s to be made and more to begin, for a turn that draws nothing: the artist files run
+        // as their own job already. Its one long piece, her name and colour reading (21s at 05:29:26 -> 05:29:47), now gets its own job too.
+        if (!_direct && !!me && !!_tOpts.tid && _tOpts.lock && /^this is my tattoo\.?$/i.test(String(_said || "").trim()) &&
+            !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
+            !_tOpts.change_now && !_tOpts.new_now && !_tOpts.pick_sheet && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of &&
+            !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.inspire_go) {
+          _direct = true;
+          try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - locking in, the files and her naming each run as their own job · who=" + me); } catch {}
         }
         const _jobId = (me && _tOpts.tid && !_direct && await talkJobsOn(env))
           ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;

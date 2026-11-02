@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.796.0-2026-11-01-name-first-line";
+const BUILD = "aura-core-v9.797.0-2026-11-01-continue-gives-it-back";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66770,6 +66770,32 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // than a history display.
       let lastDrawn = null;
       if (me) { try { lastDrawn = await _pre.last; } catch {} }
+      // ══ CONTINUE GIVES THE TATTOO BACK (v9.797, 2026-11-01, Aaron: go) ═══ MEASURED 18:23 (Continue on an In progress tattoo, pick, Finalize):
+      // the lock-in of another tattoo at 18:08 had cleared the session, so "I want number 1" found no last drawing and was not a pick
+      // ("act=none · drew=no"); the lock-in after it was never sent. The page names the tattoo it reopened (its design, `from`), and that
+      // tattoo was already found above (_workPj) - but only her words were taken from it. Now, when nothing is on screen here and a tattoo
+      // is named, its newest picture is the last drawing again, its pictures (sheets marked) go back on the timeline, and it is the one
+      // they are on. Everything after - a pick, a change, Finalize - works as it did before the clear.
+      if (me && !lastDrawn && _workPj && _workPid && opts && String(opts.from || "").trim()) {
+        try {
+          const _wp = (_workPj.pictures || []).filter((x) => x && x.image && !x.on_me);
+          const _lp = _wp[_wp.length - 1];
+          if (_lp) {
+            lastDrawn = { design: _lp.design || null, image: _lp.image, subject: null, at: _lp.ts || new Date().toISOString() };
+            for (const x of _wp) {
+              if (tline.some((e) => e && e.image === x.image)) continue;
+              tline.push({ ts: x.ts || new Date().toISOString(), role: "picture", image: x.image, design: x.design || null, words: x.words || "",
+                           ...(Array.isArray(x.cards8) && x.cards8.length ? { grid: true, cards8: x.cards8 } : {}) });
+            }
+            tline.sort((a, c) => String(a.ts || "").localeCompare(String(c.ts || "")));
+            await talkStatePut(env, me, "last", JSON.stringify(lastDrawn));
+            await talkStatePut(env, me, "project", _workPid);
+            await talkStatePut(env, me, "timeline", JSON.stringify(tline.slice(-60)));
+            console.log("[TURN:BACK] reopened " + _workPid + " - its newest picture is on screen again (" + (_lp.design ? "design " + _lp.design : "no design id") +
+              (Array.isArray(_lp.cards8) && _lp.cards8.length ? ", a set of 8" : "") + ")" + " · who=" + me);
+          }
+        } catch (e) { try { console.log("[TURN:BACK] could not reopen " + _workPid + ": " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+      }
       // ══ AN UNPICKED SHEET IS NOT THEIR DESIGN (v9.695, 2026-10-21, Aaron chose rule "a") ════════════════════════════════
       // MEASURED 12:40 (pta_f122ae203ea2a21c): the octopus 8 were drawn and never picked; "I'm thinking a lighthouse in a storm with a
       // little sailboat" was then sent as "This is my tattoo design. I want to change it: ..." with the octopus sheet as the design.

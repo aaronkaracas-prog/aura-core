@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.793.0-2026-11-01-home-start-is-new";
+const BUILD = "aura-core-v9.794.0-2026-11-01-change-words-whole";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61383,6 +61383,13 @@ function _namesOf(t) {
   return out;
 }
 // Her words, never cut mid-word: up to `max` characters, ending on her last whole sentence when they have to be shortened.
+// v9.794: only the sentences that were finished - a last one that stops mid-way ("how sweet that") is left off.
+function _finishedOnly(t) {
+  const s = String(t || "").trim();
+  if (!s || /[.!?\u2026]["'\u201d\u2019)]*$/.test(s)) return s;
+  const m = s.match(/^[\s\S]*[.!?\u2026]["'\u201d\u2019)]*(?=\s)/);
+  return m ? m[0].trim() : "";
+}
 function _wholeSentences(t, max) {
   const s = String(t || "").replace(/\s+/g, " ").trim();
   if (s.length <= max) return s;
@@ -61448,7 +61455,16 @@ async function toEight(env, sentence, kind) {
   // for." - one sentence for every style, so Japanese comes out in colour and Black & Grey Realism stays grey. Setting:
   // config:frame:sheet8:style_colour (needs {name}).
   const _stm8 = s.match(/\bin the ([^.]{2,80}?) style\b/i);
-  if (_stm8) {
+  // ══ "THE SAME STYLE AS MY DESIGN" IS NOT A STYLE NAME (v9.794, 2026-11-01, Aaron: go) ═══ MEASURED 17:45:58: a change sheet was sent
+  // "...all in the same style as my design ... Use the colors the same style is known for." On a change, the colours are the design's own.
+  // Setting: config:frame:sheet8:same_colour.
+  if (_stm8 && /^(?:the\s+)?same$/i.test(_stm8[1].trim())) {
+    const _col0 = /\s*Use colou?r wherever it works[^.]*\.\s*/gi;
+    s = s.replace(_col0, " ").replace(/\s{2,}/g, " ").trim(); end = end.replace(_col0, " ").replace(/\s{2,}/g, " ").trim();
+    let _sc0 = "Keep the colors of my design.";
+    try { const k = String((await env.AURA_KV.get("config:frame:sheet8:same_colour")) || "").trim(); if (k) _sc0 = k; } catch {}
+    end = _sc0 + " " + end;
+  } else if (_stm8) {
     const _lk = await styleLook(env, _stm8[1]), _say8 = await styleSayAs(env, _stm8[1]);
     s = s.replace(/\bin the ([^.]{2,80}?) style\b/i, (m, nm) => m.replace(nm, _say8) + (_lk ? " - " + _lk : ""));
     const _col = /\s*Use colou?r wherever it works[^.]*\.\s*/gi;
@@ -68249,14 +68265,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             try {
               let _cMs = 8000; try { const _cv = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(_cv) && _cv >= 0) _cMs = _cv; } catch {}
               let _cModel = null; try { _cModel = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+              // v9.794: MEASURED 17:45:27 - her words stopped mid-sentence ("I'm already picturing how sweet that") and the fixed line was
+              // joined on: 400 tokens with her thinking counted in them ran out. Same thinking and room as her hearing step
+              // (config:source:heard:reasoning, empty = low), and a last sentence that never finished is left off.
+              let _cEff = "low"; try { const k = String((await env.AURA_KV.get("config:source:heard:reasoning")) || "").trim().toLowerCase(); if (["low", "medium", "high"].includes(k)) _cEff = k; else if (/^(off|none|default)$/.test(k)) _cEff = null; } catch {}
               const _cT0 = Date.now();
               const _cSys = "You are Aura, the tattoo designer on mytattoo.world. Someone is changing the tattoo design they chose, and they just " +
                 "told you the change they want. In one or two short, warm sentences, in your own words: say back the change they asked for, so " +
                 "they know you got it, and tell them you're imagining their new versions now. Only what they asked for - nothing you are " +
                 "adding. Never put a number in your words. Plain words only, no lists.";
               const _cq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _cMs)),
-                callBrain({ system: _cSys, user: _s.slice(0, 600), max_tokens: 400, ...(_cModel ? { model: _cModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
-              const _cSay = _wholeSentences(String((_cq && _cq.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, ""), 1200);
+                callBrain({ system: _cSys, user: _s.slice(0, 600), max_tokens: 2000, ...(_cEff ? { reasoning: _cEff } : {}), ...(_cModel ? { model: _cModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+              const _cSay = _finishedOnly(_wholeSentences(String((_cq && _cq.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, ""), 1200));
               const _cSec = ((Date.now() - _cT0) / 1000).toFixed(1);
               if (_cSay && !(_cq && _cq.late)) {
                 const _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again.");

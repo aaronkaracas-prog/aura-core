@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.806.0-2026-11-02-ops-uses-internal-key";
+const BUILD = "aura-core-v9.807.0-2026-11-02-cut-pick-runs-direct";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -73415,12 +73415,29 @@ export class PublicEntry extends WorkerEntrypoint {
         // dropped connection; a start never draws. ONLY these run directly: a new-tattoo / add / cover opener on its own, or a fresh "Let's
         // create my own in the <style> style" - with no photo, no pick, no go, no change, nothing that can draw riding on it. Anything else,
         // including every turn Aura answers in her own words (her conversation can draw), still runs as a job.
-        const _direct = !!me && !!_tOpts.tid && !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
+        let _direct = !!me && !!_tOpts.tid && !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
           !_tOpts.change_now && !_tOpts.new_now && !_tOpts.pick_sheet && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of &&
           !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.name && !_tOpts.inspire && !_tOpts.inspire_go &&
           (/^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)\.?$/i.test(String(_said || "").trim()) ||
            (_tOpts.fresh && /^let'?s create my own in the .+ style\.?$/i.test(String(_said || "").trim())));
         if (_direct) { try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - a start that cannot draw, no job to wait for · who=" + me); } catch {} }
+        // ══ A PICK OFF A SHEET OF 8 THAT IS ALREADY CUT RUNS STRAIGHT AWAY TOO (v9.807, 2026-11-02, Aaron: "you decide go") ═══
+        // MEASURED 20:11:59.97 -> 20:12:06.7: the pick before Finalize took 6.7s on the page for a turn of 3.1s - the job took 2.5s to
+        // be made and 1.8s more to begin, then the answer waited for the relay's next look. A pick off a sheet whose 8 cards were cut
+        // when it came back (its sheet8 record) is a card handed over - nothing is drawn, nothing is charged, nothing can run long.
+        // Only "I want number N" with the sheet it came from and nothing else riding on it; a sheet with no record still runs as a job.
+        if (!_direct && !!me && !!_tOpts.tid && _tOpts.pick_sheet && /^i want number [1-8]\.?$/i.test(String(_said || "").trim()) &&
+            !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
+            !_tOpts.change_now && !_tOpts.new_now && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of &&
+            !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire_go) {
+          try {
+            const _ps = (String(_tOpts.pick_sheet).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(_tOpts.pick_sheet)) ? String(_tOpts.pick_sheet) : null);
+            if (_ps && await env.AURA_KV.get("sheet8:" + _ps)) {
+              _direct = true;
+              console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - a pick off " + _ps + ", its cards already cut, no job to wait for · who=" + me);
+            }
+          } catch {}
+        }
         const _jobId = (me && _tOpts.tid && !_direct && await talkJobsOn(env))
           ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;
         if (_jobId) {

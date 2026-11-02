@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.789.0-2026-11-01-everything-they-said";
+const BUILD = "aura-core-v9.790.0-2026-11-01-their-words-not-hers";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68086,6 +68086,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // reach the page; from her first line of words on, each piece goes out as she writes it. A TALK answer is not streamed
               // (that turn goes to her as a conversation). Once her words have started, the time limit no longer cuts her off.
               let _hStarted = false;
+              // ══ THEIR WORDS ARE NEVER SHOWN AS HERS (v9.790, 2026-11-01, Aaron: go) ═══ MEASURED 16:52 (Blackout, the grandpa and the bass):
+              // she wrote READY, then their whole message on her second line WITHOUT the "IDEA:" label, then her words - the page showed
+              // "my grandpa was a fisherman ... for him I'm so sorry for your loss ...". A check on her answer, not a rule for her: any
+              // stretch at the start of her words that copies what they said (labelled or not, quoted or not, on its own line or run into
+              // her words) is their idea - it is kept as the idea and never reaches the page, streamed or final.
+              const _hN = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+              const _hTheirs = [_hN(_s), _hN((_told ? _told.replace(/\n+/g, " ") + " " : "") + _s)].filter((x) => x.length >= 12);
+              const _hThr = _hTheirs.length ? Math.min(30, ..._hTheirs.map((x) => x.length)) : Infinity;
+              // how much of the start of `t` copies their words: end = where the copy stops in t, len = letters matched, open = it ran to the
+              // end of t still matching (more may be coming), copy = long enough to be their words
+              const _hCopy = (t) => { const x = String(t || ""); let acc = "", end = 0, open = true;
+                for (let i = 0; i < x.length; i++) { const c = x[i].toLowerCase();
+                  if (!/[a-z0-9]/.test(c)) { if (!acc && !/[\s"'\u201c\u201d\u2018\u2019*]/.test(c)) { open = false; break; } continue; }
+                  if (!_hTheirs.some((th) => th.startsWith(acc + c))) { open = false; break; } acc += c; end = i + 1; }
+                if (acc && _hTheirs.some((th) => th === acc)) open = false;
+                return { end, len: acc.length, open: open && acc.length > 0, copy: acc.length >= _hThr }; };
               const _hFeed = (() => { let raw = "", label = null, sent = 0;
                 return async (t) => {
                   raw += String(t || "");
@@ -68098,6 +68114,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                     const nl = afterLabel.indexOf("\n", at), line = nl < 0 ? afterLabel.slice(at) : afterLabel.slice(at, nl);
                     if (/^\s*(IDEA|[A-H])\s*[:.)-]/.test(line) || /^\s*IDEA\s*:/i.test(line) || (!line.trim() && nl >= 0)) { if (nl < 0) return; at = nl + 1; continue; }
                     if (nl < 0 && line.trim().length < 6) return;   // too short yet to know it is not "IDEA:" coming in
+                    { const cp = _hCopy(afterLabel.slice(at));       // v9.790: their own words, copied without the label
+                      if (cp.open) return;                           // still matching what they said - wait to see where it ends
+                      if (cp.copy) { at += cp.end; const sk = afterLabel.slice(at).match(/^[\s"'\u201c\u201d\u2018\u2019.,:;*-]*/); at += sk ? sk[0].length : 0; if (at >= afterLabel.length) return; continue; } }
                     start = at; break;
                   }
                   const words = afterLabel.slice(start);
@@ -68110,8 +68129,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\s*([\s\S]*)$/i);
               let _hDo = _hm ? _hm[1].toUpperCase() : null; if (_hDo === "DRAW") _hDo = "READY";
               let _hRest = _hm ? _hm[2] : "";
-              const _hIdea = (_hRest.match(/^\s*IDEA:\s*(.+)/i) || [])[1] || "";
+              let _hIdea = (_hRest.match(/^\s*IDEA:\s*(.+)/i) || [])[1] || "";
               if (_hIdea) _hRest = _hRest.replace(/^\s*IDEA:\s*.+\n?/i, "");
+              else { const _r0 = _hRest.replace(/^\s*IDEA\s*:\s*/i, ""), _cp0 = _hCopy(_r0);   // v9.790: their words with no label
+                if (_cp0.copy) { _hIdea = _r0.slice(0, _cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019*]+/, "").trim();
+                  _hRest = _r0.slice(_cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019.,:;*-]+/, "");
+                  try { console.log("[TURN:HEARD] her copy of their words came without the IDEA label - kept as the idea, not shown as her words" + (me ? " · who=" + me : "")); } catch {} } }
               // her two directions: "A: button words = the whole idea"
               const _hPicks = {};
               for (const _k of ["A", "B"]) {

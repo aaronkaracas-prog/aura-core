@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.788.0-2026-11-01-style-lines-low-think";
+const BUILD = "aura-core-v9.789.0-2026-11-01-everything-they-said";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68067,18 +68067,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 (_newStyle ? " (in the " + _newStyle + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
                 "tattoo artist would: brief, in your own words. If they shared something personal or hard, your words start there, simply. " +
                 "Never put a number in your words.\n\n" +
-                "Answer in exactly this shape. First line: READY, CHOOSE, or TALK.\n\n" +
+                "Answer in exactly this shape. First line: READY or TALK.\n\n" +
                 // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
                 // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
+                // EVERYTHING THEY SAID GOES IN (v9.789, 2026-11-01, Aaron: "no one's gonna say what they want and then decide to leave
+                // certain things out ... even if they ramble on it needs to be everything ... these choices are no longer valid").
+                // MEASURED 16:21 (Patchwork, "my kids are obsessed with dinosaurs, my wife grows tomatoes ... I ride a motorcycle"): she
+                // split it into three, asked which one, and only two could be tapped - the motorcycle could not be picked at all. The
+                // choice is gone: she says ALL of it back and asks whether to imagine it or add something; anything they add is heard
+                // with everything before it.
                 "READY when you know what they want in the tattoo. Second line: IDEA: their own words about the tattoo, copied exactly - " +
-                "including who it is for and why; leave out only questions to you and chat that has nothing to do with the tattoo. " +
-                "Then your words: if they shared something personal or hard, start there, simply - then say back what they want, and the style when they picked one, " +
-                "in your own voice, and ask if you should imagine it. Name everything in the IDEA line, and nothing that isn't in it.\n\n" +
-                // v9.784: MEASURED 12:56 - everything fitted one tattoo, she asked anyway, her two ideas dropped Christina and Sienna, and
-                // her words were only "Which concept speaks to you more?"
-                "CHOOSE only when what they want points two different ways that one tattoo can't hold - if it can all go in one tattoo, " +
-                "it is READY. Then two lines, A: and B: - each one the button words, a few words, then = and that whole tattoo idea in " +
-                "their own words, copied exactly. Then your words: say back what they want, then one short question asking which one.\n\n" +
+                "everything they want in it, however much there is, including who it is for and why; leave out only questions to you and " +
+                "chat that has nothing to do with the tattoo. " +
+                "Then your words: if they shared something personal or hard, start there, simply - then say back everything they want, and the style when they picked one, " +
+                "in your own voice, and ask if you should imagine it or if they want to add anything. Name everything in the IDEA line, and nothing that isn't in it.\n\n" +
                 "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.";
               // ══ HER SAID-BACK STREAMS (v9.787) ═══ Her answer starts with its label line (and the IDEA / A / B lines) - those never
               // reach the page; from her first line of words on, each piece goes out as she writes it. A TALK answer is not streamed
@@ -68094,7 +68096,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   let at = 0, start = -1;
                   for (;;) {
                     const nl = afterLabel.indexOf("\n", at), line = nl < 0 ? afterLabel.slice(at) : afterLabel.slice(at, nl);
-                    if (/^\s*(IDEA|A|B)\s*[:.)-]/i.test(line) || (!line.trim() && nl >= 0)) { if (nl < 0) return; at = nl + 1; continue; }
+                    if (/^\s*(IDEA|[A-H])\s*[:.)-]/.test(line) || /^\s*IDEA\s*:/i.test(line) || (!line.trim() && nl >= 0)) { if (nl < 0) return; at = nl + 1; continue; }
                     if (nl < 0 && line.trim().length < 6) return;   // too short yet to know it is not "IDEA:" coming in
                     start = at; break;
                   }
@@ -68117,7 +68119,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 if (_pm) { const _pp = _pm[1].split(/\s+=\s+|\s*=\s*/); const _t = String(_pp[0] || "").replace(/[*"]/g, "").trim().slice(0, 40), _id = String(_pp.slice(1).join(" ") || _pp[0] || "").trim().slice(0, 600);
                   if (_t && _id) _hPicks[_k] = { t: _t, idea: _id }; _hRest = _hRest.replace(_pm[0], ""); }
               }
-              if (_hDo === "CHOOSE" && !(_hPicks.A && _hPicks.B)) _hDo = _hIdea ? "READY" : null;
+              // v9.789: no more choosing. A CHOOSE that still comes back is READY - her option lines (A:, B:, C: ... any letter) never reach
+              // the page, and with no IDEA line of hers, their own words are what Imagine it draws.
+              _hRest = _hRest.replace(/^\s*[A-H]\s*[:.)-].*$/gm, "").replace(/^\s+/, "");
+              if (_hDo === "CHOOSE") _hDo = "READY";
               // ══ NO NAME OF THEIRS IS EVER LOST (v9.784, 2026-11-01, Aaron) ═══ MEASURED 12:57 (img_mvyb9tld69dc): her choice said
               // "children's names" and all 8 drew "EMMA · NOAH · LILY" - his daughters are Christina and Sienna. A check, not an instruction:
               // every name (and every number) in what they told her must be in the idea that is drawn; when one is missing, their own

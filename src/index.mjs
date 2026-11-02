@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.792.0-2026-11-01-starts-run-direct";
+const BUILD = "aura-core-v9.793.0-2026-11-01-home-start-is-new";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67763,6 +67763,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           const _op = String(said || "").trim();
           const _opener = /^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_op);
           _styleStart = !_opener && !!(opts && opts.fresh) && /^let'?s create my own in the .+ style\.?$/i.test(_op);
+          // ══ TYPED ON THE FRONT PAGE WITH NOTHING ON SCREEN IS A NEW TATTOO (v9.793, 2026-11-01, Aaron: go) ═══ MEASURED 17:33 (front page,
+          // straight to the chat box): "a little wave with the sun coming up behind it" was said back as "a Blackout style piece" - the
+          // Blackout tattoo from the 17:30 test was still marked in progress, style and all; a fresh start cleared the conversation but
+          // not the tattoo's own markers. Now it starts a new tattoo with no style, as the Create tap does. Only on the front page, only
+          // with nothing of theirs on screen (fresh), and only with nothing riding on it that could draw or pick.
+          _styleStart = _styleStart || (!_opener && !!(opts && opts.fresh) && (!opts.page || opts.page === "home") && !refUrl && !_bodyPhoto &&
+            !(opts.pick || opts.use || opts.own || opts.name || opts.tile || opts.inspire || opts.inspire_go || opts.choose_go || opts.heard_go ||
+              opts.heard_pick || opts.placed || opts.recolor || opts.touch || opts.change_now || opts.new_now || opts.pick_sheet || opts.change_of ||
+              (Array.isArray(opts.all_ideas) && opts.all_ideas.length)));
           _newFlow = (_opener ? /^i want to create a new tattoo\.?$/i.test(_op) : _styleStart ? true : String(_nf.new_flow || "") === "1") &&
                      !_bodyPhoto && !(opts && opts.inspire);
           _newStyle = (_opener || _styleStart) ? null : (String(_nf.new_style || "").trim() || null);
@@ -67885,7 +67894,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // because "design_change" from the 9:50 test was still set.
           if (/^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_s) || _styleStart) {
             const _isNew = /^i want to create a new tattoo\.?$/i.test(_s) || _styleStart;
-            if (_styleStart) { try { console.log("[TURN:NEWSTYLE] a new tattoo started from a style in one turn - the new-tattoo start and the style together" + (me ? " · who=" + me : "")); } catch {} }
+            if (_styleStart) { try { console.log(/^let'?s create my own in the .+ style\.?$/i.test(_s)
+              ? "[TURN:NEWSTYLE] a new tattoo started from a style in one turn - the new-tattoo start and the style together" + (me ? " · who=" + me : "")
+              : "[TURN:NEWSTART] typed on the front page with nothing on screen - a new tattoo, no style; the last tattoo's markers cleared" + (me ? " · who=" + me : "")); } catch {} }
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
                   await talkStatePut(env, me, "design_change_parent", "");
                   // THE NEW-TATTOO FLOW MARKER (v9.604): set only by the Create New Tattoo opener, cleared by every other start.

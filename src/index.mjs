@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.801.0-2026-11-01-her-words-without-label";
+const BUILD = "aura-core-v9.802.0-2026-11-01-every-card-title-read";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61503,6 +61503,33 @@ async function eightCards(env, sheetUrl, said, eopts) {
     // v9.769: a card whose words are drawn in it is marked too, so its catalog card is made from the card alone
     if (_printed) { try { await Promise.all(cards.map((c) => { const cid = (String(c.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
       return cid ? env.AURA_KV.put("cardinfo:" + cid, JSON.stringify({ printed: true, sheet: sid || null, n: c.n })).catch(() => {}) : null; })); } catch {} }
+    // ══ EVERY PRINTED CARD'S TITLE, READ IN THE BACKGROUND (v9.802, 2026-11-01, Aaron: go) ═══ MEASURED 19:18 walk: a heart on a card
+    // nobody picked was saved with no name - only the picked card's title was ever read (v9.799). The eyes read all 8 at once, after
+    // the sheet has gone back, with the same words proven at the pick; the titles go into sheet8 (so a pick needs no read) and each
+    // card's cardinfo (so a heart is named). The sheet is never held for them.
+    if (_printed && sid) {
+      const _bg = (eopts && typeof eopts.waitUntil === "function") ? eopts.waitUntil : null;
+      if (!_bg) console.log("[CUT8] titles: no background hook on this path - the picked card's title is read at the pick, as before");
+      else {
+        const _tT0 = Date.now();
+        try { _bg((async () => {
+          const reads = await Promise.all(cards.map((c) => Promise.race([new Promise((r) => setTimeout(() => r(null), 15000)),
+            seeMedia({ url: c.image, prompt: "This is a tattoo design card. Read the title printed in bold capital letters in the box under the artwork. Reply with only that title, exactly as printed, nothing else.", max_tokens: 30 }, env)]).catch(() => null)));
+          const titles = reads.map((rd) => { const tt = String((rd && rd.ok && rd.saw) || "").replace(/^["'*\s]+|["'*.\s]+$/g, "").replace(/\s+/g, " ").trim();
+            return (tt && tt.length <= 40 && tt.split(" ").length <= 6 && !/[\n:]/.test(tt) && !/\b(title|card|tattoo design|cannot|can't|sorry)\b/i.test(tt)) ? tt.toUpperCase() : null; });
+          const got = titles.filter(Boolean).length;
+          if (got) {
+            const k8 = cards.map((c, k) => titles[k] ? { ...c, title: titles[k], lines: [] } : c);
+            try { await env.AURA_KV.put("sheet8:" + sid, JSON.stringify(k8)); } catch {}
+            await Promise.all(cards.map((c, k) => { const cid = (String(c.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+              return (cid && titles[k]) ? env.AURA_KV.put("cardinfo:" + cid, JSON.stringify({ printed: true, title: titles[k], sheet: sid, n: c.n })).catch(() => {}) : null; }));
+          }
+          console.log("[CUT8] titles read in the background: " + got + " of " + cards.length + " off " + sid + " · " + ((Date.now() - _tT0) / 1000).toFixed(1) + "s" +
+            (got ? " · " + titles.map((t, k) => (k + 1) + "=" + (t || "-")).join(", ") : ""));
+        })().catch((e) => console.log("[CUT8] titles: background read failed: " + String(e?.message ?? e).slice(0, 120)))); }
+        catch (e) { console.log("[CUT8] titles: background hook refused: " + String(e?.message ?? e).slice(0, 120)); }
+      }
+    }
     console.log("[CUT8] " + cards.length + " cards off " + sid + (_printed ? " · words drawn on the cards, artwork kept apart: " + cards.filter((x) => x.art).length + " of " + cards.length
       : ok ? " · words matched by order" : " · words not used: " + lines.length + " lines for " + cards.length + " cards") + " · " + ((Date.now() - _c8T0) / 1000).toFixed(1) + "s");
     return cards;
@@ -71190,7 +71217,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
           // CUT THE MOMENT IT COMES BACK (v9.678): the eight cards, each with its words.
           let _eight = null;
-          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, (_possDirect || _bodyDirect || _inspDirect || _changeDirect) ? { printed: true } : null);
+          if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, (_possDirect || _bodyDirect || _inspDirect || _changeDirect) ? { printed: true, waitUntil: _waitUntil } : null);
           // THE ADD-ON FOUR ARE MARKED (v9.651): a pick off this sheet is cut out of it, never redrawn (cutBodyPanel).
           if (_ideasGrid && cp?.ok && cp.image_url) {
             const _bsid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
@@ -71496,7 +71523,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }), env, true);
           const dp = (dr && dr.payload) ? dr.payload : dr;
           const _drMs = Date.now() - _drT0, _s8T0 = Date.now();
-          const _eightN = (_newSentence && dp?.ok && dp.image_url) ? await eightCards(env, dp.image_url, dp.said, _s8D ? { printed: true } : null) : null;
+          const _eightN = (_newSentence && dp?.ok && dp.image_url) ? await eightCards(env, dp.image_url, dp.said, _s8D ? { printed: true, waitUntil: _waitUntil } : null) : null;
           const _cutMs = Date.now() - _s8T0;
           if (dp?.ok && dp.image_url) {
             // ══ A CACHE HIT IS NOT A SECOND DRAWING (2026-09-14) ═══════════════════════
@@ -73222,7 +73249,21 @@ export class PublicEntry extends WorkerEntrypoint {
           const at = list.findIndex((x) => x && x.url === url && (Number(x.q) || null) === q);
           const on = (b.on === undefined) ? at < 0 : !!b.on;
           if (at >= 0) list.splice(at, 1);
-          if (on) list.unshift({ url, label: String(it.label || "").slice(0, 300),
+          // A HEART WITH NO NAME TAKES THE CARD'S OWN TITLE (v9.802): a card whose title is drawn in it has no title on the page;
+          // the eyes have read it into the card's cardinfo (or the sheet's record) by now.
+          let _lab = String(it.label || "").trim();
+          if (on && !_lab) {
+            try {
+              const _cid = (url.match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+              const _ci = _cid ? JSON.parse((await env.AURA_KV.get("cardinfo:" + _cid)) || "null") : null;
+              if (_ci && _ci.title) _lab = String(_ci.title);
+              if (!_lab && q) { const _fs = (String(it.from || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                const _k8 = _fs ? JSON.parse((await env.AURA_KV.get("sheet8:" + _fs)) || "null") : null;
+                if (Array.isArray(_k8) && _k8[q - 1] && _k8[q - 1].title) _lab = String(_k8[q - 1].title); }
+              console.log("[FAV] heart with no name - " + (_lab ? "named from the card: " + _lab : "no title read for this card yet"));
+            } catch {}
+          }
+          if (on) list.unshift({ url, label: _lab.slice(0, 300),
             kind: it.kind ? String(it.kind).slice(0, 120) : null,
             category: it.category ? String(it.category).slice(0, 120) : null,
             trend: !!it.trend, ...(q ? { q } : {}),

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.802.0-2026-11-01-every-card-title-read";
+const BUILD = "aura-core-v9.804.0-2026-11-01-printed-card-name-stands";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -64163,10 +64163,17 @@ export class PtaDurableObject {
     // it, a name made up afterwards does not.
     // HER NAME ALWAYS WINS (v9.759, 2026-10-24, Aaron: "Aura's names always take priority"): a name she gave replaces a card's
     // name, and a card picked afterwards does not replace hers. Her later name (at This Is My Tattoo) replaces her earlier one.
-    if (pt.her_name && pt.name_final) { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
-                                        pj.title = String(pt.name_final).slice(0, 80); pj.her_named = true; pj.card_named = false; }
-    else if (pt.card_named && pt.name_final) { if (!pj.her_named) { pj.card_named = true; pj.title = String(pt.name_final).slice(0, 80); }
-                                          if (pt.about && !pj.her_named) pj.about = String(pt.about).slice(0, 800); }
+    // ══ THE PRINTED CARD NAME STANDS (v9.804, 2026-11-01, Aaron: "The printed card name" - replaces v9.759 above) ═══ MEASURED 19:52-19:53:
+    // one tattoo had three names - she named it at the first pick ("Hummingbird and Wisteria Blooms"), again at lock-in ("Hummingbird
+    // in the Bleeding Hearts"), and the card locked in, ROYAL RED VELVET, was never used. Now the title printed on the card they pick
+    // names the tattoo, every pick replaces it with the new card's, and a name of hers never replaces a card's. Her name is used only
+    // for a tattoo with no printed card name.
+    if (pt.card_named && pt.name_final) { pj.card_named = true; pj.her_named = false; pj.title = String(pt.name_final).slice(0, 80);
+                                          if (pt.about) pj.about = String(pt.about).slice(0, 800); }
+    else if (pt.her_name && pt.name_final) {
+      if (pj.card_named) { try { console.log("[NAME] kept the card's printed name: " + String(pj.title || "?").slice(0, 80) + " - her name not used: " + String(pt.name_final).slice(0, 80)); } catch {} }
+      else { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
+             pj.title = String(pt.name_final).slice(0, 80); pj.her_named = true; pj.card_named = false; } }
     else {
     if (pt.about && !pj.about) pj.about = String(pt.about).slice(0, 800);
     if (pt.name_final && !pj.card_named && !pj.her_named) { if (!pj.about && pj.title && pj.title !== pt.name_final) pj.about = String(pj.title).slice(0, 800);
@@ -71039,7 +71046,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                     const _cid = (String(_c.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1] || null;
                     // THE NAME CHAIN (v9.679, 2026-10-19, Aaron: "we lost the chain of what we should call this"): a card cut off an 8-sheet
                     // carries its own title from the sheet; that title names the tattoo all the way to the artist files.
-                    if (!_gridPickCut.card && _c.card && _c.card.title) _gridPickCut.card = _c.card;
+                    // (v9.803, MEASURED 19:51-19:53: the turn's own card record has no title, so this never ran and the eyes read a title the
+                    // sheet already had) - the sheet's title is taken whenever the card in hand has none.
+                    if (!(_gridPickCut.card && _gridPickCut.card.title) && _c.card && _c.card.title) _gridPickCut.card = { ...(_gridPickCut.card || {}), ..._c.card };
                     // ══ THE TITLE PRINTED ON THE CARD NAMES IT (v9.799, 2026-11-01, Aaron: go) ═══ MEASURED 18:49-18:54: every pick said "no
                     // title on this card" - a sheet drawn straight by the image model has its titles only as letters in the picture - and
                     // Aura's own naming failed 3 runs in 3 ("agent http 502 ... empty answer at rung L3"), so tattoos stayed "Your tattoo".
@@ -71999,7 +72008,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // A sheet of four or eight is not one tattoo - she names the one they pick from it.
             const _imgFirst = (drew && drew.image && !drew.for_the_artist && !drew.pending && !drew.on_me && !drew.four_directions &&
                                !(Array.isArray(drew.cards8) && drew.cards8.length)) ? drew.image : null;
-            if (act !== "artist" && _pid && _imgFirst && typeof _waitUntil === "function") {
+            // (v9.804, Aaron: "The printed card name") a design picked off a card with its title printed on it is already named - she is not asked.
+            if (act !== "artist" && _pid && _imgFirst && drew && drew.card && drew.card.title) console.log("[NAME] kept the card's printed name: " + String(drew.card.title).slice(0, 80) + " - she is not asked to name it" + (me ? " · who=" + me : ""));
+            else if (act !== "artist" && _pid && _imgFirst && typeof _waitUntil === "function") {
               const _pidE = _pid, _mark = "pjnamed:" + _pid;
               let _done = null; try { _done = await env.AURA_KV.get(_mark); } catch {}
               if (!_done) {

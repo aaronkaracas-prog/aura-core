@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.799.0-2026-11-01-every-copy-every-word";
+const BUILD = "aura-core-v9.800.0-2026-11-01-talk-never-draws";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68912,6 +68912,28 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         console.log("[TURN:DESIGN] Change Something - their next words are the change");
       }
       if (act === "change" && !hasParent) act = "draw";
+      // ══ A TALKING TURN ON A NEW TATTOO NEVER DRAWS (v9.800, 2026-11-01, Aaron: go) ═══ MEASURED 19:04 (front page, "the shading is all
+      // made of tiny little dots and kind of looks like a mandala? ... idk what it's called"): the hearing step said TALK, then her
+      // conversation chose to draw on its own - and the idea read from the conversation was HER sentence ("That style is called **dotwork**
+      // (or stippling)...") with its markdown, sent to the image model. NEVER AN AUTOMATIC DRAW (v9.783): when the hearing step handed the
+      // turn to her and her conversation reaches for a drawing, it is held - her words show with Imagine it, and Imagine it draws
+      // everything THEY have said in this tattoo (never her sentences). Only on a new tattoo with nothing drawn yet; changes are untouched.
+      if (_heardTalk && act === "draw" && me) {
+        try {
+          const _tl = Array.isArray(tnow) ? tnow : [];
+          let _st = 0; for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (e && e.role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(e.said || ""))) { _st = i + 1; break; } }
+          const _tapT = /^\s*(tell me|show me\b.*|i have an idea|i want it to mean something|i have a memory|it'?s about someone|let'?s create my own\b.*|i like the .+ style|imagine\b.*|i want number [1-8]|i choose\b.*|this is my tattoo|yes|yeah|ok|okay|sure|talk to me)[\s.!]*$/i;
+          const _own = _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
+            .filter((t) => t && !_tapT.test(t));
+          const _now = String(said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+          if (_now && !_tapT.test(_now) && _own[_own.length - 1] !== _now) _own.push(_now);
+          const _goIdea = _own.join(". ").replace(/\.\s*\./g, ".").slice(0, 1200);
+          act = "none"; _heardOut = { go: true };
+          if (acted) { acted.act = "none"; acted.prompt = ""; }
+          if (_goIdea) { await talkStatePut(env, me, "go_idea", _goIdea); await talkStatePut(env, me, "go_picks", ""); }
+          console.log("[TURN:HELD] she reached for a drawing on a talking turn - held; Imagine it draws their own words: \"" + _goIdea.slice(0, 200) + "\"" + " · who=" + me);
+        } catch (e) { try { console.log("[TURN:HELD] could not hold her drawing: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+      }
       // Nothing on screen is nothing to send an artist.
       if (act === "artist" && !hasParent) act = "none";
       // PUT IT ON THEM needs both halves: a design she made, and their photo. Without either it

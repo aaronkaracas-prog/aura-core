@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.809.0-2026-11-02-first-reply-direct";
+const BUILD = "aura-core-v9.810.0-2026-11-02-spine-read-internal";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -79045,7 +79045,9 @@ function openAlbum(idx){
         if (line.toUpperCase().startsWith("HOST ")) continue;
 
         const _cmdWord = (line.split(/\s+/)[0] || "").toUpperCase();
-        const _effIsOp = isOp || (_isInternal && INTERNAL_ALLOWED.includes(_cmdWord));
+        // (v9.810) with the internal key, reading a person's own record (PTA_SPINE GET) - never SET_STATE or EVENT, which change it.
+        const _effIsOp = isOp || (_isInternal && INTERNAL_ALLOWED.includes(_cmdWord)) ||
+          (_isInternal && _cmdWord === "PTA_SPINE" && /^PTA_SPINE\s+GET\s+\S+\s*$/i.test(line.trim()));
         const _t0 = Date.now();
         const result = await processCommand(line, env, _effIsOp);
         const _elapsed = Date.now() - _t0;

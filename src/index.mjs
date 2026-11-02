@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.808.0-2026-11-02-lock-runs-direct";
+const BUILD = "aura-core-v9.809.0-2026-11-02-first-reply-direct";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66293,6 +66293,8 @@ async function lockNameAndColour(env, me, _pidN, _imgN, _descN, world) {
   } catch (e) { try { console.log("[NAME] naming failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
 }
 
+// Their words that ask to see it drawn (moved up from auraTalk in v9.809 so the turn router reads the same list - one list, two readers).
+const TALK_GO_WORDS = /\b(show me|show us|let'?s see|let me see|go for it|go ahead|do it|try it|try that|draw it|draw that|see (it|what|that|how)|looks? like)\b/i;
 async function startLockNameJob(env, data) {
   try {
     if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
@@ -67393,7 +67395,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // Cover-up and rework are on the photo chain too (2026-10-01, v9.509, Aaron) - one path for every job.
       const _photoChain = _bodyPhoto && !!refDesign && refHeld && !(opts && opts.inspire);
       // ONE LIST OF GO WORDS (2026-10-02, v9.514) - the draw guard below and the drawing notes read the same one.
-      const _GO_WORDS = /\b(show me|show us|let'?s see|let me see|go for it|go ahead|do it|try it|try that|draw it|draw that|see (it|what|that|how)|looks? like)\b/i;
+      const _GO_WORDS = TALK_GO_WORDS;
       // ══ A YES TO HER OFFER IS A GO (2026-10-09, v9.547, Aaron) ═══════════════════════════════
       // MEASURED: she asked "Want me to show you four different takes on it?", they said "yes", and
       // she answered "Let's see it then - I'll show you four" with nothing drawn. They said "go"; her
@@ -69037,7 +69039,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // (or stippling)...") with its markdown, sent to the image model. NEVER AN AUTOMATIC DRAW (v9.783): when the hearing step handed the
       // turn to her and her conversation reaches for a drawing, it is held - her words show with Imagine it, and Imagine it draws
       // everything THEY have said in this tattoo (never her sentences). Only on a new tattoo with nothing drawn yet; changes are untouched.
-      if (_heardTalk && act === "draw" && me) {
+      // (v9.809) a turn that ran directly never draws - the same hold, whatever the hearing step said.
+      if (((_heardTalk && act === "draw") || (opts && opts.direct_no_draw && (act === "draw" || act === "change"))) && me) {
         try {
           const _tl = Array.isArray(tnow) ? tnow : [];
           let _st = 0; for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (e && e.role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(e.said || ""))) { _st = i + 1; break; } }
@@ -73479,6 +73482,18 @@ export class PublicEntry extends WorkerEntrypoint {
           _direct = true;
           try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - locking in, the files and her naming each run as their own job · who=" + me); } catch {}
         }
+        // ══ HER FIRST REPLY RUNS STRAIGHT AWAY (v9.809, 2026-11-02, Aaron: go) ═══ MEASURED 05:25:36.8 -> 05:25:40.5 and 05:45:07.5 -> 05:45:10.0:
+        // the first message of a new tattoo waited 2.5-3.7s for its job to begin, after ~2.5s to make it, for a turn of 1.3-2.2s of hers.
+        // The first message typed on the front page with nothing on screen cannot draw unless their words ask to see it - so only then does
+        // it run directly, and a direct turn never draws (direct_no_draw below: if her conversation reaches for a drawing it is held, and
+        // she shows Imagine it). Words that ask to see it ("draw it", "show me") still run as a job.
+        if (!_direct && !!me && !!_tOpts.tid && _tOpts.fresh && !TALK_GO_WORDS.test(String(_said || "")) &&
+            !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
+            !_tOpts.change_now && !_tOpts.new_now && !_tOpts.pick_sheet && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of &&
+            !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire && !_tOpts.inspire_go) {
+          _direct = true; _tOpts.direct_no_draw = true;
+          try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - the first words of a new tattoo, nothing to draw yet · who=" + me); } catch {}
+        }
         const _jobId = (me && _tOpts.tid && !_direct && await talkJobsOn(env))
           ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;
         if (_jobId) {
@@ -73545,6 +73560,7 @@ export class PublicEntry extends WorkerEntrypoint {
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
               from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
+              direct_no_draw: !!_tOpts.direct_no_draw,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

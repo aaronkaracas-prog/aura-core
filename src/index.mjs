@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.804.0-2026-11-01-printed-card-name-stands";
+const BUILD = "aura-core-v9.805.0-2026-11-02-internal-key-and-not-found";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -45945,7 +45945,7 @@ Be concise. This update will be compared against the next update to show drift o
         // costs, what we're spending, the cheapest path that still serves. Pulls real balance via aura-comms.
         const out = { ts: new Date().toISOString() };
         try {
-          const rb = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", { method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" }, body: "TWILIO_BALANCE" }));
+          const rb = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", { method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") }, body: "TWILIO_BALANCE" }));
           const db = await rb.json(); const bp = (db && (db.reply !== undefined ? db.reply : db)) || {};
           if (bp.balance !== undefined && bp.balance !== null) { out.telecom_balance_usd = parseFloat(bp.balance); out.currency = bp.currency || "USD"; }
         } catch (e) { out.balance_error = String(e && e.message); }
@@ -45965,7 +45965,7 @@ Be concise. This update will be compared against the next update to show drift o
         let pv; try { pv = JSON.parse(cmPayload); } catch { return { cmd: "COMMS", payload: { ok: false, error: 'Usage: COMMS PROVISION ::: {goal,budget_usd,have_lines,target_lines}' } }; }
         // ground it in real current balance + numbers
         let bal = null, owned = null;
-        try { const rb = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", { method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" }, body: "TWILIO_BALANCE" })); const db = await rb.json(); const bp = (db && (db.reply !== undefined ? db.reply : db)) || {}; if (bp.balance !== undefined) bal = parseFloat(bp.balance); } catch {}
+        try { const rb = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", { method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") }, body: "TWILIO_BALANCE" })); const db = await rb.json(); const bp = (db && (db.reply !== undefined ? db.reply : db)) || {}; if (bp.balance !== undefined) bal = parseFloat(bp.balance); } catch {}
         let carriers = []; try { const c = await env.AURA_KV.get("config:comms:carriers"); if (c) carriers = JSON.parse(c) || []; } catch {}
         if (!carriers.length) carriers = [{ id: "twilio", name: "Twilio", channels: ["sms","voice"], default: true }];
         const pvR = await reasonThroughLoop(env, {
@@ -46050,7 +46050,7 @@ Be concise. This update will be compared against the next update to show drift o
         // ask aura-comms for the account-level picture (balance, numbers, messaging services, A2P)
         try {
           const r = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
-            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") },
             body: "TWILIO_STATUS"
           }));
           const d = await r.json();
@@ -46063,7 +46063,7 @@ Be concise. This update will be compared against the next update to show drift o
         // ask aura-comms for the balance
         try {
           const rb = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
-            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") },
             body: "TWILIO_BALANCE"
           }));
           const db = await rb.json();
@@ -46074,7 +46074,7 @@ Be concise. This update will be compared against the next update to show drift o
         let campaign = null;
         try {
           const ra = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
-            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") },
             body: "A2P_STATUS"
           }));
           const da = await ra.json();
@@ -46157,7 +46157,7 @@ Be concise. This update will be compared against the next update to show drift o
         // Transport via aura-comms (Service Layer owns Twilio). Core already decided it's OK to send.
         try {
           const r = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
-            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") },
             body: "SMS_SEND " + to + " " + msgBody
           }));
           const d = await r.json();
@@ -46827,7 +46827,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // TWILIO â€” real account balance (via aura-comms which holds the creds)
       try {
         const tr = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
-          method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+          method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") },
           body: "TWILIO_BALANCE"
         }));
         const td = await tr.json();
@@ -55112,7 +55112,7 @@ async function watchA2P(env) {
   try {
     const res = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
       method: "POST",
-      headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+      headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") },
       body: "A2P_STATUS"
     }));
     const data = await res.json();
@@ -63602,7 +63602,7 @@ async function watchResources(env) {
     try { const m = await getMercuryBalance(env); if (m.ok && typeof m.total_available === "number" && m.total_available < 50) concerns.push({ provider: "mercury", level: m.total_available < 10 ? "critical" : "low", value: m.total_available }); } catch {}
     // Twilio
     try {
-      const tr = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", { method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" }, body: "TWILIO_BALANCE" }));
+      const tr = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", { method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") }, body: "TWILIO_BALANCE" }));
       const td = await tr.json(); const bal = parseFloat(td.balance);
       if (!isNaN(bal) && bal < 10) concerns.push({ provider: "twilio", level: bal < 3 ? "critical" : "low", value: bal });
     } catch {}
@@ -78954,7 +78954,10 @@ function openAlbum(idx){
       // caller's identity) must work from the comms worker. Allow ONLY those specific commands - never
       // blanket operator - so a compromised comms worker can't deploy code, read secrets, etc.
       const _authHeader = request.headers.get("authorization") || "";
-      const _isInternal = _authHeader === "Bearer aura-comms-internal";
+      // (v9.805, 2026-11-02, Aaron: go) MEASURED: the bearer was a fixed word in the source, and this door is on the public internet
+      // (auras.guide and workers.dev) - anyone who saw the source could run PTA_PHONE as operator. It is now the AURA_INTERNAL_KEY
+      // Worker secret; with no secret set, nothing is internal.
+      const _isInternal = !!env.AURA_INTERNAL_KEY && _authHeader === "Bearer " + env.AURA_INTERNAL_KEY;
       const INTERNAL_ALLOWED = ["PTA_PHONE"];
 
       for (let line of lines) {
@@ -79157,6 +79160,12 @@ function openAlbum(idx){
       return jsonReply({ ok: true, reply: results });
     }
 
+    // ══ AN UNKNOWN PAGE IS NOT FOUND (v9.805, 2026-11-02, Aaron: go) ═══ MEASURED 19:51-19:52: a scanner asked auras.guide for ~150
+    // password files (/.env, /aws/credentials, /.git/...) and every one was answered 200 "aura-core" - nothing leaked, but every probe
+    // was told "found". A GET or HEAD for anything but the home page that no route above answered is now 404. POSTs and / are as before.
+    if ((request.method === "GET" || request.method === "HEAD") && url.pathname !== "/" && url.pathname !== "") {
+      return new Response("Not found.", { status: 404, headers: { "content-type": "text/plain" } });
+    }
     return new Response("aura-core", { status: 200 });
   }
 };

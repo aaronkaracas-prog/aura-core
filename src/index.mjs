@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.798.0-2026-11-01-reopened-is-hers";
+const BUILD = "aura-core-v9.799.0-2026-11-01-every-copy-every-word";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68157,7 +68157,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // stretch at the start of her words that copies what they said (labelled or not, quoted or not, on its own line or run into
               // her words) is their idea - it is kept as the idea and never reaches the page, streamed or final.
               const _hN = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-              const _hTheirs = [_hN(_s), _hN((_told ? _told.replace(/\n+/g, " ") + " " : "") + _s)].filter((x) => x.length >= 12);
+              // v9.799: MEASURED 18:47:16 - she copied their current message AND their first one; only the first copy was taken off and
+              // the second went on screen. Each earlier message of theirs is matched on its own too, and copies are taken off one after another.
+              const _hTheirs = [_hN(_s), _hN((_told ? _told.replace(/\n+/g, " ") + " " : "") + _s), ...String(_told || "").split(/\n+/).map(_hN)].filter((x) => x.length >= 12);
               const _hThr = _hTheirs.length ? Math.min(30, ..._hTheirs.map((x) => x.length)) : Infinity;
               // how much of the start of `t` copies their words: end = where the copy stops in t, len = letters matched, open = it ran to the
               // end of t still matching (more may be coming), copy = long enough to be their words
@@ -68196,10 +68198,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               let _hRest = _hm ? _hm[2] : "";
               let _hIdea = (_hRest.match(/^\s*IDEA:\s*(.+)/i) || [])[1] || "";
               if (_hIdea) _hRest = _hRest.replace(/^\s*IDEA:\s*.+\n?/i, "");
-              else { const _r0 = _hRest.replace(/^\s*IDEA\s*:\s*/i, ""), _cp0 = _hCopy(_r0);   // v9.790: their words with no label
-                if (_cp0.copy) { _hIdea = _r0.slice(0, _cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019*]+/, "").trim();
-                  _hRest = _r0.slice(_cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019.,:;*-]+/, "");
-                  try { console.log("[TURN:HEARD] her copy of their words came without the IDEA label - kept as the idea, not shown as her words" + (me ? " · who=" + me : "")); } catch {} } }
+              else { let _r0 = _hRest.replace(/^\s*IDEA\s*:\s*/i, ""); const _copies = [];   // v9.790: their words with no label
+                for (let _k = 0; _k < 6; _k++) { const _cp0 = _hCopy(_r0); if (!_cp0.copy) break;   // v9.799: every copy, one after another
+                  _copies.push(_r0.slice(0, _cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019*]+/, "").trim());
+                  _r0 = _r0.slice(_cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019.,:;*-]+/, ""); }
+                if (_copies.length) { _hRest = _r0;
+                  // the idea is everything they said, in the order they said it (their earlier words first)
+                  const _all = _hN((_told ? _told.replace(/\n+/g, " ") + " " : "") + _s);
+                  _hIdea = (_copies.length > 1 || _all.length > _hN(_copies[0]).length + 4) ? ((_told ? _told.replace(/\n+/g, ". ") + ". " : "") + _s).replace(/\.\s*\./g, ".").slice(0, 1200) : _copies[0];
+                  try { console.log("[TURN:HEARD] her copy of their words came without the IDEA label (" + _copies.length + " cop" + (_copies.length > 1 ? "ies" : "y") + ") - kept as the idea, not shown as her words" + (me ? " · who=" + me : "")); } catch {} } }
               // her two directions: "A: button words = the whole idea"
               const _hPicks = {};
               for (const _k of ["A", "B"]) {
@@ -69491,8 +69498,27 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else if (!_ideasLine && String(said || "").trim() && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
             // A BARE YES IS NEVER A CHANGE (v9.605). MEASURED 16:44 and 17:17: "Go" became "I want to change it: Go." and
             // the chat model made four guesses at an alteration nobody asked for. Nothing is drawn on a bare yes here.
-            const _bareYes = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i.test(String(said || ""));
-            if (_bareYes) { if (act === "change" || act === "draw") { console.log("[TURN:DESIGN] a bare yes is not a change - nothing drawn"); act = "none"; } }
+            // v9.799: "Yes, show me" (two at once) is a bare yes too - MEASURED 18:52:25, it was sent to the image model as the change.
+            const _yesRe = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see(?: it)?|please|absolutely|definitely|perfect)[\s,.!]*)+$/i;
+            const _bareYes = _yesRe.test(String(said || ""));
+            // ══ THEIR YES DRAWS THEIR CHANGE (v9.799, 2026-11-01, Aaron: go) ═══ MEASURED 18:51-18:52 (a design opened from Favorites):
+            // "make him snarling, more fierce, and put a little crescent moon above his head" - she said "Let me draw that up for you" and
+            // offered Yes, show me; the yes was then drawn as "I want to change it: Yes, show me." and the snarl and the moon were lost.
+            // When the line just before their yes is a change they asked for (not a tap, not another yes), that change is what is drawn.
+            let _prevAsk = "";
+            if (_bareYes) { try {
+              const _tl = Array.isArray(tnow) ? tnow : [], _cur = String(said || "").trim();
+              let _seenCur = false;
+              for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (!e || e.role !== "them") continue;
+                const t = String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim(); if (!t) continue;
+                if (!_seenCur && t === _cur) { _seenCur = true; continue; }
+                if (!_yesRe.test(t) && !/^\s*(i want number [1-8]|i choose\b|this is my tattoo|imagine\b|let'?s create my own|i want to (create|add|cover)|i want to change something|fine-?\s?tune it|keep it)/i.test(t)) _prevAsk = t.slice(0, 600);
+                break; }
+            } catch {} }
+            if (_bareYes && _prevAsk && hasParent && act !== "artist" && act !== "use") {
+              act = "change"; _designGrid = true; _designWords = _prevAsk;
+              console.log("[TURN:DESIGN] a yes after their change - their change is drawn, not the yes: \"" + _prevAsk.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
+            } else if (_bareYes) { if (act === "change" || act === "draw") { console.log("[TURN:DESIGN] a bare yes is not a change - nothing drawn"); act = "none"; } }
             else {
               if (_await && act !== "artist" && act !== "use") act = "change";
               if (act === "change") { _designGrid = true; _designWords = String(said || "").trim().replace(/^show me:\s*/i, "").slice(0, 600); }
@@ -70951,6 +70977,29 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                     // THE NAME CHAIN (v9.679, 2026-10-19, Aaron: "we lost the chain of what we should call this"): a card cut off an 8-sheet
                     // carries its own title from the sheet; that title names the tattoo all the way to the artist files.
                     if (!_gridPickCut.card && _c.card && _c.card.title) _gridPickCut.card = _c.card;
+                    // ══ THE TITLE PRINTED ON THE CARD NAMES IT (v9.799, 2026-11-01, Aaron: go) ═══ MEASURED 18:49-18:54: every pick said "no
+                    // title on this card" - a sheet drawn straight by the image model has its titles only as letters in the picture - and
+                    // Aura's own naming failed 3 runs in 3 ("agent http 502 ... empty answer at rung L3"), so tattoos stayed "Your tattoo".
+                    // The eyes (config:source:eyes:model) read the title in the box under the artwork, on the card as it was drawn (its
+                    // words still on it). Her own name, when it comes, still replaces it.
+                    if (!(_gridPickCut.card && _gridPickCut.card.title)) {
+                      try {
+                        const _sid8 = (String(_gridPickCut.img || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                        const _k8 = _sid8 ? JSON.parse((await env.AURA_KV.get("sheet8:" + _sid8)) || "null") : null;
+                        const _full = Array.isArray(_k8) && _k8[_gridPickCut.n - 1] && _k8[_gridPickCut.n - 1].image ? _k8[_gridPickCut.n - 1].image : null;
+                        if (_full) {
+                          const _rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), 8000)),
+                            seeMedia({ url: _full, prompt: "This is a tattoo design card. Read the title printed in bold capital letters in the box under the artwork. Reply with only that title, exactly as printed, nothing else.", max_tokens: 30 }, env)]);
+                          const _tt = String((_rd && _rd.ok && _rd.saw) || "").replace(/^["'*\s]+|["'*.\s]+$/g, "").replace(/\s+/g, " ").trim();
+                          if (_tt && _tt.length <= 40 && _tt.split(" ").length <= 6 && !/[\n:]/.test(_tt) && !/\b(title|card|tattoo design|cannot|can't|sorry)\b/i.test(_tt)) {
+                            _gridPickCut.card = { title: _tt.toUpperCase(), lines: [] };
+                            try { const _cid0 = (String(_full).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                                  if (_cid0) await env.AURA_KV.put("cardinfo:" + _cid0, JSON.stringify({ printed: true, title: _tt.toUpperCase(), sheet: _sid8, n: _gridPickCut.n })); } catch {}
+                            _pl("number " + _gridPickCut.n + " - its printed title read by the eyes: " + _tt);
+                          } else _pl("number " + _gridPickCut.n + " - the eyes could not read a title (" + (_tt ? "\"" + _tt.slice(0, 60) + "\"" : (_rd && _rd.error) || "no answer") + ")");
+                        }
+                      } catch (e) { _pl("reading the printed title failed: " + String(e?.message ?? e).slice(0, 120)); }
+                    }
                     const _cardT = _gridPickCut.card && _gridPickCut.card.title ? String(_gridPickCut.card.title) : null;
                     const _reg = await registerSmartFile(env, { id: _cid, filetype: "image", name: _cardT || ("number " + _gridPickCut.n + " of the four"),
                       url: _c.image_url, subject: "number " + _gridPickCut.n + ", cut from the four", source: "panel_cut", creator: me || null,

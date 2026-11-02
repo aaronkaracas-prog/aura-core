@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.791.0-2026-11-01-style-start-one-turn";
+const BUILD = "aura-core-v9.792.0-2026-11-01-starts-run-direct";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -73203,7 +73203,18 @@ export class PublicEntry extends WorkerEntrypoint {
         const _tOpts = {
           tid: b.tid ? String(b.tid).slice(0, 40) : null,
           from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null };
-        const _jobId = (me && _tOpts.tid && await talkJobsOn(env))
+        // ══ A START THAT CANNOT DRAW RUNS STRAIGHT AWAY (v9.792, 2026-11-01, Aaron: go) ═══ MEASURED 17:20:08 -> 17:20:10.6: the job took
+        // 2.2s just to begin (1.5-4.1s across today) for a fixed line that then took 1.3s. The job exists so a 30-90s drawing survives a
+        // dropped connection; a start never draws. ONLY these run directly: a new-tattoo / add / cover opener on its own, or a fresh "Let's
+        // create my own in the <style> style" - with no photo, no pick, no go, no change, nothing that can draw riding on it. Anything else,
+        // including every turn Aura answers in her own words (her conversation can draw), still runs as a job.
+        const _direct = !!me && !!_tOpts.tid && !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
+          !_tOpts.change_now && !_tOpts.new_now && !_tOpts.pick_sheet && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of &&
+          !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.name && !_tOpts.inspire && !_tOpts.inspire_go &&
+          (/^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)\.?$/i.test(String(_said || "").trim()) ||
+           (_tOpts.fresh && /^let'?s create my own in the .+ style\.?$/i.test(String(_said || "").trim())));
+        if (_direct) { try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - a start that cannot draw, no job to wait for · who=" + me); } catch {} }
+        const _jobId = (me && _tOpts.tid && !_direct && await talkJobsOn(env))
           ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;
         if (_jobId) {
           try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs as job " + _jobId + " - the page's connection only relays it · who=" + me); } catch {}
@@ -73280,6 +73291,8 @@ export class PublicEntry extends WorkerEntrypoint {
           // field the page acts on - intent, brief, ready_to_draw, show_me, the drawn image - rides
           // here, so a page that missed every delta still behaves exactly as it does today.
           if (_ref && out && typeof out === "object") out = { ...out, ref: _ref };
+          // v9.792: a turn run on the connection leaves its answer where the page's recovery reads it, as a job's does
+          if (me && b.tid) { try { await talkStatePut(env, me, "turnout", JSON.stringify({ tid: String(b.tid).slice(0, 40), out, at: Date.now() })); } catch {} }
           clearInterval(_hb);
           await _send("event: final\ndata: " + JSON.stringify(out || { ok: false }) + "\n\n");
           try { await _w.close(); } catch { /* already closed */ }

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.805.0-2026-11-02-internal-key-and-not-found";
+const BUILD = "aura-core-v9.806.0-2026-11-02-ops-uses-internal-key";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -6673,7 +6673,7 @@ async function processCommand(line, env, isOp) {
       if (!env.AURA_OPS) return jsonReply({ ok: false, error: "AURA_OPS not bound" });
       const res = await env.AURA_OPS.fetch(new Request("https://aura-ops.aaronkaracas.workers.dev/", {
         method: "POST",
-        headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+        headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") },
         body: line
       }));
       const data = await res.json();
@@ -52131,7 +52131,7 @@ async function executePatchProposal(description, worker, apiKey, env) {
 
   const readRes = await env.AURA_OPS.fetch(new Request("https://aura-ops.aaronkaracas.workers.dev/", {
     method: "POST",
-    headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+    headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") },
     body: "READ_WORKER " + worker
   }));
   const readData = await readRes.json();
@@ -52238,7 +52238,7 @@ async function executeApprovedPatch(env) {
 
   const deployRes = await env.AURA_OPS.fetch(new Request("https://aura-ops.aaronkaracas.workers.dev/", {
     method: "POST",
-    headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+    headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") },
     body: "DEPLOY_WORKER " + worker + " " + b64
   }));
 
@@ -78121,7 +78121,7 @@ function openAlbum(idx){
         // forward the WHOLE mission, as one body, to the page-builder worker - no splitting
         const res = await env.AURA_OPS.fetch(new Request("https://aura-ops.aaronkaracas.workers.dev/build", {
           method: "POST",
-          headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+          headers: { "Content-Type": "text/plain", "authorization": "Bearer " + (env.AURA_INTERNAL_KEY || "") },
           body: mission
         }));
         const text = await res.text();

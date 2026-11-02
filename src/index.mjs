@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.800.0-2026-11-01-talk-never-draws";
+const BUILD = "aura-core-v9.801.0-2026-11-01-her-words-without-label";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68256,6 +68256,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 _fixedWhy = "heard_choose"; _fixedSay = _hSay; _heardOut = { picks: [{ k: "A", t: _hPicks.A.t }, { k: "B", t: _hPicks.B.t }] };
                 try { await talkStatePut(env, me, "go_picks", JSON.stringify(_hPicks)); await talkStatePut(env, me, "go_idea", ""); } catch {}
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - CHOOSE, a tap draws · A: " + _hPicks.A.t + " = \"" + _hPicks.A.idea + "\" · B: " + _hPicks.B.t + " = \"" + _hPicks.B.idea + "\" · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
+              } else if (!(_hq && _hq.late) && !(_hq && _hq.ok === false) && _hRaw && !_hm && (() => {
+                  // ══ HER WORDS WITHOUT THE LABEL STILL COUNT (v9.801, 2026-11-01, Aaron: go) ═══ MEASURED 19:19:12: she answered in 1.1s
+                  // ("I hear you—those dot-work mandala-style pieces are really striking. The technique is called stippling...") but with no
+                  // READY / TALK line, so it was "not usable" and the fixed "Love it - want me to imagine it?" went instead. Her words are
+                  // shown (their own copied words taken off, a sentence she did not finish left off); nothing is drawn - Imagine it draws
+                  // their own words, as with the fixed line.
+                  let _w = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").replace(/^\s*IDEA\s*:.*$/gim, "").trim();
+                  for (let _k = 0; _k < 6; _k++) { const _c = _hCopy(_w); if (!_c.copy) break; _w = _w.slice(_c.end).replace(/^[\s"'\u201c\u201d\u2018\u2019.,:;*-]+/, ""); }
+                  _w = _finishedOnly(_wholeSentences(_w.replace(/\*\*/g, ""), 1200));
+                  if (_w.length < 20) return false;
+                  _fixedSay = _w;
+                  console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - her words came without READY/TALK - shown as they are, nothing drawn until Imagine it · her words: \"" + _w.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+                  return true; })()) {
+                // (handled above)
               } else {
                 // WHY IT WAS NOT USED IS LOGGED (v9.703): MEASURED 16:57 - "no usable answer" in 4.0s and nothing said what came back.
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - " + (_hq && _hq.late ? "no answer in " + _hMs + "ms" :

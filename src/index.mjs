@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.795.0-2026-11-01-plain-name-kept";
+const BUILD = "aura-core-v9.796.0-2026-11-01-name-first-line";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -71824,11 +71824,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // just the name, and it was thrown away for having no "NAME:". A short plain line is the name.
                   // v9.795: MEASURED 17:47:54 - she answered "Hummingbird Heart Wreath" as a plain line (no envelope, no label) and it
                   // was thrown away. A short plain line is her name however it comes.
-                  if (!n && (_sayTxt || (q && q.reply && !q.failed))) { const _one = String(_sayTxt || q.reply).trim();
-                    if (_one && !/[\n:{}]/.test(_one) && _one.split(/\s+/).length <= 7) n = clean(_one); }
+                  // v9.796: MEASURED 18:08:24 - "RJ Lighthouse Keeper" and "Full color with golden beam accents" came as two plain lines,
+                  // no labels: the first line is her name, the second her colour.
+                  let _plainColour = "";
+                  if (!n && (_sayTxt || (q && q.reply && !q.failed))) {
+                    const _ls = String(_sayTxt || q.reply).split(/\n+/).map((x) => x.trim()).filter(Boolean);
+                    if (_ls[0] && !/[:{}]/.test(_ls[0]) && _ls[0].split(/\s+/).length <= 7) { n = clean(_ls[0]); if (_ls[1] && !/[:{}]/.test(_ls[1])) _plainColour = _ls[1]; } }
                   // THE COLOUR WHOLE (v9.663, 2026-10-18): MEASURED - "bold red, gold and teal-green American traditi" on the job
                   // sheet; it was read to 60 letters and cut mid-word. Read to 120; if that is where it stops, it ends at a word.
-                  let c = String((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,120})/i) || [])[1] || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "");
+                  let c = String((raw.match(/\bCOLOU?R\s*:\s*([^\n"]{2,120})/i) || [])[1] || _plainColour || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 120);
                   if (c.length >= 118) c = c.replace(/\s+\S*$/, "").replace(/[\s,;:.-]+$/, "");
                   if (n && n.split(/\s+/).length > 7) n = "";
                   // NOT A STATUS AS A NAME (2026-10-11, v9.566): MEASURED - a tattoo was titled "Locked In". A name
@@ -71867,7 +71871,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                     const clean = (x) => String(x || "").replace(/^["'*\s]+|["'*.,;\s}\]]+$/g, "").slice(0, 60);
                     let n = clean((raw.match(/\bNAME\s*:\s*([^\n"]{2,60})/i) || [])[1]);
                     // v9.795: a plain line from her ("Hummingbird Heart Wreath", 17:47:54) is her name however it comes
-                    if (!n && (_sayTxt || (q && q.reply && !q.failed))) { const _one = String(_sayTxt || q.reply).trim(); if (_one && !/[\n:{}]/.test(_one) && _one.split(/\s+/).length <= 7) n = clean(_one); }
+                    if (!n && (_sayTxt || (q && q.reply && !q.failed))) { const _one = (String(_sayTxt || q.reply).split(/\n+/).map((x) => x.trim()).filter(Boolean)[0]) || ""; if (_one && !/[:{}]/.test(_one) && _one.split(/\s+/).length <= 7) n = clean(_one); }
                     if (n && (n.split(/\s+/).length > 7 || /^(locked( in)?|your tattoo|tattoo|untitled|name|none|n\/a)$/i.test(n.trim()))) n = "";
                     if (n) await projectAppend(env, me, _pidE, { name_final: n, her_name: true });
                     else { try { await env.AURA_KV.delete(_mark); } catch {} }

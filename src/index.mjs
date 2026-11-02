@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.787.0-2026-11-01-her-words-stream";
+const BUILD = "aura-core-v9.788.0-2026-11-01-style-lines-low-think";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -732,7 +732,7 @@ async function _brainRoute(env, override) {
 // base64'd here.
 // THIS IS THE SAME RULE AS THE DRAWING SIDE, applied to the other half: whichever model can see
 // should decide. That was fixed for the image model this morning and left broken for her.
-async function callBrain({ system, user, messages = null, max_tokens = 2000, model = null, temperature, image = null }, env) {
+async function callBrain({ system, user, messages = null, max_tokens = 2000, model = null, temperature, image = null, reasoning = null }, env) {
   env = env || _BRAIN_ENV;
   const route = await _brainRoute(env, model);
   const cap = Math.max(16, Math.min(16000, parseInt(max_tokens, 10) || 2000));
@@ -786,8 +786,13 @@ async function callBrain({ system, user, messages = null, max_tokens = 2000, mod
         }
       }
       costTapNeuron();
-      const rr = await env.AI.run(route.model, { max_tokens: cap, messages: msgs,
-            ...(temperature != null ? { temperature } : {}) });
+      // HOW HARD IT THINKS FIRST (v9.788): `reasoning` (low | medium | high) goes as `reasoning_effort`, the field MODELPING already sends.
+      // A model that refuses the field is asked again without it - the answer never fails for it.
+      const _rIn = { max_tokens: cap, messages: msgs, ...(temperature != null ? { temperature } : {}) };
+      let rr;
+      if (reasoning) { try { rr = await env.AI.run(route.model, { ..._rIn, reasoning_effort: reasoning }); }
+        catch (e) { try { console.log("[BRAIN] reasoning_effort " + reasoning + " refused (" + String(e?.message ?? e).slice(0, 120) + ") - asking without it"); } catch {} rr = await env.AI.run(route.model, _rIn); } }
+      else rr = await env.AI.run(route.model, _rIn);
       const text = aiText(rr);
       if (!text) return { ok: false, error: "the binding returned nothing readable", provider: route.provider, model: route.model };
       return { ok: true, text, structured: null, provider: route.provider, model: route.model,
@@ -918,8 +923,11 @@ async function callBrainStream(args, env, onText) {
     let text = "", firstShape = null;
     try {
       costTapNeuron();
-      const st = await env.AI.run(route.model, { max_tokens: cap, messages: msgs, stream: true,
-        ...(args.temperature != null ? { temperature: args.temperature } : {}) });
+      const _sIn = { max_tokens: cap, messages: msgs, stream: true, ...(args.temperature != null ? { temperature: args.temperature } : {}) };
+      let st;
+      if (args.reasoning) { try { st = await env.AI.run(route.model, { ..._sIn, reasoning_effort: args.reasoning }); }
+        catch (e) { try { console.log("[BRAIN:STREAM] reasoning_effort " + args.reasoning + " refused (" + String(e?.message ?? e).slice(0, 120) + ") - asking without it"); } catch {} st = await env.AI.run(route.model, _sIn); } }
+      else st = await env.AI.run(route.model, _sIn);
       if (st && typeof st.getReader === "function") {
         const rd = st.getReader(), dec = new TextDecoder(); let buf = "";
         for (;;) {
@@ -61332,7 +61340,10 @@ const SHEET8_FLAT = "Make one tall page with a solid black background, divided i
 // we'll get rid of the black background"). PROVEN 06:45 by SHOW_IT img_mvtlh9fj8smi ("this is good"): eight white cards, each
 // outlined, the words in black in an outlined box under the design. The black gaps between the cards stay - the cutter finds the
 // cards by them; nobody sees them. The design is split from its words at the box's top edge (cutAllCards).
-const SHEET8_DIRECT = "Use color wherever it works. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is all white with a thin black outline around it: the whole tattoo artwork as large as it fits at the top - not on skin - and under it, inside a box with a thin black outline, a short title in bold black capital letters, and under it two short lines in black describing the design. No numbers anywhere.";
+// A DESIGN THAT CAN BE TATTOOED (v9.788, 2026-11-01, Aaron: "that's not a tattoo that can be tattooed"). MEASURED name-only round:
+// Surrealism, Dark Fantasy, Cyberpunk and Brutalism drew whole pictures - a scene filling the card edge to edge. The words after "not on
+// skin" were proven on all four in round 3 and kept on every sheet since.
+const SHEET8_DIRECT = "Use color wherever it works. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is all white with a thin black outline around it: the whole tattoo artwork as large as it fits at the top - not on skin - a design that could be tattooed as it is, standing on its own on the white card, with no background scene or rectangle of picture filling the card behind it - and under it, inside a box with a thin black outline, a short title in bold black capital letters, and under it two short lines in black describing the design. No numbers anywhere.";
 // MEDIUM UNTIL AARON SAYS OTHERWISE (2026-10-18): low gave near-copies on the photo roads. A setting, `config:edit:sheet8:quality`.
 async function sheet8Quality(env) { try { const k = String((await env.AURA_KV.get("config:edit:sheet8:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(k)) return k; } catch {} return "medium"; }
 // THE NEW-TATTOO SHEET'S OWN IMAGE MODEL (v9.693, 2026-10-21, Aaron): `config:source:sheet8:model` - empty means the shared
@@ -61380,51 +61391,36 @@ function _wholeSentences(t, max) {
 }
 // ══ EVERY STYLE SAYS WHAT IT LOOKS LIKE (v9.785, 2026-11-01, Aaron: "we need to do that across the board on every style so we don't
 // get it mixed") ═══ MEASURED 13:08 (img_mvybn68n0pqu): "all in the New School style" drew bold-outlined realism, not cartoon New School.
-// Each of the 41 styles carries one line of how it LOOKS - line, shading, color, shape, never subjects (a subject here would land in every
-// design) - put right after its name wherever a style is named in a sentence to the image model. Setting: config:style:look:<name>.
+// A line here is put right after the style's name wherever a style is named in a sentence to the image model. Setting: config:style:look:<name>.
+// ONLY WHERE THE NAME ALONE GETS IT WRONG, AND NO COLOUR WORDS (v9.788, 2026-11-01, Aaron: "keep it vague ... if you told the image model
+// Chicano style it would have it ... we can test it"). The v9.785 lines carried colour ("black-and-grey shading" on Chicano, "black lines" on
+// Fine Line) and Fine Line came back with no colour at all. TESTED, ALL 41, name only (draw-style-test.ps1, same fox idea): 28 drew right
+// from the name alone and carry NO line now. The 13 below drew wrong on the name and each line was proven in rounds 2-6 - Sticker (the
+// peeled corner, Aaron), Patchwork (round 6, img_mvyhzr9d2wuw, worded from how tattoo shops define it), Blackout (round 6). None says a
+// colour: the colour comes from "Use the colors the <style> style is known for."
 const STYLE_LOOK = {
-  "American Traditional": "thick black outlines, bold simple shapes, solid flat fills and a few strong colors",
-  "Neo-Traditional": "bold outlines with richer color, more depth and decorative detail",
-  "Japanese": "big, bold, flowing compositions in the traditional Japanese irezumi way, strong outlines and rich flat color, everything moving together as one piece",
-  "Black & Grey Realism": "lifelike, shaded only in black and grey, like a photograph in ink",
-  "Color Realism": "lifelike and photographic, in full color with real light and shadow",
-  "Micro Tattoos": "tiny and delicate, with very fine lines",
-  "Fine Line": "thin, precise black lines and soft, light shading",
-  "Minimalist": "as few clean lines as possible, simple shapes and open space",
-  "Blackwork": "bold designs in solid black ink, high contrast, no color",
-  "Blackout": "large areas filled completely with solid black",
-  "Illustrative": "hand-drawn like a page from an illustrated book, expressive linework with selective shading",
-  "Chicano": "smooth black-and-grey shading and fine lines, in the Chicano tradition",
-  "Geometric": "built from precise geometric shapes, lines and symmetry",
-  "Dotwork": "shading made entirely from tiny dots, soft and textured",
-  "Ornamental": "decorative patterns like jewelry or lace, with symmetry and filigree",
-  "Watercolor": "soft splashes and washes of color that look painted with a brush",
-  "New School": "cartoon-style with exaggerated shapes, thick outlines and bright, loud color",
-  "Tribal": "bold, flowing solid black shapes with sharp points, where the empty skin between them is part of the design",
-  "Sketch": "like an artist's pencil drawing, with the rough lines left in on purpose",
-  "Etching": "fine parallel lines and cross-hatching, like an old engraving",
-  "Surrealism": "dreamlike, with real things blending in impossible ways",
-  "Biomechanical": "machinery and living forms fused together with deep 3D detail",
-  "Dark Fantasy": "gothic and dramatic, with dark atmosphere and deep shadows",
-  "Medieval": "like an illuminated medieval manuscript, with flat color, gold and ornate linework",
-  "Renaissance": "like a classical Renaissance painting or sculpture, with soft, realistic shading",
-  "Stained Glass": "bright jewel colors divided by bold black lines, like a church window",
-  "Liquid Chrome": "polished, flowing, reflective silver metal",
-  "Cybersigilism": "sharp, thin, flowing futuristic strokes like digital sigils",
-  "Cyberpunk": "futuristic and high-tech, with glowing neon color",
-  "Patchwork": "many small, separate tattoos collected together like a sticker book",
-  "Ignorant Doodle": "deliberately simple and goofy, like a doodle in the margin of a notebook",
-  "Sticker": "cute, compact shapes with a thick outer outline, like a sticker",
-  "Embroidered": "looks stitched in thread, like an embroidered patch",
-  "Red Ink": "done entirely in red ink",
-  "Negative Space": "the empty skin becomes part of the picture, shaped by the ink around it",
-  "Brutalism": "raw, heavy black shapes and harsh, bold composition",
-  "Mixed Media": "several tattoo styles combined in one piece - realism, linework, color and splashes",
-  "Y2K Nostalgia": "late-90s and early-2000s pop, with iridescent colors, sparkles and shine",
-  "1980s Airbrush": "retro airbrushed neon gradients and glowing light, like an 80s airbrush painting",
-  "3D / Optical": "optical illusions that look three-dimensional on flat skin",
-  "Abstract": "loose abstract shapes, strokes and splashes chosen for feeling and movement"
+  "Sticker": "looks like a real sticker - a thick white die-cut border all the way around the design, flat bold fills, and one edge or corner curling up as if it is being peeled off, with a small shadow under it",
+  "Ignorant Doodle": "a crude, deliberately naive doodle - wobbly hand-drawn lines and no shading, like a quick drawing in the margin of a notebook",
+  "Micro Tattoos": "tiny, delicate and simple, with very fine single-needle lines and only the smallest details",
+  "Minimalist": "as few lines as possible - one simple shape, lots of empty space, nothing extra",
+  "Ornamental": "built from decorative patterns - filigree, lace, mandala and jewelry-like linework - in symmetry",
+  "New School": "exaggerated cartoon style - big head, big expressive eyes, bubbly rounded shapes, thick bold outlines, playful and over the top, like graffiti and animation",
+  "Sketch": "looks like a loose pencil sketch - rough, unfinished strokes with the construction lines left in",
+  "Renaissance": "classical Renaissance drawing made for a tattoo - realistic, with soft light and shadow, like a study by an old master or a marble statue",
+  "Cybersigilism": "the whole design drawn as sharp, thin, spiky strokes and barbed curves like digital sigils - the subject itself shaped out of those strokes, symmetrical and flowing, with no shading and no fills",
+  "Brutalism": "raw, heavy, aggressive brush-stroke shapes - harsh and bold, nothing delicate",
+  "3D / Optical": "an optical illusion - shading and perspective that make it look three-dimensional or impossible, popping out of or sinking into the skin",
+  "Patchwork": "each design is a collection of separate stand-alone tattoos, like a sticker sleeve - the main subject as one tattoo and each other thing from the idea as its own tattoo, each with its own clear edge and empty space between them, mixing tattoo styles such as traditional flash, fine line and blackwork, with no scene joining them. Nothing quilted, stitched or filled with fabric patches",
+  "Blackout": "one big solid block of ink in a simple clean shape - a circle, a band or a shield - with only the main subject left inside it as one clean silhouette of bare skin. Nothing else from the idea, inside it or around its edge, and no linework"
 };
+// THE NAME A STYLE IS SENT UNDER (v9.788, 2026-11-01). MEASURED round 5 (img_mvyhsgtp00bu): "in the Patchwork style" drew foxes sewn out of
+// quilt squares - the bare word reads as fabric. Round 6 sent "patchwork tattoo" and drew separate tattoos. Setting: config:style:say:<name>.
+const STYLE_SAY_AS = { "Patchwork": "patchwork tattoo" };
+async function styleSayAs(env, name) {
+  const nm = String(name || "").trim(), key = STYLE_LOOK_ALIAS[nm] || nm;
+  try { const k = String((await env.AURA_KV.get("config:style:say:" + key.toLowerCase())) || "").trim(); if (k) return k; } catch {}
+  const ci = Object.keys(STYLE_SAY_AS).find((x) => x.toLowerCase() === key.toLowerCase()); return ci ? STYLE_SAY_AS[ci] : nm;
+}
 const STYLE_LOOK_ALIAS = {"Colour Realism": "Color Realism", "Watercolour": "Watercolor", "Sticker Tattoos": "Sticker", "Embroidered Tattoos": "Embroidered", "Abstract Art": "Abstract"};
 async function styleLook(env, name) {
   const nm = String(name || "").trim(), key = STYLE_LOOK_ALIAS[nm] || nm;
@@ -61453,13 +61449,13 @@ async function toEight(env, sentence, kind) {
   // config:frame:sheet8:style_colour (needs {name}).
   const _stm8 = s.match(/\bin the ([^.]{2,80}?) style\b/i);
   if (_stm8) {
-    const _lk = await styleLook(env, _stm8[1]);
-    if (_lk) s = s.replace(/\bin the ([^.]{2,80}?) style\b/i, (m) => m + " - " + _lk);
+    const _lk = await styleLook(env, _stm8[1]), _say8 = await styleSayAs(env, _stm8[1]);
+    s = s.replace(/\bin the ([^.]{2,80}?) style\b/i, (m, nm) => m.replace(nm, _say8) + (_lk ? " - " + _lk : ""));
     const _col = /\s*Use colou?r wherever it works[^.]*\.\s*/gi;
     s = s.replace(_col, " ").replace(/\s{2,}/g, " ").trim(); end = end.replace(_col, " ").replace(/\s{2,}/g, " ").trim();
     let _sc = "Use the colors the {name} style is known for.";
     try { const k = String((await env.AURA_KV.get("config:frame:sheet8:style_colour")) || "").trim(); if (k.includes("{name}")) _sc = k; } catch {}
-    end = _sc.replace("{name}", _stm8[1].trim()) + " " + end;
+    end = _sc.replace("{name}", _say8) + " " + end;
   }
   return s.replace(/[\s]+$/, "") + " " + end;
 }
@@ -68060,6 +68056,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             try {
               let _hMs = 8000; try { const _hv = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(_hv) && _hv >= 0) _hMs = _hv; } catch {}
               let _hModel = null; try { _hModel = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+              // HOW HARD SHE THINKS BEFORE SHE ANSWERS (v9.788, 2026-11-01, Aaron: "let's discuss the speed"). MEASURED 14:43: streaming
+              // worked but the first word still came ~13s in - the model thinks before it writes a word. Setting:
+              // config:source:heard:reasoning  low | medium | high | off (empty = low).
+              let _hEff = "low"; try { const k = String((await env.AURA_KV.get("config:source:heard:reasoning")) || "").trim().toLowerCase(); if (["low", "medium", "high"].includes(k)) _hEff = k; else if (/^(off|none|default)$/.test(k)) _hEff = null; } catch {}
               const _hT0 = Date.now();
               // SHE SAYS IT BACK, THEY SAY YES (v9.783, 2026-11-01, Aaron - wording approved 12:23). READY: the idea line (their own
               // words about the tattoo, copied) and her said-back with Imagine it; CHOOSE: two directions, a tap draws; TALK: as before.
@@ -68102,7 +68102,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   if (words.length > sent && onDelta) { const add = words.slice(sent); sent = words.length; _hStarted = true; _heardStreamed = true; try { await onDelta(add); } catch {} }
                 }; })();
               const _hLate = new Promise((r) => setTimeout(function tick() { if (!_hStarted) r({ late: true }); else setTimeout(() => r({ late: true }), 45000); }, _hMs));
-              const _hArgs = { system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\nWhat they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) };
+              const _hArgs = { system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\nWhat they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hEff ? { reasoning: _hEff } : {}), ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) };
               const _hq = await Promise.race([_hLate, onDelta ? callBrainStream(_hArgs, env, _hFeed) : callBrain(_hArgs, env)]);
               const _hRaw = String((_hq && _hq.text) || "").trim();
               const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\s*([\s\S]*)$/i);
@@ -68146,19 +68146,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 try { await talkStatePut(env, me, "go_idea", ""); } catch {}
                 // v9.777: still waiting for their idea - the next thing they say is heard the same way, and drawn when there is one
                 try { await talkStatePut(env, me, "await_idea", "1"); } catch {} _heardTalk = true;
-                console.log("[TURN:HEARD] " + _hSec + "s - TALK, nothing drawn; the turn goes to her · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK, nothing drawn; the turn goes to her · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "READY" && _hSay) {
                 _fixedWhy = "heard_ready"; _fixedSay = _hSay; _heardOut = { go: true };
                 // with no IDEA line of hers, their own words (already kept above) are what Imagine it draws
                 if (_heardIdea) { try { await talkStatePut(env, me, "go_idea", _heardIdea); await talkStatePut(env, me, "go_picks", ""); } catch {} }
-                console.log("[TURN:HEARD] " + _hSec + "s" + (_hq && _hq.streamed ? " (streamed" + (_hq.shape ? ", " + _hq.shape : "") + ")" : "") + " - READY, nothing drawn until Imagine it · the idea: " + (_heardIdea ? "\"" + _heardIdea + "\"" : "(none from her - their own words wait)") + " · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + (_hq && _hq.streamed ? " (streamed" + (_hq.shape ? ", " + _hq.shape : "") + ")" : "") + " - READY, nothing drawn until Imagine it · the idea: " + (_heardIdea ? "\"" + _heardIdea + "\"" : "(none from her - their own words wait)") + " · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "CHOOSE" && _hSay) {
                 _fixedWhy = "heard_choose"; _fixedSay = _hSay; _heardOut = { picks: [{ k: "A", t: _hPicks.A.t }, { k: "B", t: _hPicks.B.t }] };
                 try { await talkStatePut(env, me, "go_picks", JSON.stringify(_hPicks)); await talkStatePut(env, me, "go_idea", ""); } catch {}
-                console.log("[TURN:HEARD] " + _hSec + "s - CHOOSE, a tap draws · A: " + _hPicks.A.t + " = \"" + _hPicks.A.idea + "\" · B: " + _hPicks.B.t + " = \"" + _hPicks.B.idea + "\" · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - CHOOSE, a tap draws · A: " + _hPicks.A.t + " = \"" + _hPicks.A.idea + "\" · B: " + _hPicks.B.t + " = \"" + _hPicks.B.idea + "\" · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
               } else {
                 // WHY IT WAS NOT USED IS LOGGED (v9.703): MEASURED 16:57 - "no usable answer" in 4.0s and nothing said what came back.
-                console.log("[TURN:HEARD] " + _hSec + "s - " + (_hq && _hq.late ? "no answer in " + _hMs + "ms" :
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - " + (_hq && _hq.late ? "no answer in " + _hMs + "ms" :
                   "not usable: " + (_hq && _hq.ok === false ? "error " + String(_hq.error || "?").slice(0, 160) : "came back \"" + _hRaw.slice(0, 200) + "\"") +
                   " · model " + String((_hq && _hq.model) || _hModel || talkModel || "default")) + " - the fixed line asks, their own words wait for Imagine it" + (me ? " · who=" + me : ""));
               }

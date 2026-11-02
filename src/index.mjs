@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.790.0-2026-11-01-their-words-not-hers";
+const BUILD = "aura-core-v9.791.0-2026-11-01-style-start-one-turn";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67753,14 +67753,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // conversation started with "I want to create a new tattoo" (talk-state new_flow), never a body photo or
       // Get Inspired - add-on, cover-up, See It On You and Get Inspired do not reach any of it.
       let _newFlow = false, _newStyle = null;
+      // ══ A STYLE CAN START THE NEW TATTOO ITSELF (v9.791, 2026-11-01, Aaron: go) ═══ MEASURED 17:01: Imagine My Tattoo from a style sent
+      // two turns one after the other - "I want to create a new tattoo" (its greeting never shown) and then the style - 7.4s on the
+      // server before her line. A fresh "Let's create my own in the <style> style" now does what the new-tattoo start does, then the style.
+      let _styleStart = false;
       if (me) {
         try {
           const _nf = await talkStateGet(env, me, ["new_flow", "new_style"]);
           const _op = String(said || "").trim();
           const _opener = /^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_op);
-          _newFlow = (_opener ? /^i want to create a new tattoo\.?$/i.test(_op) : String(_nf.new_flow || "") === "1") &&
+          _styleStart = !_opener && !!(opts && opts.fresh) && /^let'?s create my own in the .+ style\.?$/i.test(_op);
+          _newFlow = (_opener ? /^i want to create a new tattoo\.?$/i.test(_op) : _styleStart ? true : String(_nf.new_flow || "") === "1") &&
                      !_bodyPhoto && !(opts && opts.inspire);
-          _newStyle = _opener ? null : (String(_nf.new_style || "").trim() || null);
+          _newStyle = (_opener || _styleStart) ? null : (String(_nf.new_style || "").trim() || null);
         } catch {}
       }
       let _notYet = false;
@@ -67878,11 +67883,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
           // because "design_change" from the 9:50 test was still set.
-          if (/^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_s)) {
+          if (/^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_s) || _styleStart) {
+            const _isNew = /^i want to create a new tattoo\.?$/i.test(_s) || _styleStart;
+            if (_styleStart) { try { console.log("[TURN:NEWSTYLE] a new tattoo started from a style in one turn - the new-tattoo start and the style together" + (me ? " · who=" + me : "")); } catch {} }
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
                   await talkStatePut(env, me, "design_change_parent", "");
                   // THE NEW-TATTOO FLOW MARKER (v9.604): set only by the Create New Tattoo opener, cleared by every other start.
-                  await talkStatePut(env, me, "new_flow", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : "");
+                  await talkStatePut(env, me, "new_flow", _isNew ? "1" : "");
                   await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "new_start", "");
                   // ══ CREATE WITHOUT A STYLE IS WAITING FOR THEIR IDEA TOO (v9.777, 2026-11-01, Aaron: "I told her what I was, she's offering
                   // to show me some ideas ... I literally did already") ═══ MEASURED 09:19: "I'm a professional chef and I love butterflies and
@@ -67890,10 +67897,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // offered ideas and a "Which direction feels right to you?" style card - two more steps. After a style pick the next thing
                   // they type was already drawn (v9.701); the Create greeting now waits for their idea the same way. Her DRAW/TALK judgement
                   // (v9.702) still decides when there is nothing yet to imagine from.
-                  await talkStatePut(env, me, "await_idea", /^i want to create a new tattoo\.?$/i.test(_s) ? "1" : "");
+                  await talkStatePut(env, me, "await_idea", _isNew ? "1" : "");
                   // v9.779: nothing drawn in this tattoo yet (set to 1 the moment anything is drawn or chosen in it - see "last" below)
                   await talkStatePut(env, me, "new_drawn", ""); await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
-            _ds = /^i want to create a new tattoo\.?$/i.test(_s) ? { new_flow: "1" } : {};
+            _ds = _isNew ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
           _lastDesignChange = String(_ds.design_change || "").trim();

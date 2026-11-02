@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.797.0-2026-11-01-continue-gives-it-back";
+const BUILD = "aura-core-v9.798.0-2026-11-01-reopened-is-hers";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66768,7 +66768,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // Exactly right - a conversation is not a single line, and the version somebody wants to
       // branch from is often three back. `from` makes the strip in the UI a real control rather
       // than a history display.
-      let lastDrawn = null;
+      let lastDrawn = null, _backDesign = null;
       if (me) { try { lastDrawn = await _pre.last; } catch {} }
       // ══ CONTINUE GIVES THE TATTOO BACK (v9.797, 2026-11-01, Aaron: go) ═══ MEASURED 18:23 (Continue on an In progress tattoo, pick, Finalize):
       // the lock-in of another tattoo at 18:08 had cleared the session, so "I want number 1" found no last drawing and was not a pick
@@ -66789,6 +66789,11 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
             }
             tline.sort((a, c) => String(a.ts || "").localeCompare(String(c.ts || "")));
             await talkStatePut(env, me, "last", JSON.stringify(lastDrawn));
+            // v9.798: MEASURED 18:35 - the pick was read ("they picked number 1") but the design was not on record as HERS, so the
+            // rule "a drawing only continues from a picture she drew" turned the pick into a new sheet of 8 ($0.06, nothing cut).
+            // A reopened tattoo's pictures are hers: the record of her design goes back too.
+            if (lastDrawn.design) { _backDesign = { design: lastDrawn.design, image: lastDrawn.image, at: lastDrawn.at };
+              await talkStatePut(env, me, "design", JSON.stringify(_backDesign)); }
             await talkStatePut(env, me, "project", _workPid);
             await talkStatePut(env, me, "timeline", JSON.stringify(tline.slice(-60)));
             console.log("[TURN:BACK] reopened " + _workPid + " - its newest picture is on screen again (" + (_lp.design ? "design " + _lp.design : "no design id") +
@@ -69259,6 +69264,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // drawn onto his face. A drawing only continues from a picture she DREW (the record of her
       // design). A photo is a canvas only for add / cover / rework (below) and for put-it-on-me.
       let _herDesign = null; try { _herDesign = _pre ? await _pre.design : null; } catch {}
+      if (!_herDesign && _backDesign) _herDesign = _backDesign;   // v9.798: a reopened tattoo (CONTINUE GIVES THE TATTOO BACK)
       const _isHerDrawing = !!(lastDrawn && lastDrawn.design && _herDesign && _herDesign.design === lastDrawn.design);
       // IMAGINE 4 MORE IS A FRESH FOUR, NOT A CHANGE (v9.608). MEASURED 20:03: the fixed "more" turn drew, then this rule
       // turned it into a change of the four on screen - the grid was EDITED with the words "Imagine 4 more" (numbered 5-8,

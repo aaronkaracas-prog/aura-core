@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.826.0-2026-11-03-no-repeating-talk-keeps-idea-draw-never-waits";
+const BUILD = "aura-core-v9.827.0-2026-11-03-yes-no-stray-line-style-kept-talk-always-fast";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61520,7 +61520,7 @@ function heardSystem(style, canGo) {
   return "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
                 (style ? " (in the " + style + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
                 "tattoo artist would: brief, in your own words. If they shared something personal or hard, your words start there, simply. " +
-                "Never put a number in your words. Never open by repeating their words back to them (\"I hear you want...\").\n\n" +
+                "Never put a number in your words.\n\n" +
                 "Answer in exactly this shape. First line: READY or TALK" + (canGo ? " or GO" : "") + ".\n\n" +
                 // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
                 // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
@@ -68601,7 +68601,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   .then((x) => { const _out = x ? x + (_tail ? " " + _tail : "") : _fixedGo; console.log("[TURN:DRAW-SAY] shown while drawing: " + (x ? "her words" : "the fixed line (her words not in " + _dsMs + "ms)") + " - \"" + _out.slice(0, 200) + "\""); return _out; })
                   .catch(() => _fixedGo); }
               if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
-              try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea })));
+              try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }, _newStyle ? { style: _newStyle } : {})));
                     await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
               console.log("[TURN:GO] " + (_gk ? "they chose " + _gk : "Imagine it") + " - drawn from the idea she said back: \"" + _heardIdea.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
             }
@@ -68758,7 +68758,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
               if (_hIdea.trim() && !(_hDo === "TALK" && _canGo)) {
                 _heardIdea = _ideaLost ? _theirs : (_hIdea.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "") + (_addBack ? ". " + _addBack : "")).slice(0, 1000);
-                try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }))); } catch {}
+                try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }, _newStyle ? { style: _newStyle } : {}))); } catch {}
               }
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);
               if (_hStyleSaid && _hDo !== "TALK" && _hDo !== "GO") {
@@ -68769,6 +68769,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   if (_sv.toLowerCase() !== String(_newStyle || "").toLowerCase()) {
                     const _was = _newStyle; _newStyle = _sv;
                     try { await talkStatePut(env, me, "new_style", _sv); } catch {}
+                    // (v9.827) MEASURED 15:41 (prj_750d6e9c046e476b): Sticker drew all 8, but the project's details had no style - the details
+                    // are read from the brief, and only a tap put the style there. The style named in words goes there too.
+                    try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, _heardIdea ? { subject: _heardIdea } : {}, { style: _sv }))); } catch {}
                     console.log("[TURN:STYLE] they named the " + _sv + " style in their own words - it counts as picked" + (_was ? " (was " + _was + ")" : "") + (me ? " · who=" + me : ""));
                   }
                 } else { console.log("[TURN:STYLE] her style line \"" + _hStyleSaid.slice(0, 60) + "\" is not a style name - not used" + (me ? " · who=" + me : "")); }
@@ -68781,6 +68784,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 const _gIdea = _heardIdea || _goPrev;
                 try { await talkStatePut(env, me, "go_idea", _gIdea); } catch {}
                 _fixedWhy = "heard_ready"; _fixedSay = await _fx("heard_ready", "Love it - want me to imagine it?"); _heardOut = { go: true, now: true };
+                // (v9.827) MEASURED 15:40:29: this line went out on screen while the drawing was starting - it is only for when the hand-off
+                // to Imagine it cannot start (then it arrives with the final answer and the button); it is never streamed.
+                _heardStreamed = true;
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - GO: \"" + _s.slice(0, 120) + "\" is a yes - drawn as Imagine it, from " + (_heardIdea ? "the idea as it stands now" : "the idea she said back") + ": \"" + _gIdea.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "TALK" && _canGo && _hSay) {
                 // (v9.826) a question once the idea is said back: her answer here (no second call), the idea kept, Imagine it under it
@@ -74041,7 +74047,10 @@ export class PublicEntry extends WorkerEntrypoint {
         // directly 49 times, including the two live misses word for word 12 times, and all 49 answered in under 8s. While a new tattoo is
         // still being talked through and nothing has been drawn, a turn can only be heard - nothing draws until they tap Imagine it - so it
         // runs here, like the first words already do (v9.809). Words that ask to see it ("draw it") and Imagine it itself still run as a job.
-        if (!_direct && !!me && !!_tOpts.tid && !TALK_GO_WORDS.test(String(_said || "")) &&
+        // (v9.827) MEASURED 15:39:52: "like it looks like a sticker peeling off my skin" matched the draw words ("looks like") and ran as a job -
+        // 9s to her first word. While a new tattoo is talked through no turn draws on its own any more: a yes hands off to Imagine it as its own
+        // job (v9.825), so these turns run here whatever words they use.
+        if (!_direct && !!me && !!_tOpts.tid &&
             !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
             !_tOpts.change_now && !_tOpts.new_now && !_tOpts.pick_sheet && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of &&
             !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire && !_tOpts.inspire_go &&

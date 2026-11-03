@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.814.0-2026-11-03-model-thinking-never-shown-queue-polls";
+const BUILD = "aura-core-v9.815.0-2026-11-03-queue-frees-abandoned-slots";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61519,8 +61519,15 @@ function _isOfferLine(t) {
 // itself 65s, and at 08:43:50 core died twice: "Worker exceeded memory limit". The artist files job, running on the same worker, died
 // with it after 5m45s and only finished on Cloudflare's retry, 6m55s after lock-in (57s the run before). Every copy now waits its turn:
 // at most PIC_GATE_MAX are made at once per worker, the rest queue. A copy finished while it waited is served as kept.
-const PIC_GATE_MAX = 2, PIC_GATE_WAIT_MS = 45000;
-let _PIC_BUSY = 0;
+const PIC_GATE_MAX = 2, PIC_GATE_WAIT_MS = 45000, PIC_SLOT_STALE_MS = 20000;
+// (v9.815) MEASURED 09:18:50-09:19:37: five of the phone's copies each waited the full 45s and finished together, though the background
+// copies had finished at 09:18:54 - the slots were still counted as taken. A request the phone abandons (the page swaps a card's picture,
+// or retries it) can be torn down before it hands its slot back. Each slot now carries the time it was taken, and one held longer than
+// PIC_SLOT_STALE_MS (a copy takes 1-3s) is treated as abandoned and freed.
+const _PIC_SLOTS = new Map(); let _PIC_N = 0;
+function _picBusy() { const now = Date.now(); let n = 0;
+  for (const [k, t] of _PIC_SLOTS) { if (now - t > PIC_SLOT_STALE_MS) _PIC_SLOTS.delete(k); else n++; }
+  return n; }
 async function picGated(fn, keptKey, env) {
   // a copy that is already kept is a plain read - it never waits behind copies being made
   if (keptKey && env) { try { if (await env.AURA_KV.get(keptKey, { type: "arrayBuffer" })) return await fn(); } catch {} }
@@ -61528,10 +61535,10 @@ async function picGated(fn, keptKey, env) {
   // detected that your Worker's code had hung". A request that waits for ANOTHER request to wake it is seen as hung. Each waiting copy now
   // checks again on its own timer, and after PIC_GATE_WAIT_MS it goes ahead regardless - a copy is never refused for waiting.
   const _t0 = Date.now();
-  while (_PIC_BUSY >= PIC_GATE_MAX && Date.now() - _t0 < PIC_GATE_WAIT_MS) await new Promise((r) => setTimeout(r, 150));
-  _PIC_BUSY++;
+  while (_picBusy() >= PIC_GATE_MAX && Date.now() - _t0 < PIC_GATE_WAIT_MS) await new Promise((r) => setTimeout(r, 150));
+  const _slot = ++_PIC_N; _PIC_SLOTS.set(_slot, Date.now());
   try { return await fn(); }
-  finally { _PIC_BUSY = Math.max(0, _PIC_BUSY - 1); }
+  finally { _PIC_SLOTS.delete(_slot); }
 }
 async function picCardCopy(env, id, _w, sQ, nQ) {
     const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c6.jpg";

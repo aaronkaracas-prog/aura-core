@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.811.0-2026-11-03-in-progress-tile-shows-where-they-stopped";
+const BUILD = "aura-core-v9.812.0-2026-11-03-fine-tune-instant-card-title-read";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61484,6 +61484,12 @@ function _isOfferLine(t) {
   return /\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(s) ||
          /\b(i'?ll|i will|let me|i'?m going to|i can|i'?d love to|i would love to|happy to)\s+(show|draw|sketch|make)\b/i.test(s);
 }
+// ══ READING A CARD'S TITLE (v9.812, 2026-11-03) ═══ MEASURED 08:18:12: 7 of 8 read right, card 1 came back "THE BEACON GUID" - the card says
+// THE BEACON, with "GUIDES THE WAY / THROUGH THE STORM" in smaller words under it: the reader ran on into them and its 30-token answer was cut
+// mid-word, and that half-word named the tattoo to the artist files. The ask now says which line is the title and that the smaller words
+// are not, with room to answer in full; an answer longer than a title is still thrown away, never shortened.
+const CARD_TITLE_ASK = "This is a tattoo design card. In the box under the artwork, the first line is the title, in large bold capital letters; " +
+  "the smaller words under it are not part of the title. Reply with only the title, exactly as printed, nothing else.";
 async function eightCards(env, sheetUrl, said, eopts) {
   const _c8T0 = Date.now();
   const _printed = !!(eopts && eopts.printed);
@@ -61514,7 +61520,7 @@ async function eightCards(env, sheetUrl, said, eopts) {
         const _tT0 = Date.now();
         try { _bg((async () => {
           const reads = await Promise.all(cards.map((c) => Promise.race([new Promise((r) => setTimeout(() => r(null), 15000)),
-            seeMedia({ url: c.image, prompt: "This is a tattoo design card. Read the title printed in bold capital letters in the box under the artwork. Reply with only that title, exactly as printed, nothing else.", max_tokens: 30 }, env)]).catch(() => null)));
+            seeMedia({ url: c.image, prompt: CARD_TITLE_ASK, max_tokens: 48 }, env)]).catch(() => null)));
           const titles = reads.map((rd) => { const tt = String((rd && rd.ok && rd.saw) || "").replace(/^["'*\s]+|["'*.\s]+$/g, "").replace(/\s+/g, " ").trim();
             return (tt && tt.length <= 40 && tt.split(" ").length <= 6 && !/[\n:]/.test(tt) && !/\b(title|card|tattoo design|cannot|can't|sorry)\b/i.test(tt)) ? tt.toUpperCase() : null; });
           const got = titles.filter(Boolean).length;
@@ -68407,7 +68413,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   " · model " + String((_hq && _hq.model) || _hModel || talkModel || "default")) + " - the fixed line asks, their own words wait for Imagine it" + (me ? " · who=" + me : ""));
               }
             } catch {}
-          } else if (opts && opts.pick && /^i want to change something\.?$/i.test(_s)) {
+          // FINE-TUNE IS ONE LINE, AT ONCE (v9.812, 2026-11-03, Aaron: "Instant line"). MEASURED 08:14:47-08:15:07: Fine-Tune on a set of
+          // designs picked the card first, so the turn carried no pick - she was called (15.2s) and said only "Sure - tell me what you'd
+          // like changed about it." Any design being worked on now gets this line; their next words are the change, as before.
+          } else if (((opts && opts.pick) || (me && lastDrawn && (lastDrawn.image || lastDrawn.design))) && /^i want to change something\.?$/i.test(_s)) {
             _fixedWhy = "change"; _fixedSay = await _fx("change_ask", "What would you like to change? I'm here to imagine it with you - the sky's the limit.");
           } else if (opts && opts.new_now && _s && !(opts && opts.inspire) && !_bodyPhoto) {
             // IMAGINE SOMETHING NEW (v9.643, 2026-10-17, Aaron): they tapped Imagine something new and she asked where they want
@@ -71158,7 +71167,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                         const _full = Array.isArray(_k8) && _k8[_gridPickCut.n - 1] && _k8[_gridPickCut.n - 1].image ? _k8[_gridPickCut.n - 1].image : null;
                         if (_full) {
                           const _rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), 8000)),
-                            seeMedia({ url: _full, prompt: "This is a tattoo design card. Read the title printed in bold capital letters in the box under the artwork. Reply with only that title, exactly as printed, nothing else.", max_tokens: 30 }, env)]);
+                            seeMedia({ url: _full, prompt: CARD_TITLE_ASK, max_tokens: 48 }, env)]);
                           const _tt = String((_rd && _rd.ok && _rd.saw) || "").replace(/^["'*\s]+|["'*.\s]+$/g, "").replace(/\s+/g, " ").trim();
                           if (_tt && _tt.length <= 40 && _tt.split(" ").length <= 6 && !/[\n:]/.test(_tt) && !/\b(title|card|tattoo design|cannot|can't|sorry)\b/i.test(_tt)) {
                             _gridPickCut.card = { title: _tt.toUpperCase(), lines: [] };
@@ -72906,6 +72915,14 @@ export class PublicEntry extends WorkerEntrypoint {
       if (action === "mine") {
         let projects = [];
         try { projects = ((await talkDo(env, me, "talkProjects", [])) || {}).projects || []; } catch {}
+        // THE TILE'S NAME (v9.812, 2026-11-03): MEASURED on the In progress tile - "Your tattoo" over THE WATCH. A set's titles are read
+        // in the background into each card's cardinfo, not into the tattoo; the tile's card is looked up there.
+        try {
+          await Promise.all(projects.filter((p) => p && !p.locked && !p.card_title && p.cover).slice(0, 40).map(async (p) => {
+            const _cid = (String(p.cover).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1]; if (!_cid) return;
+            try { const _ci = JSON.parse((await env.AURA_KV.get("cardinfo:" + _cid)) || "null"); if (_ci && _ci.title) p.card_title = String(_ci.title).slice(0, 80); } catch {}
+          }));
+        } catch {}
         if (!projects.length) {
           const ea = await _earlier();
           if (ea) projects = [{ id: ea.id, title: ea.title, started: ea.started, updated: ea.updated,
@@ -73516,6 +73533,15 @@ export class PublicEntry extends WorkerEntrypoint {
             !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire && !_tOpts.inspire_go) {
           _direct = true; _tOpts.direct_no_draw = true;
           try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - the first words of a new tattoo, nothing to draw yet · who=" + me); } catch {}
+        }
+        // ══ FINE-TUNE RUNS STRAIGHT AWAY (v9.812, 2026-11-03, Aaron: "Instant line") ═══ MEASURED 08:14:47.7 -> 08:15:07.2: the job took 2s to
+        // begin for a turn whose whole answer is one fixed line. It draws nothing; their next words are the change, which runs as a job.
+        if (!_direct && !!me && !!_tOpts.tid && /^(fine-?\s?tune it|i want to change something)\.?$/i.test(String(_said || "").trim()) &&
+            !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
+            !_tOpts.change_now && !_tOpts.new_now && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick &&
+            !_tOpts.placed && !_tOpts.use && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire && !_tOpts.inspire_go) {
+          _direct = true; _tOpts.direct_no_draw = true;
+          try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - Fine-tune it, one line, nothing to draw · who=" + me); } catch {}
         }
         const _jobId = (me && _tOpts.tid && !_direct && await talkJobsOn(env))
           ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;

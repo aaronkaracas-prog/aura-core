@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.810.0-2026-11-02-spine-read-internal";
+const BUILD = "aura-core-v9.811.0-2026-11-03-in-progress-tile-shows-where-they-stopped";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -64211,7 +64211,7 @@ export class PtaDurableObject {
     idx = idx.filter((e) => e && e.id !== id);
     idx.unshift({ id, started: pj.started, updated: now, locked: !!pj.locked, title: pj.title,
       // The card shows the tattoo, never a look at it on them (2026-10-08, v9.544).
-      cover: (pj.pictures.filter((x) => x && !x.on_me).slice(-1)[0] || pj.pictures[pj.pictures.length - 1] || {}).image || null,
+      ...tileOf(pj),
       count: pj.pictures.length, has_files: !!pj.files, files_failed: pj.files ? null : (pj.files_failed || null) });
     let _ix = idx.slice(0, 200), _ixs = JSON.stringify(_ix);
     while (_doBytes(_ixs) > DO_VALUE_MAX && _ix.length > 20) { _ix = _ix.slice(0, _ix.length - 20); _ixs = JSON.stringify(_ix); }
@@ -64247,6 +64247,20 @@ export class PtaDurableObject {
           let _pj = null; try { _pj = JSON.parse(_m.get("talk-proj:" + e.id) || "null"); } catch {}
           const _fl = _pj && _pj.files && (_pj.files.flat_artwork || (Array.isArray(_pj.files.panels) && _pj.files.panels[0] && _pj.files.panels[0].flat));
           if (_fl) e.cover = String(_fl);
+        }
+      }
+    } catch {}
+    // ══ IN PROGRESS SHOWS WHERE THEY STOPPED (v9.811, 2026-11-03, Aaron: "it's confusing showing that card stacked that no one's ever
+    // seen") ══ Stopped on a set of designs: the tile was the uncut sheet, but Continue opens on its first card. The tile is now that
+    // card and its printed name. Read when the list is asked for, so tattoos saved before this build show it too.
+    try {
+      const _gk = idx.filter((e) => e && !e.locked && e.id).map((e) => "talk-proj:" + e.id).slice(0, 128);
+      if (_gk.length) {
+        const _m = await this.storage.get(_gk);
+        for (const e of idx) {
+          if (!e || e.locked) continue;
+          let _pj = null; try { _pj = JSON.parse(_m.get("talk-proj:" + e.id) || "null"); } catch {}
+          if (_pj && Array.isArray(_pj.pictures)) Object.assign(e, tileOf(_pj));
         }
       }
     } catch {}
@@ -65968,6 +65982,15 @@ function talkVerdict(reply, parsed) {
 async function talkCheckOn(env, k) {
   try { return String((await env.AURA_KV.get("config:check:" + k)) || "").trim().toLowerCase() !== "off"; }
   catch { return true; }
+}
+
+// THE TILE FOR A TATTOO (v9.811, 2026-11-03): its newest design, never a look at it on them. A set of designs not yet chosen from
+// is shown as its first card - the one Continue opens on - with that card's printed name.
+function tileOf(pj) {
+  const pics = (pj && Array.isArray(pj.pictures)) ? pj.pictures : [];
+  const last = pics.filter((x) => x && !x.on_me).slice(-1)[0] || pics[pics.length - 1] || {};
+  const c0 = (Array.isArray(last.cards8) && last.cards8[0] && last.cards8[0].image) ? last.cards8[0] : null;
+  return { cover: (c0 ? c0.image : last.image) || null, card_title: c0 ? (String(c0.title || "").slice(0, 80) || null) : null };
 }
 
 // What the artist files job produced, in the shape My Tattoos and the page already read.

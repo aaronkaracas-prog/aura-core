@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.820.0-2026-11-03-written-means-written-and-heard-test";
+const BUILD = "aura-core-v9.821.0-2026-11-03-only-the-missing-sentence-goes-back";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -14319,7 +14319,7 @@ async function successionGate(env) {
         const theirs = htNum(c.told.concat([c.said]).join(". "));
         const missing = _namesOf(theirs).filter((n) => { const k = n.toLowerCase(), st = k.length > 4 ? k.replace(/(es|s)$/, "") : k; return !il.includes(k) && !il.includes(st); });
         const lacks = c.has.filter((w) => !il.includes(w)), still = c.gone.filter((w) => il.includes(w));
-        const written = !c.written || /\b(written|writing|lettering|letters|lettered|reads|reading|says|saying|spell(s|ed|ing)?|script|text|inscri\w*|engraved|stitched)\b/.test(il);
+        const written = !c.written || /\b(name|named|written|writing|lettering|letters|lettered|reads|reading|says|saying|spell(s|ed|ing)?|script|text|inscri\w*|engraved|stitched)\b/.test(il);
         const inTime = !(q && q.late) && ms <= htLimit;
         const problems = [];
         if (!inTime) problems.push(q && q.late ? "no answer in 45s" : "late (" + (ms / 1000).toFixed(1) + "s, the page waits " + (htLimit / 1000) + "s)");
@@ -14328,9 +14328,11 @@ async function successionGate(env) {
         if (label === "READY" && !words) problems.push("no words of hers to show");
         if (label === "READY" && !sp.idea) problems.push("no IDEA line");
         if (!c.any && label === "TALK") problems.push("TALK when they had told her what they want");
-        if (label === "READY") { if (missing.length) problems.push("idea left out " + missing.join(", ")); if (lacks.length) problems.push("idea lacks " + lacks.join(", "));
+        // (v9.820b) a name left out is a fail; a number left out is only background unless the test says it must be there (has)
+        const missNames = missing.filter((n) => !/^\d+$/.test(n)), missNums = missing.filter((n) => /^\d+$/.test(n));
+        if (label === "READY") { if (missNames.length) problems.push("idea left out " + missNames.join(", ")); if (lacks.length) problems.push("idea lacks " + lacks.join(", "));
           if (still.length) problems.push("idea still has " + still.join(", ") + " (they took it back)"); if (!written) problems.push("lettering not said to be written"); }
-        return { convo: c.name, round, pass: problems.length === 0, sec: +(ms / 1000).toFixed(1), label, problems, words: words.slice(0, 260), idea: sp.idea.slice(0, 300) };
+        return { convo: c.name, round, pass: problems.length === 0, sec: +(ms / 1000).toFixed(1), label, problems, ...(missNums.length ? { background_numbers_not_in_idea: missNums } : {}), words: words.slice(0, 260), idea: sp.idea.slice(0, 300) };
       };
       const htJobs = []; for (let r = 1; r <= htReps; r++) for (const c of htConvos) htJobs.push(htOne(c, r));
       const htRes = await Promise.all(htJobs);
@@ -68663,9 +68665,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // (v9.819) MEASURED 14:00:07: she wrote "2,650 miles", they typed "2650" - counted as left out. Commas inside numbers do not count.
               const _lost = (idea) => { const _il = String(idea || "").toLowerCase().replace(/(\d),(?=\d{3}\b)/g, "$1");
                 return _namesOf(_theirs.replace(/(\d),(?=\d{3}\b)/g, "$1")).filter((n) => { const k = n.toLowerCase(), st = k.length > 4 ? k.replace(/(es|s)$/, "") : k; return !_il.includes(k) && !_il.includes(st); }); };
+              // ══ ONLY THE SENTENCE IT CAME FROM GOES BACK (v9.820b, 2026-11-03, Aaron: go) ═══ MEASURED by HEARD_TEST 14:27: the idea is now
+              // where the conversation ended, and background they gave ("a power lineman for 30 years", "in 2019") is often not in it - the whole
+              // clean idea was thrown away for their raw words, "maybe lightning too actually lose the lightning" and all. Now her idea stays and
+              // only the sentences of theirs that hold the missing name or number are added after it. A name is still never lost.
+              let _addBack = "";
               if (_hIdea && _hIdea.trim()) { const _lm = _lost(_hIdea); if (_lm.length) {
-                console.log("[TURN:NAMES] her idea left out " + _lm.join(", ") + " - their own words are drawn instead" + (me ? " · who=" + me : ""));
-                _ideaLost = true; } }
+                const _sents = ((_told ? _told + "\n" : "") + _s).split(/\n+|(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
+                const _hasIt = (t) => { const tl = t.toLowerCase().replace(/(\d),(?=\d{3}\b)/g, "$1"); return _lm.some((n) => tl.includes(n.toLowerCase())); };
+                _addBack = _sents.filter(_hasIt).join(" ").slice(0, 600);
+                console.log("[TURN:NAMES] her idea left out " + _lm.join(", ") + " - " + (_addBack ? "their sentence goes back with it: \"" + _addBack.slice(0, 200) + "\"" : "their own words are drawn instead") + (me ? " · who=" + me : ""));
+                _ideaLost = !_addBack; } }
               for (const _k of ["A", "B"]) { if (_hPicks[_k]) { const _lm = _lost(_hPicks[_k].idea); if (_lm.length) {
                 console.log("[TURN:NAMES] her choice " + _k + " left out " + _lm.join(", ") + " - their own words go with it" + (me ? " · who=" + me : ""));
                 _hPicks[_k].idea = (_theirs + ". " + _hPicks[_k].t).slice(0, 1300); } } }
@@ -68673,7 +68683,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _hSay = _wholeSentences(_hRest, 1200);
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
               if (_hIdea.trim()) {
-                _heardIdea = _ideaLost ? _theirs : _hIdea.replace(/\s+/g, " ").trim().slice(0, 400);
+                _heardIdea = _ideaLost ? _theirs : (_hIdea.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "") + (_addBack ? ". " + _addBack : "")).slice(0, 1000);
                 try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }))); } catch {}
               }
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);

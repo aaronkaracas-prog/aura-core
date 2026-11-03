@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.821.0-2026-11-03-only-the-missing-sentence-goes-back";
+const BUILD = "aura-core-v9.822.0-2026-11-03-a-loop-is-never-shown";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -14325,6 +14325,7 @@ async function successionGate(env) {
         if (!inTime) problems.push(q && q.late ? "no answer in 45s" : "late (" + (ms / 1000).toFixed(1) + "s, the page waits " + (htLimit / 1000) + "s)");
         if (q && q.ok === false) problems.push("error: " + String(q.error || "?").slice(0, 120));
         if (!label) problems.push("no READY/TALK label");
+        if (_looping(raw)) problems.push("fell into a loop");
         if (label === "READY" && !words) problems.push("no words of hers to show");
         if (label === "READY" && !sp.idea) problems.push("no IDEA line");
         if (!c.any && label === "TALK") problems.push("TALK when they had told her what they want");
@@ -61475,6 +61476,13 @@ function _namesOf(t) {
 // the generic 100% yours can be there but we need your initial relevance") ═══ The same short call the change already makes (v9.780, measured
 // 1.1s): their idea and the style they chose, said back in one or two sentences - that she's imagining it now. Same model, thinking and
 // time limit as her hearing step; no answer in time and the fixed line stands. Nothing about the drawing changes.
+// ══ A MODEL CAUGHT IN A LOOP IS NEVER SHOWN (v9.822, 2026-11-03) ═══ MEASURED 14:36 (the Mara heart, fourth message): gpt-oss-120b wrote
+// "you want an anatomical heart rendered in Cy Cy cyber- sigil style, wrapped in th th th th th ..." - hundreds of "th" - and it streamed
+// straight into her box on the page. A word repeated four times running, or a run of the same few letters, is a loop, not words.
+function _looping(t) {
+  const x = String(t || "");
+  return /\b(\S{1,12})\b(?:[\s,.\-]+\1\b){3,}/i.test(x) || /(.{2,8})\1{5,}/.test(x.replace(/\s+/g, " "));
+}
 // ══ HER WORDS AND THE IDEA, APART (v9.819, one copy since v9.820) ═══ The last label (IDEA:, or a broken one in capitals) is where her words
 // end and the idea starts, on one line or many. A label that opens the answer is the older shape: its line is the idea, the rest her words.
 function heardSplit(rest) {
@@ -68579,7 +68587,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // ══ HER SAID-BACK STREAMS (v9.787) ═══ Her answer starts with its label line (and the IDEA / A / B lines) - those never
               // reach the page; from her first line of words on, each piece goes out as she writes it. A TALK answer is not streamed
               // (that turn goes to her as a conversation). Once her words have started, the time limit no longer cuts her off.
-              let _hStarted = false;
+              let _hStarted = false, _hLooped = false;
               // ══ THEIR WORDS ARE NEVER SHOWN AS HERS (v9.790, 2026-11-01, Aaron: go) ═══ MEASURED 16:52 (Blackout, the grandpa and the bass):
               // she wrote READY, then their whole message on her second line WITHOUT the "IDEA:" label, then her words - the page showed
               // "my grandpa was a fisherman ... for him I'm so sorry for your loss ...". A check on her answer, not a rule for her: any
@@ -68623,8 +68631,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   }
                   // (v9.819) her words end where the IDEA label starts; until it comes, the last few letters wait in case they are its start
                   const _all = afterLabel.slice(start), _cut = _all.search(/(^|\s)(?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:/);
-                  const words = _cut >= 0 ? _all.slice(0, _cut) : _all.slice(0, Math.max(0, _all.length - 16));
-                  if (words.length > sent && onDelta) { const add = words.slice(sent); sent = words.length; _hStarted = true; _heardStreamed = true; try { await onDelta(add); } catch {} }
+                  let words = _cut >= 0 ? _all.slice(0, _cut) : _all.slice(0, Math.max(0, _all.length - 16));
+                  // (v9.822) a loop stops the stream where it starts; the final answer replaces what is on screen with the fixed line
+                  if (_looping(words)) { const _lm2 = words.match(/\b(\S{1,12})\b(?:[\s,.\-]+\1\b){3,}/i) || words.replace(/\s+/g, " ").match(/(.{2,8})\1{5,}/); words = words.slice(0, _lm2 ? Math.max(0, words.indexOf(_lm2[0]) ) : 0); _hLooped = true; }
+                  if (words.length > 900) words = words.slice(0, 900);
+                  if (words.length > sent && onDelta && !(_hLooped && words.length <= sent)) { const add = words.slice(sent); sent = words.length; _hStarted = true; _heardStreamed = true; try { await onDelta(add); } catch {} }
                 }; })();
               const _hLate = new Promise((r) => setTimeout(function tick() { if (!_hStarted) r({ late: true }); else setTimeout(() => r({ late: true }), 45000); }, _hMs));
               const _hArgs = { system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\nWhat they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hEff ? { reasoning: _hEff } : {}), ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) };
@@ -68680,7 +68691,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 console.log("[TURN:NAMES] her choice " + _k + " left out " + _lm.join(", ") + " - their own words go with it" + (me ? " · who=" + me : ""));
                 _hPicks[_k].idea = (_theirs + ". " + _hPicks[_k].t).slice(0, 1300); } } }
               // HER WORDS END ON A WHOLE SENTENCE (v9.781). MEASURED 11:03: cut at 400 characters mid-word - "I'm imagining some designs f".
-              const _hSay = _wholeSentences(_hRest, 1200);
+              let _hSay = _wholeSentences(_hRest, 1200);
+              if (_looping(_hSay) || _looping(_hIdea) || _hLooped) {
+                try { console.log("[TURN:HEARD] her answer fell into a loop (\"" + String(_hSay || _hIdea).slice(0, 120) + "...\") - not shown, not drawn from; the fixed line asks" + (me ? " · who=" + me : "")); } catch {}
+                _hSay = ""; _hIdea = ""; }
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
               if (_hIdea.trim()) {
                 _heardIdea = _ideaLost ? _theirs : (_hIdea.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "") + (_addBack ? ". " + _addBack : "")).slice(0, 1000);

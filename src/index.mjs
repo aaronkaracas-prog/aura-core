@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.823.0-2026-11-03-heard-test-live-misses";
+const BUILD = "aura-core-v9.824.0-2026-11-03-hearing-runs-directly-placement-kept";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61483,6 +61483,18 @@ function _namesOf(t) {
 // the generic 100% yours can be there but we need your initial relevance") ═══ The same short call the change already makes (v9.780, measured
 // 1.1s): their idea and the style they chose, said back in one or two sentences - that she's imagining it now. Same model, thinking and
 // time limit as her hearing step; no answer in time and the fixed line stands. Nothing about the drawing changes.
+// ══ WHERE ON THE BODY, AND HOW BIG IT PRINTS (one copy since v9.824) ═══ The print size for a placement when she gave no size. The longest
+// name found wins: "lower back" is its own place, not the 20in "back" (MEASURED 14:13 - a lower-back heart would have planned a full-back
+// print). "lower back" 9in and "upper back" 12in are new in v9.824; every other size is as it was.
+const PLACEMENT_IN = { "full back": 20, "back": 20, "whole back": 20, "lower back": 9, "upper back": 12, "chest": 12,
+                       "full sleeve": 18, "sleeve": 18, "forearm": 7, "upper arm": 8,
+                       "thigh": 14, "calf": 10, "shoulder": 7, "hand": 4, "neck": 4,
+                       "ribs": 12, "full leg": 24 };
+function placementFrom(text) {
+  const t = String(text || "").toLowerCase();
+  let best = ""; for (const k of Object.keys(PLACEMENT_IN)) if (k.length > best.length && new RegExp("\\b" + k.replace(/ /g, "\\s+") + "\\b(?!\\s+of\\b)").test(t)) best = k;   // "back of my calf" is the calf
+  return best || null;
+}
 // ══ A MODEL CAUGHT IN A LOOP IS NEVER SHOWN (v9.822, 2026-11-03) ═══ MEASURED 14:36 (the Mara heart, fourth message): gpt-oss-120b wrote
 // "you want an anatomical heart rendered in Cy Cy cyber- sigil style, wrapped in th th th th th ..." - hundreds of "th" - and it streamed
 // straight into her box on the page. A word repeated four times running, or a run of the same few letters, is a loop, not words.
@@ -65978,15 +65990,15 @@ async function makeArtistFiles(env, ctx) {
             // Sized from the placement they gave. PRINT caps it to what the pixels and the paper
             // allow and SAYS so, so a number here can never overstate what comes off the printer.
             let pdfUrl = null, pdfSheets = null, pdfInches = null;
-            const PLACEMENT_IN = { "full back": 20, "back": 20, "whole back": 20, "chest": 12,
-                                   "full sleeve": 18, "sleeve": 18, "forearm": 7, "upper arm": 8,
-                                   "thigh": 14, "calf": 10, "shoulder": 7, "hand": 4, "neck": 4,
-                                   "ribs": 12, "full leg": 24 };
-            const placeKey = String((intent && intent.placement) || "").toLowerCase();
+            // (v9.824) the list lives in PLACEMENT_IN (one copy); the longest name that matches wins - "lower back" is not "back"
+            let placeKey = String((intent && intent.placement) || "").toLowerCase();
+            // ══ THE PLACE THEY SAID IS NEVER LOST (v9.824, 2026-11-03, Aaron: go) ═══ MEASURED 14:44:50 (the Mara heart): "its going on my
+            // lower back" was said and was in the idea drawn, but the brief's placement was empty - her hearing turns write the idea, not the
+            // placement - so the print fell to the 5in standard and the page said "Finalize with your artist". With no placement in the brief,
+            // the place named in the idea is used.
+            if (!placeKey) { const _pf = placementFrom(intent && intent.subject); if (_pf) { placeKey = _pf; try { console.log("[PRINT-SIZE] no placement in the brief - the idea names \"" + _pf + "\""); } catch {} } }
             let inches = 0;
-            for (const k of Object.keys(PLACEMENT_IN)) {
-              if (placeKey.includes(k) && PLACEMENT_IN[k] > inches) inches = PLACEMENT_IN[k];
-            }
+            { const _pk = placementFrom(placeKey); if (_pk) inches = PLACEMENT_IN[_pk]; }
             // ══ HER SIZE FIRST (2026-10-01, Aaron) ═══════════════════════════════════════════
             // MEASURED: a small hip bouquet printed at the 8in default ("hip" is not in the list) on 4
             // sheets, and a full back asked for 20in. A placement word is not a size. She saw the photo -
@@ -66744,7 +66756,7 @@ async function recordArtistFiles(env, d, drew) {
         const _tmpl = (x) => /\s\|\s|only if they said|why they are getting it|who it is for/i.test(x);
         const _s = (v, n) => { if (v == null || v === "") return null; const t = String(Array.isArray(v) ? v.join(", ") : v);
                                return _tmpl(t) ? null : t.slice(0, n); };
-        _details = { style: _s(_bf.style, 60), placement: _s(_bf.placement, 60), size: _s(_bf.size, 40),
+        _details = { style: _s(_bf.style, 60), placement: _s(_bf.placement, 60) || placementFrom(_bf.subject), size: _s(_bf.size, 40),
                      colour: _s(_bf.colour || _bf.color, 40), notes: _s(_bf.meaning, 300), subject: _s(_bf.subject, 200),
                      // What kind of job it was - new, add, cover, rework (2026-10-08, v9.543): only a new
                      // tattoo is offered "see it on you"; the others were drawn on their own photo already.
@@ -73954,6 +73966,24 @@ export class PublicEntry extends WorkerEntrypoint {
             !_tOpts.placed && !_tOpts.use && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire && !_tOpts.inspire_go) {
           _direct = true; _tOpts.direct_no_draw = true;
           try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - Fine-tune it, one line, nothing to draw · who=" + me); } catch {}
+        }
+        // ══ HER HEARING TURNS RUN STRAIGHT AWAY (v9.824, 2026-11-03, Aaron: go) ═══ MEASURED today: every time her hearing step gave no answer
+        // in 15s (12:00:54, 14:11:11, 14:41:56, 14:42:22) the turn was running as a job; HEARD_TEST asked the same model the same words
+        // directly 49 times, including the two live misses word for word 12 times, and all 49 answered in under 8s. While a new tattoo is
+        // still being talked through and nothing has been drawn, a turn can only be heard - nothing draws until they tap Imagine it - so it
+        // runs here, like the first words already do (v9.809). Words that ask to see it ("draw it") and Imagine it itself still run as a job.
+        if (!_direct && !!me && !!_tOpts.tid && !TALK_GO_WORDS.test(String(_said || "")) &&
+            !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
+            !_tOpts.change_now && !_tOpts.new_now && !_tOpts.pick_sheet && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of &&
+            !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire && !_tOpts.inspire_go &&
+            !/^i want number [1-8]\.?$/i.test(String(_said || "").trim())) {
+          try {
+            const _hs = await talkStateGet(env, me, ["new_flow", "new_drawn"]);
+            if (String(_hs.new_flow || "") === "1" && String(_hs.new_drawn || "") !== "1") {
+              _direct = true; _tOpts.direct_no_draw = true;
+              console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - a new tattoo still being talked through, nothing drawn yet · who=" + me);
+            }
+          } catch {}
         }
         const _jobId = (me && _tOpts.tid && !_direct && await talkJobsOn(env))
           ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;

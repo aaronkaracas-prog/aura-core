@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.822.0-2026-11-03-a-loop-is-never-shown";
+const BUILD = "aura-core-v9.823.0-2026-11-03-heard-test-live-misses";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -14297,7 +14297,7 @@ async function successionGate(env) {
       const htModel = String(args[0] || "").trim();
       if (!htModel) return { cmd: "HEARD_TEST", payload: { ok: false, error: "NEED_MODEL", say: 'RUN "HEARD_TEST @cf/openai/gpt-oss-120b low"' } };
       const htEffA = String(args[1] || "low").toLowerCase(), htEff = ["low", "medium", "high"].includes(htEffA) ? htEffA : null;
-      const htReps = Math.min(3, Math.max(1, parseInt(String(args[2] || "1"), 10) || 1));
+      const htReps = Math.min(6, Math.max(1, parseInt(String(args[2] || "1"), 10) || 1));
       let htLimit = 8000; try { const v = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(v) && v >= 0) htLimit = v; } catch {}
       const htConvos = [
         { name: "grandma, first words", style: "Embroidered Tattoos", told: [], said: "my grandma used to sew patches on all my jeans when i was little. i want something that feels like her", any: true, has: [], gone: [], written: false },
@@ -14305,7 +14305,13 @@ async function successionGate(env) {
         { name: "lineman", style: null, told: ["my dad was a power lineman for 30 years. he retired last month and i want to get something for him", "something with a pole and the wires for sure. he always said he worked the storms so maybe lightning too", "yes and can it say 1995 - 2025 somewhere? those were his years"], said: "actually lose the lightning. put his hard hat hanging on the pole instead, thats more him", has: ["hard hat", "pole", "1995", "2025"], gone: ["lightning"], written: true },
         { name: "trail, Jess", style: null, told: ["i want something about my best friend jess. we did the pacific crest trail together in 2019, all 2650 miles", "her trail name was Sunny and she always had a little orange flag on her pack. maybe some mountains behind it", "actually skip the mountains. put the flag on one of those wooden trail marker posts instead"], said: "yes and can the post say mile 2650 on it", has: ["sunny", "flag", "post", "2650"], gone: ["mountain"], written: true },
         { name: "heart, Mara", style: "Cybersigilism", told: ["i want one of those cyber hearts wrapped in thorns, i keep seeing them everywhere", "its for my girlfriend Mara, can her name be hidden in the thorns somewhere? its going on my lower back", "actually make it a real anatomical heart, not the cartoon shape"], said: "yes and can a few thorns drip off the bottom like they're melting", has: ["mara", "heart", "thorn"], gone: [], written: true },
+        // (v9.823) the two live turns that ran out of time at 14:41:56 and 14:42:22, word for word - to see if they fail here too
+        { name: "heart, first words (live miss 14:41)", style: "Cybersigilism", told: [], said: "i want one of those cyber hearts wrapped in thorns, i keep seeing them everywhere", any: true, has: [], gone: [], written: false },
+        { name: "heart, third words (live miss 14:42)", style: "Cybersigilism", told: ["i want one of those cyber hearts wrapped in thorns, i keep seeing them everywhere", "its for my girlfriend Mara, can her name be hidden in the thorns somewhere? its going on my lower back"], said: "actually make it a real anatomical heart, not the cartoon shape", has: ["mara", "heart", "thorn"], gone: ["cartoon"], written: true },
       ];
+      // (v9.823) a fourth word picks the conversations by name ("live" = the two live misses), so one can be asked many times
+      const htPick = String(args[3] || "").toLowerCase();
+      const htSet = htPick ? htConvos.filter((c) => c.name.toLowerCase().includes(htPick)) : htConvos;
       const htNum = (x) => String(x || "").replace(/(\d),(?=\d{3}\b)/g, "$1");
       const htOne = async (c, round) => {
         const user = (c.told.length ? "What they told you before, in order:\n" + c.told.join("\n") + "\n\nWhat they just said:\n" : "") + c.said;
@@ -14324,6 +14330,7 @@ async function successionGate(env) {
         const problems = [];
         if (!inTime) problems.push(q && q.late ? "no answer in 45s" : "late (" + (ms / 1000).toFixed(1) + "s, the page waits " + (htLimit / 1000) + "s)");
         if (q && q.ok === false) problems.push("error: " + String(q.error || "?").slice(0, 120));
+        if (!raw && !(q && q.late)) problems.push("the model gave back nothing usable (its thinking only, or empty)");
         if (!label) problems.push("no READY/TALK label");
         if (_looping(raw)) problems.push("fell into a loop");
         if (label === "READY" && !words) problems.push("no words of hers to show");
@@ -14335,7 +14342,7 @@ async function successionGate(env) {
           if (still.length) problems.push("idea still has " + still.join(", ") + " (they took it back)"); if (!written) problems.push("lettering not said to be written"); }
         return { convo: c.name, round, pass: problems.length === 0, sec: +(ms / 1000).toFixed(1), label, problems, ...(missNums.length ? { background_numbers_not_in_idea: missNums } : {}), words: words.slice(0, 260), idea: sp.idea.slice(0, 300) };
       };
-      const htJobs = []; for (let r = 1; r <= htReps; r++) for (const c of htConvos) htJobs.push(htOne(c, r));
+      const htJobs = []; for (let r = 1; r <= htReps; r++) for (const c of htSet) htJobs.push(htOne(c, r));
       const htRes = await Promise.all(htJobs);
       const htSecs = htRes.map((x) => x.sec).sort((a, b) => a - b);
       const htSummary = { model: htModel, thinking: htEff || "off", limit_s: htLimit / 1000, passed: htRes.filter((x) => x.pass).length + " of " + htRes.length,

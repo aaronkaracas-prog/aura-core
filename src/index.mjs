@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.812.0-2026-11-03-fine-tune-instant-card-title-read";
+const BUILD = "aura-core-v9.813.0-2026-11-03-picture-copies-queued-and-premade";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61484,6 +61484,133 @@ function _isOfferLine(t) {
   return /\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(s) ||
          /\b(i'?ll|i will|let me|i'?m going to|i can|i'?d love to|i would love to|happy to)\s+(show|draw|sketch|make)\b/i.test(s);
 }
+// ══ ONE PICTURE COPY AT A TIME, NEVER SIXTEEN (v9.813, 2026-11-03, Aaron: go) ═══════════════════════════════════════════════════
+// MEASURED 08:36-08:44 (the Japanese run): a set of 8 came back and the phone asked for 16 copies at once - a stamped copy and a catalog
+// card for each design - each made here by loading the whole picture into memory. The cards took 21-262s (blank on the phone), the sheet
+// itself 65s, and at 08:43:50 core died twice: "Worker exceeded memory limit". The artist files job, running on the same worker, died
+// with it after 5m45s and only finished on Cloudflare's retry, 6m55s after lock-in (57s the run before). Every copy now waits its turn:
+// at most PIC_GATE_MAX are made at once per worker, the rest queue. A copy finished while it waited is served as kept.
+const PIC_GATE_MAX = 2;
+let _PIC_BUSY = 0; const _PIC_WAIT = [];
+async function picGated(fn, keptKey, env) {
+  // a copy that is already kept is a plain read - it never waits behind copies being made
+  if (keptKey && env) { try { if (await env.AURA_KV.get(keptKey, { type: "arrayBuffer" })) return await fn(); } catch {} }
+  // a waiter is handed the finishing copy's place directly, so no newcomer can slip in between
+  if (_PIC_BUSY >= PIC_GATE_MAX) await new Promise((r) => _PIC_WAIT.push(r)); else _PIC_BUSY++;
+  try { return await fn(); }
+  finally { const nx = _PIC_WAIT.shift(); if (nx) nx(); else _PIC_BUSY = Math.max(0, _PIC_BUSY - 1); }
+}
+async function picCardCopy(env, id, _w, sQ, nQ) {
+    const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c6.jpg";
+    const _chave = await env.AURA_KV.getWithMetadata(_ck, { type: "arrayBuffer" }).catch(() => null);
+    if (_chave && _chave.value) return new Response(_chave.value, { headers: { "content-type": "image/jpeg", "content-length": String(_chave.value.byteLength),
+      "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept", "x-card": "yes" } });
+    try {
+      let _info = null;
+      try { _info = JSON.parse((await env.AURA_KV.get("cardinfo:" + id)) || "null"); } catch {}
+      const _sid = String(sQ || ""), _n = parseInt(nQ || "", 10);
+      if (!(_info && (_info.title || _info.printed)) && /^img_[A-Za-z0-9_-]+$/.test(_sid) && _n >= 1 && _n <= 8) {
+        try { const _k8 = JSON.parse((await env.AURA_KV.get("sheet8:" + _sid)) || "null"); const _c = Array.isArray(_k8) ? _k8[_n - 1] : null;
+          // only when that card really is this picture, and its words were not already drawn into it
+          if (_c && _c.title && !_c.printed && String(_c.image || "").indexOf(id) >= 0) _info = { title: _c.title, lines: _c.lines || [] };
+          // v9.769: a card whose words the image model drew in it - its own words travel with it, the logo goes under it
+          if (_c && _c.printed && String(_c.image || "").indexOf(id) >= 0) _info = { printed: true }; } catch {}
+      }
+      if (!_BRAND_PNG) { const b = await env.AURA_KV.get("brand:inkit-logo", { type: "arrayBuffer" }).catch(() => null); if (b) _BRAND_PNG = new Uint8Array(b); }
+      let _src = null;
+      { const _b = await env.AURA_KV.get(`image:${id}`).catch(() => null); if (_b) _src = Uint8Array.from(atob(_b), (c) => c.charCodeAt(0)); }
+      if (_src && _BRAND_PNG) {
+        const _im = PhotonImage.new_from_byteslice(_src);
+        const _W = _im.get_width(), _H = _im.get_height();
+        let _sm = _W !== _cw ? photonResize(_im, _cw, Math.max(1, Math.round(_H * _cw / _W)), PhotonSampling.Lanczos3) : _im;
+        // v9.773: no black line along an edge, no dark corners - one white card (the seam Aaron saw under the design)
+        try { const _cl = _cleanEdges(_sm); if (_cl !== _sm) { if (_sm !== _im) { try { _sm.free(); } catch {} } _sm = _cl; } } catch {}
+        // v9.769: a card cut before the white cards carries its words in white on a black strip at its foot - the strip is turned
+        // white with black words (every pixel flipped), so its words read on white like the new ones. Rows count as the strip when
+        // they are mostly dark, from the bottom up; only a strip between 8% and 40% of the card's height is touched.
+        if (_info && _info.printed) { try {
+          const sw = _sm.get_width(), sh = _sm.get_height(), sp = _sm.get_raw_pixels();
+          const darkRow = (y) => { let n = 0, d = 0; for (let x = 0; x < sw; x += 2) { n++; const o = (y * sw + x) * 4; if ((sp[o] + sp[o + 1] + sp[o + 2]) / 3 < 60) d++; } return d / n; };
+          let y = sh - 1; while (y > 0 && darkRow(y) > 0.6) y--;
+          const st = y + 1, sH = sh - st;
+          if (sH >= sh * 0.08 && sH <= sh * 0.4) {
+            for (let k = st * sw * 4; k < sp.length; k += 4) { sp[k] = 255 - sp[k]; sp[k + 1] = 255 - sp[k + 1]; sp[k + 2] = 255 - sp[k + 2]; }
+            const _fl = new PhotonImage(sp, sw, sh); const _cc0 = composeCatalogCard(_fl, {}, _BRAND_PNG); try { _fl.free(); } catch {}
+            if (_cc0) { const _out0 = _cc0.get_bytes_jpeg(86); try { _cc0.free(); } catch {} try { if (_sm !== _im) _sm.free(); } catch {} try { _im.free(); } catch {}
+              await env.AURA_KV.put(_ck, _out0, { metadata: { ct: "image/jpeg", w: _cw, card: 1, flipped: 1 } }).catch(() => {});
+              return new Response(_out0, { headers: { "content-type": "image/jpeg", "content-length": String(_out0.length),
+                "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "made", "x-card": "flipped" } }); }
+          }
+        } catch (e) { try { console.log("[CARD] " + id + " strip not flipped: " + String(e?.message ?? e).slice(0, 120)); } catch {} } }
+        const _cc = composeCatalogCard(_sm, (_info && _info.printed) ? {} : (_info || {}), _BRAND_PNG);
+        if (_cc) {
+          const _out = _cc.get_bytes_jpeg(86);
+          try { _cc.free(); } catch {} try { if (_sm !== _im) _sm.free(); } catch {} try { _im.free(); } catch {}
+          // kept only when it carries its words - a card whose words could not be found is made again next time
+          const _keep = !!(_info && (_info.title || _info.printed));
+          if (_keep) await env.AURA_KV.put(_ck, _out, { metadata: { ct: "image/jpeg", w: _cw, card: 1 } }).catch(() => {});
+          return new Response(_out, { headers: { "content-type": "image/jpeg", "content-length": String(_out.length),
+            "cache-control": _keep ? "public, max-age=31536000, immutable" : "no-store", "x-small-copy": "made", "x-card": _keep ? "yes" : "no-words" } });
+        }
+        try { if (_sm !== _im) _sm.free(); } catch {} try { _im.free(); } catch {}
+        try { console.log("[CARD] " + id + " not made: this Photon has no text tools - the stamped card goes"); } catch {}
+      } else { try { console.log("[CARD] " + id + " not made: " + (_src ? "no logo under brand:inkit-logo" : "no original under image:" + id)); } catch {} }
+    } catch (e) { try { console.log("[CARD] " + id + " not made: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+  return null;
+}
+
+async function picSmallCopy(env, id, _w, _mk2) {
+    const _tk = "small:" + id + "_w" + (_w || "full") + (_mk2 ? "_m5" : "") + ".jpg";
+    const _have = await env.AURA_KV.getWithMetadata(_tk, { type: "arrayBuffer" }).catch(() => null);
+    if (_have && _have.value) return new Response(_have.value, { headers: { "content-type": (_have.metadata && _have.metadata.ct) || "image/jpeg",
+      "content-length": String(_have.value.byteLength), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });
+    try {
+      let _src = null;
+      if (env.AURA_IMAGES) { const _o = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null); if (_o) _src = new Uint8Array(await _o.arrayBuffer()); }
+      if (!_src) { const _b = await env.AURA_KV.get(`image:${id}`).catch(() => null); if (_b) _src = Uint8Array.from(atob(_b), (c) => c.charCodeAt(0)); }
+      if (!_src) { try { console.log("[SMALL] " + id + " w" + _w + " skipped: no original found under image:" + id); } catch {} }
+      else {
+        const _im = PhotonImage.new_from_byteslice(_src);
+        const _W = _im.get_width(), _H = _im.get_height();
+        let _sm = _im;
+        if (_w && _W > _w) _sm = photonResize(_im, _w, Math.max(1, Math.round(_H * _w / _W)), PhotonSampling.Lanczos3);
+        // A mark that could not be stamped is served once without the logo and never kept, so it is tried again next time.
+        let _stamped = false;
+        if (_mk2) { try { const _cl = _cleanEdges(_sm); if (_cl !== _sm) { if (_sm !== _im) { try { _sm.free(); } catch {} } _sm = _cl; } } catch {} }
+        if (_mk2) { try { _stamped = await inkitStamp(env, _sm); } catch (e) { try { console.log("[MARK] " + id + " stamp failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} } }
+        const _out = _sm.get_bytes_jpeg(_w ? 80 : 88);
+        try { if (_sm !== _im) _sm.free(); } catch {}
+        try { _im.free(); } catch {}
+        const _ct = "image/jpeg";
+        if (!_mk2 || _stamped) await env.AURA_KV.put(_tk, _out, { metadata: { ct: _ct, w: _w, from: _W + "x" + _H, mark: _mk2 ? 1 : 0 } })
+          .catch((e) => { try { console.log("[SMALL] " + id + " w" + _w + " made but not kept: " + String(e?.message ?? e).slice(0, 160)); } catch {} });
+        return new Response(_out, { headers: { "content-type": _ct, "content-length": String(_out.length),
+          "cache-control": (!_mk2 || _stamped) ? "public, max-age=31536000, immutable" : "no-store", "x-small-copy": "made", "x-mark": _mk2 ? (_stamped ? "yes" : "no") : "off" } });
+      }
+    } catch (e) { try { console.log("[SMALL] " + id + " w" + _w + " not made: " + String(e?.message ?? e).slice(0, 160) + " - the original goes"); } catch {} }
+  return null;
+}
+
+// ══ THE COPIES ARE MADE BEFORE THE PHONE ASKS (v9.813, 2026-11-03, Aaron: go) ═══ Right after a set is cut, its 8 catalog cards and 8
+// stamped copies (the exact ones the page asks for: 720 wide) are made one after another in the background and kept, so the phone finds
+// them waiting - no blank cards, no burst of 16. Anything already kept is skipped; a copy the phone asked for first is simply found kept.
+async function premakeSetCopies(env, sheetId, cards) {
+  const t0 = Date.now(); let made = 0, kept = 0, failed = 0;
+  for (const c of (Array.isArray(cards) ? cards : [])) {
+    const cid = (String((c && c.image) || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+    if (!cid) continue;
+    for (const kind of ["card", "mark"]) {
+      const key = kind === "card" ? "small:" + cid + "_w720_c6.jpg" : "small:" + cid + "_w720_m5.jpg";
+      try {
+        if (await env.AURA_KV.get(key, { type: "arrayBuffer" })) { kept++; continue; }
+        const r = await picGated(() => kind === "card" ? picCardCopy(env, cid, 720, sheetId, String(c.n || "")) : picSmallCopy(env, cid, 720, true));
+        if (r) made++; else failed++;
+      } catch { failed++; }
+    }
+  }
+  console.log("[COPIES] set " + sheetId + " - " + made + " made, " + kept + " already kept, " + failed + " not made · " + ((Date.now() - t0) / 1000).toFixed(1) + "s");
+}
+
 // ══ READING A CARD'S TITLE (v9.812, 2026-11-03) ═══ MEASURED 08:18:12: 7 of 8 read right, card 1 came back "THE BEACON GUID" - the card says
 // THE BEACON, with "GUIDES THE WAY / THROUGH THE STORM" in smaller words under it: the reader ran on into them and its 30-token answer was cut
 // mid-word, and that half-word named the tattoo to the artist files. The ask now says which line is the title and that the smaller words
@@ -61509,6 +61636,11 @@ async function eightCards(env, sheetUrl, said, eopts) {
     // v9.769: a card whose words are drawn in it is marked too, so its catalog card is made from the card alone
     if (_printed) { try { await Promise.all(cards.map((c) => { const cid = (String(c.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
       return cid ? env.AURA_KV.put("cardinfo:" + cid, JSON.stringify({ printed: true, sheet: sid || null, n: c.n })).catch(() => {}) : null; })); } catch {} }
+    // (v9.813) the set's catalog cards and stamped copies, made one after another in the background - see premakeSetCopies
+    if (sid && eopts && typeof eopts.waitUntil === "function") {
+      try { eopts.waitUntil(premakeSetCopies(env, sid, cards).catch((e) => console.log("[COPIES] set " + sid + " stopped: " + String(e?.message ?? e).slice(0, 120)))); }
+      catch (e) { console.log("[COPIES] background hook refused: " + String(e?.message ?? e).slice(0, 120)); }
+    }
     // ══ EVERY PRINTED CARD'S TITLE, READ IN THE BACKGROUND (v9.802, 2026-11-01, Aaron: go) ═══ MEASURED 19:18 walk: a heart on a card
     // nobody picked was saved with no name - only the picked card's title was ever read (v9.799). The eyes read all 8 at once, after
     // the sheet has gone back, with the same words proven at the pick; the titles go into sheet8 (so a pick needs no read) and each
@@ -66252,6 +66384,8 @@ async function startArtistFilesJob(env, data) {
   try {
     if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
     const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: "artist_files", data } });
+    // (v9.813) the job's id in the log, so RUN "FACES <id>" can check this exact job
+    try { console.log("[FILES] artist files job " + ((inst && inst.id) || "?") + " started for " + (data.project || "?") + (data.me ? " · who=" + data.me : "")); } catch {}
     return (inst && inst.id) ? inst.id : null;
   } catch (e) {
     try { console.log("[FILES] background job did not start - making them inline: " + String(e?.message ?? e).slice(0, 160)); } catch {}
@@ -78091,61 +78225,8 @@ function openAlbum(idx){
       if (["1", "2", "3", "4", "5", "6"].includes(url.searchParams.get("card") || "") && !_head && /^img_[A-Za-z0-9_-]+$/.test(id)) {
         // v9.770: kept under _c2 - the copies with the logo underneath (_c1) are never served again
         // v9.776: _c6 - the edge lines trimmed however thick, the words box found from its bottom; no _c5 copy is served again
-        const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c6.jpg";
-        const _chave = await env.AURA_KV.getWithMetadata(_ck, { type: "arrayBuffer" }).catch(() => null);
-        if (_chave && _chave.value) return new Response(_chave.value, { headers: { "content-type": "image/jpeg", "content-length": String(_chave.value.byteLength),
-          "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept", "x-card": "yes" } });
-        try {
-          let _info = null;
-          try { _info = JSON.parse((await env.AURA_KV.get("cardinfo:" + id)) || "null"); } catch {}
-          const _sid = String(url.searchParams.get("s") || ""), _n = parseInt(url.searchParams.get("n") || "", 10);
-          if (!(_info && (_info.title || _info.printed)) && /^img_[A-Za-z0-9_-]+$/.test(_sid) && _n >= 1 && _n <= 8) {
-            try { const _k8 = JSON.parse((await env.AURA_KV.get("sheet8:" + _sid)) || "null"); const _c = Array.isArray(_k8) ? _k8[_n - 1] : null;
-              // only when that card really is this picture, and its words were not already drawn into it
-              if (_c && _c.title && !_c.printed && String(_c.image || "").indexOf(id) >= 0) _info = { title: _c.title, lines: _c.lines || [] };
-              // v9.769: a card whose words the image model drew in it - its own words travel with it, the logo goes under it
-              if (_c && _c.printed && String(_c.image || "").indexOf(id) >= 0) _info = { printed: true }; } catch {}
-          }
-          if (!_BRAND_PNG) { const b = await env.AURA_KV.get("brand:inkit-logo", { type: "arrayBuffer" }).catch(() => null); if (b) _BRAND_PNG = new Uint8Array(b); }
-          let _src = null;
-          { const _b = await env.AURA_KV.get(`image:${id}`).catch(() => null); if (_b) _src = Uint8Array.from(atob(_b), (c) => c.charCodeAt(0)); }
-          if (_src && _BRAND_PNG) {
-            const _im = PhotonImage.new_from_byteslice(_src);
-            const _W = _im.get_width(), _H = _im.get_height();
-            let _sm = _W !== _cw ? photonResize(_im, _cw, Math.max(1, Math.round(_H * _cw / _W)), PhotonSampling.Lanczos3) : _im;
-            // v9.773: no black line along an edge, no dark corners - one white card (the seam Aaron saw under the design)
-            try { const _cl = _cleanEdges(_sm); if (_cl !== _sm) { if (_sm !== _im) { try { _sm.free(); } catch {} } _sm = _cl; } } catch {}
-            // v9.769: a card cut before the white cards carries its words in white on a black strip at its foot - the strip is turned
-            // white with black words (every pixel flipped), so its words read on white like the new ones. Rows count as the strip when
-            // they are mostly dark, from the bottom up; only a strip between 8% and 40% of the card's height is touched.
-            if (_info && _info.printed) { try {
-              const sw = _sm.get_width(), sh = _sm.get_height(), sp = _sm.get_raw_pixels();
-              const darkRow = (y) => { let n = 0, d = 0; for (let x = 0; x < sw; x += 2) { n++; const o = (y * sw + x) * 4; if ((sp[o] + sp[o + 1] + sp[o + 2]) / 3 < 60) d++; } return d / n; };
-              let y = sh - 1; while (y > 0 && darkRow(y) > 0.6) y--;
-              const st = y + 1, sH = sh - st;
-              if (sH >= sh * 0.08 && sH <= sh * 0.4) {
-                for (let k = st * sw * 4; k < sp.length; k += 4) { sp[k] = 255 - sp[k]; sp[k + 1] = 255 - sp[k + 1]; sp[k + 2] = 255 - sp[k + 2]; }
-                const _fl = new PhotonImage(sp, sw, sh); const _cc0 = composeCatalogCard(_fl, {}, _BRAND_PNG); try { _fl.free(); } catch {}
-                if (_cc0) { const _out0 = _cc0.get_bytes_jpeg(86); try { _cc0.free(); } catch {} try { if (_sm !== _im) _sm.free(); } catch {} try { _im.free(); } catch {}
-                  await env.AURA_KV.put(_ck, _out0, { metadata: { ct: "image/jpeg", w: _cw, card: 1, flipped: 1 } }).catch(() => {});
-                  return new Response(_out0, { headers: { "content-type": "image/jpeg", "content-length": String(_out0.length),
-                    "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "made", "x-card": "flipped" } }); }
-              }
-            } catch (e) { try { console.log("[CARD] " + id + " strip not flipped: " + String(e?.message ?? e).slice(0, 120)); } catch {} } }
-            const _cc = composeCatalogCard(_sm, (_info && _info.printed) ? {} : (_info || {}), _BRAND_PNG);
-            if (_cc) {
-              const _out = _cc.get_bytes_jpeg(86);
-              try { _cc.free(); } catch {} try { if (_sm !== _im) _sm.free(); } catch {} try { _im.free(); } catch {}
-              // kept only when it carries its words - a card whose words could not be found is made again next time
-              const _keep = !!(_info && (_info.title || _info.printed));
-              if (_keep) await env.AURA_KV.put(_ck, _out, { metadata: { ct: "image/jpeg", w: _cw, card: 1 } }).catch(() => {});
-              return new Response(_out, { headers: { "content-type": "image/jpeg", "content-length": String(_out.length),
-                "cache-control": _keep ? "public, max-age=31536000, immutable" : "no-store", "x-small-copy": "made", "x-card": _keep ? "yes" : "no-words" } });
-            }
-            try { if (_sm !== _im) _sm.free(); } catch {} try { _im.free(); } catch {}
-            try { console.log("[CARD] " + id + " not made: this Photon has no text tools - the stamped card goes"); } catch {}
-          } else { try { console.log("[CARD] " + id + " not made: " + (_src ? "no logo under brand:inkit-logo" : "no original under image:" + id)); } catch {} }
-        } catch (e) { try { console.log("[CARD] " + id + " not made: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+        // (v9.813) made by picCardCopy, behind the picture queue - the same code, at most PIC_GATE_MAX at a time
+        { const _cr = await picGated(() => picCardCopy(env, id, _w, url.searchParams.get("s"), url.searchParams.get("n")), "small:" + id + "_w" + (_w || 720) + "_c6.jpg", env); if (_cr) return _cr; }
         // anything that went wrong: the stamped copy instead (below)
         url.searchParams.set("mark", "1");
       }
@@ -78154,34 +78235,8 @@ function openAlbum(idx){
         // v9.728: MEASURED - Photon's get_bytes_webp() is LOSSLESS: 684KB at 480 wide. JPEG 80 measured 5-6x smaller on our
         // pictures, so copies are JPEG, and the key carries .jpg so the lossless copies made under v9.727 are never served.
         // v9.773: _m3 - the logo right in the corner and the edges cleaned; the _m2 copies are never served again
-        const _tk = "small:" + id + "_w" + (_w || "full") + (_mk2 ? "_m5" : "") + ".jpg";
-        const _have = await env.AURA_KV.getWithMetadata(_tk, { type: "arrayBuffer" }).catch(() => null);
-        if (_have && _have.value) return new Response(_have.value, { headers: { "content-type": (_have.metadata && _have.metadata.ct) || "image/jpeg",
-          "content-length": String(_have.value.byteLength), "cache-control": "public, max-age=31536000, immutable", "x-small-copy": "kept" } });
-        try {
-          let _src = null;
-          if (env.AURA_IMAGES) { const _o = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null); if (_o) _src = new Uint8Array(await _o.arrayBuffer()); }
-          if (!_src) { const _b = await env.AURA_KV.get(`image:${id}`).catch(() => null); if (_b) _src = Uint8Array.from(atob(_b), (c) => c.charCodeAt(0)); }
-          if (!_src) { try { console.log("[SMALL] " + id + " w" + _w + " skipped: no original found under image:" + id); } catch {} }
-          else {
-            const _im = PhotonImage.new_from_byteslice(_src);
-            const _W = _im.get_width(), _H = _im.get_height();
-            let _sm = _im;
-            if (_w && _W > _w) _sm = photonResize(_im, _w, Math.max(1, Math.round(_H * _w / _W)), PhotonSampling.Lanczos3);
-            // A mark that could not be stamped is served once without the logo and never kept, so it is tried again next time.
-            let _stamped = false;
-            if (_mk2) { try { const _cl = _cleanEdges(_sm); if (_cl !== _sm) { if (_sm !== _im) { try { _sm.free(); } catch {} } _sm = _cl; } } catch {} }
-            if (_mk2) { try { _stamped = await inkitStamp(env, _sm); } catch (e) { try { console.log("[MARK] " + id + " stamp failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} } }
-            const _out = _sm.get_bytes_jpeg(_w ? 80 : 88);
-            try { if (_sm !== _im) _sm.free(); } catch {}
-            try { _im.free(); } catch {}
-            const _ct = "image/jpeg";
-            if (!_mk2 || _stamped) await env.AURA_KV.put(_tk, _out, { metadata: { ct: _ct, w: _w, from: _W + "x" + _H, mark: _mk2 ? 1 : 0 } })
-              .catch((e) => { try { console.log("[SMALL] " + id + " w" + _w + " made but not kept: " + String(e?.message ?? e).slice(0, 160)); } catch {} });
-            return new Response(_out, { headers: { "content-type": _ct, "content-length": String(_out.length),
-              "cache-control": (!_mk2 || _stamped) ? "public, max-age=31536000, immutable" : "no-store", "x-small-copy": "made", "x-mark": _mk2 ? (_stamped ? "yes" : "no") : "off" } });
-          }
-        } catch (e) { try { console.log("[SMALL] " + id + " w" + _w + " not made: " + String(e?.message ?? e).slice(0, 160) + " - the original goes"); } catch {} }
+        // (v9.813) made by picSmallCopy, behind the picture queue - the same code, at most PIC_GATE_MAX at a time
+        { const _sr = await picGated(() => picSmallCopy(env, id, _w, _mk2), "small:" + id + "_w" + (_w || "full") + (_mk2 ? "_m5" : "") + ".jpg", env); if (_sr) return _sr; }
       }
       // PRIMARY: serve from permanent R2
       if (env.AURA_IMAGES) {

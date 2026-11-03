@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.825.0-2026-11-03-typed-yes-draws-style-in-words";
+const BUILD = "aura-core-v9.826.0-2026-11-03-no-repeating-talk-keeps-idea-draw-never-waits";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61520,7 +61520,7 @@ function heardSystem(style, canGo) {
   return "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
                 (style ? " (in the " + style + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
                 "tattoo artist would: brief, in your own words. If they shared something personal or hard, your words start there, simply. " +
-                "Never put a number in your words.\n\n" +
+                "Never put a number in your words. Never open by repeating their words back to them (\"I hear you want...\").\n\n" +
                 "Answer in exactly this shape. First line: READY or TALK" + (canGo ? " or GO" : "") + ".\n\n" +
                 // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
                 // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
@@ -61541,11 +61541,17 @@ function heardSystem(style, canGo) {
                 // run together with no line between them, so her words were taken as part of the idea and the fixed line went instead. With the
                 // IDEA last, the label itself is where her words end, on one line or many.
                 "READY when you know what they want in the tattoo. Then your words: if they shared something personal or hard, start there, simply - " +
-                "then say back everything they want, and the style when they picked one, in your own voice, and ask if you should imagine it or if they " +
+                // ══ SAID BACK ONCE, THEN ONLY WHAT IS NEW (v9.826, 2026-11-03, Aaron: "regardless if there's repetition it needs to not be there") ═══
+                // MEASURED 15:28:13: "its going on my inner forearm. could there be a tiny heart where the stems cross" got back the whole tattoo
+                // again - mom and son, larkspur for July, daffodil for March, fine line, delicate, small - before the two new things; turn 5 a third
+                // time. The IDEA line still carries everything, so her words no longer need to.
+                (canGo ? "you already said their idea back to them, so react only to what they just said - what is new or changed - in your own voice, " +
+                  "without repeating the rest, and ask if you should imagine it or if they " :
+                "then say back everything they want, and the style when they picked one, in your own voice, and ask if you should imagine it or if they ") +
                 "want to add anything. Then, last, on its own line: IDEA: what they want in the tattoo now, where the conversation has ended up - " +
                 "everything they still want in it, however much there is, including who it is for and why, with every change they made applied: " +
                 "anything they took back is left out, and nothing is added that they did not ask for. Copy exactly any name, date, number or words " +
-                "they want written in the tattoo. No questions and no chat in the IDEA line. Your words name everything in it, and nothing that isn't in it.\n\n" +
+                "they want written in the tattoo. No questions and no chat in the IDEA line. " + (canGo ? "Your words name nothing that isn't in it.\n\n" : "Your words name everything in it, and nothing that isn't in it.\n\n") +
     // ══ WRITTEN MEANS WRITTEN (v9.820, 2026-11-03, Aaron: go) ═══ MEASURED 14:11:25: "can her name be hidden in the thorns" - her words said
     // "Mara's name subtly hidden among the thorns", her IDEA said "Mara hidden in the thorns", and 6 of 8 cards drew a woman's face with
     // no lettering. The name check passed because "Mara" was there. Any lettering is now said to be lettering, in the IDEA too.
@@ -61559,9 +61565,15 @@ function heardSystem(style, canGo) {
     // ══ THEIR YES IS THEIR GO (v9.825, 2026-11-03, Aaron: go) ═══ MEASURED 15:11:43: she asked "Should I go ahead and picture it for you?",
     // they typed "ok yeah lets see it", and she said it all back and asked again - only the Imagine it button could draw. Her judgement, not
     // a list of yes-words: when their words only say yes to what she said back, it is drawn exactly as Imagine it is.
-    (canGo ? "GO when what they just said only says yes to imagining what you last said back to them - nothing added, nothing changed. " +
-      "Then GO is your whole answer.\n\n" : "") +
-                "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.";
+    // (v9.826) MEASURED 15:28:42: she asked "Want me to draw it that way?" (purple and yellow in the petals) and "yes please" was a yes to THAT -
+    // the IDEA after GO is the idea as it stands, with what their yes accepted.
+    (canGo ? "GO when what they just said is a yes to imagining it - to what you last said back or last offered them. Then, last, on its own line: " +
+      "IDEA: what they want in the tattoo now, with anything you last offered that their yes accepts.\n\n" : "") +
+                // (v9.826) MEASURED 15:28:24: "would a little purple and yellow ... ruin the fine line look" was TALK, her answer was thrown away and
+                // the turn went to her chat (9.5s), which also cleared the idea she had said back - so the "yes please" after it had nothing to say yes to.
+                (canGo ? "TALK when they ask you something or are still deciding, without changing what they want - then your words answer them, briefly. " +
+                  "If you offer them something, ask whether to imagine it that way."
+                  : "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.");
 }
 async function drawStartSay(env, idea, style, talkModel) {
   try {
@@ -61570,9 +61582,11 @@ async function drawStartSay(env, idea, style, talkModel) {
     let eff = "low"; try { const k = String((await env.AURA_KV.get("config:source:heard:reasoning")) || "").trim().toLowerCase(); if (["low", "medium", "high"].includes(k)) eff = k; else if (/^(off|none|default)$/.test(k)) eff = null; } catch {}
     const t0 = Date.now();
     const sys = "You are Aura, the tattoo designer on mytattoo.world. Someone just asked you to imagine designs of their tattoo idea" +
-      (style ? " in the " + style + " style" : "") + ". In one or two short, warm sentences, in your own words: say back what you are drawing for them" +
-      (style ? " and the style" : "") + ", so they know you got it, and that you're imagining their designs now. Only what they asked for - nothing you are " +
-      "adding. Never put a number in your words. Plain words only, no lists.";
+      (style ? " in the " + style + " style" : "") + ". You already said the idea back to them and they said yes. " +
+      // (v9.826, Aaron: "regardless if there's repetition it needs to not be there") MEASURED 15:12:20: "I'm picturing a sleek chrome butterfly
+      // on your lower back, its wings edged with thin, delicate barbed-wire..." - the whole tattoo a third time, right after they said yes to it.
+      "In one short, warm sentence in your own words, tell them you're imagining their designs now - without listing the idea again. " +
+      "Never put a number in your words. Plain words only.";
     const q = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), ms)),
       callBrain({ system: sys, user: String(idea || "").slice(0, 600), max_tokens: 2000, ...(eff ? { reasoning: eff } : {}), ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env)]);
     const say = _finishedOnly(_wholeSentences(String((q && q.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, ""), 1200));
@@ -68400,6 +68414,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
       let _heardIdea = null;
+      let _drawSayP = null;   // (v9.826) her line as the drawing starts - shown when it comes, never waited for
       let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null;
       if (me && !_tapKeep) {
         try {
@@ -68577,8 +68592,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               _heardIdea = _gi.slice(0, 1200);
               _fixedWhy = "four_new"; _fixedSay = await _fx("eight_go", "On it - I'm imagining your designs now. Every one is 100% unique and 100% yours.");
               // (v9.816) her own words about what she is drawing, then the unique line
-              { const _ds0 = await drawStartSay(env, _heardIdea, _newStyle, talkModel);
-                if (_ds0) { const _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again."); _fixedSay = _ds0 + (_tail ? " " + _tail : ""); } }
+              // ══ THE DRAWING NEVER WAITS FOR HER LINE (v9.826, 2026-11-03, Aaron: go) ═══ MEASURED 15:29:03 -> 15:29:18.7: her line gave no answer
+              // in 15s (the model's thinking came back as the answer) and the 8 only started after it. Her line is asked for and the drawing starts
+              // at once; if her line comes within `config:talk:drawsay_ms` (default 3000) it is shown, otherwise the fixed line is.
+              { const _fixedGo = _fixedSay, _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again.");
+                let _dsMs = 3000; try { const _v = parseInt(String((await env.AURA_KV.get("config:talk:drawsay_ms")) || ""), 10); if (Number.isFinite(_v) && _v >= 0) _dsMs = _v; } catch {}
+                _drawSayP = Promise.race([drawStartSay(env, _heardIdea, _newStyle, talkModel), new Promise((r) => setTimeout(() => r(null), _dsMs))])
+                  .then((x) => { const _out = x ? x + (_tail ? " " + _tail : "") : _fixedGo; console.log("[TURN:DRAW-SAY] shown while drawing: " + (x ? "her words" : "the fixed line (her words not in " + _dsMs + "ms)") + " - \"" + _out.slice(0, 200) + "\""); return _out; })
+                  .catch(() => _fixedGo); }
               if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
               try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea })));
                     await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
@@ -68735,7 +68756,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 try { console.log("[TURN:HEARD] her answer fell into a loop (\"" + String(_hSay || _hIdea).slice(0, 120) + "...\") - not shown, not drawn from; the fixed line asks" + (me ? " · who=" + me : "")); } catch {}
                 _hSay = ""; _hIdea = ""; }
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
-              if (_hIdea.trim() && _hDo !== "GO") {
+              if (_hIdea.trim() && !(_hDo === "TALK" && _canGo)) {
                 _heardIdea = _ideaLost ? _theirs : (_hIdea.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "") + (_addBack ? ". " + _addBack : "")).slice(0, 1000);
                 try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }))); } catch {}
               }
@@ -68756,12 +68777,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 // (v9.825) their words were a yes to what she said back: the idea she said back stays on the record (the line above wrote
                 // their raw words there first), and the turn hands off to Imagine it - see [TURN:GO] where the turn is run. If that hand-off
                 // cannot happen, the page gets the fixed line and the Imagine it button, as before.
-                try { await talkStatePut(env, me, "go_idea", _goPrev); } catch {}
+                // (v9.826) the idea it carries - with what their yes accepted - is what is drawn; with none, the idea she said back last
+                const _gIdea = _heardIdea || _goPrev;
+                try { await talkStatePut(env, me, "go_idea", _gIdea); } catch {}
                 _fixedWhy = "heard_ready"; _fixedSay = await _fx("heard_ready", "Love it - want me to imagine it?"); _heardOut = { go: true, now: true };
-                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - GO: \"" + _s.slice(0, 120) + "\" is a yes to what she said back - drawn as Imagine it, from: \"" + _goPrev.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - GO: \"" + _s.slice(0, 120) + "\" is a yes - drawn as Imagine it, from " + (_heardIdea ? "the idea as it stands now" : "the idea she said back") + ": \"" + _gIdea.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
+              } else if (_hDo === "TALK" && _canGo && _hSay) {
+                // (v9.826) a question once the idea is said back: her answer here (no second call), the idea kept, Imagine it under it
+                try { await talkStatePut(env, me, "go_idea", _goPrev); } catch {}
+                _fixedWhy = "heard_ready"; _fixedSay = _hSay; _heardOut = { go: true };
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK with the idea already said back - her answer shown, the idea kept for Imagine it · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "TALK") {
                 _fixedWhy = null; _fixedSay = null; _heardOut = null;
-                try { await talkStatePut(env, me, "go_idea", ""); } catch {}
+                try { await talkStatePut(env, me, "go_idea", _canGo ? _goPrev : ""); } catch {}
                 // v9.777: still waiting for their idea - the next thing they say is heard the same way, and drawn when there is one
                 try { await talkStatePut(env, me, "await_idea", "1"); } catch {} _heardTalk = true;
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK, nothing drawn; the turn goes to her · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
@@ -69125,7 +69153,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // The tap (above): her words come from the line written once the files have started.
       // THE FIXED LINE SHOWS AT ONCE (v9.607): MEASURED 18:45 - "Here they come..." was ready at the tap and reached the page
       // only with the finished picture, 32s later. It goes out the way her streamed words do, then the work starts.
-      if (_fixedSay && !acted && onDelta && !_heardStreamed) { try { await onDelta(_fixedSay); } catch {} }
+      if (_fixedSay && !acted && onDelta && !_heardStreamed) {
+        if (_drawSayP) { const _od = onDelta; _drawSayP.then(async (x) => { try { await _od(x); } catch {} }).catch(() => {}); }
+        else { try { await onDelta(_fixedSay); } catch {} } }
       if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : (_fixedWhy === "poss" || _fixedWhy === "inspire8") ? "change" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
                                          prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
       if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",

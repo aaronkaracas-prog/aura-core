@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.813.0-2026-11-03-picture-copies-queued-and-premade";
+const BUILD = "aura-core-v9.814.0-2026-11-03-model-thinking-never-shown-queue-polls";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -732,6 +732,21 @@ async function _brainRoute(env, override) {
 // base64'd here.
 // THIS IS THE SAME RULE AS THE DRAWING SIDE, applied to the other half: whichever model can see
 // should decide. That was fixed for the image model this morning and left broken for her.
+// ══ A MODEL'S THINKING IS NEVER HER WORDS (v9.814, 2026-11-03, Aaron: go) ═══════════════════════════════════════════════════════
+// MEASURED 09:01:46 (Fine Line, "something for my mom, she loved hummingbirds..."): the answer came back with the model's thinking inside
+// it - "analysis We need to respond with READY and then IDEA line etc..." then the raw "<|end|><|start|>assistantfinal" markers, then
+// READY and her real words - and the whole of it was shown to the customer as hers. Wherever words come back from a model, an answer
+// carrying its thinking (it opens with "analysis" or holds the <|...|> markers) keeps only what follows the final-answer marker; with
+// no final part it counts as no answer at all.
+const _MODEL_MARKS = /<\|(?:start|end|channel|message|return|call|constrain)\|>/i;
+function modelFinalText(t) {
+  const s = String(t || "");
+  if (!/^\s*analysis\b/.test(s) && !_MODEL_MARKS.test(s)) return { text: s, thinking: 0 };
+  const re = /(?:<\|start\|>\s*)?assistant\s*(?:<\|channel\|>\s*)?final\s*(?:<\|message\|>)?/gi;
+  let m, last = null; while ((m = re.exec(s))) last = m;
+  if (!last) return { text: "", thinking: s.length };
+  return { text: s.slice(last.index + last[0].length).replace(/<\|[a-z_]+\|>/gi, "").trim(), thinking: last.index + last[0].length };
+}
 async function callBrain({ system, user, messages = null, max_tokens = 2000, model = null, temperature, image = null, reasoning = null }, env) {
   env = env || _BRAIN_ENV;
   const route = await _brainRoute(env, model);
@@ -793,7 +808,8 @@ async function callBrain({ system, user, messages = null, max_tokens = 2000, mod
       if (reasoning) { try { rr = await env.AI.run(route.model, { ..._rIn, reasoning_effort: reasoning }); }
         catch (e) { try { console.log("[BRAIN] reasoning_effort " + reasoning + " refused (" + String(e?.message ?? e).slice(0, 120) + ") - asking without it"); } catch {} rr = await env.AI.run(route.model, _rIn); } }
       else rr = await env.AI.run(route.model, _rIn);
-      const text = aiText(rr);
+      const _mf = modelFinalText(aiText(rr)), text = _mf.text;
+      if (_mf.thinking) { try { console.log("[BRAIN] " + route.model + " sent its thinking inside the answer - " + _mf.thinking + " characters of it dropped, " + (text ? "its final words kept" : "no final words in it, so no answer")); } catch {} }
       if (!text) return { ok: false, error: "the binding returned nothing readable", provider: route.provider, model: route.model };
       return { ok: true, text, structured: null, provider: route.provider, model: route.model,
                usage: { in: 0, out: 0 } };
@@ -920,7 +936,7 @@ async function callBrainStream(args, env, onText) {
     if (args.system) msgs.push({ role: "system", content: String(args.system) });
     msgs.push({ role: "user", content: String(args.user || "") });
     const cap = Math.max(16, Math.min(16000, parseInt(args.max_tokens, 10) || 2000));
-    let text = "", firstShape = null;
+    let text = "", firstShape = null, _mode = null, _sent = 0;
     try {
       costTapNeuron();
       const _sIn = { max_tokens: cap, messages: msgs, stream: true, ...(args.temperature != null ? { temperature: args.temperature } : {}) };
@@ -944,8 +960,21 @@ async function callBrainStream(args, env, onText) {
             if (typeof d?.response === "string") piece = d.response;
             else if (d?.choices?.[0]?.delta && typeof d.choices[0].delta.content === "string") piece = d.choices[0].delta.content;
             else if (typeof d?.type === "string" && /output_text\.delta$/.test(d.type) && typeof d.delta === "string") piece = d.delta;
-            if (piece) { text += piece; await give(piece); }
+            if (piece) {
+              text += piece;
+              // (v9.814) the first few letters decide: plain words stream as they come; an answer opening with the model's thinking
+              // is held whole, and only its final part goes out once it is complete (see modelFinalText)
+              if (_mode === null && (text.trim().length >= 12 || _MODEL_MARKS.test(text))) _mode = (/^\s*analysis\b/.test(text) || _MODEL_MARKS.test(text)) ? "thinking" : "plain";
+              if (_mode === "plain" && text.length > _sent) { const add = text.slice(_sent); _sent = text.length; await give(add); }
+            }
           }
+        }
+        if (_mode !== "thinking" && text.length > _sent) { const add = text.slice(_sent); _sent = text.length; await give(add); }
+        if (_mode === "thinking" || _MODEL_MARKS.test(text)) {
+          const _mf = modelFinalText(text);
+          try { console.log("[BRAIN:STREAM] " + route.model + " sent its thinking inside the answer - " + _mf.thinking + " characters of it dropped, " + (_mf.text ? "its final words kept" : "no final words in it, so no answer")); } catch {}
+          text = _mf.text;
+          if (_mode === "thinking" && text) await give(text);
         }
         if (text.trim()) return { ok: true, text, structured: null, provider: route.provider, model: route.model, usage: { in: 0, out: 0 }, streamed: true, shape: firstShape };
       }
@@ -953,7 +982,7 @@ async function callBrainStream(args, env, onText) {
     } catch (e) {
       try { console.log("[BRAIN:STREAM] streaming failed: " + String(e?.message ?? e).slice(0, 160) + " - asking again without streaming"); } catch {}
     }
-    if (text) return { ok: true, text, structured: null, provider: route.provider, model: route.model, usage: { in: 0, out: 0 }, streamed: true, shape: firstShape };
+    if (text) { const _mf = modelFinalText(text); if (_mf.text) return { ok: true, text: _mf.text, structured: null, provider: route.provider, model: route.model, usage: { in: 0, out: 0 }, streamed: true, shape: firstShape }; }
   }
   const r = await callBrain(args, env);
   if (r && r.ok && r.text) await give(String(r.text));
@@ -61490,15 +61519,19 @@ function _isOfferLine(t) {
 // itself 65s, and at 08:43:50 core died twice: "Worker exceeded memory limit". The artist files job, running on the same worker, died
 // with it after 5m45s and only finished on Cloudflare's retry, 6m55s after lock-in (57s the run before). Every copy now waits its turn:
 // at most PIC_GATE_MAX are made at once per worker, the rest queue. A copy finished while it waited is served as kept.
-const PIC_GATE_MAX = 2;
-let _PIC_BUSY = 0; const _PIC_WAIT = [];
+const PIC_GATE_MAX = 2, PIC_GATE_WAIT_MS = 45000;
+let _PIC_BUSY = 0;
 async function picGated(fn, keptKey, env) {
   // a copy that is already kept is a plain read - it never waits behind copies being made
   if (keptKey && env) { try { if (await env.AURA_KV.get(keptKey, { type: "arrayBuffer" })) return await fn(); } catch {} }
-  // a waiter is handed the finishing copy's place directly, so no newcomer can slip in between
-  if (_PIC_BUSY >= PIC_GATE_MAX) await new Promise((r) => _PIC_WAIT.push(r)); else _PIC_BUSY++;
+  // (v9.814) MEASURED 09:06:50-09:06:59: three picture requests were cancelled - "The Workers runtime canceled this request because it
+  // detected that your Worker's code had hung". A request that waits for ANOTHER request to wake it is seen as hung. Each waiting copy now
+  // checks again on its own timer, and after PIC_GATE_WAIT_MS it goes ahead regardless - a copy is never refused for waiting.
+  const _t0 = Date.now();
+  while (_PIC_BUSY >= PIC_GATE_MAX && Date.now() - _t0 < PIC_GATE_WAIT_MS) await new Promise((r) => setTimeout(r, 150));
+  _PIC_BUSY++;
   try { return await fn(); }
-  finally { const nx = _PIC_WAIT.shift(); if (nx) nx(); else _PIC_BUSY = Math.max(0, _PIC_BUSY - 1); }
+  finally { _PIC_BUSY = Math.max(0, _PIC_BUSY - 1); }
 }
 async function picCardCopy(env, id, _w, sQ, nQ) {
     const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c6.jpg";
@@ -68536,6 +68569,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   for (let _k = 0; _k < 6; _k++) { const _c = _hCopy(_w); if (!_c.copy) break; _w = _w.slice(_c.end).replace(/^[\s"'\u201c\u201d\u2018\u2019.,:;*-]+/, ""); }
                   _w = _finishedOnly(_wholeSentences(_w.replace(/\*\*/g, ""), 1200));
                   if (_w.length < 20) return false;
+                  // (v9.814) never the model's own thinking or markers, whatever else let them through
+                  if (/^\s*analysis\b/.test(_w) || /<\|[a-z_]+\|>/i.test(_w) || /\bassistantfinal\b/i.test(_w)) { console.log("[TURN:HEARD] her answer still held the model's thinking - not shown, the fixed line goes"); return false; }
                   _fixedSay = _w;
                   console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - her words came without READY/TALK - shown as they are, nothing drawn until Imagine it · her words: \"" + _w.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
                   return true; })()) {

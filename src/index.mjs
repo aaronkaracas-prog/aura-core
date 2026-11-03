@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.818.0-2026-11-03-the-end-of-the-conversation-is-drawn";
+const BUILD = "aura-core-v9.819.0-2026-11-03-her-words-first-the-idea-last";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68486,12 +68486,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 // lightning on 5 of 8; "not yet. what would you even put on it?" and "close but no patchwork" reached the image model. The IDEA
                 // line is now what they want as the conversation ends, every change applied. Every name and number they gave is still checked
                 // against it below - one left out and their own words are drawn instead, as before.
-                "READY when you know what they want in the tattoo. Second line: IDEA: what they want in the tattoo now, where the conversation has " +
-                "ended up - everything they still want in it, however much there is, including who it is for and why, with every change they made " +
-                "applied: anything they took back is left out, and nothing is added that they did not ask for. Copy exactly any name, date, number " +
-                "or words they want written in the tattoo. No questions and no chat. " +
-                "Then your words: if they shared something personal or hard, start there, simply - then say back everything they want, and the style when they picked one, " +
-                "in your own voice, and ask if you should imagine it or if they want to add anything. Name everything in the IDEA line, and nothing that isn't in it.\n\n" +
+                // ══ HER WORDS FIRST, THE IDEA LAST (v9.819, 2026-11-03) ═══ MEASURED 13:59:50, 14:00:07, 14:00:26: three answers in a row came
+                // back on one line - "READY IDEA: A tattoo honoring my best friend Jess ... with mountains behind it. S..." - the idea and her words
+                // run together with no line between them, so her words were taken as part of the idea and the fixed line went instead. With the
+                // IDEA last, the label itself is where her words end, on one line or many.
+                "READY when you know what they want in the tattoo. Then your words: if they shared something personal or hard, start there, simply - " +
+                "then say back everything they want, and the style when they picked one, in your own voice, and ask if you should imagine it or if they " +
+                "want to add anything. Then, last, on its own line: IDEA: what they want in the tattoo now, where the conversation has ended up - " +
+                "everything they still want in it, however much there is, including who it is for and why, with every change they made applied: " +
+                "anything they took back is left out, and nothing is added that they did not ask for. Copy exactly any name, date, number or words " +
+                "they want written in the tattoo. No questions and no chat in the IDEA line. Your words name everything in it, and nothing that isn't in it.\n\n" +
                 "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.";
               // ══ HER SAID-BACK STREAMS (v9.787) ═══ Her answer starts with its label line (and the IDEA / A / B lines) - those never
               // reach the page; from her first line of words on, each piece goes out as she writes it. A TALK answer is not streamed
@@ -68523,9 +68527,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 return async (t) => {
                   raw += String(t || "");
                   const body = raw.replace(/^\s*```[a-z]*\s*/i, "");
-                  if (label === null) { const m = body.match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\n/i); if (!m) { if (body.length > 60) label = "?"; return; } label = m[1].toUpperCase(); }
+                  // (v9.819) the label may share its line with what follows ("READY That trek sounds...")
+                  const _lblLine = /^\W*(READY|CHOOSE|TALK|DRAW)\b[ \t:.\-]*(?:\n|(?=\S))/i;
+                  if (label === null) { const m = body.match(_lblLine); if (!m) { if (body.length > 60) label = "?"; return; } label = m[1].toUpperCase(); }
                   if (label !== "READY" && label !== "CHOOSE" && label !== "DRAW") return;
-                  const afterLabel = body.replace(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\n/i, "");
+                  const afterLabel = body.replace(_lblLine, "");
                   let at = 0, start = -1;
                   for (;;) {
                     const nl = afterLabel.indexOf("\n", at), line = nl < 0 ? afterLabel.slice(at) : afterLabel.slice(at, nl);
@@ -68536,7 +68542,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                       if (cp.copy) { at += cp.end; const sk = afterLabel.slice(at).match(/^[\s"'\u201c\u201d\u2018\u2019.,:;*-]*/); at += sk ? sk[0].length : 0; if (at >= afterLabel.length) return; continue; } }
                     start = at; break;
                   }
-                  const words = afterLabel.slice(start);
+                  // (v9.819) her words end where the IDEA label starts; until it comes, the last few letters wait in case they are its start
+                  const _all = afterLabel.slice(start), _cut = _all.search(/(^|\s)(?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:/);
+                  const words = _cut >= 0 ? _all.slice(0, _cut) : _all.slice(0, Math.max(0, _all.length - 16));
                   if (words.length > sent && onDelta) { const add = words.slice(sent); sent = words.length; _hStarted = true; _heardStreamed = true; try { await onDelta(add); } catch {} }
                 }; })();
               const _hLate = new Promise((r) => setTimeout(function tick() { if (!_hStarted) r({ late: true }); else setTimeout(() => r({ late: true }), 45000); }, _hMs));
@@ -68546,9 +68554,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\s*([\s\S]*)$/i);
               let _hDo = _hm ? _hm[1].toUpperCase() : null; if (_hDo === "DRAW") _hDo = "READY";
               let _hRest = _hm ? _hm[2] : "";
-              let _hIdea = (_hRest.match(/^\s*(?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:\s*(.+)/) || [])[1] || "";
-              if (_hIdea) _hRest = _hRest.replace(/^\s*(?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:\s*.+\n?/, "");
-              else { let _r0 = _hRest.replace(/^\s*IDEA\s*:\s*/i, ""); const _copies = [];   // v9.790: their words with no label
+              let _hIdea = "";
+              { const _ls = [..._hRest.matchAll(/(^|\s)((?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:\s*)/g)];
+                if (_ls.length) { const _L = _ls[_ls.length - 1], _li = _L.index + _L[1].length, _after = _hRest.slice(_li + _L[2].length);
+                  if (!_hRest.slice(0, _li).trim()) {   // the label opens the answer (the old shape): its line is the idea, the rest her words
+                    const _nl = _after.indexOf("\n"); _hIdea = (_nl < 0 ? _after : _after.slice(0, _nl)).trim(); _hRest = _nl < 0 ? "" : _after.slice(_nl + 1);
+                  } else {                               // (v9.819) the label closes it: her words before it, the idea after it
+                    _hIdea = _after.replace(/\s+/g, " ").trim(); _hRest = _hRest.slice(0, _li); } } }
+              if (!_hIdea) { let _r0 = _hRest.replace(/^\s*IDEA\s*:\s*/i, ""); const _copies = [];   // v9.790: their words with no label
                 for (let _k = 0; _k < 6; _k++) { const _cp0 = _hCopy(_r0); if (!_cp0.copy) break;   // v9.799: every copy, one after another
                   _copies.push(_r0.slice(0, _cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019*]+/, "").trim());
                   _r0 = _r0.slice(_cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019.,:;*-]+/, ""); }
@@ -68575,8 +68588,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _theirs = ((_told ? _told.replace(/\n+/g, ". ") + ". " : "") + _s).slice(0, 1200);
               let _ideaLost = false;
               // a plural or a voice-typed capital ("Dragons", "Roses") still counts when the idea holds the word itself
-              const _lost = (idea) => { const _il = String(idea || "").toLowerCase();
-                return _namesOf(_theirs).filter((n) => { const k = n.toLowerCase(), st = k.length > 4 ? k.replace(/(es|s)$/, "") : k; return !_il.includes(k) && !_il.includes(st); }); };
+              // (v9.819) MEASURED 14:00:07: she wrote "2,650 miles", they typed "2650" - counted as left out. Commas inside numbers do not count.
+              const _lost = (idea) => { const _il = String(idea || "").toLowerCase().replace(/(\d),(?=\d{3}\b)/g, "$1");
+                return _namesOf(_theirs.replace(/(\d),(?=\d{3}\b)/g, "$1")).filter((n) => { const k = n.toLowerCase(), st = k.length > 4 ? k.replace(/(es|s)$/, "") : k; return !_il.includes(k) && !_il.includes(st); }); };
               if (_hIdea && _hIdea.trim()) { const _lm = _lost(_hIdea); if (_lm.length) {
                 console.log("[TURN:NAMES] her idea left out " + _lm.join(", ") + " - their own words are drawn instead" + (me ? " · who=" + me : ""));
                 _ideaLost = true; } }
@@ -68612,7 +68626,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // READY / TALK line, so it was "not usable" and the fixed "Love it - want me to imagine it?" went instead. Her words are
                   // shown (their own copied words taken off, a sentence she did not finish left off); nothing is drawn - Imagine it draws
                   // their own words, as with the fixed line.
-                  let _w = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").replace(/^\s*IDEA\s*:.*$/gim, "").replace(/^\s*[A-Z]{3,12}\s*:.*$/gm, "").trim();
+                  let _w = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").replace(/^\s*IDEA\s*:.*$/gim, "").replace(/^\s*[A-Z]{3,12}\s*:.*$/gm, "").replace(/(^|\s)(?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:[\s\S]*$/, "").trim();
                   for (let _k = 0; _k < 6; _k++) { const _c = _hCopy(_w); if (!_c.copy) break; _w = _w.slice(_c.end).replace(/^[\s"'\u201c\u201d\u2018\u2019.,:;*-]+/, ""); }
                   _w = _finishedOnly(_wholeSentences(_w.replace(/\*\*/g, ""), 1200));
                   if (_w.length < 20) return false;

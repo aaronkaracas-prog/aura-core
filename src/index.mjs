@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.824.0-2026-11-03-hearing-runs-directly-placement-kept";
+const BUILD = "aura-core-v9.825.0-2026-11-03-typed-yes-draws-style-in-words";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61505,21 +61505,23 @@ function _looping(t) {
 // ══ HER WORDS AND THE IDEA, APART (v9.819, one copy since v9.820) ═══ The last label (IDEA:, or a broken one in capitals) is where her words
 // end and the idea starts, on one line or many. A label that opens the answer is the older shape: its line is the idea, the rest her words.
 function heardSplit(rest) {
-  let idea = "", words = String(rest || "");
+  let idea = "", words = String(rest || ""), style = "";
+  // (v9.825) the style they named in their own words: its own line, before the IDEA line - never her words, never the idea
+  words = words.replace(/(^|\s)STYLE\s*:\s*([^\n]*?)(?=\s*(?:\n|IDEA\s*:|$))/i, (m, a, b) => { if (!style) style = String(b || "").trim(); return a; });
   const ls = [...words.matchAll(/(^|\s)((?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:\s*)/g)];
   if (ls.length) { const L = ls[ls.length - 1], li = L.index + L[1].length, after = words.slice(li + L[2].length);
     if (!words.slice(0, li).trim()) { const nl = after.indexOf("\n"); idea = (nl < 0 ? after : after.slice(0, nl)).trim(); words = nl < 0 ? "" : after.slice(nl + 1); }
     else { idea = after.replace(/\s+/g, " ").trim(); words = words.slice(0, li); } }
-  return { idea, words };
+  return { idea, words, style };
 }
 // ══ THE WORDS HER HEARING STEP IS GIVEN (v9.820) ═══ One copy, used by the new-tattoo hearing step and by HEARD_TEST, so a model is
 // tested on exactly what it will be asked.
-function heardSystem(style) {
+function heardSystem(style, canGo) {
   return "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
                 (style ? " (in the " + style + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
                 "tattoo artist would: brief, in your own words. If they shared something personal or hard, your words start there, simply. " +
                 "Never put a number in your words.\n\n" +
-                "Answer in exactly this shape. First line: READY or TALK.\n\n" +
+                "Answer in exactly this shape. First line: READY or TALK" + (canGo ? " or GO" : "") + ".\n\n" +
                 // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
                 // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
                 // EVERYTHING THEY SAID GOES IN (v9.789, 2026-11-01, Aaron: "no one's gonna say what they want and then decide to leave
@@ -61549,6 +61551,16 @@ function heardSystem(style) {
     // no lettering. The name check passed because "Mara" was there. Any lettering is now said to be lettering, in the IDEA too.
     "Anything they want written in the tattoo - a name, a date, a number or words - the IDEA line says it is written there, with the " +
     "words copied exactly, so it is drawn as lettering and not as a picture.\n\n" +
+    // ══ A STYLE THEY NAME IS A STYLE THEY PICKED (v9.825, 2026-11-03, Aaron: yes) ═══ MEASURED 15:2x (Tiffany lamp test): stained glass was
+    // asked for in their own words, nothing was tapped, and the sheet went out "each in a different tattoo style" - only card 1 was stained
+    // glass. Her judgement says which style they asked for; it is then picked exactly as a tap would pick it.
+    "If they say in their own words which tattoo style they want it in" + (style ? " - a different one from the " + style + " style" : "") +
+    ", add a line just before the IDEA line: STYLE: that style's name. Only a style they asked for, never one you suggest.\n\n" +
+    // ══ THEIR YES IS THEIR GO (v9.825, 2026-11-03, Aaron: go) ═══ MEASURED 15:11:43: she asked "Should I go ahead and picture it for you?",
+    // they typed "ok yeah lets see it", and she said it all back and asked again - only the Imagine it button could draw. Her judgement, not
+    // a list of yes-words: when their words only say yes to what she said back, it is drawn exactly as Imagine it is.
+    (canGo ? "GO when what they just said only says yes to imagining what you last said back to them - nothing added, nothing changed. " +
+      "Then GO is your whole answer.\n\n" : "") +
                 "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.";
 }
 async function drawStartSay(env, idea, style, talkModel) {
@@ -68602,7 +68614,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // SHE SAYS IT BACK, THEY SAY YES (v9.783, 2026-11-01, Aaron - wording approved 12:23). READY: the idea line (their own
               // words about the tattoo, copied) and her said-back with Imagine it; CHOOSE: two directions, a tap draws; TALK: as before.
               // (v9.820) one implementation: the words she is given live in heardSystem() - HEARD_TEST asks every model with the same words
-              const _hSys = heardSystem(_newStyle);
+              // (v9.825) GO is offered only once she has said an idea back, and she sees what she said
+              const _goPrev = String(_ds.go_idea || ""), _canGo = !!_goPrev;
+              let _herLast = ""; if (_canGo) { try { const _tl0 = (typeof tnow !== "undefined" && Array.isArray(tnow)) ? tnow : [];
+                for (let i = _tl0.length - 1; i >= 0; i--) { const e = _tl0[i]; if (e && e.role === "aura" && String(e.said || "").trim()) { _herLast = String(e.said).trim().slice(0, 900); break; } } } catch {} }
+              const _hSys = heardSystem(_newStyle, _canGo);
               // ══ HER SAID-BACK STREAMS (v9.787) ═══ Her answer starts with its label line (and the IDEA / A / B lines) - those never
               // reach the page; from her first line of words on, each piece goes out as she writes it. A TALK answer is not streamed
               // (that turn goes to her as a conversation). Once her words have started, the time limit no longer cuts her off.
@@ -68635,7 +68651,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   const body = raw.replace(/^\s*```[a-z]*\s*/i, "");
                   // (v9.819) the label may share its line with what follows ("READY That trek sounds...")
                   const _lblLine = /^\W*(READY|CHOOSE|TALK|DRAW)\b[ \t:.\-]*(?:\n|(?=\S))/i;
-                  if (label === null) { const m = body.match(_lblLine); if (!m) { if (body.length > 60) label = "?"; return; } label = m[1].toUpperCase(); }
+                  // (v9.825) GO is only GO in capitals, on its own line - "Go ahead..." is her words
+                  if (label === null) { if (/^\W*GO[ \t:.!*\-]*(?:\n|$)/.test(body)) { label = "GO"; return; }
+                    const m = body.match(_lblLine); if (!m) { if (body.length > 60) label = "?"; return; } label = m[1].toUpperCase(); }
                   if (label !== "READY" && label !== "CHOOSE" && label !== "DRAW") return;
                   const afterLabel = body.replace(_lblLine, "");
                   let at = 0, start = -1;
@@ -68657,14 +68675,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   if (words.length > sent && onDelta && !(_hLooped && words.length <= sent)) { const add = words.slice(sent); sent = words.length; _hStarted = true; _heardStreamed = true; try { await onDelta(add); } catch {} }
                 }; })();
               const _hLate = new Promise((r) => setTimeout(function tick() { if (!_hStarted) r({ late: true }); else setTimeout(() => r({ late: true }), 45000); }, _hMs));
-              const _hArgs = { system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\nWhat they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hEff ? { reasoning: _hEff } : {}), ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) };
+              const _hArgs = { system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\n" : "") + (_herLast ? "What you last said back to them:\n" + _herLast + "\n\n" : "") + (_told || _herLast ? "What they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hEff ? { reasoning: _hEff } : {}), ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) };
               const _hq = await Promise.race([_hLate, onDelta ? callBrainStream(_hArgs, env, _hFeed) : callBrain(_hArgs, env)]);
               const _hRaw = String((_hq && _hq.text) || "").trim();
-              const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\s*([\s\S]*)$/i);
-              let _hDo = _hm ? _hm[1].toUpperCase() : null; if (_hDo === "DRAW") _hDo = "READY";
+              const _hClean = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim();
+              const _hm = _hClean.match(/^\W*(READY|CHOOSE|TALK|DRAW)\b\W*\s*([\s\S]*)$/i) || _hClean.match(/^\W*(GO)[ \t:.!*\-]*(?:\n([\s\S]*))?$/);
+              let _hDo = _hm ? _hm[1].toUpperCase() : null; if (_hDo === "DRAW") _hDo = "READY"; if (_hDo === "GO" && !_canGo) _hDo = "READY";
               let _hRest = _hm ? _hm[2] : "";
               let _hIdea = "";
-              { const _sp = heardSplit(_hRest); _hIdea = _sp.idea; _hRest = _sp.words; }
+              let _hStyleSaid = "";
+              { const _sp = heardSplit(_hRest); _hIdea = _sp.idea; _hRest = _sp.words; _hStyleSaid = _sp.style || ""; }
               if (!_hIdea) { let _r0 = _hRest.replace(/^\s*IDEA\s*:\s*/i, ""); const _copies = [];   // v9.790: their words with no label
                 for (let _k = 0; _k < 6; _k++) { const _cp0 = _hCopy(_r0); if (!_cp0.copy) break;   // v9.799: every copy, one after another
                   _copies.push(_r0.slice(0, _cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019*]+/, "").trim());
@@ -68715,12 +68735,31 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 try { console.log("[TURN:HEARD] her answer fell into a loop (\"" + String(_hSay || _hIdea).slice(0, 120) + "...\") - not shown, not drawn from; the fixed line asks" + (me ? " · who=" + me : "")); } catch {}
                 _hSay = ""; _hIdea = ""; }
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
-              if (_hIdea.trim()) {
+              if (_hIdea.trim() && _hDo !== "GO") {
                 _heardIdea = _ideaLost ? _theirs : (_hIdea.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "") + (_addBack ? ". " + _addBack : "")).slice(0, 1000);
                 try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }))); } catch {}
               }
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);
-              if (_hDo === "TALK") {
+              if (_hStyleSaid && _hDo !== "TALK" && _hDo !== "GO") {
+                let _sv = _hStyleSaid.replace(/[*"\u201c\u201d.]/g, "").replace(/\s+style$/i, "").replace(/\s+/g, " ").trim();
+                if (/^[A-Za-z0-9 &'\/-]{2,40}$/.test(_sv) && !/^(none|n\/a|no|any|random|unsure|not sure)$/i.test(_sv)) {
+                  const _lk = Object.keys(STYLE_LOOK).find((k) => k.toLowerCase() === _sv.toLowerCase());
+                  _sv = _lk || (_sv === _sv.toLowerCase() ? _titleWords(_sv) : _sv);
+                  if (_sv.toLowerCase() !== String(_newStyle || "").toLowerCase()) {
+                    const _was = _newStyle; _newStyle = _sv;
+                    try { await talkStatePut(env, me, "new_style", _sv); } catch {}
+                    console.log("[TURN:STYLE] they named the " + _sv + " style in their own words - it counts as picked" + (_was ? " (was " + _was + ")" : "") + (me ? " · who=" + me : ""));
+                  }
+                } else { console.log("[TURN:STYLE] her style line \"" + _hStyleSaid.slice(0, 60) + "\" is not a style name - not used" + (me ? " · who=" + me : "")); }
+              }
+              if (_hDo === "GO") {
+                // (v9.825) their words were a yes to what she said back: the idea she said back stays on the record (the line above wrote
+                // their raw words there first), and the turn hands off to Imagine it - see [TURN:GO] where the turn is run. If that hand-off
+                // cannot happen, the page gets the fixed line and the Imagine it button, as before.
+                try { await talkStatePut(env, me, "go_idea", _goPrev); } catch {}
+                _fixedWhy = "heard_ready"; _fixedSay = await _fx("heard_ready", "Love it - want me to imagine it?"); _heardOut = { go: true, now: true };
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - GO: \"" + _s.slice(0, 120) + "\" is a yes to what she said back - drawn as Imagine it, from: \"" + _goPrev.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
+              } else if (_hDo === "TALK") {
                 _fixedWhy = null; _fixedSay = null; _heardOut = null;
                 try { await talkStatePut(env, me, "go_idea", ""); } catch {}
                 // v9.777: still waiting for their idea - the next thing they say is heard the same way, and drawn when there is one
@@ -73985,13 +74024,23 @@ export class PublicEntry extends WorkerEntrypoint {
             }
           } catch {}
         }
-        const _jobId = (me && _tOpts.tid && !_direct && await talkJobsOn(env))
-          ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;
-        if (_jobId) {
-          try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs as job " + _jobId + " - the page's connection only relays it · who=" + me); } catch {}
-          let _gone = false;
-          const _sendR = async (frame) => { try { await _w.write(_enc.encode(frame)); } catch { _gone = true; } };
-          const _relay = (async () => {
+        let _gone = false;
+        const _sendR = async (frame) => { try { await _w.write(_enc.encode(frame)); } catch { _gone = true; } };
+        // ══ THEIR YES RUNS IMAGINE IT ON THE SAME CONNECTION (v9.825, 2026-11-03, Aaron: go) ═══ MEASURED 15:11:43: "ok yeah lets see it"
+        // after she asked "Should I go ahead and picture it?" - only the Imagine it button could draw. When her hearing step answers GO, the
+        // turn comes back with heard.now, and Imagine it starts here as its own job - the same job a tap starts - relayed on this connection,
+        // so the page sees one turn: their words, then her drawing line, then the 8. If the job cannot start, the page gets her fixed line and
+        // the Imagine it button, as before.
+        const _goJob = async (o) => {
+          if (!(o && o.heard && o.heard.now && me && _tOpts.tid)) return null;
+          const _gtid = (String(_tOpts.tid).slice(0, 36) + "-go");
+          const _gOpts = { ..._tOpts, tid: _gtid, heard_go: true, heard_pick: null, direct_no_draw: false, fresh: false };
+          const _gid = await startTalkJob(env, { me, stage, said: "Imagine it", hist: _hist, host, opts: _gOpts });
+          try { console.log("[TURN:GO] their own words were a yes - Imagine it " + (_gid ? "runs now as job " + _gid + " on the same connection" : "could not start - the Imagine it button goes") + " · who=" + me); } catch {}
+          return _gid ? { id: _gid, tid: _gtid } : null;
+        };
+        // ONE RELAY (v9.825): a turn's job, or the Imagine it its yes started, is relayed by this one loop.
+        const _relayJob = async (_rjId, _rtid, _hop) => {
             const t0 = Date.now(); let sentLen = 0, lastStage = "", fin = null;
             // ══ A JOB THAT ENDED WITH NO ANSWER IS NOT A FOREVER WAIT (v9.687, 2026-10-20, Aaron: "look at every error") ══════
             // MEASURED 17:01:07 (job 63152547): Cloudflare marked the step failed ("internal workflows error") and closed the job
@@ -74003,37 +74052,46 @@ export class PublicEntry extends WorkerEntrypoint {
             while (!_gone && Date.now() - t0 < 14 * 60000) {
               if (!_jobEnded && Date.now() - _lastJobCheck > 10000) {
                 _lastJobCheck = Date.now();
-                try { const _js = await (await env.GRID_CRAWL_WORKFLOW.get(_jobId)).status();
+                try { const _js = await (await env.GRID_CRAWL_WORKFLOW.get(_rjId)).status();
                       if (_js && ["complete", "errored", "terminated"].includes(String(_js.status || ""))) {
                         _jobEnded = Date.now();
-                        console.log("[TURNJOB] job " + _jobId + " ended (" + _js.status + ") before its answer came - waiting " + Math.round(_orphanMs / 1000) + "s for it · who=" + me); } } catch {}
+                        console.log("[TURNJOB] job " + _rjId + " ended (" + _js.status + ") before its answer came - waiting " + Math.round(_orphanMs / 1000) + "s for it · who=" + me); } } catch {}
               }
               if (_jobEnded && Date.now() - _jobEnded > _orphanMs) {
                 let _stuckSay = "That one got stuck on my end - say it again?";
                 try { const _k = String((await env.AURA_KV.get("config:say:stuck")) || "").trim(); if (_k) _stuckSay = _k; } catch {}
                 fin = { ok: true, said: _stuckSay, act: "none", answered_by: "stuck (the job ended with no answer)" };
                 try { await talkStatePut(env, me, "turnout", JSON.stringify({ tid: _tOpts.tid, out: fin })); } catch {}
-                console.log("[TURNJOB] no answer " + Math.round(_orphanMs / 1000) + "s after job " + _jobId + " ended - the stuck line goes · who=" + me);
+                console.log("[TURNJOB] no answer " + Math.round(_orphanMs / 1000) + "s after job " + _rjId + " ended - the stuck line goes · who=" + me);
                 break;
               }
               let st = null; try { st = talkParse((await talkStateGet(env, me, ["turnlive"])).turnlive); } catch {}
-              if (st && st.tid === _tOpts.tid) {
+              if (st && st.tid === _rtid) {
                 const txt = String(st.text || "");
                 if (txt.length > sentLen) { await _sendR("data: " + JSON.stringify({ delta: txt.slice(sentLen) }) + "\n\n"); sentLen = txt.length; }
                 const sk = String(st.stage || "") + "|" + String(st.what || "");
                 if (st.stage && sk !== lastStage) { lastStage = sk; await _sendR("event: stage\ndata: " + JSON.stringify({ stage: st.stage, ...(st.what ? { what: st.what } : {}) }) + "\n\n"); }
                 if (st.done) {
-                  try { const o = talkParse((await talkStateGet(env, me, ["turnout"])).turnout); if (o && o.tid === _tOpts.tid) fin = o.out; } catch {}
+                  try { const o = talkParse((await talkStateGet(env, me, ["turnout"])).turnout); if (o && o.tid === _rtid) fin = o.out; } catch {}
                   break;
                 }
               }
               await new Promise((r) => setTimeout(r, 800));
             }
+            // (v9.825) the turn said GO: Imagine it now, relayed on this same connection - once
+            if (fin && !_gone && !_hop) { const _g = await _goJob(fin); if (_g) return _relayJob(_g.id, _g.tid, 1); }
+            // the page's recovery asks by the turn id it sent - the drawn answer is left there too
+            if (fin && _hop && me && _tOpts.tid) { try { await talkStatePut(env, me, "turnout", JSON.stringify({ tid: _tOpts.tid, out: fin, at: Date.now() })); } catch {} }
             clearInterval(_hb);
             // No final here (the page left, or it ran past 14 minutes): the page's recovery reads the finished turn by its id.
             if (fin && !_gone) await _sendR("event: final\ndata: " + JSON.stringify(fin) + "\n\n");
             try { await _w.close(); } catch {}
-          })();
+        };
+        const _jobId = (me && _tOpts.tid && !_direct && await talkJobsOn(env))
+          ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;
+        if (_jobId) {
+          try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs as job " + _jobId + " - the page's connection only relays it · who=" + me); } catch {}
+          const _relay = _relayJob(_jobId, _tOpts.tid, 0);
           try { this.ctx?.waitUntil?.(_relay); } catch {}
           return new Response(readable, { headers: {
             "content-type": "text/event-stream; charset=utf-8",
@@ -74063,6 +74121,8 @@ export class PublicEntry extends WorkerEntrypoint {
           // field the page acts on - intent, brief, ready_to_draw, show_me, the drawn image - rides
           // here, so a page that missed every delta still behaves exactly as it does today.
           if (_ref && out && typeof out === "object") out = { ...out, ref: _ref };
+          // (v9.825) their yes, heard on a direct turn: Imagine it runs now as its own job, relayed on this connection
+          if (out && out.heard && out.heard.now) { const _g = await _goJob(out); if (_g) { await _relayJob(_g.id, _g.tid, 1); return; } }
           // v9.792: a turn run on the connection leaves its answer where the page's recovery reads it, as a job's does
           if (me && b.tid) { try { await talkStatePut(env, me, "turnout", JSON.stringify({ tid: String(b.tid).slice(0, 40), out, at: Date.now() })); } catch {} }
           clearInterval(_hb);

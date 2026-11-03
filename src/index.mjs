@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.817.0-2026-11-03-she-tells-them-about-a-trend";
+const BUILD = "aura-core-v9.818.0-2026-11-03-the-end-of-the-conversation-is-drawn";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68265,7 +68265,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           const _told = (() => { try {
             const _tl = (typeof tnow !== "undefined" && Array.isArray(tnow)) ? tnow : [];
             let _st = 0; for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (e && e.role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(e.said || ""))) { _st = i + 1; break; } }
-            const _tap = /^\s*(tell me|show me\b.*|i have an idea|i want it to mean something|i have a memory|it'?s about someone|let'?s create my own\b.*|i like the .+ style|imagine\b.*|i want number [1-8]|i choose\b.*|this is my tattoo|fine-?\s?tune it|keep it like this|yes\b.*|yeah\b.*|ok(ay)?|sure|go( ahead)?|talk to me|here'?s something i like|what could it mean\??|what style is this\??|i'?m not sure yet.*)[\s.!?]*$/i;
+            // (v9.818) MEASURED 13:01: "yes and can it say 1995 - 2025 somewhere? those were his years" was taken for a tap and left out -
+            // the dates never reached the image model. Only a bare yes (or the page's own "Yes, show me") is a tap now.
+            const _tap = /^\s*(tell me|show me\b.*|i have an idea|i want it to mean something|i have a memory|it'?s about someone|let'?s create my own\b.*|i like the .+ style|imagine\b.*|i want number [1-8]|i choose\b.*|this is my tattoo|fine-?\s?tune it|keep it like this|yes(,? show me( some ideas)?)?|yeah|yep|yup|ok(ay)?|sure|go( ahead)?|talk to me|here'?s something i like|what could it mean\??|what style is this\??|i'?m not sure yet.*)[\s.!?]*$/i;
             return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
@@ -68478,9 +68480,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 // split it into three, asked which one, and only two could be tapped - the motorcycle could not be picked at all. The
                 // choice is gone: she says ALL of it back and asks whether to imagine it or add something; anything they add is heard
                 // with everything before it.
-                "READY when you know what they want in the tattoo. Second line: IDEA: their own words about the tattoo, copied exactly - " +
-                "everything they want in it, however much there is, including who it is for and why; leave out only questions to you and " +
-                "chat that has nothing to do with the tattoo. " +
+                // ══ THE END OF THE CONVERSATION IS WHAT IS DRAWN (v9.818, 2026-11-03, Aaron: "the conversation is a conversation ... it doesn't
+                // matter how many, how deep they get - the end of the conversation is all that matters, context to what they want") ═══ MEASURED
+                // 12:02 and 13:02: the idea drawn was every message strung together - "maybe lightning too actually lose the lightning" drew
+                // lightning on 5 of 8; "not yet. what would you even put on it?" and "close but no patchwork" reached the image model. The IDEA
+                // line is now what they want as the conversation ends, every change applied. Every name and number they gave is still checked
+                // against it below - one left out and their own words are drawn instead, as before.
+                "READY when you know what they want in the tattoo. Second line: IDEA: what they want in the tattoo now, where the conversation has " +
+                "ended up - everything they still want in it, however much there is, including who it is for and why, with every change they made " +
+                "applied: anything they took back is left out, and nothing is added that they did not ask for. Copy exactly any name, date, number " +
+                "or words they want written in the tattoo. No questions and no chat. " +
                 "Then your words: if they shared something personal or hard, start there, simply - then say back everything they want, and the style when they picked one, " +
                 "in your own voice, and ask if you should imagine it or if they want to add anything. Name everything in the IDEA line, and nothing that isn't in it.\n\n" +
                 "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.";
@@ -68494,6 +68503,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // stretch at the start of her words that copies what they said (labelled or not, quoted or not, on its own line or run into
               // her words) is their idea - it is kept as the idea and never reaches the page, streamed or final.
               const _hN = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+              // ══ A LABEL IS NEVER HER WORDS, HOWEVER IT IS SPELLED (v9.818) ═══ MEASURED 12:57: her answer began "IDEIDE: my dad was a power
+              // linist for 30 years..." - a broken IDEA label and their words copied with new typos - and it went on screen. Any line that opens
+              // with a word in capitals and a colon is a label: it is kept as the idea and never shown.
+              const _hLbl = /^\s*(?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:/;
               // v9.799: MEASURED 18:47:16 - she copied their current message AND their first one; only the first copy was taken off and
               // the second went on screen. Each earlier message of theirs is matched on its own too, and copies are taken off one after another.
               const _hTheirs = [_hN(_s), _hN((_told ? _told.replace(/\n+/g, " ") + " " : "") + _s), ...String(_told || "").split(/\n+/).map(_hN)].filter((x) => x.length >= 12);
@@ -68516,7 +68529,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   let at = 0, start = -1;
                   for (;;) {
                     const nl = afterLabel.indexOf("\n", at), line = nl < 0 ? afterLabel.slice(at) : afterLabel.slice(at, nl);
-                    if (/^\s*(IDEA|[A-H])\s*[:.)-]/.test(line) || /^\s*IDEA\s*:/i.test(line) || (!line.trim() && nl >= 0)) { if (nl < 0) return; at = nl + 1; continue; }
+                    if (/^\s*(IDEA|[A-H])\s*[:.)-]/.test(line) || /^\s*IDEA\s*:/i.test(line) || _hLbl.test(line) || (!line.trim() && nl >= 0)) { if (nl < 0) return; at = nl + 1; continue; }
                     if (nl < 0 && line.trim().length < 6) return;   // too short yet to know it is not "IDEA:" coming in
                     { const cp = _hCopy(afterLabel.slice(at));       // v9.790: their own words, copied without the label
                       if (cp.open) return;                           // still matching what they said - wait to see where it ends
@@ -68533,8 +68546,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _hm = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\s*([\s\S]*)$/i);
               let _hDo = _hm ? _hm[1].toUpperCase() : null; if (_hDo === "DRAW") _hDo = "READY";
               let _hRest = _hm ? _hm[2] : "";
-              let _hIdea = (_hRest.match(/^\s*IDEA:\s*(.+)/i) || [])[1] || "";
-              if (_hIdea) _hRest = _hRest.replace(/^\s*IDEA:\s*.+\n?/i, "");
+              let _hIdea = (_hRest.match(/^\s*(?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:\s*(.+)/) || [])[1] || "";
+              if (_hIdea) _hRest = _hRest.replace(/^\s*(?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:\s*.+\n?/, "");
               else { let _r0 = _hRest.replace(/^\s*IDEA\s*:\s*/i, ""); const _copies = [];   // v9.790: their words with no label
                 for (let _k = 0; _k < 6; _k++) { const _cp0 = _hCopy(_r0); if (!_cp0.copy) break;   // v9.799: every copy, one after another
                   _copies.push(_r0.slice(0, _cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019*]+/, "").trim());
@@ -68599,7 +68612,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // READY / TALK line, so it was "not usable" and the fixed "Love it - want me to imagine it?" went instead. Her words are
                   // shown (their own copied words taken off, a sentence she did not finish left off); nothing is drawn - Imagine it draws
                   // their own words, as with the fixed line.
-                  let _w = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").replace(/^\s*IDEA\s*:.*$/gim, "").trim();
+                  let _w = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").replace(/^\s*IDEA\s*:.*$/gim, "").replace(/^\s*[A-Z]{3,12}\s*:.*$/gm, "").trim();
                   for (let _k = 0; _k < 6; _k++) { const _c = _hCopy(_w); if (!_c.copy) break; _w = _w.slice(_c.end).replace(/^[\s"'\u201c\u201d\u2018\u2019.,:;*-]+/, ""); }
                   _w = _finishedOnly(_wholeSentences(_w.replace(/\*\*/g, ""), 1200));
                   if (_w.length < 20) return false;
@@ -71691,7 +71704,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 console.log("[TURN:NEW] a picture they like goes with their words: " + refUrl + (me ? " · who=" + me : ""));
               }
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
-              askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : "");
+              // ══ NO STYLE PICKED: EACH ONE A DIFFERENT STYLE (v9.818, 2026-11-03, Aaron: "when there's no style requested we're gonna have to tell
+              // it give me eight versions each one a different style") ═══ MEASURED 13:02 (img_mw167fbfl6be, the lineman's hard hat): with no style
+              // named all 8 came back in one look - realistic, full colour, storm skies - only the layout changed. Only when nothing was picked;
+              // a picked style is sent exactly as tested (all 41). Setting: config:frame:new:grid:nostyle (empty value = say nothing).
+              let _ns = ", each in a different tattoo style";
+              try { const _k = await env.AURA_KV.get("config:frame:new:grid:nostyle"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim().replace(/^,\s*/, ""); _ns = _t ? ", " + _t : ""; } } catch {}
+              if (!_newStyle && _ns) { try { console.log("[TURN:NEW] no style picked - asked for" + _ns.slice(1) + (me ? " · who=" + me : "")); } catch {} }
+              askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : _ns);
               // ══ ALL OF HER IDEAS AT ONCE (v9.627, 2026-10-16, Aaron: "let me see all 4 absolutely") ══════════════════════
               // "Show me all of them" under her idea cards: one sheet, each card one of her ideas, in her order - instead of four
               // versions of one. Their own words stay the idea; only the "4 different designs of it" clause changes.

@@ -73531,6 +73531,21 @@ export class PublicEntry extends WorkerEntrypoint {
         }
         return await cutPanel(env, String(b.url || "").slice(0, 300), Number(b.n));
       }
+      // ══ HER WORDS ABOUT A TRENDING STYLE (v9.817, 2026-11-03, Aaron: "bring up Aura's chat box ... her description of what Neo-Tribal
+      // is and ... what people are actually doing with it") ══ The page asks when a style's window opens. Fixed lines, researched once: what
+      // the style is, why it is trending, what is being done with it now. Each can be reworded without a deploy - config:say:trend:<style>
+      // (e.g. config:say:trend:neo-tribal). No model, no charge. A style with no line answers empty and the page says nothing.
+      if (action === "trendsay") {
+        const _tn = String(b.name || "").trim().slice(0, 80);
+        const _tk = Object.keys(TREND_SAY).find((k) => k.toLowerCase() === _tn.toLowerCase()) || _tn;
+        const _ts = trendSlug(_tk);
+        let _say = "";
+        if (_ts) { try { _say = String((await env.AURA_KV.get("config:say:trend:" + _ts)) || "").trim(); } catch {} }
+        const _from = _say ? "setting" : (TREND_SAY[_tk] ? "default" : "none");
+        if (!_say) _say = TREND_SAY[_tk] || "";
+        try { console.log("[TREND:SAY] " + (_tn || "?") + " - " + (_from === "none" ? "no line for it, she says nothing" : "her line (" + (_from === "setting" ? "config:say:trend:" + _ts : "the default") + ")") + (me ? " · who=" + me : "")); } catch {}
+        return { ok: true, name: _tk, say: _say };
+      }
       if (action === "favs" || action === "fav") {
         let list = [];
         try { list = talkParse((await talkStateGet(env, me, ["favorites"])).favorites) || []; } catch {}

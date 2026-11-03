@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.815.0-2026-11-03-queue-frees-abandoned-slots";
+const BUILD = "aura-core-v9.816.0-2026-11-03-she-says-what-she-is-drawing";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61413,6 +61413,30 @@ function _namesOf(t) {
 }
 // Her words, never cut mid-word: up to `max` characters, ending on her last whole sentence when they have to be shortened.
 // v9.794: only the sentences that were finished - a last one that stops mid-way ("how sweet that") is left off.
+// ══ SHE SAYS WHAT SHE IS DRAWING (v9.816, 2026-11-03, Aaron: "when drawing starts Aura should say what she's drawing with relevance ...
+// the generic 100% yours can be there but we need your initial relevance") ═══ The same short call the change already makes (v9.780, measured
+// 1.1s): their idea and the style they chose, said back in one or two sentences - that she's imagining it now. Same model, thinking and
+// time limit as her hearing step; no answer in time and the fixed line stands. Nothing about the drawing changes.
+async function drawStartSay(env, idea, style, talkModel) {
+  try {
+    let ms = 8000; try { const v = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(v) && v >= 0) ms = v; } catch {}
+    let model = null; try { model = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+    let eff = "low"; try { const k = String((await env.AURA_KV.get("config:source:heard:reasoning")) || "").trim().toLowerCase(); if (["low", "medium", "high"].includes(k)) eff = k; else if (/^(off|none|default)$/.test(k)) eff = null; } catch {}
+    const t0 = Date.now();
+    const sys = "You are Aura, the tattoo designer on mytattoo.world. Someone just asked you to imagine designs of their tattoo idea" +
+      (style ? " in the " + style + " style" : "") + ". In one or two short, warm sentences, in your own words: say back what you are drawing for them" +
+      (style ? " and the style" : "") + ", so they know you got it, and that you're imagining their designs now. Only what they asked for - nothing you are " +
+      "adding. Never put a number in your words. Plain words only, no lists.";
+    const q = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), ms)),
+      callBrain({ system: sys, user: String(idea || "").slice(0, 600), max_tokens: 2000, ...(eff ? { reasoning: eff } : {}), ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env)]);
+    const say = _finishedOnly(_wholeSentences(String((q && q.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, ""), 1200));
+    const sec = ((Date.now() - t0) / 1000).toFixed(1);
+    if (say && !(q && q.late)) { console.log("[TURN:DRAW-SAY] " + sec + "s - her words: \"" + say.slice(0, 200) + "\""); return say; }
+    console.log("[TURN:DRAW-SAY] " + sec + "s - " + (q && q.late ? "no answer in " + ms + "ms" : "no usable answer") + " - the fixed line goes");
+  } catch (e) { try { console.log("[TURN:DRAW-SAY] failed - the fixed line goes: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+  return null;
+}
+function _titleWords(t) { return String(t || "").toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\b(Of|And|The|In|On|A|An|To)\b(?!$)/g, (m, w, i) => i ? w.toLowerCase() : w); }
 function _finishedOnly(t) {
   const s = String(t || "").trim();
   if (!s || /[.!?\u2026]["'\u201d\u2019)]*$/.test(s)) return s;
@@ -68404,6 +68428,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (_gi) {
               _heardIdea = _gi.slice(0, 1200);
               _fixedWhy = "four_new"; _fixedSay = await _fx("eight_go", "On it - I'm imagining your designs now. Every one is 100% unique and 100% yours.");
+              // (v9.816) her own words about what she is drawing, then the unique line
+              { const _ds0 = await drawStartSay(env, _heardIdea, _newStyle, talkModel);
+                if (_ds0) { const _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again."); _fixedSay = _ds0 + (_tail ? " " + _tail : ""); } }
               if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
               try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea })));
                     await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
@@ -68673,6 +68700,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // IMAGINE 4 POSSIBILITIES (v9.628, 2026-10-16, Aaron): after they choose a design, four possibilities for that
             // same design, on the same four-card sheet - the chat model reads the design, nothing is asked of her.
             _fixedWhy = "poss"; _fixedSay = await _fx("poss_coming8", "Imagining possibilities for your design now.");
+            // (v9.816) the design they chose, by the name printed on its card: "I'm imagining new takes on Guiding Light now."
+            try { const _pid0 = (String((lastDrawn && lastDrawn.image) || refUrl || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                  // its own key, never cardinfo - cardinfo decides how a catalog card is drawn, and a picked card is not one
+                  let _pn = _pid0 ? String((await env.AURA_KV.get("pickname:" + _pid0)) || "") : "";
+                  if (!_pn && _pid0) { const _pci = JSON.parse((await env.AURA_KV.get("cardinfo:" + _pid0)) || "null"); if (_pci && _pci.title) _pn = String(_pci.title); }
+                  const _pt = _pn ? _titleWords(_pn) : "";
+                  if (_pt) { const _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again.");
+                    _fixedSay = "I'm imagining new takes on " + _pt + " now." + (_tail ? " " + _tail : "");
+                    console.log("[TURN:POSS] named the design: " + _pt); } } catch {}
           } else if (_newFlow && /^\s*imagine\s+(?:another\s+(?:4|four|8|eight)|(?:4|four|8|eight)\s+more)\.?\s*$/i.test(_s)) {
             // IMAGINE 4 MORE DRAWS AT ONCE (v9.605): a fresh four of the same idea, or the same change again.
             _fixedWhy = "more"; _fixedSay = await _fx("eight_more", "I've imagined more for you - here they come.");
@@ -71360,6 +71396,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                       parent: cur, context: "they chose number " + _gridPickCut.n + " - cut from the sheet, nothing redrawn", access: "public" });
                     // A CARD CUT OFF AN ADD-ON SHEET IS MARKED (v9.661): Imagine 4 possibilities starts from it.
                     if (_cid) { try { await env.AURA_KV.put("bodycut:" + _cid, "1"); } catch {} }
+                    // (v9.816) the picked card keeps its printed name under its own id, so "new takes on <its name>" can say it
+                    if (_cid && _cardT) { try { await env.AURA_KV.put("pickname:" + _cid, String(_cardT).slice(0, 80)); } catch {} }
                     t = { ok: true, image_url: _c.image_url, child: (_reg && _reg.entity_id) || null, cut: true,
                           ...(_gridPickCut.card ? { card: _gridPickCut.card } : {}) };
                     _pl("number " + _gridPickCut.n + " cut from the sheet by hand - no image model, nothing redrawn -> " + _c.image_url + " (" + _c.cut + (_c.strip_found ? ", strip cut off" : "") + ")" + (_cardT ? " · named: " + _cardT : " · no title on this card"));

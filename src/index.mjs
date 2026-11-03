@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.819.0-2026-11-03-her-words-first-the-idea-last";
+const BUILD = "aura-core-v9.820.0-2026-11-03-written-means-written-and-heard-test";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -14284,6 +14284,62 @@ async function successionGate(env) {
       } catch (e) {
         return { cmd: "WEBSEARCH", payload: { ok: false, error: String((e && e.message) || e).slice(0, 400), ms: Date.now() - _t0, gateway: gatewayId } };
       }
+    }
+    // ══ HEARD_TEST - EVERY MODEL ON THE SAME REAL CONVERSATIONS (v9.820, 2026-11-03, Aaron: "test every option to resolve") ════════════
+    // Her hearing step (the said-back and the IDEA line) gave no answer on about one turn in four today - gpt-oss-120b spent the whole limit
+    // thinking (23,086 and 6,123 characters of it at 12:00:54 and 14:11:11) and never wrote a word. This asks any model the exact words the
+    // page uses (heardSystem), streamed as the page streams, on five conversations from today's tests word for word, and checks each answer:
+    // in time (config:talk:heard_ms), her words and the IDEA apart, every name and number kept, what they took back left out, lettering
+    // said to be written. Nothing is saved, nothing is drawn, the page is not touched.
+    //   RUN "HEARD_TEST @cf/openai/gpt-oss-120b low"        model, then thinking: low | medium | high | off, then how many rounds (1-3)
+    case "HEARD_TEST": {
+      if (!isOp) return { cmd: "HEARD_TEST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const htModel = String(args[0] || "").trim();
+      if (!htModel) return { cmd: "HEARD_TEST", payload: { ok: false, error: "NEED_MODEL", say: 'RUN "HEARD_TEST @cf/openai/gpt-oss-120b low"' } };
+      const htEffA = String(args[1] || "low").toLowerCase(), htEff = ["low", "medium", "high"].includes(htEffA) ? htEffA : null;
+      const htReps = Math.min(3, Math.max(1, parseInt(String(args[2] || "1"), 10) || 1));
+      let htLimit = 8000; try { const v = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(v) && v >= 0) htLimit = v; } catch {}
+      const htConvos = [
+        { name: "grandma, first words", style: "Embroidered Tattoos", told: [], said: "my grandma used to sew patches on all my jeans when i was little. i want something that feels like her", any: true, has: [], gone: [], written: false },
+        { name: "grandma, last words", style: "Embroidered Tattoos", told: ["my grandma used to sew patches on all my jeans when i was little. i want something that feels like her", "not yet. what would you even put on it? i dont really know what fits her", "she had sunflowers in her kitchen window every summer and she called me her little bee"], said: "close but no patchwork. just one sunflower patch with a little bee on it and the words little bee stitched under it. its going on my calf", has: ["sunflower", "little bee", "calf"], gone: ["patchwork"], written: true },
+        { name: "lineman", style: null, told: ["my dad was a power lineman for 30 years. he retired last month and i want to get something for him", "something with a pole and the wires for sure. he always said he worked the storms so maybe lightning too", "yes and can it say 1995 - 2025 somewhere? those were his years"], said: "actually lose the lightning. put his hard hat hanging on the pole instead, thats more him", has: ["hard hat", "pole", "1995", "2025"], gone: ["lightning"], written: true },
+        { name: "trail, Jess", style: null, told: ["i want something about my best friend jess. we did the pacific crest trail together in 2019, all 2650 miles", "her trail name was Sunny and she always had a little orange flag on her pack. maybe some mountains behind it", "actually skip the mountains. put the flag on one of those wooden trail marker posts instead"], said: "yes and can the post say mile 2650 on it", has: ["sunny", "flag", "post", "2650"], gone: ["mountain"], written: true },
+        { name: "heart, Mara", style: "Cybersigilism", told: ["i want one of those cyber hearts wrapped in thorns, i keep seeing them everywhere", "its for my girlfriend Mara, can her name be hidden in the thorns somewhere? its going on my lower back", "actually make it a real anatomical heart, not the cartoon shape"], said: "yes and can a few thorns drip off the bottom like they're melting", has: ["mara", "heart", "thorn"], gone: [], written: true },
+      ];
+      const htNum = (x) => String(x || "").replace(/(\d),(?=\d{3}\b)/g, "$1");
+      const htOne = async (c, round) => {
+        const user = (c.told.length ? "What they told you before, in order:\n" + c.told.join("\n") + "\n\nWhat they just said:\n" : "") + c.said;
+        const t0 = Date.now();
+        const q = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), 45000)),
+          callBrainStream({ system: heardSystem(c.style), user, max_tokens: 2000, ...(htEff ? { reasoning: htEff } : {}), model: htModel }, env, () => {})]).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+        const ms = Date.now() - t0, raw = String((q && q.text) || "").trim();
+        const m = raw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\s*([\s\S]*)$/i);
+        const label = m ? m[1].toUpperCase().replace("DRAW", "READY") : null, sp = heardSplit(m ? m[2] : "");
+        const words = _wholeSentences(sp.words.replace(/^\s*[A-H]\s*[:.)-].*$/gm, "").trim(), 1200), il = htNum(sp.idea).toLowerCase();
+        const theirs = htNum(c.told.concat([c.said]).join(". "));
+        const missing = _namesOf(theirs).filter((n) => { const k = n.toLowerCase(), st = k.length > 4 ? k.replace(/(es|s)$/, "") : k; return !il.includes(k) && !il.includes(st); });
+        const lacks = c.has.filter((w) => !il.includes(w)), still = c.gone.filter((w) => il.includes(w));
+        const written = !c.written || /\b(written|writing|lettering|letters|lettered|reads|reading|says|saying|spell(s|ed|ing)?|script|text|inscri\w*|engraved|stitched)\b/.test(il);
+        const inTime = !(q && q.late) && ms <= htLimit;
+        const problems = [];
+        if (!inTime) problems.push(q && q.late ? "no answer in 45s" : "late (" + (ms / 1000).toFixed(1) + "s, the page waits " + (htLimit / 1000) + "s)");
+        if (q && q.ok === false) problems.push("error: " + String(q.error || "?").slice(0, 120));
+        if (!label) problems.push("no READY/TALK label");
+        if (label === "READY" && !words) problems.push("no words of hers to show");
+        if (label === "READY" && !sp.idea) problems.push("no IDEA line");
+        if (!c.any && label === "TALK") problems.push("TALK when they had told her what they want");
+        if (label === "READY") { if (missing.length) problems.push("idea left out " + missing.join(", ")); if (lacks.length) problems.push("idea lacks " + lacks.join(", "));
+          if (still.length) problems.push("idea still has " + still.join(", ") + " (they took it back)"); if (!written) problems.push("lettering not said to be written"); }
+        return { convo: c.name, round, pass: problems.length === 0, sec: +(ms / 1000).toFixed(1), label, problems, words: words.slice(0, 260), idea: sp.idea.slice(0, 300) };
+      };
+      const htJobs = []; for (let r = 1; r <= htReps; r++) for (const c of htConvos) htJobs.push(htOne(c, r));
+      const htRes = await Promise.all(htJobs);
+      const htSecs = htRes.map((x) => x.sec).sort((a, b) => a - b);
+      const htSummary = { model: htModel, thinking: htEff || "off", limit_s: htLimit / 1000, passed: htRes.filter((x) => x.pass).length + " of " + htRes.length,
+        in_time: htRes.filter((x) => !x.problems.some((p) => /^late|^no answer/.test(p))).length + " of " + htRes.length,
+        median_s: htSecs[Math.floor(htSecs.length / 2)], slowest_s: htSecs[htSecs.length - 1] };
+      try { console.log("[HEARD_TEST] " + htModel + " (thinking " + (htEff || "off") + ") - passed " + htSummary.passed + ", in time " + htSummary.in_time + ", median " + htSummary.median_s + "s, slowest " + htSummary.slowest_s + "s"); } catch {}
+      return { cmd: "HEARD_TEST", payload: { ok: true, ...htSummary, results: htRes } };
     }
     case "GETKV": {
       const key = args[0] || "";
@@ -61417,6 +61473,55 @@ function _namesOf(t) {
 // the generic 100% yours can be there but we need your initial relevance") ═══ The same short call the change already makes (v9.780, measured
 // 1.1s): their idea and the style they chose, said back in one or two sentences - that she's imagining it now. Same model, thinking and
 // time limit as her hearing step; no answer in time and the fixed line stands. Nothing about the drawing changes.
+// ══ HER WORDS AND THE IDEA, APART (v9.819, one copy since v9.820) ═══ The last label (IDEA:, or a broken one in capitals) is where her words
+// end and the idea starts, on one line or many. A label that opens the answer is the older shape: its line is the idea, the rest her words.
+function heardSplit(rest) {
+  let idea = "", words = String(rest || "");
+  const ls = [...words.matchAll(/(^|\s)((?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:\s*)/g)];
+  if (ls.length) { const L = ls[ls.length - 1], li = L.index + L[1].length, after = words.slice(li + L[2].length);
+    if (!words.slice(0, li).trim()) { const nl = after.indexOf("\n"); idea = (nl < 0 ? after : after.slice(0, nl)).trim(); words = nl < 0 ? "" : after.slice(nl + 1); }
+    else { idea = after.replace(/\s+/g, " ").trim(); words = words.slice(0, li); } }
+  return { idea, words };
+}
+// ══ THE WORDS HER HEARING STEP IS GIVEN (v9.820) ═══ One copy, used by the new-tattoo hearing step and by HEARD_TEST, so a model is
+// tested on exactly what it will be asked.
+function heardSystem(style) {
+  return "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
+                (style ? " (in the " + style + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
+                "tattoo artist would: brief, in your own words. If they shared something personal or hard, your words start there, simply. " +
+                "Never put a number in your words.\n\n" +
+                "Answer in exactly this shape. First line: READY or TALK.\n\n" +
+                // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
+                // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
+                // EVERYTHING THEY SAID GOES IN (v9.789, 2026-11-01, Aaron: "no one's gonna say what they want and then decide to leave
+                // certain things out ... even if they ramble on it needs to be everything ... these choices are no longer valid").
+                // MEASURED 16:21 (Patchwork, "my kids are obsessed with dinosaurs, my wife grows tomatoes ... I ride a motorcycle"): she
+                // split it into three, asked which one, and only two could be tapped - the motorcycle could not be picked at all. The
+                // choice is gone: she says ALL of it back and asks whether to imagine it or add something; anything they add is heard
+                // with everything before it.
+                // ══ THE END OF THE CONVERSATION IS WHAT IS DRAWN (v9.818, 2026-11-03, Aaron: "the conversation is a conversation ... it doesn't
+                // matter how many, how deep they get - the end of the conversation is all that matters, context to what they want") ═══ MEASURED
+                // 12:02 and 13:02: the idea drawn was every message strung together - "maybe lightning too actually lose the lightning" drew
+                // lightning on 5 of 8; "not yet. what would you even put on it?" and "close but no patchwork" reached the image model. The IDEA
+                // line is now what they want as the conversation ends, every change applied. Every name and number they gave is still checked
+                // against it below - one left out and their own words are drawn instead, as before.
+                // ══ HER WORDS FIRST, THE IDEA LAST (v9.819, 2026-11-03) ═══ MEASURED 13:59:50, 14:00:07, 14:00:26: three answers in a row came
+                // back on one line - "READY IDEA: A tattoo honoring my best friend Jess ... with mountains behind it. S..." - the idea and her words
+                // run together with no line between them, so her words were taken as part of the idea and the fixed line went instead. With the
+                // IDEA last, the label itself is where her words end, on one line or many.
+                "READY when you know what they want in the tattoo. Then your words: if they shared something personal or hard, start there, simply - " +
+                "then say back everything they want, and the style when they picked one, in your own voice, and ask if you should imagine it or if they " +
+                "want to add anything. Then, last, on its own line: IDEA: what they want in the tattoo now, where the conversation has ended up - " +
+                "everything they still want in it, however much there is, including who it is for and why, with every change they made applied: " +
+                "anything they took back is left out, and nothing is added that they did not ask for. Copy exactly any name, date, number or words " +
+                "they want written in the tattoo. No questions and no chat in the IDEA line. Your words name everything in it, and nothing that isn't in it.\n\n" +
+    // ══ WRITTEN MEANS WRITTEN (v9.820, 2026-11-03, Aaron: go) ═══ MEASURED 14:11:25: "can her name be hidden in the thorns" - her words said
+    // "Mara's name subtly hidden among the thorns", her IDEA said "Mara hidden in the thorns", and 6 of 8 cards drew a woman's face with
+    // no lettering. The name check passed because "Mara" was there. Any lettering is now said to be lettering, in the IDEA too.
+    "Anything they want written in the tattoo - a name, a date, a number or words - the IDEA line says it is written there, with the " +
+    "words copied exactly, so it is drawn as lettering and not as a picture.\n\n" +
+                "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.";
+}
 async function drawStartSay(env, idea, style, talkModel) {
   try {
     let ms = 8000; try { const v = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(v) && v >= 0) ms = v; } catch {}
@@ -68467,36 +68572,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _hT0 = Date.now();
               // SHE SAYS IT BACK, THEY SAY YES (v9.783, 2026-11-01, Aaron - wording approved 12:23). READY: the idea line (their own
               // words about the tattoo, copied) and her said-back with Imagine it; CHOOSE: two directions, a tap draws; TALK: as before.
-              const _hSys = "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
-                (_newStyle ? " (in the " + _newStyle + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
-                "tattoo artist would: brief, in your own words. If they shared something personal or hard, your words start there, simply. " +
-                "Never put a number in your words.\n\n" +
-                "Answer in exactly this shape. First line: READY or TALK.\n\n" +
-                // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
-                // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
-                // EVERYTHING THEY SAID GOES IN (v9.789, 2026-11-01, Aaron: "no one's gonna say what they want and then decide to leave
-                // certain things out ... even if they ramble on it needs to be everything ... these choices are no longer valid").
-                // MEASURED 16:21 (Patchwork, "my kids are obsessed with dinosaurs, my wife grows tomatoes ... I ride a motorcycle"): she
-                // split it into three, asked which one, and only two could be tapped - the motorcycle could not be picked at all. The
-                // choice is gone: she says ALL of it back and asks whether to imagine it or add something; anything they add is heard
-                // with everything before it.
-                // ══ THE END OF THE CONVERSATION IS WHAT IS DRAWN (v9.818, 2026-11-03, Aaron: "the conversation is a conversation ... it doesn't
-                // matter how many, how deep they get - the end of the conversation is all that matters, context to what they want") ═══ MEASURED
-                // 12:02 and 13:02: the idea drawn was every message strung together - "maybe lightning too actually lose the lightning" drew
-                // lightning on 5 of 8; "not yet. what would you even put on it?" and "close but no patchwork" reached the image model. The IDEA
-                // line is now what they want as the conversation ends, every change applied. Every name and number they gave is still checked
-                // against it below - one left out and their own words are drawn instead, as before.
-                // ══ HER WORDS FIRST, THE IDEA LAST (v9.819, 2026-11-03) ═══ MEASURED 13:59:50, 14:00:07, 14:00:26: three answers in a row came
-                // back on one line - "READY IDEA: A tattoo honoring my best friend Jess ... with mountains behind it. S..." - the idea and her words
-                // run together with no line between them, so her words were taken as part of the idea and the fixed line went instead. With the
-                // IDEA last, the label itself is where her words end, on one line or many.
-                "READY when you know what they want in the tattoo. Then your words: if they shared something personal or hard, start there, simply - " +
-                "then say back everything they want, and the style when they picked one, in your own voice, and ask if you should imagine it or if they " +
-                "want to add anything. Then, last, on its own line: IDEA: what they want in the tattoo now, where the conversation has ended up - " +
-                "everything they still want in it, however much there is, including who it is for and why, with every change they made applied: " +
-                "anything they took back is left out, and nothing is added that they did not ask for. Copy exactly any name, date, number or words " +
-                "they want written in the tattoo. No questions and no chat in the IDEA line. Your words name everything in it, and nothing that isn't in it.\n\n" +
-                "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.";
+              // (v9.820) one implementation: the words she is given live in heardSystem() - HEARD_TEST asks every model with the same words
+              const _hSys = heardSystem(_newStyle);
               // ══ HER SAID-BACK STREAMS (v9.787) ═══ Her answer starts with its label line (and the IDEA / A / B lines) - those never
               // reach the page; from her first line of words on, each piece goes out as she writes it. A TALK answer is not streamed
               // (that turn goes to her as a conversation). Once her words have started, the time limit no longer cuts her off.
@@ -68555,12 +68632,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               let _hDo = _hm ? _hm[1].toUpperCase() : null; if (_hDo === "DRAW") _hDo = "READY";
               let _hRest = _hm ? _hm[2] : "";
               let _hIdea = "";
-              { const _ls = [..._hRest.matchAll(/(^|\s)((?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:\s*)/g)];
-                if (_ls.length) { const _L = _ls[_ls.length - 1], _li = _L.index + _L[1].length, _after = _hRest.slice(_li + _L[2].length);
-                  if (!_hRest.slice(0, _li).trim()) {   // the label opens the answer (the old shape): its line is the idea, the rest her words
-                    const _nl = _after.indexOf("\n"); _hIdea = (_nl < 0 ? _after : _after.slice(0, _nl)).trim(); _hRest = _nl < 0 ? "" : _after.slice(_nl + 1);
-                  } else {                               // (v9.819) the label closes it: her words before it, the idea after it
-                    _hIdea = _after.replace(/\s+/g, " ").trim(); _hRest = _hRest.slice(0, _li); } } }
+              { const _sp = heardSplit(_hRest); _hIdea = _sp.idea; _hRest = _sp.words; }
               if (!_hIdea) { let _r0 = _hRest.replace(/^\s*IDEA\s*:\s*/i, ""); const _copies = [];   // v9.790: their words with no label
                 for (let _k = 0; _k < 6; _k++) { const _cp0 = _hCopy(_r0); if (!_cp0.copy) break;   // v9.799: every copy, one after another
                   _copies.push(_r0.slice(0, _cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019*]+/, "").trim());

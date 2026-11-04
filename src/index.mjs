@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.830.0-2026-11-03-style-kept-when-she-times-out";
+const BUILD = "aura-core-v9.831.0-2026-11-03-she-knows-the-41-styles";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61516,10 +61516,20 @@ function heardSplit(rest) {
 }
 // ══ THE WORDS HER HEARING STEP IS GIVEN (v9.820) ═══ One copy, used by the new-tattoo hearing step and by HEARD_TEST, so a model is
 // tested on exactly what it will be asked.
+// ══ THE 41 STYLES, AS PROVEN (v9.831, 2026-11-03, Aaron: "we went to every style, we ran a test to make sure the styles all came back right ...
+// we need to give her the information") ═══ The page's Styles section (STYLE41 in mt-shell.html) - the same 41 the draw-style test ran, names
+// exactly as there. MEASURED 15:56 ("ignorant style" -> "Ignorant", its look never sent) and 16:34 ("red ink tattoos" - no style at all): she was
+// guessing names freehand. Her hearing step is given these names; their own words are checked against them too. The list also lives on the
+// page - keep the two the same until the page reads it from here.
+const STYLE_41 = ["American Traditional", "Neo-Traditional", "Japanese", "Black & Grey Realism", "Color Realism", "Micro Tattoos", "Fine Line",
+  "Minimalist", "Blackwork", "Blackout", "Illustrative", "Chicano", "Geometric", "Dotwork", "Ornamental", "Watercolor", "New School", "Tribal",
+  "Sketch", "Etching", "Surrealism", "Biomechanical", "Dark Fantasy", "Medieval", "Renaissance", "Stained Glass", "Liquid Chrome", "Cybersigilism",
+  "Cyberpunk", "Patchwork", "Ignorant Doodle", "Sticker", "Embroidered", "Red Ink", "Negative Space", "Brutalism", "Mixed Media", "Y2K Nostalgia",
+  "1980s Airbrush", "3D / Optical", "Abstract"];
 // ══ OUR STYLE NAMES (v9.828/v9.830) ═══ One matcher: the same name, else the one name that starts with their words ("Ignorant" -> Ignorant
 // Doodle). When their words start more than one name, or none, null - their own words stand.
 function styleNameMatch(sv) {
-  const known = [...new Set([...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])];
+  const known = [...new Set([...STYLE_41, ...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])];
   const l = String(sv || "").toLowerCase().replace(/\s+/g, " ").trim(); if (!l) return null;
   const starts = known.filter((k) => { const kl = k.toLowerCase(); return kl.startsWith(l) && kl.length > l.length && /[^a-z0-9]/.test(kl[l.length]); });
   return known.find((k) => k.toLowerCase() === l) || (starts.length === 1 ? starts[0] : null);
@@ -61533,7 +61543,7 @@ function styleFromWords(text) {
     const w = m[1].split(/\s+/);
     for (let n = Math.min(3, w.length); n >= 1; n--) { const hit = styleNameMatch(w.slice(w.length - n).join(" ")); if (hit) return hit; }
   }
-  const known = [...new Set([...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])].filter((k) => /\s/.test(k));
+  const known = [...new Set([...STYLE_41, ...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])].filter((k) => /\s/.test(k));
   return known.find((k) => new RegExp("\\b" + k.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(t)) || null;
 }
 function heardSystem(style, canGo) {
@@ -61580,8 +61590,10 @@ function heardSystem(style, canGo) {
     // ══ A STYLE THEY NAME IS A STYLE THEY PICKED (v9.825, 2026-11-03, Aaron: yes) ═══ MEASURED 15:2x (Tiffany lamp test): stained glass was
     // asked for in their own words, nothing was tapped, and the sheet went out "each in a different tattoo style" - only card 1 was stained
     // glass. Her judgement says which style they asked for; it is then picked exactly as a tap would pick it.
-    "If they say in their own words which tattoo style they want it in" + (style ? " - a different one from the " + style + " style" : "") +
-    ", add a line just before the IDEA line: STYLE: that style's name. Only a style they asked for, never one you suggest.\n\n" +
+    // (v9.831) the 41 proven names, given to her - no more guessing a name
+    "If they ask for a tattoo style" + (style ? " - a different one from the " + style + " style" : "") + ", add a line just before the IDEA line: " +
+    "STYLE: the name from this list that is what they asked for, written exactly as it is in the list: " + STYLE_41.join(", ") + ". " +
+    "If what they asked for is not on the list, write it the way they said it. Only a style they asked for, never one you suggest.\n\n" +
     // ══ THEIR YES IS THEIR GO (v9.825, 2026-11-03, Aaron: go) ═══ MEASURED 15:11:43: she asked "Should I go ahead and picture it for you?",
     // they typed "ok yeah lets see it", and she said it all back and asked again - only the Imagine it button could draw. Her judgement, not
     // a list of yes-words: when their words only say yes to what she said back, it is drawn exactly as Imagine it is.
@@ -68792,8 +68804,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }, _newStyle ? { style: _newStyle } : {}))); } catch {}
               }
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);
-              // (v9.830) no answer of hers (late, an error, or no label) - the style is read from their own words, never lost with her answer
-              if (!_hm && !_newStyle && !_hStyleSaid) { const _fw = styleFromWords(_s); if (_fw) { _hStyleSaid = _fw; console.log("[TURN:STYLE] her answer did not come - the style read from their own words: " + _fw + (me ? " · who=" + me : "")); } }
+              // (v9.830) no answer of hers (late, an error, or no label) - the style is read from their own words, never lost with her answer.
+              // (v9.831) MEASURED 16:34:22: she answered "red ink tattoos, all red no black" in time but gave no STYLE line - so whenever she
+              // names no style and none is picked yet, their own words are read the same way.
+              if (!_newStyle && !_hStyleSaid && _hDo !== "TALK" && _hDo !== "GO") { const _fw = styleFromWords(_s); if (_fw) { _hStyleSaid = _fw; console.log("[TURN:STYLE] " + (_hm ? "she named no style" : "her answer did not come") + " - the style read from their own words: " + _fw + (me ? " · who=" + me : "")); } }
               if (_hStyleSaid && _hDo !== "TALK" && _hDo !== "GO") {
                 let _sv = _hStyleSaid.replace(/[*"\u201c\u201d.]/g, "").replace(/\s+style$/i, "").replace(/\s+/g, " ").trim();
                 if (/^[A-Za-z0-9 &'\/-]{2,40}$/.test(_sv) && !/^(none|n\/a|no|any|random|unsure|not sure)$/i.test(_sv)) {

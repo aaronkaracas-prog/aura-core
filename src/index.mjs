@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.839.0-2026-11-03-she-knows-what-each-style-looks-like";
+const BUILD = "aura-core-v9.840.0-2026-11-03-no-idea-line-no-imagine-it";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68828,6 +68828,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   const _all = _hN((_told ? _told.replace(/\n+/g, " ") + " " : "") + _s);
                   _hIdea = (_copies.length > 1 || _all.length > _hN(_copies[0]).length + 4) ? ((_told ? _told.replace(/\n+/g, ". ") + ". " : "") + _s).replace(/\.\s*\./g, ".").slice(0, 1200) : _copies[0];
                   try { console.log("[TURN:HEARD] her copy of their words came without the IDEA label (" + _copies.length + " cop" + (_copies.length > 1 ? "ies" : "y") + ") - kept as the idea, not shown as her words" + (me ? " · who=" + me : "")); } catch {} } }
+              // (v9.840, 2026-11-03, Aaron: go) MEASURED 19:01:27: READY came back with no IDEA line and her words ended in a stray "— ?" - the log
+              // could not show what she had actually sent. Whenever an answer that is not TALK has no IDEA line, her raw answer is logged as it came.
+              if (_hRaw && !String(_hIdea || "").trim() && _hDo !== "TALK") { try { console.log("[TURN:HEARD] no IDEA line in her answer - her raw answer: \"" + _hRaw.replace(/\s+/g, " ").slice(0, 900) + "\"" + (me ? " · who=" + me : "")); } catch {} }
               // her two directions: "A: button words = the whole idea"
               const _hPicks = {};
               for (const _k of ["A", "B"]) {
@@ -68928,9 +68931,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK, nothing drawn; " + (_hSay ? "her reply shown, waiting for their idea" : "no words of hers - the turn goes to her") + " · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "READY" && _hSay) {
                 _fixedWhy = "heard_ready"; _fixedSay = _hSay; _heardOut = { go: true };
+                // ══ NO IDEA LINE, NO IMAGINE IT BEFORE A SAY-BACK (v9.840, 2026-11-03, Aaron: go) ═══ MEASURED 19:01:27: "my grandpa was a fisherman
+                // his whole life and he passed last year. i want something for him" - READY with no IDEA line, her words "I'm sorry to hear about
+                // your grandfather— that's beautiful wanting to honor him. — ?", and Imagine it under them, waiting to draw their raw words that were
+                // never said back. The same rule as a time-out (v9.832) and an answer with no label (v9.838): until an idea has been said back,
+                // her words are shown with no button; their next words are heard again. After a say-back, nothing here changes.
+                if (!_heardIdea && !_canGo) { _heardOut = null; try { await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_said", ""); } catch {} }
                 // with no IDEA line of hers, their own words (already kept above) are what Imagine it draws
                 if (_heardIdea) { try { await talkStatePut(env, me, "go_idea", _heardIdea); await talkStatePut(env, me, "go_picks", ""); await talkStatePut(env, me, "go_said", "1"); } catch {} }
-                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + (_hq && _hq.streamed ? " (streamed" + (_hq.shape ? ", " + _hq.shape : "") + ")" : "") + " - READY, nothing drawn until Imagine it · the idea: " + (_heardIdea ? "\"" + _heardIdea + "\"" : "(none from her - their own words wait)") + " · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + (_hq && _hq.streamed ? " (streamed" + (_hq.shape ? ", " + _hq.shape : "") + ")" : "") + " - READY, nothing drawn until Imagine it · the idea: " + (_heardIdea ? "\"" + _heardIdea + "\"" : (_canGo ? "(none from her - the idea she said back before waits)" : "(none from her - nothing said back yet: no Imagine it, waiting for their next words)")) + " · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "CHOOSE" && _hSay) {
                 _fixedWhy = "heard_choose"; _fixedSay = _hSay; _heardOut = { picks: [{ k: "A", t: _hPicks.A.t }, { k: "B", t: _hPicks.B.t }] };
                 try { await talkStatePut(env, me, "go_picks", JSON.stringify(_hPicks)); await talkStatePut(env, me, "go_idea", ""); } catch {}

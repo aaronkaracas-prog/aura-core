@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.828.0-2026-11-03-yes-adds-nothing-style-names-matched-job-text-flushed";
+const BUILD = "aura-core-v9.829.0-2026-11-03-yes-only-after-her-real-say-back";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68440,7 +68440,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said"]); } catch {}
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
           // because "design_change" from the 9:50 test was still set.
@@ -68624,7 +68624,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // NEVER AN AUTOMATIC DRAW (v9.783): if she does not answer in time, a fixed line asks, and their own words are what Imagine it draws.
             _fixedWhy = "heard_ready"; _fixedSay = await _fx("heard_ready", "Love it - want me to imagine it?");
             _heardOut = { go: true };
-            try { await talkStatePut(env, me, "go_idea", ((_told ? _told.replace(/\n+/g, ". ") + ". " : "") + _s).slice(0, 1200)); await talkStatePut(env, me, "go_picks", ""); } catch {}
+            try { await talkStatePut(env, me, "go_idea", ((_told ? _told.replace(/\n+/g, ". ") + ". " : "") + _s).slice(0, 1200)); await talkStatePut(env, me, "go_picks", ""); await talkStatePut(env, me, "go_said", ""); } catch {}
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
             // ══ SHE HEARS THEM FIRST (v9.702, 2026-10-21, Aaron: "Aura needs to acknowledge them when they talk ... if someone
             // just said my mom died ... she needs to have a conversation, discuss what they're saying and then show them their
@@ -68644,7 +68644,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // words about the tattoo, copied) and her said-back with Imagine it; CHOOSE: two directions, a tap draws; TALK: as before.
               // (v9.820) one implementation: the words she is given live in heardSystem() - HEARD_TEST asks every model with the same words
               // (v9.825) GO is offered only once she has said an idea back, and she sees what she said
-              const _goPrev = String(_ds.go_idea || ""), _canGo = !!_goPrev;
+              // (v9.829) MEASURED 16:07:50 -> 16:08:04: her hearing gave no answer in 15s, the fixed line "Love it - want me to imagine it?" went, and
+              // "haha yes. can it say no thoughts..." was then GO - a yes to a line she never really said. GO is offered only once her own words
+              // said the idea back (go_said, set by READY with her words; the fixed line and their raw words never set it).
+              const _goPrev = String(_ds.go_idea || ""), _canGo = !!_goPrev && String(_ds.go_said || "") === "1";
               let _herLast = ""; if (_canGo) { try { const _tl0 = (typeof tnow !== "undefined" && Array.isArray(tnow)) ? tnow : [];
                 for (let i = _tl0.length - 1; i >= 0; i--) { const e = _tl0[i]; if (e && e.role === "aura" && String(e.said || "").trim()) { _herLast = String(e.said).trim().slice(0, 900); break; } } } catch {} }
               const _hSys = heardSystem(_newStyle, _canGo);
@@ -68806,19 +68809,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - GO: \"" + _s.slice(0, 120) + "\" is a yes - drawn as Imagine it, from " + (_heardIdea ? "the idea as it stands now" : "the idea she said back") + ": \"" + _gIdea.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "TALK" && _canGo && _hSay) {
                 // (v9.826) a question once the idea is said back: her answer here (no second call), the idea kept, Imagine it under it
-                try { await talkStatePut(env, me, "go_idea", _goPrev); } catch {}
+                try { await talkStatePut(env, me, "go_idea", _goPrev); await talkStatePut(env, me, "go_said", "1"); } catch {}
                 _fixedWhy = "heard_ready"; _fixedSay = _hSay; _heardOut = { go: true };
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK with the idea already said back - her answer shown, the idea kept for Imagine it · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "TALK") {
                 _fixedWhy = null; _fixedSay = null; _heardOut = null;
-                try { await talkStatePut(env, me, "go_idea", _canGo ? _goPrev : ""); } catch {}
+                try { await talkStatePut(env, me, "go_idea", _canGo ? _goPrev : ""); await talkStatePut(env, me, "go_said", _canGo ? "1" : ""); } catch {}
                 // v9.777: still waiting for their idea - the next thing they say is heard the same way, and drawn when there is one
                 try { await talkStatePut(env, me, "await_idea", "1"); } catch {} _heardTalk = true;
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK, nothing drawn; the turn goes to her · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "READY" && _hSay) {
                 _fixedWhy = "heard_ready"; _fixedSay = _hSay; _heardOut = { go: true };
                 // with no IDEA line of hers, their own words (already kept above) are what Imagine it draws
-                if (_heardIdea) { try { await talkStatePut(env, me, "go_idea", _heardIdea); await talkStatePut(env, me, "go_picks", ""); } catch {} }
+                if (_heardIdea) { try { await talkStatePut(env, me, "go_idea", _heardIdea); await talkStatePut(env, me, "go_picks", ""); await talkStatePut(env, me, "go_said", "1"); } catch {} }
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + (_hq && _hq.streamed ? " (streamed" + (_hq.shape ? ", " + _hq.shape : "") + ")" : "") + " - READY, nothing drawn until Imagine it · the idea: " + (_heardIdea ? "\"" + _heardIdea + "\"" : "(none from her - their own words wait)") + " · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "CHOOSE" && _hSay) {
                 _fixedWhy = "heard_choose"; _fixedSay = _hSay; _heardOut = { picks: [{ k: "A", t: _hPicks.A.t }, { k: "B", t: _hPicks.B.t }] };

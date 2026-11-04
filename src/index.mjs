@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.840.0-2026-11-03-no-idea-line-no-imagine-it";
+const BUILD = "aura-core-v9.841.0-2026-11-04-tattoo-names-small-words";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -72617,7 +72617,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               ...(_herName ? { name_final: _herName } : {}),
               // THE ONE THEY PICKED NAMES THE TATTOO (v9.626): its card's title, and its two lines and what it shows as the "i".
               ...((drew && drew.card && drew.card.title) ? { card_named: true,
-                  name_final: String(drew.card.title).toLowerCase().replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()),
+                  // (v9.841, 2026-11-04, Aaron: go) MEASURED 19:18: "BEACON OF HOPE" was named "Beacon Of Hope" - small words now stay small after the first
+                  // ("Beacon of Hope"); a capital still only follows a space or a hyphen, so "MOTHER'S LOVE" stays "Mother's Love". The page's cardTitle is the same.
+                  name_final: String(drew.card.title).toLowerCase().replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase())
+                    .replace(/(\s)(Of|And|The|In|On|At|A|An|To|For|With|By|Or)(?=\s)/g, (m, sp, w) => sp + w.toLowerCase()),
                   about: [Array.isArray(drew.card.lines) ? drew.card.lines.join(" ") : "", drew.card.about || ""].filter(Boolean).join(" \u2014 ") } : {}),
               ...((opts && opts.name && String(opts.name).length > 60) ? { about: String(opts.name).slice(0, 800) } : {}),
               ...(act === "artist" ? { locked: true } : {}),

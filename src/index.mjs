@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.831.0-2026-11-03-she-knows-the-41-styles";
+const BUILD = "aura-core-v9.832.0-2026-11-03-no-early-offer-one-unique-line";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68635,7 +68635,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // ══ THE DRAWING NEVER WAITS FOR HER LINE (v9.826, 2026-11-03, Aaron: go) ═══ MEASURED 15:29:03 -> 15:29:18.7: her line gave no answer
               // in 15s (the model's thinking came back as the answer) and the 8 only started after it. Her line is asked for and the drawing starts
               // at once; if her line comes within `config:talk:drawsay_ms` (default 3000) it is shown, otherwise the fixed line is.
-              { const _fixedGo = _fixedSay, _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again.");
+              // (v9.832) MEASURED 01:01:49 -> 01:01:50: the page's waiting line ("...every one is 100% unique and 100% yours") and then her line ending
+              // "Every one is 100% unique and 100% yours - never to be made again" - the same promise twice in a second. The page's line says it.
+              { const _fixedGo = _fixedSay, _tail = "";
                 let _dsMs = 3000; try { const _v = parseInt(String((await env.AURA_KV.get("config:talk:drawsay_ms")) || ""), 10); if (Number.isFinite(_v) && _v >= 0) _dsMs = _v; } catch {}
                 _drawSayP = Promise.race([drawStartSay(env, _heardIdea, _newStyle, talkModel), new Promise((r) => setTimeout(() => r(null), _dsMs))])
                   .then((x) => { const _out = x ? x + (_tail ? " " + _tail : "") : _fixedGo; console.log("[TURN:DRAW-SAY] shown while drawing: " + (x ? "her words" : "the fixed line (her words not in " + _dsMs + "ms)") + " - \"" + _out.slice(0, 200) + "\""); return _out; })
@@ -68880,7 +68882,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 // WHY IT WAS NOT USED IS LOGGED (v9.703): MEASURED 16:57 - "no usable answer" in 4.0s and nothing said what came back.
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - " + (_hq && _hq.late ? "no answer in " + _hMs + "ms" :
                   "not usable: " + (_hq && _hq.ok === false ? "error " + String(_hq.error || "?").slice(0, 160) : "came back \"" + _hRaw.slice(0, 200) + "\"") +
-                  " · model " + String((_hq && _hq.model) || _hModel || talkModel || "default")) + " - the fixed line asks, their own words wait for Imagine it" + (me ? " · who=" + me : ""));
+                  " · model " + String((_hq && _hq.model) || _hModel || talkModel || "default")) + (_canGo ? " - the fixed line asks, their own words wait for Imagine it" : " - nothing said back yet: she asks for more, no Imagine it") + (me ? " · who=" + me : ""));
+                // ══ NO OFFER TO DRAW BEFORE SHE HAS SAID IT BACK (v9.832, 2026-11-03, Aaron: go) ═══ MEASURED 01:00:39: her hearing gave no answer
+                // in 15s on "i saw this tattoo on a girl at the gym and it was all red ... not sure what that style is called. i really like dragons
+                // and roses" and "Love it - want me to imagine it?" went up with the Imagine it button - an offer to draw before anything was said
+                // back. Until her own words have said the idea back, a time-out asks them to go on instead (config:say:heard_more), with no button.
+                if (!_canGo) { _fixedSay = await _fx("heard_more", "Tell me a little more - what are you picturing?"); _heardOut = null; }
               }
             } catch {}
           // FINE-TUNE IS ONE LINE, AT ONCE (v9.812, 2026-11-03, Aaron: "Instant line"). MEASURED 08:14:47-08:15:07: Fine-Tune on a set of

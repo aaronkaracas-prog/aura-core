@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.838.0-2026-11-03-no-imagine-it-before-a-say-back";
+const BUILD = "aura-core-v9.839.0-2026-11-03-she-knows-what-each-style-looks-like";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61526,6 +61526,54 @@ const STYLE_41 = ["American Traditional", "Neo-Traditional", "Japanese", "Black 
   "Sketch", "Etching", "Surrealism", "Biomechanical", "Dark Fantasy", "Medieval", "Renaissance", "Stained Glass", "Liquid Chrome", "Cybersigilism",
   "Cyberpunk", "Patchwork", "Ignorant Doodle", "Sticker", "Embroidered", "Red Ink", "Negative Space", "Brutalism", "Mixed Media", "Y2K Nostalgia",
   "1980s Airbrush", "3D / Optical", "Abstract"];
+// ══ WHAT EACH OF THE 41 LOOKS LIKE (v9.839, 2026-11-03, Aaron: go) ═══ MEASURED 18:20:21: "tattoos ... that look like theyre actually stitched
+// on ... like a patch on a jacket" was named "Stitched Patch" - not on the list - so the proven Embroidered name never went to the image model. She
+// had the names only. These are the page's own lines (STYLE41 in mt-shell.html, the Styles section customers read), so a style they describe is
+// matched to the name it is. American Traditional's "Built to stay clear for decades." is left out - how a tattoo ages is not hers (v9.834).
+// The lines also live on the page - keep the two the same.
+const STYLE_41_SAYS = {
+  "American Traditional": "The classic tattoo look – thick black outlines, bold simple shapes and a few strong colors.",
+  "Neo-Traditional": "Traditional's bold outlines with richer color, more depth and decorative detail.",
+  "Japanese": "Big flowing designs from Japanese tattoo tradition – koi, dragons, waves and flowers moving together as one piece.",
+  "Black & Grey Realism": "Lifelike images shaded only in black and grey, like a photograph in ink.",
+  "Color Realism": "Lifelike images in full color – fur, skin and light that look real.",
+  "Micro Tattoos": "Tiny, delicate designs with very fine lines. Small, subtle and easy to place anywhere.",
+  "Fine Line": "Thin, precise black lines and soft shading. Light, elegant and airy.",
+  "Minimalist": "As few lines as possible. Simple shapes that say a lot with very little.",
+  "Blackwork": "Bold designs in solid black ink – strong shapes and high contrast, no color.",
+  "Blackout": "Large areas filled completely black. Bold, modern, and great for covering old tattoos.",
+  "Illustrative": "Looks hand-drawn, like a page from an illustrated book – expressive lines and selective shading.",
+  "Chicano": "Smooth black-and-grey shading and fine lines, rooted in Chicano culture – portraits, faith and family.",
+  "Geometric": "Built from precise shapes – triangles, circles and lines in perfect symmetry.",
+  "Dotwork": "Shading made entirely from tiny dots, giving a soft, textured look.",
+  "Ornamental": "Decorative patterns like jewelry or lace – mandalas, filigree and symmetry.",
+  "Watercolor": "Soft splashes and washes of color that look painted with a brush.",
+  "New School": "Cartoon-style with exaggerated shapes, thick outlines and bright, loud color.",
+  "Tribal": "Bold flowing black shapes with sharp points, where the empty skin between them is part of the design.",
+  "Sketch": "Looks like an artist's pencil drawing, with the rough lines left in on purpose.",
+  "Etching": "Fine parallel lines and cross-hatching, like an old engraving or printed illustration.",
+  "Surrealism": "Dreamlike images where real things blend in impossible ways.",
+  "Biomechanical": "Machinery and living forms fused together, with deep 3D detail.",
+  "Dark Fantasy": "Gothic and fantastical – demons, armor, shadows and dark atmosphere.",
+  "Medieval": "Knights, heraldry and old manuscript art.",
+  "Renaissance": "Classical art and sculpture in ink – realistic faces, soft shading, timeless.",
+  "Stained Glass": "Bright jewel colors divided by bold black lines, like a church window.",
+  "Liquid Chrome": "Shapes that look like polished, flowing silver metal.",
+  "Cybersigilism": "Sharp, thin, futuristic strokes that look like digital symbols.",
+  "Cyberpunk": "Futuristic tech and neon color – androids, circuits and city glow.",
+  "Patchwork": "Lots of small separate tattoos collected together, like a sticker book.",
+  "Ignorant Doodle": "Deliberately simple and goofy, like a doodle in the margin of a notebook.",
+  "Sticker": "Cute, compact designs with a thick outer outline, like a sticker.",
+  "Embroidered": "Looks stitched in thread, like a patch on a jacket.",
+  "Red Ink": "Designs done entirely in red ink – striking, and softer than black.",
+  "Negative Space": "The empty skin becomes part of the picture, shaped by the ink around it.",
+  "Brutalism": "Raw, heavy black shapes and harsh, bold composition.",
+  "Mixed Media": "Several styles combined in one piece – realism, linework, color and splashes.",
+  "Y2K Nostalgia": "Late-90s and early-2000s pop – iridescent colors, sparkles and shine.",
+  "1980s Airbrush": "Retro neon gradients and glowing sunsets, like an 80s airbrush painting.",
+  "3D / Optical": "Optical illusions that look three-dimensional on flat skin.",
+  "Abstract": "Not a picture of anything – shapes, strokes and splashes chosen for feeling and movement."
+};
 // ══ OUR STYLE NAMES (v9.828/v9.830) ═══ One matcher: the same name, else the one name that starts with their words ("Ignorant" -> Ignorant
 // Doodle). When their words start more than one name, or none, null - their own words stand.
 function styleNameMatch(sv) {
@@ -61606,7 +61654,7 @@ function heardSystem(style, canGo) {
     // (v9.835, Aaron: go) MEASURED 17:29:56: "these all black tattoos of animals in the woods" - described, not named - and no style was picked,
     // so the 8 came back in eight different looks. A style they describe is a style they asked for.
     "If they ask for a tattoo style, or describe one (\"all black\", \"all red\", \"like a sticker\")" + (style ? " - a different one from the " + style + " style" : "") + ", add a line at the end of your words, before any IDEA line: " +
-    "STYLE: the name from this list that is what they asked for, written exactly as it is in the list: " + STYLE_41.join(", ") + ". " +
+    "STYLE: the name from this list that is what they asked for or described, written exactly as it is in the list (each name is followed by what that style looks like):\n" + STYLE_41.map((n) => "- " + n + (STYLE_41_SAYS[n] ? " - " + STYLE_41_SAYS[n] : "")).join("\n") + "\n" +
     "If what they asked for is not on the list, write it the way they said it. Only a style they asked for, never one you suggest.\n\n" +
     // ══ THEIR YES IS THEIR GO (v9.825, 2026-11-03, Aaron: go) ═══ MEASURED 15:11:43: she asked "Should I go ahead and picture it for you?",
     // they typed "ok yeah lets see it", and she said it all back and asked again - only the Imagine it button could draw. Her judgement, not
@@ -68833,7 +68881,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // (v9.837) a style named before anything was said back is kept on a TALK too - "i kinda want one of those" (Embroidered) is the style
               // they want even with nothing yet to imagine. A question after the say-back still never changes the style.
               if (_hStyleSaid && !(_hDo === "TALK" && _canGo) && _hDo !== "GO") {
-                let _sv = _hStyleSaid.replace(/[*"\u201c\u201d.]/g, "").replace(/\s+style$/i, "").replace(/\s+/g, " ").trim();
+                // (v9.839) the list shows "Name - what it looks like"; if she copies the description after the name, only the name is kept
+                let _sv = _hStyleSaid.replace(/\s+[-\u2013\u2014]\s+.*$/, "").replace(/[*"\u201c\u201d.]/g, "").replace(/\s+style$/i, "").replace(/\s+/g, " ").trim();
                 if (/^[A-Za-z0-9 &'\/-]{2,40}$/.test(_sv) && !/^(none|n\/a|no|any|random|unsure|not sure)$/i.test(_sv)) {
                   // (v9.828) MEASURED 15:56:14: she named it "Ignorant" - the look for "Ignorant Doodle" never went with it and the 8 came back
                   // as clean flash. Their words are matched to the style names we know (the looks, the Trending styles, the cover-up cards): the

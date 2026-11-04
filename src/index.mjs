@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.837.0-2026-11-03-create-page-is-a-new-start-style-alone-asks";
+const BUILD = "aura-core-v9.838.0-2026-11-03-no-imagine-it-before-a-say-back";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68899,9 +68899,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // (v9.814) never the model's own thinking or markers, whatever else let them through
                   if (/^\s*analysis\b/.test(_w) || /<\|[a-z_]+\|>/i.test(_w) || /\bassistantfinal\b/i.test(_w)) { console.log("[TURN:HEARD] her answer still held the model's thinking - not shown, the fixed line goes"); return false; }
                   _fixedSay = _w;
-                  console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - her words came without READY/TALK - shown as they are, nothing drawn until Imagine it · her words: \"" + _w.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+                  // ══ NO IMAGINE IT BEFORE A SAY-BACK, WHATEVER SHE SENT (v9.838, 2026-11-03, Aaron: go) ═══ MEASURED 18:14:54: "What kind of design are
+                  // you thinking about for your stitched-patch tattoo?" came with no READY/TALK and went up with the Imagine it button - a tap would
+                  // have drawn a patch with no subject. Words with no label are not a say-back: as with a time-out (v9.832), until her words have said
+                  // the idea back there is no button and nothing waiting to be drawn; once she has, the idea she said back stays and the button with it.
+                  if (!_canGo) _heardOut = null;
+                  console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - her words came without READY/TALK - shown as they are, " + (_canGo ? "the idea she said back kept for Imagine it" : "nothing said back yet: no Imagine it, waiting for their idea") + " · her words: \"" + _w.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
                   return true; })()) {
-                // (handled above)
+                // (handled above; v9.838) what waits for Imagine it: nothing before a say-back, the idea she said back after one
+                try { await talkStatePut(env, me, "go_idea", _canGo ? _goPrev : ""); await talkStatePut(env, me, "go_said", _canGo ? "1" : ""); } catch {}
               } else {
                 // WHY IT WAS NOT USED IS LOGGED (v9.703): MEASURED 16:57 - "no usable answer" in 4.0s and nothing said what came back.
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - " + (_hq && _hq.late ? "no answer in " + _hMs + "ms" :

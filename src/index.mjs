@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.832.0-2026-11-03-no-early-offer-one-unique-line";
+const BUILD = "aura-core-v9.833.0-2026-11-03-ready-whenever-something-to-imagine";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61570,7 +61570,10 @@ function heardSystem(style, canGo) {
                 // back on one line - "READY IDEA: A tattoo honoring my best friend Jess ... with mountains behind it. S..." - the idea and her words
                 // run together with no line between them, so her words were taken as part of the idea and the fixed line went instead. With the
                 // IDEA last, the label itself is where her words end, on one line or many.
-                "READY when you know what they want in the tattoo. Then your words: if they shared something personal or hard, start there, simply - " +
+                // (v9.833, 2026-11-03, Aaron: go) MEASURED 17:09:44: "my uncle has one of those old japanese tattoos with a koi fish and waves on his
+                // arm ... i want something like that" came back TALK with no words in 0.5s - "know what they want" was read as "everything decided" -
+                // and went to her full chat (13.4s) with the old offer buttons. The same at 15:27:32 (birth flowers).
+                "READY whenever there is something to imagine from - a subject, a person, a memory, a style - even if not everything is decided yet. Then your words: if they shared something personal or hard, start there, simply - " +
                 // ══ SAID BACK ONCE, THEN ONLY WHAT IS NEW (v9.826, 2026-11-03, Aaron: "regardless if there's repetition it needs to not be there") ═══
                 // MEASURED 15:28:13: "its going on my inner forearm. could there be a tiny heart where the stems cross" got back the whole tattoo
                 // again - mom and son, larkspur for July, daffodil for March, fine line, delicate, small - before the two new things; turn 5 a third
@@ -61608,7 +61611,7 @@ function heardSystem(style, canGo) {
                 // the turn went to her chat (9.5s), which also cleared the idea she had said back - so the "yes please" after it had nothing to say yes to.
                 (canGo ? "TALK when they ask you something or are still deciding, without changing what they want - then your words answer them, briefly. " +
                   "If you offer them something, ask whether to imagine it that way."
-                  : "TALK only when there is nothing yet to imagine from - then your words are your reply to them, with no mention of designs.");
+                  : "TALK only when there is truly nothing to imagine from yet - a hello, or a question with no idea in it - then your words are your reply to them, with no mention of designs.");
 }
 async function drawStartSay(env, idea, style, talkModel) {
   try {

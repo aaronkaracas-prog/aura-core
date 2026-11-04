@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.836.0-2026-11-03-details-know-the-41-and-the-changes";
+const BUILD = "aura-core-v9.837.0-2026-11-03-create-page-is-a-new-start-style-alone-asks";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61582,7 +61582,7 @@ function heardSystem(style, canGo) {
                 // (v9.833, 2026-11-03, Aaron: go) MEASURED 17:09:44: "my uncle has one of those old japanese tattoos with a koi fish and waves on his
                 // arm ... i want something like that" came back TALK with no words in 0.5s - "know what they want" was read as "everything decided" -
                 // and went to her full chat (13.4s) with the old offer buttons. The same at 15:27:32 (birth flowers).
-                "READY whenever there is something to imagine from - a subject, a person, a memory, a style - even if not everything is decided yet. Then your words: if they shared something personal or hard, start there, simply - " +
+                "READY whenever there is something to imagine from - a subject, a person, a memory, a feeling - even if not everything is decided yet. A style on its own is not enough: they need some idea of what they want. Then your words: if they shared something personal or hard, start there, simply - " +
                 // ══ SAID BACK ONCE, THEN ONLY WHAT IS NEW (v9.826, 2026-11-03, Aaron: "regardless if there's repetition it needs to not be there") ═══
                 // MEASURED 15:28:13: "its going on my inner forearm. could there be a tiny heart where the stems cross" got back the whole tattoo
                 // again - mom and son, larkspur for July, daffodil for March, fine line, delicate, small - before the two new things; turn 5 a third
@@ -61605,7 +61605,7 @@ function heardSystem(style, canGo) {
     // (v9.831) the 41 proven names, given to her - no more guessing a name
     // (v9.835, Aaron: go) MEASURED 17:29:56: "these all black tattoos of animals in the woods" - described, not named - and no style was picked,
     // so the 8 came back in eight different looks. A style they describe is a style they asked for.
-    "If they ask for a tattoo style, or describe one (\"all black\", \"all red\", \"like a sticker\")" + (style ? " - a different one from the " + style + " style" : "") + ", add a line just before the IDEA line: " +
+    "If they ask for a tattoo style, or describe one (\"all black\", \"all red\", \"like a sticker\")" + (style ? " - a different one from the " + style + " style" : "") + ", add a line at the end of your words, before any IDEA line: " +
     "STYLE: the name from this list that is what they asked for, written exactly as it is in the list: " + STYLE_41.join(", ") + ". " +
     "If what they asked for is not on the list, write it the way they said it. Only a style they asked for, never one you suggest.\n\n" +
     // ══ THEIR YES IS THEIR GO (v9.825, 2026-11-03, Aaron: go) ═══ MEASURED 15:11:43: she asked "Should I go ahead and picture it for you?",
@@ -61622,7 +61622,7 @@ function heardSystem(style, canGo) {
                 // the turn went to her chat (9.5s), which also cleared the idea she had said back - so the "yes please" after it had nothing to say yes to.
                 (canGo ? "TALK when they ask you something or are still deciding, without changing what they want - then your words answer them, briefly. " +
                   "If you offer them something, ask whether to imagine it that way."
-                  : "TALK only when there is truly nothing to imagine from yet - a hello, or a question with no idea in it - then your words are your reply to them, with no mention of designs.");
+                  : "TALK when there is nothing to imagine from yet - a hello, a question with no idea in it, or only a style - then your words are your reply to them: ask what they would like the tattoo to be of, with no offer to imagine anything yet.");
 }
 async function drawStartSay(env, idea, style, talkModel) {
   try {
@@ -68366,7 +68366,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // Blackout tattoo from the 17:30 test was still marked in progress, style and all; a fresh start cleared the conversation but
           // not the tattoo's own markers. Now it starts a new tattoo with no style, as the Create tap does. Only on the front page, only
           // with nothing of theirs on screen (fresh), and only with nothing riding on it that could draw or pick.
-          _styleStart = _styleStart || (!_opener && !!(opts && opts.fresh) && (!opts.page || opts.page === "home") && !refUrl && !_bodyPhoto &&
+          // (v9.837, 2026-11-03, Aaron: go) MEASURED 18:02:27: a real tap on the Create card only opens the Create page (since 2026-10-23) - no
+          // "I want to create a new tattoo" reaches core - so the first words typed there were read as the drawn tiger's tattoo still going, ran
+          // as a job, and "look like" drew 8 at once with nothing said back. The Create page is a new start too.
+          _styleStart = _styleStart || (!_opener && !!(opts && opts.fresh) && (!opts.page || opts.page === "home" || opts.page === "job0") && !refUrl && !_bodyPhoto &&
             !(opts.pick || opts.use || opts.own || opts.name || opts.tile || opts.inspire || opts.inspire_go || opts.choose_go || opts.heard_go ||
               opts.heard_pick || opts.placed || opts.recolor || opts.touch || opts.change_now || opts.new_now || opts.pick_sheet || opts.change_of ||
               (Array.isArray(opts.all_ideas) && opts.all_ideas.length)));
@@ -68497,7 +68500,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             const _isNew = /^i want to create a new tattoo\.?$/i.test(_s) || _styleStart;
             if (_styleStart) { try { console.log(/^let'?s create my own in the .+ style\.?$/i.test(_s)
               ? "[TURN:NEWSTYLE] a new tattoo started from a style in one turn - the new-tattoo start and the style together" + (me ? " · who=" + me : "")
-              : "[TURN:NEWSTART] typed on the front page with nothing on screen - a new tattoo, no style; the last tattoo's markers cleared" + (me ? " · who=" + me : "")); } catch {} }
+              : "[TURN:NEWSTART] typed on the front page or the Create page with nothing on screen - a new tattoo, no style; the last tattoo's markers cleared" + (me ? " · who=" + me : "")); } catch {} }
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
                   await talkStatePut(env, me, "design_change_parent", "");
                   // THE NEW-TATTOO FLOW MARKER (v9.604): set only by the Create New Tattoo opener, cleared by every other start.
@@ -68826,8 +68829,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // (v9.830) no answer of hers (late, an error, or no label) - the style is read from their own words, never lost with her answer.
               // (v9.831) MEASURED 16:34:22: she answered "red ink tattoos, all red no black" in time but gave no STYLE line - so whenever she
               // names no style and none is picked yet, their own words are read the same way.
-              if (!_newStyle && !_hStyleSaid && _hDo !== "TALK" && _hDo !== "GO") { const _fw = styleFromWords(_s); if (_fw) { _hStyleSaid = _fw; console.log("[TURN:STYLE] " + (_hm ? "she named no style" : "her answer did not come") + " - the style read from their own words: " + _fw + (me ? " · who=" + me : "")); } }
-              if (_hStyleSaid && _hDo !== "TALK" && _hDo !== "GO") {
+              if (!_newStyle && !_hStyleSaid && !(_hDo === "TALK" && _canGo) && _hDo !== "GO") { const _fw = styleFromWords(_s); if (_fw) { _hStyleSaid = _fw; console.log("[TURN:STYLE] " + (_hm ? "she named no style" : "her answer did not come") + " - the style read from their own words: " + _fw + (me ? " · who=" + me : "")); } }
+              // (v9.837) a style named before anything was said back is kept on a TALK too - "i kinda want one of those" (Embroidered) is the style
+              // they want even with nothing yet to imagine. A question after the say-back still never changes the style.
+              if (_hStyleSaid && !(_hDo === "TALK" && _canGo) && _hDo !== "GO") {
                 let _sv = _hStyleSaid.replace(/[*"\u201c\u201d.]/g, "").replace(/\s+style$/i, "").replace(/\s+/g, " ").trim();
                 if (/^[A-Za-z0-9 &'\/-]{2,40}$/.test(_sv) && !/^(none|n\/a|no|any|random|unsure|not sure)$/i.test(_sv)) {
                   // (v9.828) MEASURED 15:56:14: she named it "Ignorant" - the look for "Ignorant Doodle" never went with it and the 8 came back
@@ -68865,11 +68870,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 _fixedWhy = "heard_ready"; _fixedSay = _hSay; _heardOut = { go: true };
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK with the idea already said back - her answer shown, the idea kept for Imagine it · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "TALK") {
-                _fixedWhy = null; _fixedSay = null; _heardOut = null;
+                // (v9.837) her own short reply is what they see - asking what it should be of - not a second call to her full chat (13s, with
+                // the old offer buttons, MEASURED 17:09:44). With no words of hers, the turn still goes to her as before.
+                _fixedWhy = _hSay ? "heard_talk" : null; _fixedSay = _hSay || null; _heardOut = null;
                 try { await talkStatePut(env, me, "go_idea", _canGo ? _goPrev : ""); await talkStatePut(env, me, "go_said", _canGo ? "1" : ""); } catch {}
                 // v9.777: still waiting for their idea - the next thing they say is heard the same way, and drawn when there is one
                 try { await talkStatePut(env, me, "await_idea", "1"); } catch {} _heardTalk = true;
-                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK, nothing drawn; the turn goes to her · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK, nothing drawn; " + (_hSay ? "her reply shown, waiting for their idea" : "no words of hers - the turn goes to her") + " · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "READY" && _hSay) {
                 _fixedWhy = "heard_ready"; _fixedSay = _hSay; _heardOut = { go: true };
                 // with no IDEA line of hers, their own words (already kept above) are what Imagine it draws
@@ -74103,7 +74110,9 @@ export class PublicEntry extends WorkerEntrypoint {
         // The first message typed on the front page with nothing on screen cannot draw unless their words ask to see it - so only then does
         // it run directly, and a direct turn never draws (direct_no_draw below: if her conversation reaches for a drawing it is held, and
         // she shows Imagine it). Words that ask to see it ("draw it", "show me") still run as a job.
-        if (!_direct && !!me && !!_tOpts.tid && _tOpts.fresh && !TALK_GO_WORDS.test(String(_said || "")) &&
+        // (v9.837) whatever words they use, as v9.827 did for the turns after: MEASURED 18:02:27 - "tattoos ... that look like theyre actually
+        // stitched on" matched the draw words ("look like") and ran as a job that drew. The first words are heard; nothing draws until Imagine it.
+        if (!_direct && !!me && !!_tOpts.tid && _tOpts.fresh &&
             !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
             !_tOpts.change_now && !_tOpts.new_now && !_tOpts.pick_sheet && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of &&
             !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire && !_tOpts.inspire_go) {

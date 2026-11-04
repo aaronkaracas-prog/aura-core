@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.835.0-2026-11-03-described-style-is-named";
+const BUILD = "aura-core-v9.836.0-2026-11-03-details-know-the-41-and-the-changes";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67668,9 +67668,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         // leg), a new subject takes everything describing the old one with it, and anything YOU
         // suggested that they did not take up is not a fact.
         '  "brief": {\n' +
-        '    "subject": "what the tattoo is OF, in their words",\n' +
+        // (v9.836, Aaron: go) MEASURED 17:32 (prj_98f0fe06ccf54307): the artist file read style "black_and_grey" (the colour value, put in the
+        // style box) and a subject with no moon (the change). This form is given the 41 names and the tattoo as it stands now.
+        '    "subject": "what the tattoo is OF as it stands now, in their words, with every change they made applied",\n' +
         '    "job": "new | cover | add | rework | from",\n' +
-        '    "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
+        '    "style": "one of these names exactly as written: ' + STYLE_41.join(", ") + ' - or the style the way they said it, or empty. Never a colour word.",\n' +
         '    "colour": "full_colour | black_and_grey | muted",\n' +
         '    "composition": "what the picture is OF - head portrait, coiled, flying, a bouquet",\n' +
         '    "character": "what it should feel like - fierce, delicate, menacing, joyful",\n' +
@@ -69198,9 +69200,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             "Read the conversation and return the FACTS about the tattoo being designed, as JSON.\n\n" +
             "Return ONLY the JSON object. No preamble, no markdown fence.\n\n" +
             "{\n" +
-            '  "subject": "what the tattoo is OF, in their words",\n' +
+            // (v9.836) the same two lines as the form above - the 41 names, and the tattoo as it stands now
+            '  "subject": "what the tattoo is OF as it stands now, in their words, with every change they made applied",\n' +
             '  "job": "new | cover | add | rework | from",\n' +
-            '  "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
+            '  "style": "one of these names exactly as written: ' + STYLE_41.join(", ") + ' - or the style the way they said it, or empty. Never a colour word.",\n' +
             '  "colour": "full_colour | black_and_grey | muted",\n' +
             '  "composition": "what the picture is OF - head portrait, coiled, flying, a bouquet",\n' +
             '  "character": "what it should feel like - fierce, delicate, menacing, joyful",\n' +

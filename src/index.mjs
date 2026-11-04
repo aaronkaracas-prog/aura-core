@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.829.0-2026-11-03-yes-only-after-her-real-say-back";
+const BUILD = "aura-core-v9.830.0-2026-11-03-style-kept-when-she-times-out";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61516,6 +61516,26 @@ function heardSplit(rest) {
 }
 // ══ THE WORDS HER HEARING STEP IS GIVEN (v9.820) ═══ One copy, used by the new-tattoo hearing step and by HEARD_TEST, so a model is
 // tested on exactly what it will be asked.
+// ══ OUR STYLE NAMES (v9.828/v9.830) ═══ One matcher: the same name, else the one name that starts with their words ("Ignorant" -> Ignorant
+// Doodle). When their words start more than one name, or none, null - their own words stand.
+function styleNameMatch(sv) {
+  const known = [...new Set([...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])];
+  const l = String(sv || "").toLowerCase().replace(/\s+/g, " ").trim(); if (!l) return null;
+  const starts = known.filter((k) => { const kl = k.toLowerCase(); return kl.startsWith(l) && kl.length > l.length && /[^a-z0-9]/.test(kl[l.length]); });
+  return known.find((k) => k.toLowerCase() === l) || (starts.length === 1 ? starts[0] : null);
+}
+// ══ A STYLE IN THEIR OWN WORDS, WHEN SHE GAVE NO ANSWER (v9.830, 2026-11-03, Aaron: go) ═══ MEASURED 16:07:50: her hearing gave no answer in
+// 15s on "show me something like those ignorant style tattoos" - the style was lost with her answer and all 8 came back each in a different
+// style. Read from their words only where they name it as a style: "<name> style" / "<name> tattoo(s)", or one of our names of two or more words.
+function styleFromWords(text) {
+  const t = String(text || "").toLowerCase();
+  for (const m of t.matchAll(/([a-z0-9&'\-]+(?:\s+[a-z0-9&'\-]+){0,2})\s+(?:style|tattoos?)\b/g)) {
+    const w = m[1].split(/\s+/);
+    for (let n = Math.min(3, w.length); n >= 1; n--) { const hit = styleNameMatch(w.slice(w.length - n).join(" ")); if (hit) return hit; }
+  }
+  const known = [...new Set([...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])].filter((k) => /\s/.test(k));
+  return known.find((k) => new RegExp("\\b" + k.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(t)) || null;
+}
 function heardSystem(style, canGo) {
   return "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
                 (style ? " (in the " + style + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
@@ -68772,6 +68792,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }, _newStyle ? { style: _newStyle } : {}))); } catch {}
               }
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);
+              // (v9.830) no answer of hers (late, an error, or no label) - the style is read from their own words, never lost with her answer
+              if (!_hm && !_newStyle && !_hStyleSaid) { const _fw = styleFromWords(_s); if (_fw) { _hStyleSaid = _fw; console.log("[TURN:STYLE] her answer did not come - the style read from their own words: " + _fw + (me ? " · who=" + me : "")); } }
               if (_hStyleSaid && _hDo !== "TALK" && _hDo !== "GO") {
                 let _sv = _hStyleSaid.replace(/[*"\u201c\u201d.]/g, "").replace(/\s+style$/i, "").replace(/\s+/g, " ").trim();
                 if (/^[A-Za-z0-9 &'\/-]{2,40}$/.test(_sv) && !/^(none|n\/a|no|any|random|unsure|not sure)$/i.test(_sv)) {
@@ -68779,10 +68801,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // as clean flash. Their words are matched to the style names we know (the looks, the Trending styles, the cover-up cards): the
                   // same name, else the one name that starts with their words ("Ignorant" -> Ignorant Doodle, "Y2K" -> Y2K Nostalgia). When their
                   // words start more than one name, or none, their own name stands - "traditional" never becomes Neo-Traditional.
-                  const _known = [...new Set([...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])];
-                  const _svl = _sv.toLowerCase();
-                  const _starts = _known.filter((k) => { const kl = k.toLowerCase(); return kl.startsWith(_svl) && kl.length > _svl.length && /[^a-z0-9]/.test(kl[_svl.length]); });
-                  const _lk = _known.find((k) => k.toLowerCase() === _svl) || (_starts.length === 1 ? _starts[0] : null);
+                  const _lk = styleNameMatch(_sv);
                   if (_lk && _lk.toLowerCase() !== _sv.toLowerCase()) console.log("[TURN:STYLE] \"" + _sv + "\" is our " + _lk + " style" + (me ? " · who=" + me : ""));
                   _sv = _lk || (_sv === _sv.toLowerCase() ? _titleWords(_sv) : _sv);
                   if (_sv.toLowerCase() !== String(_newStyle || "").toLowerCase()) {

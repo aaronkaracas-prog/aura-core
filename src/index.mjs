@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.845.0-2026-11-04-lettering-pick-reaches-core-cut-off-idea";
+const BUILD = "aura-core-v9.846.0-2026-11-04-change-keeps-the-rest-sheet-keeps-chosen";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69107,7 +69107,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   const _gi = _heardIdea || _goPrev;
                   if (_gi) { try { await talkStatePut(env, me, "go_idea", _gi); await talkStatePut(env, me, "go_said", "1"); } catch {} }
                   if (_hDo === "GO" || !String(_fixedSay || "").trim()) { _fixedSay = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look."); _heardStreamed = false; }
-                  _heardOut = { letter: { items: (_hLetter || []).slice(0, 4), styles: LETTER_STYLES.map((x) => x.id) } };
+                  // (v9.846) lettering already styled comes up with its style chosen - only the new pieces need a tap
+                  const _chosen = (_hLetter || []).slice(0, 4).map((t) => { const k = letterKey(t); const o = _lOld.items.find((x) => x && x.font && (letterKey(x.text) === k || letterKey(x.from) === k));
+                    return o ? { said: t, text: String(o.text), font: String(o.font) } : null; }).filter(Boolean);
+                  _heardOut = { letter: { items: (_hLetter || []).slice(0, 4), chosen: _chosen, styles: LETTER_STYLES.map((x) => x.id) } };
                   console.log("[TURN:LETTER] lettering in the idea with no style yet: " + _lNew.map((t) => '"' + t + '"').join(", ") + " - the lettering sheet goes up instead of " + (_hDo === "GO" ? "the drawing" : "Imagine it") + (me ? " · who=" + me : ""));
                 }
               } catch {}
@@ -71722,6 +71725,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               try { const _k = String((await env.AURA_KV.get("config:frame:design:possibilities")) || "").trim(); if (_k) _dg = _k; } catch {}
               _sentNow = _dg;
             } else _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
+            // ══ NUMBER 1 KEEPS THE REST OF THEIR DESIGN (v9.846, 2026-11-04, Aaron: go) ═══ MEASURED 06:18:57: "make the bike black and render the
+            // initials on the tank in gold" went out with "Make number 1 the closest to what I described" - what they described was only the change,
+            // and number 1 came back without the sunset their chosen design had. Number 1 is their change on their design, the rest of it as it is;
+            // the others stay free. Added where the sentence is used, so it holds for the setting (config:frame:design:grid) and the default alike.
+            if (_designWords !== "__poss__") {
+              const _keep0 = _sentNow;
+              _sentNow = _sentNow.replace(/(Make (?:number 1|the first one) the closest to what I described)\./, "$1, with everything else in my design kept as it is.");
+              if (_sentNow !== _keep0) { try { console.log("[TURN:DESIGN] number 1 keeps the rest of their design" + (me ? " · who=" + me : "")); } catch {} }
+            }
             // ══ THE LETTERING STAYS (v9.844, 2026-11-04, Aaron: go) ═══ The lettering they chose is part of the design: every change keeps it,
             // spelled exactly, and the card wording no longer forbids writing in the tattoo.
             try {

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.843.0-2026-11-04-idea-without-label-names-kept-placement-whole";
+const BUILD = "aura-core-v9.844.0-2026-11-04-lettering-sheet-changes-written-out";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61505,14 +61505,59 @@ function _looping(t) {
 // ══ HER WORDS AND THE IDEA, APART (v9.819, one copy since v9.820) ═══ The last label (IDEA:, or a broken one in capitals) is where her words
 // end and the idea starts, on one line or many. A label that opens the answer is the older shape: its line is the idea, the rest her words.
 function heardSplit(rest) {
-  let idea = "", words = String(rest || ""), style = "";
+  let idea = "", words = String(rest || ""), style = "", lettering = [];
+  // (v9.844) the words to be written in the tattoo, each in double quotes: its own line - never her words, never the idea
+  words = words.replace(/(^|\s)LETTERING\s*:\s*([^\n]*?)(?=\s*(?:\n|IDEA\s*:|STYLE\s*:|$))/i, (m, a, b) => {
+    if (!lettering.length) lettering = letterItems(b); return a; });
   // (v9.825) the style they named in their own words: its own line, before the IDEA line - never her words, never the idea
-  words = words.replace(/(^|\s)STYLE\s*:\s*([^\n]*?)(?=\s*(?:\n|IDEA\s*:|$))/i, (m, a, b) => { if (!style) style = String(b || "").trim(); return a; });
+  words = words.replace(/(^|\s)STYLE\s*:\s*([^\n]*?)(?=\s*(?:\n|IDEA\s*:|LETTERING\s*:|$))/i, (m, a, b) => { if (!style) style = String(b || "").trim(); return a; });
   const ls = [...words.matchAll(/(^|\s)((?:[Ii][Dd][Ee][Aa]|[A-Z]{3,12})\s*:\s*)/g)];
   if (ls.length) { const L = ls[ls.length - 1], li = L.index + L[1].length, after = words.slice(li + L[2].length);
     if (!words.slice(0, li).trim()) { const nl = after.indexOf("\n"); idea = (nl < 0 ? after : after.slice(0, nl)).trim(); words = nl < 0 ? "" : after.slice(nl + 1); }
     else { idea = after.replace(/\s+/g, " ").trim(); words = words.slice(0, li); } }
-  return { idea, words, style };
+  return { idea, words, style, lettering };
+}
+// ══ LETTERING (v9.844, 2026-11-04, Aaron: "whenever anyone wants to add lettering ... generate a style sheet ... let people select the style of
+// wording they want ... ten or 20 choices ... this is critical because lettering's such a big part of this whole world") ═══ Her hearing step
+// writes each piece of lettering exactly as it will be written; the page shows them a sheet of lettering styles with their own words in each;
+// the style they tap and the words they settle on are kept for the whole tattoo and go to the image model in every sentence after.
+function letterItems(line) {
+  const out = []; const t = String(line || "");
+  const q = [...t.matchAll(/["\u201c\u201d]([^"\u201c\u201d]{1,80})["\u201c\u201d]/g)].map((m) => m[1].trim()).filter(Boolean);
+  const src = q.length ? q : t.split(/\s*\|\s*/).map((x) => x.replace(/^["'\s]+|["'\s.]+$/g, "").trim());
+  for (const x of src) { if (x && !/^(none|n\/a|no|nothing)$/i.test(x) && !out.some((o) => o.toLowerCase() === x.toLowerCase())) out.push(x.slice(0, 80)); }
+  return out.slice(0, 4);
+}
+// The lettering styles. The page shows the same list (LETTER_STYLES in mt-shell.html) - keep the two the same. Each is a free Google font for the
+// sheet; the id is the word the image model is given ("in Old English lettering").
+const LETTER_STYLES = [
+  { id: "old english", family: "UnifrakturMaguntia" }, { id: "blackletter", family: "Pirata One" }, { id: "chicano script", family: "Monsieur La Doulaise" },
+  { id: "script", family: "Great Vibes" }, { id: "fine-line script", family: "Allura" }, { id: "brush script", family: "Yellowtail" },
+  { id: "handwritten", family: "Caveat" }, { id: "signature", family: "Mrs Saint Delafield" }, { id: "calligraphy", family: "Tangerine" },
+  { id: "fine line", family: "Cormorant Garamond" }, { id: "traditional", family: "Alfa Slab One" }, { id: "western", family: "Rye" },
+  { id: "typewriter", family: "Special Elite" }, { id: "serif", family: "Playfair Display" }, { id: "minimal", family: "Josefin Sans" },
+  { id: "art deco", family: "Poiret One" }, { id: "gothic", family: "Metal Mania" }, { id: "graffiti", family: "Rubik Puddles" },
+  { id: "stencil", family: "Stardos Stencil" }, { id: "celtic", family: "Uncial Antiqua" }, { id: "horror", family: "Nosifer" }];
+// The eight placements, one per card when lettering is drawn the first time (the WHERE list of "design words").
+const LETTER_PLACES = ["above the artwork", "below the artwork", "arced around the artwork", "on a ribbon banner across it",
+  "woven behind and in front of parts of the artwork", "inside the artwork's negative space", "forming part of the artwork itself", "wrapped around the composition"];
+function letterParse(v) { try { const o = JSON.parse(String(v || "")); if (o && Array.isArray(o.items)) return o; } catch {} return { items: [] }; }
+// What every sentence to the image model says about the lettering, once it is chosen. forChange: the design already has it - keep it as it is.
+function letterClause(letter, forChange) {
+  const items = (letter && Array.isArray(letter.items) ? letter.items : []).filter((x) => x && x.text);
+  if (!items.length) return "";
+  const each = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? " in " + String(x.font).replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()) + " lettering" : "")).join(", ");
+  if (forChange) return " Keep the lettering exactly as it is - " + each + ", spelled exactly as written here.";
+  return " Write the lettering exactly as written here - " + each + ". On number 1, put the lettering where I described, or where it suits the design best; on the others, place it differently on each one: " +
+    LETTER_PLACES.join(", ") + ".";
+}
+// "nothing written on it" and "No numbers anywhere" are about the card panel and its numbering - with lettering in the tattoo they would forbid it.
+function letterFrame(sentence, letter) {
+  const items = (letter && Array.isArray(letter.items) ? letter.items : []).filter((x) => x && x.text);
+  if (!items.length) return sentence;
+  let t = String(sentence || "").replace(/nothing written on it\b/g, "nothing written on it but the tattoo's own lettering");
+  if (items.some((x) => /\d/.test(String(x.text)))) t = t.replace(/No numbers anywhere\./g, "No card numbers anywhere.");
+  return t;
 }
 // ══ THE WORDS HER HEARING STEP IS GIVEN (v9.820) ═══ One copy, used by the new-tattoo hearing step and by HEARD_TEST, so a model is
 // tested on exactly what it will be asked.
@@ -61647,6 +61692,11 @@ function heardSystem(style, canGo) {
     // no lettering. The name check passed because "Mara" was there. Any lettering is now said to be lettering, in the IDEA too.
     "Anything they want written in the tattoo - a name, a date, a number or words - the IDEA line says it is written there, with the " +
     "words copied exactly, so it is drawn as lettering and not as a picture.\n\n" +
+    // (v9.844) the lettering, piece by piece, exactly as it will be written - the page shows them a sheet of lettering styles from it
+    "When anything is to be written in the tattoo, add a line at the end of your words, before any IDEA line: LETTERING: each piece exactly as it " +
+    "will be written, each in double quotes, separated by | - a name written the way names are written (a capital first letter) unless they said " +
+    "otherwise, a date or number exactly as they gave it. They will then pick how the lettering looks from a sheet of lettering styles on the page, " +
+    "so never ask them about fonts or lettering styles yourself.\n\n" +
     // ══ A STYLE THEY NAME IS A STYLE THEY PICKED (v9.825, 2026-11-03, Aaron: yes) ═══ MEASURED 15:2x (Tiffany lamp test): stained glass was
     // asked for in their own words, nothing was tapped, and the sheet went out "each in a different tattoo style" - only card 1 was stained
     // glass. Her judgement says which style they asked for; it is then picked exactly as a tap would pick it.
@@ -68523,7 +68573,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
       let _heardIdea = null;
       let _drawSayP = null;   // (v9.826) her line as the drawing starts - shown when it comes, never waited for
-      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null;
+      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -68536,11 +68586,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             let _st = 0; for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (e && e.role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(e.said || ""))) { _st = i + 1; break; } }
             // (v9.818) MEASURED 13:01: "yes and can it say 1995 - 2025 somewhere? those were his years" was taken for a tap and left out -
             // the dates never reached the image model. Only a bare yes (or the page's own "Yes, show me") is a tap now.
-            const _tap = /^\s*(tell me|show me\b.*|i have an idea|i want it to mean something|i have a memory|it'?s about someone|let'?s create my own\b.*|i like the .+ style|imagine\b.*|i want number [1-8]|i choose\b.*|this is my tattoo|fine-?\s?tune it|keep it like this|yes(,? show me( some ideas)?)?|yeah|yep|yup|ok(ay)?|sure|go( ahead)?|talk to me|here'?s something i like|what could it mean\??|what style is this\??|i'?m not sure yet.*)[\s.!?]*$/i;
+            const _tap = /^\s*(tell me|show me\b.*|i have an idea|i want it to mean something|i have a memory|it'?s about someone|let'?s create my own\b.*|i like the .+ style|imagine\b.*|i want number [1-8]|i choose\b.*|this is my tattoo|fine-?\s?tune it|keep it like this|yes(,? show me( some ideas)?)?|yeah|yep|yup|ok(ay)?|sure|go( ahead)?|talk to me|here'?s something i like|what could it mean\??|what style is this\??|i'?m not sure yet.*|lettering:.*)[\s.!?]*$/i;
             return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter"]); } catch {}
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
           // because "design_change" from the 9:50 test was still set.
@@ -68562,7 +68612,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   // (v9.702) still decides when there is nothing yet to imagine from.
                   await talkStatePut(env, me, "await_idea", _isNew ? "1" : "");
                   // v9.779: nothing drawn in this tattoo yet (set to 1 the moment anything is drawn or chosen in it - see "last" below)
-                  await talkStatePut(env, me, "new_drawn", ""); await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
+                  await talkStatePut(env, me, "new_drawn", ""); await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", "");
+                  await talkStatePut(env, me, "letter", ""); } catch {}
             _ds = _isNew ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
@@ -68693,6 +68744,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // ══ THEIR YES DRAWS WHAT SHE SAID BACK (v9.783, 2026-11-01, Aaron: "she'd come back with OK awesome, dragons, butterflies, let's
           // do that ... so it'll never be automatic draw" / "once there's a clear choice she draws right away") ═══ Imagine it (or one of her
           // two choices) is their go: the idea line she said back - the one they just read and did not correct - is drawn, in their style.
+          } else if (_newFlow && opts && opts.letter && Array.isArray(opts.letter.items) && opts.letter.items.length) {
+            // ══ THEY PICKED THEIR LETTERING (v9.844, 2026-11-04, Aaron: go) ═══ The sheet sends each piece as they settled it (their edits and
+            // Roman numerals already applied) with the style they tapped. Kept for the whole tattoo; nothing drawn yet - she says it back and
+            // Imagine it shows. The idea she said back before the sheet stays the idea.
+            const _old = letterParse(_ds.letter), _ids = new Set(LETTER_STYLES.map((x) => x.id));
+            const _picked = opts.letter.items.map((x) => ({ text: String((x && x.text) || "").trim().slice(0, 80), font: _ids.has(String((x && x.font) || "").toLowerCase()) ? String(x.font).toLowerCase() : "" }))
+              .filter((x) => x.text);
+            const _merged = _picked.concat(_old.items.filter((o) => !_picked.some((p) => p.text.toLowerCase() === String(o.text || "").toLowerCase())));
+            try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 4) })); await talkStatePut(env, me, "go_said", "1"); } catch {}
+            const _list = _picked.map((x) => "\u201c" + x.text + "\u201d" + (x.font ? " in " + x.font.replace(/\b\w/g, (c) => c.toUpperCase()) : "")).join(" and ");
+            _fixedWhy = "heard_ready"; _fixedSay = (await _fx("letter_picked", "{list} - beautiful. Want me to imagine it?")).replace("{list}", _list);
+            _heardOut = { go: true };
+            console.log("[TURN:LETTER] they picked their lettering: " + _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") + " - kept for the whole tattoo, Imagine it shown" + (me ? " · who=" + me : ""));
           } else if (_newFlow && opts && (opts.heard_go || opts.heard_pick) && (String(_ds.go_idea || "") || String(_ds.go_picks || ""))) {
             let _gi = String(_ds.go_idea || ""), _gk = "";
             if (opts.heard_pick) { try { const _gp = JSON.parse(String(_ds.go_picks || "{}")); _gk = String(opts.heard_pick).toUpperCase().slice(0, 1); if (_gp[_gk] && _gp[_gk].idea) _gi = String(_gp[_gk].idea); } catch {} }
@@ -68827,7 +68891,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 try { console.log("[TURN:HEARD] her answer had no READY/TALK label but carried an IDEA line - read as READY" + (me ? " · who=" + me : "")); } catch {} }
               let _hIdea = "";
               let _hStyleSaid = "";
-              { const _sp = heardSplit(_hRest); _hIdea = _sp.idea; _hRest = _sp.words; _hStyleSaid = _sp.style || ""; }
+              let _hLetter = [];
+              { const _sp = heardSplit(_hRest); _hIdea = _sp.idea; _hRest = _sp.words; _hStyleSaid = _sp.style || ""; _hLetter = _sp.lettering || []; }
               if (!_hIdea) { let _r0 = _hRest.replace(/^\s*IDEA\s*:\s*/i, ""); const _copies = [];   // v9.790: their words with no label
                 for (let _k = 0; _k < 6; _k++) { const _cp0 = _hCopy(_r0); if (!_cp0.copy) break;   // v9.799: every copy, one after another
                   _copies.push(_r0.slice(0, _cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019*]+/, "").trim());
@@ -68894,10 +68959,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 const _gBefore = _gw(_goPrev + " " + _herLast), _gTheirs = _gw(_s);
                 const _gAdded = [..._gw(_hIdea)].filter((w) => !_gBefore.has(w) && _gTheirs.has(w));
                 if (_gAdded.length) {
-                  _hDo = "READY"; if (!_hSay) _hSay = await _fx("heard_ready", "Love it - want me to imagine it?");
+                  // (v9.844) the line says they added something - "Love it" alone read as if nothing had been heard
+                  _hDo = "READY"; if (!_hSay) _hSay = await _fx("heard_added", "Got it - I've added that. Want me to imagine it?");
                   console.log("[TURN:HEARD] GO held - their words added " + _gAdded.slice(0, 8).join(", ") + " to the idea; said back as READY, Imagine it shown, nothing drawn yet" + (me ? " · who=" + me : ""));
                 }
               }
+              // (v9.844, 2026-11-04, Aaron: go) MEASURED 05:22:11: "READY STYLE: Dotwork IDEA: a stippled sunflower ..." - no words of hers, so it was
+              // "not usable": the fixed line went and her idea was thrown away. Her idea is her say-back; the fixed line shows with it.
+              if (_hDo === "READY" && !String(_hSay || "").trim() && String(_hIdea || "").trim()) _hSay = await _fx("heard_ready", "Love it - want me to imagine it?");
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
               if (_hIdea.trim() && !(_hDo === "TALK" && _canGo)) {
                 _heardIdea = _ideaLost ? _theirs : (_hIdea.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "") + (_addBack ? ". " + _addBack : "")).slice(0, 1000);
@@ -69004,6 +69073,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 // back. Until her own words have said the idea back, a time-out asks them to go on instead (config:say:heard_more), with no button.
                 if (!_canGo) { _fixedSay = await _fx("heard_more", "Tell me a little more - what are you picturing?"); _heardOut = null; }
               }
+              // ══ LETTERING NOT YET STYLED: THE SHEET COMES UP (v9.844, 2026-11-04, Aaron: go) ═══ Before the first drawing. Each piece she wrote
+              // that has no style chosen yet goes to the page as a lettering sheet, in place of Imagine it - and a yes waits for it too. The idea she
+              // said back is kept, so their pick goes straight back to Imagine it.
+              try {
+                const _lOld = letterParse(_ds.letter);
+                const _lNew = (_hLetter || []).filter((t) => !_lOld.items.some((o) => o.font && String(o.text || "").toLowerCase() === t.toLowerCase()));
+                if (_lNew.length && (_hDo === "READY" || _hDo === "GO") && _heardOut && _heardOut.go) {
+                  const _gi = _heardIdea || _goPrev;
+                  if (_gi) { try { await talkStatePut(env, me, "go_idea", _gi); await talkStatePut(env, me, "go_said", "1"); } catch {} }
+                  if (_hDo === "GO" || !String(_fixedSay || "").trim()) { _fixedSay = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look."); _heardStreamed = false; }
+                  _heardOut = { letter: { items: (_hLetter || []).slice(0, 4), styles: LETTER_STYLES.map((x) => x.id) } };
+                  console.log("[TURN:LETTER] lettering in the idea with no style yet: " + _lNew.map((t) => '"' + t + '"').join(", ") + " - the lettering sheet goes up instead of " + (_hDo === "GO" ? "the drawing" : "Imagine it") + (me ? " · who=" + me : ""));
+                }
+              } catch {}
             } catch {}
           // FINE-TUNE IS ONE LINE, AT ONCE (v9.812, 2026-11-03, Aaron: "Instant line"). MEASURED 08:14:47-08:15:07: Fine-Tune on a set of
           // designs picked the card first, so the turn carried no pick - she was called (15.2s) and said only "Sure - tell me what you'd
@@ -69056,11 +69139,30 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _cSys = "You are Aura, the tattoo designer on mytattoo.world. Someone is changing the tattoo design they chose, and they just " +
                 "told you the change they want. In one or two short, warm sentences, in your own words: say back the change they asked for, so " +
                 "they know you got it, and tell them you're imagining their new versions now. Only what they asked for - nothing you are " +
-                "adding. Never put a number in your words. Plain words only, no lists.";
+                "adding. Never put a number in your words. Plain words only, no lists.\n\n" +
+                // ══ THE CHANGE WRITTEN OUT IN FULL (v9.844, 2026-11-04, Aaron: "on the final add the date it took out Ava") ═══ MEASURED 05:22:
+                // "add the date she was born" went to the image model as their bare words - it drew 1998 and dropped "Ava". She has what they
+                // told her before; the change goes to the image model as she writes it out here, with the name and the date in it.
+                "Then, on its own last line: CHANGE: the change written out in full as one plain instruction to the tattoo artist - anything they " +
+                "refer to that they told you before (a name, a date, a year, a word) written out exactly as they told you, names with normal " +
+                "capitals; only what they asked to change, nothing added. Numbers are fine on this line.";
+              let _cUser = _s.slice(0, 600);
+              try {
+                const _tp = (typeof _told === "string" && _told) ? _told : "";
+                const _lt = letterParse(_ds && _ds.letter).items.map((x) => '"' + x.text + '"' + (x.font ? " in " + x.font + " lettering" : "")).join(", ");
+                if (_tp || _lt) _cUser = "What they told you before, in their words:\n" + (_tp || "(nothing)") + (_lt ? "\nThe lettering on their design: " + _lt : "") +
+                  "\n\nThe change they want now:\n" + _s.slice(0, 600);
+              } catch {}
               const _cq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _cMs)),
-                callBrain({ system: _cSys, user: _s.slice(0, 600), max_tokens: 2000, ...(_cEff ? { reasoning: _cEff } : {}), ...(_cModel ? { model: _cModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
-              const _cSay = _finishedOnly(_wholeSentences(String((_cq && _cq.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, ""), 1200));
+                callBrain({ system: _cSys, user: _cUser.slice(0, 2400), max_tokens: 2000, ...(_cEff ? { reasoning: _cEff } : {}), ...(_cModel ? { model: _cModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+              let _cRaw = String((_cq && !_cq.late && _cq.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, "");
+              { const _cm = _cRaw.match(/(^|\n|\s)CHANGE\s*:\s*([^\n]+)\s*$/i);
+                if (_cm) { const _cf = _cm[2].replace(/\s+/g, " ").trim().replace(/^["\u201c]|["\u201d]$/g, "");
+                  if (_cf.length >= 3 && _cf.length <= 600) _changeFull = _cf;
+                  _cRaw = _cRaw.slice(0, _cm.index); } }
+              const _cSay = _finishedOnly(_wholeSentences(_cRaw.replace(/(^|\s)CHANGE\s*:[\s\S]*$/i, ""), 1200));
               const _cSec = ((Date.now() - _cT0) / 1000).toFixed(1);
+              if (_changeFull) console.log("[TURN:CHANGE-SAY] the change written out: \"" + _changeFull.slice(0, 300) + "\" (their words: \"" + _s.slice(0, 160) + "\")" + (me ? " · who=" + me : ""));
               if (_cSay && !(_cq && _cq.late)) {
                 const _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again.");
                 _fixedSay = _cSay + (_tail ? " " + _tail : "");
@@ -70301,7 +70403,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             } else if (_bareYes) { if (act === "change" || act === "draw") { console.log("[TURN:DESIGN] a bare yes is not a change - nothing drawn"); act = "none"; } }
             else {
               if (_await && act !== "artist" && act !== "use") act = "change";
-              if (act === "change") { _designGrid = true; _designWords = String(said || "").trim().replace(/^show me:\s*/i, "").slice(0, 600); }
+              if (act === "change") { _designGrid = true; _designWords = String(_changeFull || said || "").trim().replace(/^show me:\s*/i, "").slice(0, 600); }
               // ONE OF HER CHANGE IDEAS, TAPPED (v9.635, 2026-10-16, Aaron): it changes the one design they are working on - the
               // page names it - not the sheet that happens to be on screen.
               if (_designGrid && opts && opts.change_now && opts.change_of) _designParent = opts.change_of;
@@ -71596,6 +71698,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               try { const _k = String((await env.AURA_KV.get("config:frame:design:possibilities")) || "").trim(); if (_k) _dg = _k; } catch {}
               _sentNow = _dg;
             } else _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
+            // ══ THE LETTERING STAYS (v9.844, 2026-11-04, Aaron: go) ═══ The lettering they chose is part of the design: every change keeps it,
+            // spelled exactly, and the card wording no longer forbids writing in the tattoo.
+            try {
+              const _lc = letterParse((await talkStateGet(env, me, ["letter"])).letter);
+              if (_lc.items.length) {
+                const _cl = letterClause(_lc, true);
+                const _at = _sentNow.search(/\s(?:Make one tall page|Make one page)\b/);
+                _sentNow = letterFrame(_at > 0 ? _sentNow.slice(0, _at) + _cl + _sentNow.slice(_at) : _sentNow + _cl, _lc);
+                console.log("[TURN:DESIGN] their lettering is kept:" + _cl + (me ? " · who=" + me : ""));
+              }
+            } catch {}
             _herAsk = null;
             _wordsFrom = "design_grid";
             _sizeNow = "2160x3840";
@@ -72110,6 +72223,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // THE SAME TREATMENT (v9.678). Straight to the image model (v9.708): the ending that draws each card's words under it.
               _s8Direct = (await sheet8Route(env)) === "direct";
               askLine = await toEight(env, askLine, _s8Direct ? "direct" : "flat");
+              // ══ THE LETTERING THEY CHOSE, PLACED A DIFFERENT WAY ON EACH CARD (v9.844, 2026-11-04, Aaron: "we throw to the image model just a
+              // variety of placements that's probably the best idea") ═══ Before the card layout, so it is part of the design and not the card.
+              try {
+                const _lc = letterParse((await talkStateGet(env, me, ["letter"])).letter);
+                if (_lc.items.length) {
+                  const _cl = letterClause(_lc, false);
+                  const _at = askLine.search(/\s(?:Use colou?r wherever it works|Use the colou?rs|Keep the colou?rs|Make one tall page|Make one page)\b/);
+                  askLine = letterFrame(_at > 0 ? askLine.slice(0, _at) + _cl + askLine.slice(_at) : askLine + _cl, _lc);
+                  console.log("[TURN:NEW] their lettering goes in:" + _cl + (me ? " · who=" + me : ""));
+                }
+              } catch {}
               _newSentence = true;
               console.log("[TURN:NEW] the first four from the fixed sentence - their words: \"" + _words.slice(0, 300) + "\"" + (_newStyle ? " · style: " + _newStyle : ""));
             }
@@ -75057,6 +75181,9 @@ export class PublicEntry extends WorkerEntrypoint {
           { id: "old english",   family: "UnifrakturMaguntia", weight: 400 },
           { id: "blackletter",   family: "Pirata One",         weight: 400 },
           { id: "script",        family: "Great Vibes",        weight: 400 },
+          { id: "chicano script", family: "Monsieur La Doulaise", weight: 400 },
+          { id: "fine-line script", family: "Allura",           weight: 400 },
+          { id: "brush script",  family: "Yellowtail",         weight: 400 },
           { id: "handwritten",   family: "Caveat",             weight: 600 },
           { id: "signature",     family: "Mrs Saint Delafield",weight: 400 },
           { id: "calligraphy",   family: "Tangerine",          weight: 700 },

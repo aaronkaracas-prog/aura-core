@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.833.0-2026-11-03-ready-whenever-something-to-imagine";
+const BUILD = "aura-core-v9.834.0-2026-11-03-style-match-one-word-design-is-her-job";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61531,7 +61531,11 @@ const STYLE_41 = ["American Traditional", "Neo-Traditional", "Japanese", "Black 
 function styleNameMatch(sv) {
   const known = [...new Set([...STYLE_41, ...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])];
   const l = String(sv || "").toLowerCase().replace(/\s+/g, " ").trim(); if (!l) return null;
-  const starts = known.filter((k) => { const kl = k.toLowerCase(); return kl.startsWith(l) && kl.length > l.length && /[^a-z0-9]/.test(kl[l.length]); });
+  // (v9.834) MEASURED 17:23: "these all black tattoos of animals" - "black" was the start of only one name with a space after it, Black & Grey
+  // Realism, and the 8 were set to it before she said a word. Their words may fill in ONE missing word ("Ignorant" -> Ignorant Doodle, "Red" ->
+  // Red Ink), never more.
+  const starts = known.filter((k) => { const kl = k.toLowerCase(); return kl.startsWith(l) && kl.length > l.length && /[^a-z0-9]/.test(kl[l.length]) &&
+    kl.slice(l.length).trim().split(/\s+/).filter(Boolean).length === 1; });
   return known.find((k) => k.toLowerCase() === l) || (starts.length === 1 ? starts[0] : null);
 }
 // ══ A STYLE IN THEIR OWN WORDS, WHEN SHE GAVE NO ANSWER (v9.830, 2026-11-03, Aaron: go) ═══ MEASURED 16:07:50: her hearing gave no answer in
@@ -61546,11 +61550,16 @@ function styleFromWords(text) {
   const known = [...new Set([...STYLE_41, ...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])].filter((k) => /\s/.test(k));
   return known.find((k) => new RegExp("\\b" + k.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(t)) || null;
 }
+// ══ HER JOB IS THE DESIGN (v9.834, 2026-11-03, Aaron: "Aura keeps making comments about tattoos aging well ... that needs to stop, it's not
+// her concern") ═══ MEASURED 17:09:58 (unasked: "has that bold, flowing look that ages beautifully"), 16:34 and 17:24 (asked: fading, "a big black
+// blob"). Told to answer "the way a real tattoo artist would", she took on the artist's whole job. One sentence, in her hearing step and her chat.
+const TALK_SCOPE = "Your job is designing the tattoo with them. How a tattoo heals, ages, fades, hurts or is cared for is for their tattoo artist, " +
+  "not you - never bring it up, and if they ask, say their artist is the one to ask and come back to the design.";
 function heardSystem(style, canGo) {
   return "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
                 (style ? " (in the " + style + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
                 "tattoo artist would: brief, in your own words. If they shared something personal or hard, your words start there, simply. " +
-                "Never put a number in your words.\n\n" +
+                "Never put a number in your words. " + TALK_SCOPE + "\n\n" +
                 "Answer in exactly this shape. First line: READY or TALK" + (canGo ? " or GO" : "") + ".\n\n" +
                 // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
                 // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
@@ -67570,7 +67579,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // `tattoo_talk` in aura-think now, read from the KV namespace both workers share. The local
       // floor below still needs it, because that is a direct model call with its own `system` and
       // never touches a channel.
-      const talkDoctrine = await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR);
+      // (v9.834) her job is the design - added after the doctrine whether it comes from here or from a saved version
+      const talkDoctrine = (await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR)) + "\n\n" + TALK_SCOPE;
       const talkSys = talkDoctrine + shelf + found;
 
       // ══ ONE CALL. HER WORDS AND HER ACT, TOGETHER. (2026-09-07) ═══════════════════════════

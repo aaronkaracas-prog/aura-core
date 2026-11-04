@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.842.0-2026-11-04-a-yes-that-adds-is-said-back";
+const BUILD = "aura-core-v9.843.0-2026-11-04-idea-without-label-names-kept-placement-whole";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67725,7 +67725,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         '    "composition": "what the picture is OF - head portrait, coiled, flying, a bouquet",\n' +
         '    "character": "what it should feel like - fierce, delicate, menacing, joyful",\n' +
         '    "detail": "bold | balanced | intricate | ultra",\n' +
-        '    "placement": "where on the body, only if they said",\n' +
+        '    "placement": "where on the body, in their own words, only if they said",\n' +
         '    "size": "how big, only if they said",\n' +
         '    "mirror_photo": "yes | no - only when their photo of themselves is in this conversation: is it taken in a mirror (a mirror selfie)",\n' +
         '    "elements": ["cherry blossoms","waves"],\n' +
@@ -68819,6 +68819,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               const _hm = _hClean.match(/^\W*(READY|CHOOSE|TALK|DRAW)\b\W*\s*([\s\S]*)$/i) || _hClean.match(/^\W*(GO)[ \t:.!*\-]*(?:\n([\s\S]*))?$/);
               let _hDo = _hm ? _hm[1].toUpperCase() : null; if (_hDo === "DRAW") _hDo = "READY"; if (_hDo === "GO" && !_canGo) _hDo = "READY";
               let _hRest = _hm ? _hm[2] : "";
+              // ══ AN IDEA LINE WITHOUT A LABEL IS READY (v9.843, 2026-11-04, Aaron: go) ═══ MEASURED 04:53:32: "Sounds like you're picturing an
+              // anatomical heart ... anything else you'd like to add? IDEA: anatomical heart in liquid chrome style STYLE: Liquid Chrome" - no
+              // READY first, so nothing after it was read: her idea and style were thrown away and no Imagine it showed. Her IDEA line is her
+              // say-back; an answer carrying one is READY, read the same way.
+              if (!_hm && /(^|\s)IDEA\s*:/i.test(_hClean)) { _hDo = "READY"; _hRest = _hClean;
+                try { console.log("[TURN:HEARD] her answer had no READY/TALK label but carried an IDEA line - read as READY" + (me ? " · who=" + me : "")); } catch {} }
               let _hIdea = "";
               let _hStyleSaid = "";
               { const _sp = heardSplit(_hRest); _hIdea = _sp.idea; _hRest = _sp.words; _hStyleSaid = _sp.style || ""; }
@@ -68860,7 +68866,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // clean idea was thrown away for their raw words, "maybe lightning too actually lose the lightning" and all. Now her idea stays and
               // only the sentences of theirs that hold the missing name or number are added after it. A name is still never lost.
               let _addBack = "";
-              if (_hIdea && _hIdea.trim()) { const _lm = _lost(_hIdea); if (_lm.length) {
+              // (v9.843, 2026-11-04, Aaron: go) MEASURED 05:05:47: "hes 14 now" - she said "already 14 years young" back and rightly left the age out of
+              // the drawing, yet their whole sentence was added to every idea after it and reached the image model. A name or number is lost only when
+              // it is in neither her idea nor her own words; one she said back and kept out of the drawing is background, not lettering.
+              if (_hIdea && _hIdea.trim()) { const _lm = _lost(_hIdea + " " + String(_hRest || "")); if (_lm.length) {
                 const _sents = ((_told ? _told + "\n" : "") + _s).split(/\n+|(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean);
                 const _hasIt = (t) => { const tl = t.toLowerCase().replace(/(\d),(?=\d{3}\b)/g, "$1"); return _lm.some((n) => tl.includes(n.toLowerCase())); };
                 _addBack = _sents.filter(_hasIt).join(" ").slice(0, 600);
@@ -69297,7 +69306,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             '  "composition": "what the picture is OF - head portrait, coiled, flying, a bouquet",\n' +
             '  "character": "what it should feel like - fierce, delicate, menacing, joyful",\n' +
             '  "detail": "bold | balanced | intricate | ultra",\n' +
-            '  "placement": "where on the body, only if they said",\n' +
+            '  "placement": "where on the body, in their own words, only if they said",\n' +
             '  "size": "how big, only if they said",\n' +
             '  "mirror_photo": "yes | no - only when their photo of themselves is in this conversation: is it taken in a mirror (a mirror selfie)",\n' +
             '  "elements": ["cherry blossoms","waves"],\n' +

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.841.0-2026-11-04-tattoo-names-small-words";
+const BUILD = "aura-core-v9.842.0-2026-11-04-a-yes-that-adds-is-said-back";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68708,8 +68708,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               { const _fixedGo = _fixedSay, _tail = "";
                 let _dsMs = 3000; try { const _v = parseInt(String((await env.AURA_KV.get("config:talk:drawsay_ms")) || ""), 10); if (Number.isFinite(_v) && _v >= 0) _dsMs = _v; } catch {}
                 _drawSayP = Promise.race([drawStartSay(env, _heardIdea, _newStyle, talkModel), new Promise((r) => setTimeout(() => r(null), _dsMs))])
-                  .then((x) => { const _out = x ? x + (_tail ? " " + _tail : "") : _fixedGo; console.log("[TURN:DRAW-SAY] shown while drawing: " + (x ? "her words" : "the fixed line (her words not in " + _dsMs + "ms)") + " - \"" + _out.slice(0, 200) + "\""); return _out; })
-                  .catch(() => _fixedGo); }
+                  // (v9.842, 2026-11-04, Aaron: go) MEASURED 04:46:03: her words missed the 3000ms by 13ms, so "On it - I'm imagining your designs now.
+                  // Every one is 100% unique and 100% yours." went up right under the page's own waiting line saying the same thing. When her words are
+                  // late nothing more is sent - the page's waiting line is the line.
+                  .then((x) => { const _out = x ? x + (_tail ? " " + _tail : "") : ""; console.log("[TURN:DRAW-SAY] " + (x ? "shown while drawing: her words - \"" + _out.slice(0, 200) + "\"" : "her words not in " + _dsMs + "ms - nothing more sent; the page's waiting line stands")); return _out; })
+                  .catch(() => ""); }
               if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
               try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }, _newStyle ? { style: _newStyle } : {})));
                     await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
@@ -68871,6 +68874,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (_looping(_hSay) || _looping(_hIdea) || _hLooped) {
                 try { console.log("[TURN:HEARD] her answer fell into a loop (\"" + String(_hSay || _hIdea).slice(0, 120) + "...\") - not shown, not drawn from; the fixed line asks" + (me ? " · who=" + me : "")); } catch {}
                 _hSay = ""; _hIdea = ""; }
+              // ══ A YES THAT ADDS SOMETHING IS SAID BACK, NOT DRAWN (v9.842, 2026-11-04, Aaron: go) ═══ MEASURED 04:45:55: after "Should I go ahead
+              // and imagine that for you now?", "its going on my sternum, right in the middle of my chest" came back GO and was drawn - her GO idea
+              // carried "placed on the sternum, right in the middle of the chest", new since what she said back. A check on her result, not a rule
+              // for her: when her GO idea holds words that were in neither the idea she said back nor her last words, AND those words are theirs
+              // from this message, they added something - it is READY: the idea is kept, Imagine it shows, nothing is drawn yet.
+              if (_hDo === "GO" && String(_hIdea || "").trim()) {
+                const _gStop = new Set("the and for but yes yeah yep yup see let lets put can you its all now too just with that this from into over have like they them your some want make more also okay sure please ahead show draw imagine looks look good great love perfect awesome cool nice thanks thank way one out get got how what who why when would could should will really very much lol haha omg are was were been our mine idea tattoo design style there here then than".split(" "));
+                const _gw = (t) => new Set(String(t || "").toLowerCase().replace(/[^a-z0-9\s'-]/g, " ").split(/\s+/).map((w) => w.replace(/'s$/, "").replace(/(.{3,})s$/, "$1")).filter((w) => w.length >= 3 && !_gStop.has(w)));
+                const _gBefore = _gw(_goPrev + " " + _herLast), _gTheirs = _gw(_s);
+                const _gAdded = [..._gw(_hIdea)].filter((w) => !_gBefore.has(w) && _gTheirs.has(w));
+                if (_gAdded.length) {
+                  _hDo = "READY"; if (!_hSay) _hSay = await _fx("heard_ready", "Love it - want me to imagine it?");
+                  console.log("[TURN:HEARD] GO held - their words added " + _gAdded.slice(0, 8).join(", ") + " to the idea; said back as READY, Imagine it shown, nothing drawn yet" + (me ? " · who=" + me : ""));
+                }
+              }
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
               if (_hIdea.trim() && !(_hDo === "TALK" && _canGo)) {
                 _heardIdea = _ideaLost ? _theirs : (_hIdea.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "") + (_addBack ? ". " + _addBack : "")).slice(0, 1000);
@@ -69308,7 +69326,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // THE FIXED LINE SHOWS AT ONCE (v9.607): MEASURED 18:45 - "Here they come..." was ready at the tap and reached the page
       // only with the finished picture, 32s later. It goes out the way her streamed words do, then the work starts.
       if (_fixedSay && !acted && onDelta && !_heardStreamed) {
-        if (_drawSayP) { const _od = onDelta; _drawSayP.then(async (x) => { try { await _od(x); } catch {} }).catch(() => {}); }
+        if (_drawSayP) { const _od = onDelta; _drawSayP.then(async (x) => { if (!x) return; try { await _od(x); } catch {} }).catch(() => {}); }
         else { try { await onDelta(_fixedSay); } catch {} } }
       if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : (_fixedWhy === "poss" || _fixedWhy === "inspire8") ? "change" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
                                          prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.827.0-2026-11-03-yes-no-stray-line-style-kept-talk-always-fast";
+const BUILD = "aura-core-v9.828.0-2026-11-03-yes-adds-nothing-style-names-matched-job-text-flushed";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61567,7 +61567,10 @@ function heardSystem(style, canGo) {
     // a list of yes-words: when their words only say yes to what she said back, it is drawn exactly as Imagine it is.
     // (v9.826) MEASURED 15:28:42: she asked "Want me to draw it that way?" (purple and yellow in the petals) and "yes please" was a yes to THAT -
     // the IDEA after GO is the idea as it stands, with what their yes accepted.
-    (canGo ? "GO when what they just said is a yes to imagining it - to what you last said back or last offered them. Then, last, on its own line: " +
+    // (v9.828) MEASURED 15:56:24: "haha yes. can it say no thoughts under it in really shaky handwriting" was GO - drawn before the new lettering
+    // was said back to them. A yes that adds or changes anything is READY again, as before v9.826.
+    (canGo ? "GO when what they just said is only a yes to imagining it - to what you last said back or last offered them - and adds or changes " +
+      "nothing. If they add or change anything, that is READY. With GO, last, on its own line: " +
       "IDEA: what they want in the tattoo now, with anything you last offered that their yes accepts.\n\n" : "") +
                 // (v9.826) MEASURED 15:28:24: "would a little purple and yellow ... ruin the fine line look" was TALK, her answer was thrown away and
                 // the turn went to her chat (9.5s), which also cleared the idea she had said back - so the "yes please" after it had nothing to say yes to.
@@ -66704,7 +66707,7 @@ async function startTalkJob(env, data) {
 }
 async function runTalkJob(env, d) {
   const me = d.me, tid = (d.opts && d.opts.tid) || null, t0 = Date.now();
-  let text = "", stg = "", what = "", lastW = 0;
+  let text = "", stg = "", what = "", lastW = 0, trail = null;
   const pend = [];
   // ══ A PROGRESS NOTE NEVER HOLDS UP THE TURN (v9.694, 2026-10-21, Aaron) ═══════════════════════════════════════════
   // MEASURED 12:30:27 -> 12:30:40: one `turnlive` write to the Durable Object hung 13s and came back "internal error", and the
@@ -66722,13 +66725,18 @@ async function runTalkJob(env, d) {
   try {
     out = await auraTalk(env, me, d.stage, d.said, d.hist, { ...(d.opts || {}), in_job: true, world: worldFor(d.host),
       waitUntil: (pr) => { pend.push(Promise.resolve(pr).catch(() => null)); },
-      onDelta: async (t) => { text += String(t || ""); await live(false); },
+      // (v9.828) MEASURED 15:56:29.8: her drawing line came in 0.8s but reached the page only with the finished 8 (36s later) - it fell inside
+      // the 0.7s gap between notes and nothing was written after it. Text held back by the gap is written as soon as the gap ends.
+      onDelta: async (t) => { text += String(t || ""); await live(false);
+        if (!trail) trail = setTimeout(() => { trail = null; live(true).catch(() => null); }, 750); },
       onStage: async (st, w) => { stg = String(st || ""); what = String(w || ""); await live(true); } });
   } catch (e) {
     out = { ok: false, error: "TALK_THREW", detail: String(e && e.message || e).slice(0, 300) };
   }
   if (d.opts && d.opts.ref && out && typeof out === "object") out = { ...out, ref: d.opts.ref };
   await talkStatePut(env, me, "turnout", JSON.stringify({ tid, out, at: Date.now() }));
+  // (v9.828) a held-back note never lands after the finished one
+  if (trail) { clearTimeout(trail); trail = null; }
   await live(true, { done: true });
   try { await liveChain; } catch {}
   try { console.log("[TURNJOB] turn " + tid + " finished in " + ((Date.now() - t0) / 1000).toFixed(1) + "s · ok=" + !!(out && out.ok !== false) + (me ? " · who=" + me : "")); } catch {}
@@ -68764,7 +68772,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (_hStyleSaid && _hDo !== "TALK" && _hDo !== "GO") {
                 let _sv = _hStyleSaid.replace(/[*"\u201c\u201d.]/g, "").replace(/\s+style$/i, "").replace(/\s+/g, " ").trim();
                 if (/^[A-Za-z0-9 &'\/-]{2,40}$/.test(_sv) && !/^(none|n\/a|no|any|random|unsure|not sure)$/i.test(_sv)) {
-                  const _lk = Object.keys(STYLE_LOOK).find((k) => k.toLowerCase() === _sv.toLowerCase());
+                  // (v9.828) MEASURED 15:56:14: she named it "Ignorant" - the look for "Ignorant Doodle" never went with it and the 8 came back
+                  // as clean flash. Their words are matched to the style names we know (the looks, the Trending styles, the cover-up cards): the
+                  // same name, else the one name that starts with their words ("Ignorant" -> Ignorant Doodle, "Y2K" -> Y2K Nostalgia). When their
+                  // words start more than one name, or none, their own name stands - "traditional" never becomes Neo-Traditional.
+                  const _known = [...new Set([...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])];
+                  const _svl = _sv.toLowerCase();
+                  const _starts = _known.filter((k) => { const kl = k.toLowerCase(); return kl.startsWith(_svl) && kl.length > _svl.length && /[^a-z0-9]/.test(kl[_svl.length]); });
+                  const _lk = _known.find((k) => k.toLowerCase() === _svl) || (_starts.length === 1 ? _starts[0] : null);
+                  if (_lk && _lk.toLowerCase() !== _sv.toLowerCase()) console.log("[TURN:STYLE] \"" + _sv + "\" is our " + _lk + " style" + (me ? " · who=" + me : ""));
                   _sv = _lk || (_sv === _sv.toLowerCase() ? _titleWords(_sv) : _sv);
                   if (_sv.toLowerCase() !== String(_newStyle || "").toLowerCase()) {
                     const _was = _newStyle; _newStyle = _sv;

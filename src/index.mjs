@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.844.0-2026-11-04-lettering-sheet-changes-written-out";
+const BUILD = "aura-core-v9.845.0-2026-11-04-lettering-pick-reaches-core-cut-off-idea";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61541,6 +61541,20 @@ const LETTER_STYLES = [
 // The eight placements, one per card when lettering is drawn the first time (the WHERE list of "design words").
 const LETTER_PLACES = ["above the artwork", "below the artwork", "arced around the artwork", "on a ribbon banner across it",
   "woven behind and in front of parts of the artwork", "inside the artwork's negative space", "forming part of the artwork itself", "wrapped around the composition"];
+// (v9.845, 2026-11-04) MEASURED 06:03:19: the pick never reached the turn - the turn takes only the page fields it lists, and "letter" was
+// not one of them, so their pick went to her hearing step as words and the sheet came up again. What the page may send, checked here.
+function letterOpt(v) {
+  if (!v || !Array.isArray(v.items)) return null;
+  const ids = new Set(LETTER_STYLES.map((x) => x.id));
+  const items = v.items.slice(0, 4).map((x) => ({ text: String((x && x.text) || "").replace(/\s+/g, " ").trim().slice(0, 80),
+    font: ids.has(String((x && x.font) || "").toLowerCase()) ? String(x.font).toLowerCase() : "",
+    from: String((x && x.from) || "").replace(/\s+/g, " ").trim().slice(0, 80) })).filter((x) => x.text && x.font);
+  return items.length ? { items } : null;
+}
+// The same lettering written another way is the same lettering: "1941 - 2026" and "1941 – 2026", "Walt" and "walt", and the numbers they
+// turned into Roman numerals on the sheet (kept as "from", what she first wrote).
+function letterKey(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, ""); }
+function letterHas(saved, t) { const k = letterKey(t); return !!k && (saved.items || []).some((o) => o && o.font && (letterKey(o.text) === k || letterKey(o.from) === k)); }
 function letterParse(v) { try { const o = JSON.parse(String(v || "")); if (o && Array.isArray(o.items)) return o; } catch {} return { items: [] }; }
 // What every sentence to the image model says about the lettering, once it is chosen. forChange: the design already has it - keep it as it is.
 function letterClause(letter, forChange) {
@@ -68749,9 +68763,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // Roman numerals already applied) with the style they tapped. Kept for the whole tattoo; nothing drawn yet - she says it back and
             // Imagine it shows. The idea she said back before the sheet stays the idea.
             const _old = letterParse(_ds.letter), _ids = new Set(LETTER_STYLES.map((x) => x.id));
-            const _picked = opts.letter.items.map((x) => ({ text: String((x && x.text) || "").trim().slice(0, 80), font: _ids.has(String((x && x.font) || "").toLowerCase()) ? String(x.font).toLowerCase() : "" }))
+            const _picked = opts.letter.items.map((x) => ({ text: String((x && x.text) || "").trim().slice(0, 80), font: _ids.has(String((x && x.font) || "").toLowerCase()) ? String(x.font).toLowerCase() : "",
+              ...(x && x.from && letterKey(x.from) !== letterKey(x.text) ? { from: String(x.from).slice(0, 80) } : {}) }))
               .filter((x) => x.text);
-            const _merged = _picked.concat(_old.items.filter((o) => !_picked.some((p) => p.text.toLowerCase() === String(o.text || "").toLowerCase())));
+            const _merged = _picked.concat(_old.items.filter((o) => !_picked.some((p) => letterKey(p.text) === letterKey(o.text) || letterKey(p.from) === letterKey(o.text))));
             try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 4) })); await talkStatePut(env, me, "go_said", "1"); } catch {}
             const _list = _picked.map((x) => "\u201c" + x.text + "\u201d" + (x.font ? " in " + x.font.replace(/\b\w/g, (c) => c.toUpperCase()) : "")).join(" and ");
             _fixedWhy = "heard_ready"; _fixedSay = (await _fx("letter_picked", "{list} - beautiful. Want me to imagine it?")).replace("{list}", _list);
@@ -68905,6 +68920,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // (v9.840, 2026-11-03, Aaron: go) MEASURED 19:01:27: READY came back with no IDEA line and her words ended in a stray "— ?" - the log
               // could not show what she had actually sent. Whenever an answer that is not TALK has no IDEA line, her raw answer is logged as it came.
               if (_hRaw && !String(_hIdea || "").trim() && _hDo !== "TALK") { try { console.log("[TURN:HEARD] no IDEA line in her answer - her raw answer: \"" + _hRaw.replace(/\s+/g, " ").slice(0, 900) + "\"" + (me ? " · who=" + me : "")); } catch {} }
+              // ══ CUT OFF AT THE IDEA LINE (v9.845, 2026-11-04, Aaron: go) ═══ MEASURED 06:02:29: "READY I'm sorry for your loss ... You mentioned his
+              // life as a lobsterman in Maine and are thinking about his old boat or a lighthouse. Should I start imagining ...? IDEA:" - her answer
+              // stopped at the label. She had said it back and offered to imagine it, and no Imagine it showed (v9.840 is for an answer with no
+              // IDEA line at all). When the label is there with nothing after it, the idea is everything they said, in their order - as when her
+              // copy of their words comes without the label (above).
+              if (_hDo === "READY" && !String(_hIdea || "").trim() && /(^|\s)IDEA\s*:\s*$/i.test(String(_hRaw || "").trim()) && String(_hRest || "").trim()) {
+                _hIdea = ((_told ? _told.replace(/\n+/g, ". ") + ". " : "") + _s).replace(/\.\s*\./g, ".").slice(0, 1200);
+                try { console.log("[TURN:HEARD] her answer stopped at the IDEA label - their own words are the idea: \"" + _hIdea.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } catch {}
+              }
               // her two directions: "A: button words = the whole idea"
               const _hPicks = {};
               for (const _k of ["A", "B"]) {
@@ -69078,7 +69102,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // said back is kept, so their pick goes straight back to Imagine it.
               try {
                 const _lOld = letterParse(_ds.letter);
-                const _lNew = (_hLetter || []).filter((t) => !_lOld.items.some((o) => o.font && String(o.text || "").toLowerCase() === t.toLowerCase()));
+                const _lNew = (_hLetter || []).filter((t) => !letterHas(_lOld, t));
                 if (_lNew.length && (_hDo === "READY" || _hDo === "GO") && _heardOut && _heardOut.go) {
                   const _gi = _heardIdea || _goPrev;
                   if (_gi) { try { await talkStatePut(env, me, "go_idea", _gi); await talkStatePut(env, me, "go_said", "1"); } catch {} }
@@ -74255,7 +74279,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -74284,7 +74308,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // THE TURN RUNS AS A JOB, THIS CONNECTION ONLY RELAYS IT (v9.681). Same options as the turn below, as plain data.
         const _tOpts = {
           tid: b.tid ? String(b.tid).slice(0, 40) : null,
-          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null };
+          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null };
         // ══ A START THAT CANNOT DRAW RUNS STRAIGHT AWAY (v9.792, 2026-11-01, Aaron: go) ═══ MEASURED 17:20:08 -> 17:20:10.6: the job took
         // 2.2s just to begin (1.5-4.1s across today) for a fixed line that then took 1.3s. The job exists so a 30-90s drawing survives a
         // dropped connection; a start never draws. ONLY these run directly: a new-tattoo / add / cover opener on its own, or a fresh "Let's
@@ -74451,7 +74475,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
               direct_no_draw: !!_tOpts.direct_no_draw,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },

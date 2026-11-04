@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.834.0-2026-11-03-style-match-one-word-design-is-her-job";
+const BUILD = "aura-core-v9.835.0-2026-11-03-described-style-is-named";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61603,7 +61603,9 @@ function heardSystem(style, canGo) {
     // asked for in their own words, nothing was tapped, and the sheet went out "each in a different tattoo style" - only card 1 was stained
     // glass. Her judgement says which style they asked for; it is then picked exactly as a tap would pick it.
     // (v9.831) the 41 proven names, given to her - no more guessing a name
-    "If they ask for a tattoo style" + (style ? " - a different one from the " + style + " style" : "") + ", add a line just before the IDEA line: " +
+    // (v9.835, Aaron: go) MEASURED 17:29:56: "these all black tattoos of animals in the woods" - described, not named - and no style was picked,
+    // so the 8 came back in eight different looks. A style they describe is a style they asked for.
+    "If they ask for a tattoo style, or describe one (\"all black\", \"all red\", \"like a sticker\")" + (style ? " - a different one from the " + style + " style" : "") + ", add a line just before the IDEA line: " +
     "STYLE: the name from this list that is what they asked for, written exactly as it is in the list: " + STYLE_41.join(", ") + ". " +
     "If what they asked for is not on the list, write it the way they said it. Only a style they asked for, never one you suggest.\n\n" +
     // ══ THEIR YES IS THEIR GO (v9.825, 2026-11-03, Aaron: go) ═══ MEASURED 15:11:43: she asked "Should I go ahead and picture it for you?",

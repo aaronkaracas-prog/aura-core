@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.848.0-2026-11-05-card-title-not-lettering-sheet-on-change";
+const BUILD = "aura-core-v9.849.0-2026-11-05-title-read-from-the-box-alone";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -60786,7 +60786,8 @@ async function cutAllCards(env, url, copts) {
   // THE ARTWORK WITHOUT ITS WORDS (v9.708): a card whose title is drawn under it also comes off as its panel alone - what a pick
   // works from, so the words never travel into a change or the artist files. Kept under its own key.
   const _art = !!(copts && copts.art);
-  const _ck = (_art ? "cutall4:" : "cutall3:") + id;
+  // (v9.849) cutall5: the art cut also keeps the card's words box on its own (words_url) - older cuts are cut again once
+  const _ck = (_art ? "cutall5:" : "cutall3:") + id;
   const was = await env.AURA_KV.get(_ck).catch(() => null);
   if (was) { try { return JSON.parse(was); } catch {} }
   const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
@@ -60917,6 +60918,22 @@ async function cutAllCards(env, url, copts) {
         const aid = "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
         _puts.push(env.AURA_KV.put("image:" + aid, btoa(at)));
         card.art_url = "https://" + host + "/image/" + aid; card.art_size = acw + "x" + ah;
+        // ══ THE WORDS BOX ON ITS OWN (v9.849, 2026-11-05, Aaron: go) ═══ MEASURED 08:19:09: all 8 titles were read as "NO WORRIES GERALD" -
+        // the reader saw the whole card and the tattoo's own big lettering won, whatever it was asked. The box under the artwork is kept as
+        // its own small picture, and the title is read from it alone.
+        const wh = bot - artBot;
+        if (wh > 8) {
+          const wcw = x1 - x0, wdst = new Uint8Array(wcw * wh * 4);
+          for (let y = 0; y < wh; y++) for (let x = 0; x < wcw; x++) {
+            const so = ((artBot + y) * W + (x0 + x)) * 4, to = (y * wcw + x) * 4;
+            wdst[to] = px[so]; wdst[to + 1] = px[so + 1]; wdst[to + 2] = px[so + 2]; wdst[to + 3] = 255;
+          }
+          const wc = new PhotonImage(wdst, wcw, wh); const wbts = wc.get_bytes(); try { wc.free(); } catch {}
+          let wt = ""; for (let j = 0; j < wbts.length; j += 8192) wt += String.fromCharCode.apply(null, wbts.subarray(j, j + 8192));
+          const wid = "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+          _puts.push(env.AURA_KV.put("image:" + wid, btoa(wt)));
+          card.words_url = "https://" + host + "/image/" + wid;
+        }
       }
     }
     _allPuts.push(..._puts);
@@ -62004,6 +62021,9 @@ async function premakeSetCopies(env, sheetId, cards) {
 // are not, with room to answer in full; an answer longer than a title is still thrown away, never shortened.
 // (v9.848, 2026-11-05, Aaron: go) MEASURED 07:19:16 and 07:36: card 3 "THE ARCH" was named "BE STILL", and "CLASSIC RIBBON" was named
 // "FOREVER" - the tattoo's own lettering, large at the top of the artwork, was read as the title.
+// (v9.849) read from the card's words box on its own when there is one - the artwork, and its lettering, are not in the picture at all
+const CARD_BOX_ASK = "This is the caption box from a tattoo design card. Its first line, in large bold capital letters, is the title; " +
+  "the smaller words under it are not part of the title. Reply with only the title, exactly as printed, nothing else.";
 const CARD_TITLE_ASK = "This is a tattoo design card. The title is in the box with a thin black outline under the artwork: the first line in that box, " +
   "in large bold capital letters. The smaller words under it are not part of the title, and any words in the artwork above the box are part of the " +
   "tattoo, not the title. Reply with only the title, exactly as printed, nothing else.";
@@ -62016,7 +62036,7 @@ async function eightCards(env, sheetUrl, said, eopts) {
     const lines = String(said || "").split(/\r?\n/).map((l) => l.split("|").map((x) => x.trim().replace(/^[\s*#>-]*(?:\d+[.)]\s*)?/, "").replace(/[*`]+/g, "").trim()))
       .filter((p) => p.length >= 2 && p[0] && p[0].length <= 60).map((p) => ({ title: p[0], lines: p.slice(1, 3).filter(Boolean) }));
     const ok = lines.length === cut.cards.length;
-    const cards = cut.cards.map((c, k) => ({ n: k + 1, image: c.image_url, ...(c.art_url ? { art: c.art_url } : {}), ...(_printed ? { printed: true } : {}),
+    const cards = cut.cards.map((c, k) => ({ n: k + 1, image: c.image_url, ...(c.art_url ? { art: c.art_url } : {}), ...(c.words_url ? { words: c.words_url } : {}), ...(_printed ? { printed: true } : {}),
       ...(ok ? { title: lines[k].title, lines: lines[k].lines } : {}) }));
     const sid = (String(sheetUrl).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
     if (sid) { try { await env.AURA_KV.put("sheet8:" + sid, JSON.stringify(cards)); } catch {} }
@@ -62042,7 +62062,7 @@ async function eightCards(env, sheetUrl, said, eopts) {
         const _tT0 = Date.now();
         try { _bg((async () => {
           const reads = await Promise.all(cards.map((c) => Promise.race([new Promise((r) => setTimeout(() => r(null), 15000)),
-            seeMedia({ url: c.image, prompt: CARD_TITLE_ASK, max_tokens: 48 }, env)]).catch(() => null)));
+            seeMedia({ url: c.words || c.image, prompt: c.words ? CARD_BOX_ASK : CARD_TITLE_ASK, max_tokens: 48 }, env)]).catch(() => null)));
           const titles = reads.map((rd) => { const tt = String((rd && rd.ok && rd.saw) || "").replace(/^["'*\s]+|["'*.\s]+$/g, "").replace(/\s+/g, " ").trim();
             return (tt && tt.length <= 40 && tt.split(" ").length <= 6 && !/[\n:]/.test(tt) && !/\b(title|card|tattoo design|cannot|can't|sorry)\b/i.test(tt)) ? tt.toUpperCase() : null; });
           const got = titles.filter(Boolean).length;
@@ -71966,9 +71986,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                         const _sid8 = (String(_gridPickCut.img || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
                         const _k8 = _sid8 ? JSON.parse((await env.AURA_KV.get("sheet8:" + _sid8)) || "null") : null;
                         const _full = Array.isArray(_k8) && _k8[_gridPickCut.n - 1] && _k8[_gridPickCut.n - 1].image ? _k8[_gridPickCut.n - 1].image : null;
+                        const _box = Array.isArray(_k8) && _k8[_gridPickCut.n - 1] && _k8[_gridPickCut.n - 1].words ? _k8[_gridPickCut.n - 1].words : null;
                         if (_full) {
                           const _rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), 8000)),
-                            seeMedia({ url: _full, prompt: CARD_TITLE_ASK, max_tokens: 48 }, env)]);
+                            seeMedia({ url: _box || _full, prompt: _box ? CARD_BOX_ASK : CARD_TITLE_ASK, max_tokens: 48 }, env)]);
                           const _tt = String((_rd && _rd.ok && _rd.saw) || "").replace(/^["'*\s]+|["'*.\s]+$/g, "").replace(/\s+/g, " ").trim();
                           if (_tt && _tt.length <= 40 && _tt.split(" ").length <= 6 && !/[\n:]/.test(_tt) && !/\b(title|card|tattoo design|cannot|can't|sorry)\b/i.test(_tt)) {
                             _gridPickCut.card = { title: _tt.toUpperCase(), lines: [] };

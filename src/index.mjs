@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.846.0-2026-11-04-change-keeps-the-rest-sheet-keeps-chosen";
+const BUILD = "aura-core-v9.847.0-2026-11-05-lettering-said-once-per-style";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68768,7 +68768,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               .filter((x) => x.text);
             const _merged = _picked.concat(_old.items.filter((o) => !_picked.some((p) => letterKey(p.text) === letterKey(o.text) || letterKey(p.from) === letterKey(o.text))));
             try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 4) })); await talkStatePut(env, me, "go_said", "1"); } catch {}
-            const _list = _picked.map((x) => "\u201c" + x.text + "\u201d" + (x.font ? " in " + x.font.replace(/\b\w/g, (c) => c.toUpperCase()) : "")).join(" and ");
+            // (v9.847) MEASURED 07:14:59: "'Mia' in Fine-Line Script and 'Leo' in Fine-Line Script" - pieces in the same style are named together,
+            // the style once: "'Mia' and 'Leo' in Fine-Line Script"
+            const _groups = []; for (const x of _picked) { const g = _groups.find((q) => q.font === x.font); if (g) g.texts.push(x.text); else _groups.push({ font: x.font, texts: [x.text] }); }
+            const _and = (a) => a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
+            const _list = _and(_groups.map((g) => _and(g.texts.map((t) => "\u201c" + t + "\u201d")) + (g.font ? " in " + g.font.replace(/\b\w/g, (c) => c.toUpperCase()) : "")));
             _fixedWhy = "heard_ready"; _fixedSay = (await _fx("letter_picked", "{list} - beautiful. Want me to imagine it?")).replace("{list}", _list);
             _heardOut = { go: true };
             console.log("[TURN:LETTER] they picked their lettering: " + _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") + " - kept for the whole tattoo, Imagine it shown" + (me ? " · who=" + me : ""));

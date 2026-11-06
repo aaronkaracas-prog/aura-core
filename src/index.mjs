@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.856.0-2026-11-06-add-on-yes-draws";
+const BUILD = "aura-core-v9.857.0-2026-11-06-add-on-own-picture-only";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -70560,7 +70560,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (e && e.role === "picture") { const _id = (String(e.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
               if (_id && await env.AURA_KV.get("bodycut:" + _id)) _addonPossCard = String(e.image);
               // (v9.854) the last picture is an add-on drawn one at a time: a change builds on it (its design, from the marker).
-              else if (_id && jobNow === "add") { try { const _oneEnt = await env.AURA_KV.get("addonone:" + _id); if (_oneEnt) _addonMore = String(_oneEnt); } catch {} }
+              // (v9.857) MEASURED 10:44: a fresh add-on of the koi back found the rose add-on from the test before as the last picture and drew
+              // the koi on HER arm. The mark now says which photo it was drawn on; only a picture drawn on the photo on screen now counts.
+              else if (_id && jobNow === "add") { try {
+                const _mk = JSON.parse((await env.AURA_KV.get("addonone:" + _id)) || "null");
+                if (_mk && _mk.ent && _mk.photo && String(_mk.photo) === String(refDesign)) _addonMore = String(_mk.ent);
+                else if (_mk) console.log("[TURN:IDEAS] the last add-on picture was drawn on another photo - not built on" + (me ? " · who=" + me : ""));
+              } catch {} }
               break; } }
         } catch {}
         act = "change"; _ideasGrid = true;
@@ -70580,7 +70586,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           const _yesOnly = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(String(said || "").replace(/\[[^\]]*\]/g, " "));
           if (await _addLetterHold(_w)) { act = "none"; _ideasGrid = false; }
           else if (!_drawnYet && _yesOnly && _w && jobNow === "add") {
-            _addonOwnWords = _w; acted.choose = null;
+            _addonOwnWords = _w; acted.choose = null; _addonMore = null;   // (v9.857) nothing drawn in this tattoo yet - their photo, always
             let _goLine = "On it - I'm imagining it on you now. It's 100% unique and 100% yours.";
             try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
             acted.say = _goLine;
@@ -70588,7 +70594,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             console.log("[TURN:IDEAS] add-on - \"" + String(said).trim().slice(0, 60) + "\" is a yes to her offer - drawn now from their words: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
           }
           else if (!_drawnYet) {
-            act = "none"; _ideasGrid = false; _heardOut = { go: true }; acted.choose = null;
+            act = "none"; _ideasGrid = false; _heardOut = { go: true }; acted.choose = null; _addonMore = null;
             try { await talkStatePut(env, me, "addon_go", _w); } catch {}
             console.log("[TURN:IDEAS] add-on - her words and Imagine it; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
           } else {
@@ -72403,7 +72409,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // (v9.854) AN ADD-ON DRAWN ONE AT A TIME IS MARKED: a change after it builds on this picture (its design), not on the bare photo.
           if (_addonOne && cp?.ok && cp.image_url && cp.child) {
             const _oid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
-            if (_oid) { try { await env.AURA_KV.put("addonone:" + _oid, String(cp.child)); console.log("[CUT] add-on picture marked - a change builds on it: " + _oid + " -> " + cp.child); } catch {} }
+            // (v9.857) the mark carries the photo it was drawn on, so another tattoo's add-on never builds on it
+            if (_oid) { try { await env.AURA_KV.put("addonone:" + _oid, JSON.stringify({ ent: String(cp.child), photo: String(refDesign) })); console.log("[CUT] add-on picture marked - a change builds on it: " + _oid + " -> " + cp.child + " · drawn on " + refDesign); } catch {} }
           }
           // THE ADD-ON FOUR ARE MARKED (v9.651): a pick off this sheet is cut out of it, never redrawn (cutBodyPanel).
           if (_ideasGrid && cp?.ok && cp.image_url) {

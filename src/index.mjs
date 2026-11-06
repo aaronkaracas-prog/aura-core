@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.850.0-2026-11-06-add-on-says-back-and-letters-first";
+const BUILD = "aura-core-v9.851.0-2026-11-06-add-on-ideas-her-line-and-her-suggestion";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61556,7 +61556,8 @@ async function letterFind(env, theirWords, herWords, talkModel) {
     try { model = String((await env.AURA_KV.get("config:source:lettering:model")) || "").trim() || String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
     const system = "You read what a person said about a tattoo they want. Only answer about lettering: words, names, dates or numbers that are to be " +
       "written in the tattoo itself. If anything is to be written in it, reply with one line: LETTERING: each piece exactly as it will be written, " +
-      "each in double quotes, separated by |. If nothing is to be written in the tattoo, reply with one line: LETTERING: none";
+      "each in double quotes, separated by |. Count anything Aura suggested writing in it that they have not turned down. " +
+      "If nothing is to be written in the tattoo, reply with one line: LETTERING: none";
     const user = "What they said:\n" + String(theirWords || "").slice(0, 1500) + (herWords ? "\n\nWhat Aura said back to them:\n" + String(herWords).slice(0, 900) : "");
     const r = await callBrain({ system, user, max_tokens: 2000, reasoning: "low", ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env);
     const t = String((r && r.text) || "");
@@ -68633,7 +68634,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
       let _heardIdea = null;
       let _drawSayP = null;   // (v9.826) her line as the drawing starts - shown when it comes, never waited for
-      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _addonGoWords = null, _addonLetter = null;
+      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _addonGoWords = null, _addonLetter = null, _addonLetterHeld = false;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -69371,6 +69372,33 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _fixedSay = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover"
               ? await _fx("cover_ideas8", "On it - imagining ways to cover it.")
               : await _fx("addon_ideas8", "On it - imagining ways your tattoo could grow.");
+            // ══ BEFORE THE 8: THEIR LETTERING, THEN HER OWN LINE (v9.851, 2026-11-06, Aaron: "she's giving a generic answer when she has
+            // information such as your tattoo your grandma") ═══ MEASURED 07:51:15: "Show me some ideas" got the fixed line "I'm imagining ways
+            // your tattoo could grow...", and the lettering question saw only that line - not her "Her name and her daisies can grow right out of
+            // what you have" - and answered none. Now: what they told her and what she last said go to the lettering question first; lettering
+            // with no style brings up the sheet and nothing is drawn. Otherwise her own line, from what they told her, shows while it draws
+            // (the same as a new tattoo's Imagine it, v9.826: if her words are not in by `config:talk:drawsay_ms`, the page's waiting line stands).
+            try {
+              let _herLastA = ""; for (let i = tnow.length - 1; i >= 0; i--) { const e = tnow[i]; if (e && e.role === "aura" && String(e.said || "").trim()) { _herLastA = String(e.said).trim().slice(0, 900); break; } }
+              const _toldA = String(_told || "").trim();
+              if (_toldA) {
+                const _itemsA = await letterFind(env, _toldA, _herLastA, talkModel);
+                const _savedA = letterParse(_ds.letter), _newA = _itemsA.filter((t) => !letterHas(_savedA, t));
+                if (_newA.length) {
+                  const _chosenA = (_savedA.items || []).filter((x) => x && x.font).map((x) => ({ said: x.from || x.text, text: x.text, font: x.font }));
+                  _heardOut = { letter: { items: _itemsA.slice(0, 4), chosen: _chosenA, styles: LETTER_STYLES.map((x) => x.id) } };
+                  _fixedWhy = "addon_letter"; _fixedSay = await _fx("addon_letter", "Love it. Before I imagine it, let's get the lettering exactly right.");
+                  _addonLetterHeld = true;
+                  try { await talkStatePut(env, me, "addon_go", _toldA.replace(/\n+/g, ". ").slice(0, 600)); } catch {}
+                  console.log("[TURN:LETTER] add-on ideas - lettering with no style yet: " + _newA.map((x) => '"' + x + '"').join(", ") + " - the lettering sheet comes up, nothing drawn" + (me ? " · who=" + me : ""));
+                } else {
+                  let _dsMsA = 3000; try { const _v = parseInt(String((await env.AURA_KV.get("config:talk:drawsay_ms")) || ""), 10); if (Number.isFinite(_v) && _v >= 0) _dsMsA = _v; } catch {}
+                  _drawSayP = Promise.race([drawStartSay(env, _toldA, null, talkModel), new Promise((r) => setTimeout(() => r(null), _dsMsA))])
+                    .then((x) => { console.log("[TURN:DRAW-SAY] add-on ideas - " + (x ? "shown while drawing: her words - \"" + String(x).slice(0, 200) + "\"" : "her words not in " + _dsMsA + "ms - the page's waiting line stands")); return x || ""; })
+                    .catch(() => "");
+                }
+              }
+            } catch (e) { console.log("[TURN:LETTER] add-on ideas - could not check: " + String(e?.message ?? e).slice(0, 160)); }
           } else if (/^i want number [1-8]\.?$/i.test(_s) && _bodyPhoto && await (async () => {
                        // THE ADD-ON PICK IS A CUT, SO SHE IS NOT CALLED (v9.652, 2026-10-17, Aaron). MEASURED 19:43 (pta_15fa057112170b60):
                        // the cut took 2s, but she was asked first (15.6s) and looked at the cut after (15.6s) - 35s for a picture that
@@ -70500,8 +70528,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_ws.length) { _addonOwnWords = _ws.join(". ").slice(0, 600); console.log("[TURN:IDEAS] their own words go in: \"" + _addonOwnWords + "\""); }
         } catch (e) { console.log("[TURN:IDEAS] their words could not be read: " + String(e?.message ?? e).slice(0, 120)); }
         console.log("[TURN:IDEAS] eight drawn as one sheet on their photo, from the " + (_addonOwnWords ? "their-own-idea sentence" : "one fixed sentence"));
-        // (v9.850) a tap is their yes - but lettering with no style still goes to the sheet first
-        if (_addonOwnWords && await _addLetterHold(_addonOwnWords)) { act = "none"; _ideasGrid = false; _addonOwnWords = null; }
+        // (v9.850/851) a tap is their yes - lettering with no style was found before her line went out, and brought up the sheet
+        if (_addonLetterHeld) { act = "none"; _ideasGrid = false; _addonOwnWords = null; console.log("[TURN:IDEAS] held for the lettering sheet - nothing drawn"); }
         else { try { await talkStatePut(env, me, "addon_drawn", "1"); } catch {} }
       } else if ((jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire) && (act === "draw" || act === "change") &&
                  !_pickGo && !_cutPick && _fixedWhy !== "pick" && String(said || "").trim()) {

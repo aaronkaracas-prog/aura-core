@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.852.0-2026-11-06-add-on-similar-style-no-style-card";
+const BUILD = "aura-core-v9.853.0-2026-11-06-add-on-lettering-before-the-layout";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -71836,7 +71836,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (!_coverNow && !_addStyle) _ow = _ow.replace("I want to add to it:", "I want to add to it, in a similar style to my tattoo:");
               _go = _ow.replace("____", _addonOwnWords.replace(/[\s.]+$/, "").slice(0, 600) + ((_coverStyle || _addStyle) ? ", in the " + (_coverStyle || _addStyle) + " style" : "")); _goFrom = _coverNow ? "cover_own" + (_coverStyle ? "+style" : "") : "own";
               // (v9.850) the lettering they settled on the sheet, the same clause a new tattoo gets
-              if (_addonGoWords && _addonLetter && (_addonLetter.items || []).length) { _go = letterFrame(_go + letterClause(_addonLetter, false), _addonLetter); _goFrom += "+lettering"; }
+              // (v9.853, 2026-11-06) MEASURED 08:42: added at the very end, after the card layout, "Rosa" was drawn on 4 of the 8. A new tattoo puts
+              // it before the layout "so it is part of the design and not the card" (v9.844) - the add-on does the same.
+              if (_addonGoWords && _addonLetter && (_addonLetter.items || []).length) {
+                const _lcA = letterClause(_addonLetter, false);
+                const _atA = _go.search(/\s(?:Show all (?:4|8|four|eight)\b|Use colou?r wherever it works|Use the colou?rs|Keep the colou?rs|Make one tall page|Make one page)/);
+                _go = letterFrame(_atA > 0 ? _go.slice(0, _atA) + _lcA + _go.slice(_atA) : _go + _lcA, _addonLetter); _goFrom += "+lettering";
+                console.log("[TURN:IDEAS] their lettering goes in " + (_atA > 0 ? "before the card layout" : "at the end (no layout line found)") + ":" + _lcA);
+              }
             }
             _sentNow = _go;
             _herAsk = null;

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.861.0-2026-11-06-add-on-talk-runs-straight-away";
+const BUILD = "aura-core-v9.862.0-2026-11-06-add-on-yes-shows-the-drawing-line";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67176,8 +67176,11 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
   // ONLY EVER FORWARD, NEVER RESEND. The page appends what it is given, so a re-emitted prefix
   // would duplicate her words on screen.
   let _rawAcc = "", _sentSoFar = "";
+  // (v9.862) set on an add-on's bare yes before anything is drawn: her words wait until core knows whether this turn draws (see below)
+  let _holdWords = false, _yesDraws = false;
   const _fwdDelta = onDelta ? (async (d) => {
     _rawAcc += d;
+    if (_holdWords) return;
     const cur = _sayFrom(_rawAcc);
     if (cur == null || cur.length <= _sentSoFar.length) return;
     const add = cur.slice(_sentSoFar.length);
@@ -69484,6 +69487,16 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // drawn from it yet, she sees it every turn. After the first picture the look turn shows her
           // what she made, unchanged.
           const _photoStill = _photoRides;
+          // ══ A YES ON AN ADD-ON WAITS FOR WHAT IT DOES BEFORE ANY WORDS SHOW (v9.862, 2026-11-06, Aaron: go) ═══ MEASURED 15:23:01: "yes" after
+          // her offer drew the one picture (v9.856), but her own streamed line - "Here it is - lavender sprigs growing off the rose stem ... Your
+          // rose stays exactly as it is." - was on screen for the 30s before any picture existed; the fixed line set after her reply never
+          // showed, because her words had already gone out. On a line that is only a yes, on their photo, before anything is drawn on it, her
+          // words are held until core knows: if it draws, the fixed line goes; if not, her own words go, exactly as she wrote them.
+          if (onDelta && me && _bodyPhoto && !["cover", "rework", "from"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase()) &&
+              /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(String(said || "").replace(/\[[^\]]*\]/g, " "))) {
+            try { if (String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || "") !== "1") _holdWords = true; } catch {}
+            if (_holdWords) console.log("[TURN:YES] add-on, nothing drawn yet - her words wait until this turn knows whether it draws" + (me ? " · who=" + me : ""));
+          }
           let proxied = await proxyToAgent(env, agentLine,
             false, me, ((seeing && !refHeld) || _photoStill) ? refUrl : (_ownLook || null), world, _fwdDelta);
           // ══ HER BRAIN DROPPED THE TURN - ASK HER AGAIN, ONCE (2026-09-28) ══════════════════════
@@ -70623,7 +70636,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _addonOwnWords = _w; acted.choose = null; _addonMore = null;   // (v9.857) nothing drawn in this tattoo yet - their photo, always
             let _goLine = "On it - I'm imagining it on you now. It's 100% unique and 100% yours.";
             try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
-            acted.say = _goLine;
+            acted.say = _goLine; _yesDraws = true;
             try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
             console.log("[TURN:IDEAS] add-on - \"" + String(said).trim().slice(0, 60) + "\" is a yes to her offer - drawn now from their words: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
           }
@@ -70636,6 +70649,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             console.log(_addonMore ? "[TURN:IDEAS] their change, on the add-on picture they have (" + _addonMore + ")" : "[TURN:IDEAS] their own idea, on their photo");
           }
         }
+      }
+      // (v9.862) the held words go now: the fixed line when the yes draws, otherwise what this turn says (her words, or the lettering line)
+      if (_holdWords) {
+        _holdWords = false;
+        // What the turn says now - the fixed drawing line, the lettering line, or her own words - is what shows; her raw stream only if nothing is set.
+        let _out = String((acted && acted.say) || "");
+        if (!_out && !_yesDraws) { const _c = _sayFrom(_rawAcc); if (_c) _out = _c; }
+        if (_out && onDelta) { _sentSoFar = _out; try { await onDelta(_out); } catch {} }
+        console.log("[TURN:YES] " + (_yesDraws ? "it draws - the fixed line shown, her streamed words not: \"" : "it does not draw - her own words shown: \"") + _out.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
       }
       // ══ A CHANGE TO A DESIGN COMES BACK AS FOUR VERSIONS (2026-10-14, v9.599, Aaron) ═══════════════════
       // "When they tell us what they want ... four different versions." On a new tattoo (not add / cover / rework),

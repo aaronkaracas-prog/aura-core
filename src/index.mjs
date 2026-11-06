@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.851.0-2026-11-06-add-on-ideas-her-line-and-her-suggestion";
+const BUILD = "aura-core-v9.852.0-2026-11-06-add-on-similar-style-no-style-card";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -70462,6 +70462,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if (_dirTap && (act === "draw" || act === "change" || act === "onme")) {
         console.log("[TURN:PLACE] they said where - nothing drawn yet (her act was " + act + ")"); act = "none";
       }
+      // ══ NO STYLE CARD ON AN ADD-ON (v9.852, 2026-11-06, Aaron: "let's not pick a style right now ... I'm not sure there should be a choice
+      // of selecting fine lines ... unless they specify") ═══ her question stays in her own words; the new work goes in a similar style to
+      // their tattoo unless they name one.
+      if (jobNow === "add" && _bodyPhoto && acted && acted.choose) { acted.choose = null; console.log("[TURN:IDEAS] add-on - her style card left out; her question stays in her words" + (me ? " · who=" + me : "")); }
       let _ideasGrid = false, _addonPoss = false, _addonOwnWords = null;
       // ══ EVERYTHING THEY TYPED FOR THIS ADD-ON (v9.850) ═══ the same reading as the Imagine-8 tap below (v9.680/683): their words since the
       // add-on started, not taps and not the page's notes. Used to hold the first drawing for their yes, and to find any lettering.
@@ -71826,6 +71830,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 _ow = "This is my current tattoo. I want to cover it up with: ____. Show me 4 different cover-up designs of that, each one in the same place as my tattoo and only as big as it needs to be to fully hide it, the way a tattoo artist would cover it. None of my old tattoo should show through. Use colour wherever it works with the design. Keep the same view of my body as this photo. Show all 4 in a 2x2 grid. No numbers anywhere. Under each one, write a short title and two or three lines about the design.";
                 try { const _k = String((await env.AURA_KV.get("config:frame:cover:own")) || "").trim(); if (_k.includes("____")) _ow = _k; } catch {}
               }
+              // ══ IN A SIMILAR STYLE (v9.852, 2026-11-06, Aaron: "if we told the image model here's my current tattoo I want to add AB and C in a
+              // similar style then we're not reading it wrong ever") ═══ no style named: the model matches what it sees on their photo; nothing
+              // of Aura's reading is passed on. A style they name goes in as before.
+              if (!_coverNow && !_addStyle) _ow = _ow.replace("I want to add to it:", "I want to add to it, in a similar style to my tattoo:");
               _go = _ow.replace("____", _addonOwnWords.replace(/[\s.]+$/, "").slice(0, 600) + ((_coverStyle || _addStyle) ? ", in the " + (_coverStyle || _addStyle) + " style" : "")); _goFrom = _coverNow ? "cover_own" + (_coverStyle ? "+style" : "") : "own";
               // (v9.850) the lettering they settled on the sheet, the same clause a new tattoo gets
               if (_addonGoWords && _addonLetter && (_addonLetter.items || []).length) { _go = letterFrame(_go + letterClause(_addonLetter, false), _addonLetter); _goFrom += "+lettering"; }

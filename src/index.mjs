@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.857.0-2026-11-06-add-on-own-picture-only";
+const BUILD = "aura-core-v9.858.0-2026-11-06-her-act-kept-without-words";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66472,7 +66472,16 @@ function talkReadAct(txt) {
     // A REPLY THAT STOPPED MID-SENTENCE ENDS AT ITS LAST WHOLE SENTENCE (v9.740): MEASURED 19:05:34 - "...The Thunderbird idea is
     // still just a". When her JSON had to be repaired (it was cut off), the half sentence at the end is dropped.
     if (_cut && say && !/[.!?…"')\]]\s*$/.test(say)) { const _m = say.match(/^[\s\S]*[.!?…](?=\s|$)/); if (_m && _m[0].trim().length >= 12) say = _m[0].trim(); }
-    if (!say) return null;
+    // ══ HER ACT IS KEPT WHEN SHE WROTE NO WORDS (v9.858, 2026-11-06, Aaron: go) ═══ MEASURED 11:17:18 (koi change): her reply came back
+    // and was thrown away whole as "raw machine text" - "Tell me a bit more." and nothing drawn. A reply that says to draw, change or put
+    // it on them, with what to draw, is kept; the line they see is a short fixed one (config:say:act_no_words, read where her reply is read).
+    let _noWords = false;
+    if (!say) {
+      const _a0 = String(o.do || "").trim().toLowerCase();
+      const _w0 = (typeof o.ask === "string" && o.ask.trim()) || (typeof o.prompt === "string" && o.prompt.trim());
+      if (["draw", "change", "onme"].includes(_a0) && _w0) { say = "On it - imagining that now."; _noWords = true; }
+      else return null;
+    }
     const act = String(o.do || "none").trim().toLowerCase();
     // ══ A FIELD SHE CAN FILL AND NOBODY READS (2026-09-10) ═════════════════════════════
     // `use` was added to the contract and wired into the evolve in the same hour, and this
@@ -66485,7 +66494,7 @@ function talkReadAct(txt) {
     const strList = (v, n, cap) => (Array.isArray(v) ? v : [])
       .map((x) => String(x == null ? "" : x).trim()).filter(Boolean).slice(0, n)
       .map((x) => x.slice(0, cap));
-    return { say,
+    return { say, ...(_noWords ? { no_words: true } : {}),
              act: ["draw", "change", "onme", "find", "artist", "none"].includes(act) ? act : "none",
              prompt: typeof o.prompt === "string" ? o.prompt.trim().slice(0, 2000) : "",
              // KEEP THE FIELD SHE WRITES (2026-09-20). This reader keeps a fixed set of keys
@@ -69702,6 +69711,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
 
       // Her answer, however it arrived. The local call is the floor beneath her own instance.
       if (!acted && r?.ok && r.text) acted = readAct(r.text);
+      if (acted && acted.no_words) {
+        try { const _k = String((await env.AURA_KV.get("config:say:act_no_words")) || "").trim(); if (_k) acted.say = _k; } catch {}
+        console.log("[TURN] her reply had no words for them - her " + acted.act + " kept, the fixed line shown: \"" + acted.say + "\"");
+      }
       // JSON that could not be read at all still has to say something - the raw text is a worse
       // answer than a good one and a far better answer than silence.
       // NEVER RAW MACHINE TEXT (2026-10-14, v9.601): MEASURED 08:53 - "I want number 4" was answered with the provider's
@@ -69709,7 +69722,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if (!acted) { const _t = String(r?.text || "").trim();
                     acted = { say: (_t && !/^\s*[\x7b\x5b]/.test(_t) && !/chatcmpl-/i.test(_t)) ? _t.slice(0, 900) : "Tell me a bit more.",
                               act: "none", prompt: "" };
-                    if (_t && /^\s*[\x7b\x5b]|chatcmpl-/i.test(_t)) console.log("[TURN] her reply was raw machine text - not shown to them"); }
+                    // (v9.858) what she wrote, so an unreadable reply can be read in the logs instead of guessed at
+                    if (_t && /^\s*[\x7b\x5b]|chatcmpl-/i.test(_t)) console.log("[TURN] her reply was raw machine text - not shown to them: " + _t.replace(/\s+/g, " ").slice(0, 600)); }
 
       // ══ THE BRIEF — FACTS, NOT TURNS ═══════════════════════════════════════════════════
       // "One leg." "Green eyes." "It's for my mum." Those are FACTS about what is being made,

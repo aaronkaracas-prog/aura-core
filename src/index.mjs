@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.855.0-2026-11-06-add-on-their-words-only";
+const BUILD = "aura-core-v9.856.0-2026-11-06-add-on-yes-draws";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -70571,7 +70571,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // photo, her words stand with Imagine it under them (or the lettering sheet first); their words are kept for the yes.
           let _drawnYet = false; try { _drawnYet = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || "") === "1"; } catch {}
           const _w = _drawnYet ? String(said).trim() : _addTyped();
+          // ══ A YES TO HER OFFER DRAWS IT (v9.856, 2026-11-06, Aaron: go) ═══ MEASURED 10:28 (koi): she had said his idea back and offered
+          // ("Want me to show you some ideas for where the two new koi could go around it?"), he said "yes show me", and core held it for a
+          // second yes - Imagine it, under her about-to-draw line "Tell me if this is the one or if you want to change anything." Create draws
+          // on a yes (GO). On an add-on, before anything is drawn, a line that is only a yes draws the one picture now, from everything they
+          // said before it; the line while it draws is the fixed one, as for Imagine it. Lettering with no style still brings up the sheet
+          // first; a yes that adds or changes anything still holds, said back, with Imagine it.
+          const _yesOnly = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(String(said || "").replace(/\[[^\]]*\]/g, " "));
           if (await _addLetterHold(_w)) { act = "none"; _ideasGrid = false; }
+          else if (!_drawnYet && _yesOnly && _w && jobNow === "add") {
+            _addonOwnWords = _w; acted.choose = null;
+            let _goLine = "On it - I'm imagining it on you now. It's 100% unique and 100% yours.";
+            try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
+            acted.say = _goLine;
+            try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
+            console.log("[TURN:IDEAS] add-on - \"" + String(said).trim().slice(0, 60) + "\" is a yes to her offer - drawn now from their words: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
+          }
           else if (!_drawnYet) {
             act = "none"; _ideasGrid = false; _heardOut = { go: true }; acted.choose = null;
             try { await talkStatePut(env, me, "addon_go", _w); } catch {}

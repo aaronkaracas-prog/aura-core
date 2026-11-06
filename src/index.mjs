@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.853.0-2026-11-06-add-on-lettering-before-the-layout";
+const BUILD = "aura-core-v9.854.0-2026-11-06-add-on-one-at-a-time";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61596,10 +61596,12 @@ function letterKey(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9]+
 function letterHas(saved, t) { const k = letterKey(t); return !!k && (saved.items || []).some((o) => o && o.font && (letterKey(o.text) === k || letterKey(o.from) === k)); }
 function letterParse(v) { try { const o = JSON.parse(String(v || "")); if (o && Array.isArray(o.items)) return o; } catch {} return { items: [] }; }
 // What every sentence to the image model says about the lettering, once it is chosen. forChange: the design already has it - keep it as it is.
-function letterClause(letter, forChange) {
+// one (v9.854): one picture, not a sheet - the lettering exactly, with no "number 1 ... the others" (the add-on, one at a time).
+function letterClause(letter, forChange, one) {
   const items = (letter && Array.isArray(letter.items) ? letter.items : []).filter((x) => x && x.text);
   if (!items.length) return "";
   const each = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? " in " + String(x.font).replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()) + " lettering" : "")).join(", ");
+  if (one) return " Write the lettering exactly as written here - " + each + ".";
   if (forChange) return " The lettering, spelled exactly as written here, each in its own lettering: " + each + ". Keep the lettering already on my design as it is.";
   return " Write the lettering exactly as written here - " + each + ". On number 1, put the lettering where I described, or where it suits the design best; on the others, place it differently on each one: " +
     LETTER_PLACES.join(", ") + ".";
@@ -68837,7 +68839,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // ══ IMAGINE IT, ON THEIR PHOTO (v9.850) ═══ The add-on or cover-up they said yes to, from everything they told her before the yes,
             // with the lettering they settled. She is not called; the 8 are drawn on their photo as before.
             _addonGoWords = String(_ds.addon_go).slice(0, 600); _addonLetter = letterParse(_ds.letter);
-            _fixedWhy = "addon_go"; _fixedSay = await _fx("eight_go", "On it - I'm imagining your designs now. Every one is 100% unique and 100% yours.");
+            _fixedWhy = "addon_go";
+            // (v9.854) an add-on is drawn one at a time - one picture, so the line says one. A cover-up is still the eight.
+            _fixedSay = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover"
+              ? await _fx("eight_go", "On it - I'm imagining your designs now. Every one is 100% unique and 100% yours.")
+              : await _fx("addon_one_go", "On it - I'm imagining it on you now. It's 100% unique and 100% yours.");
             try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
             console.log("[TURN:GO] add-on - Imagine it, drawn on their photo from their words: \"" + _addonGoWords.slice(0, 300) + "\"" +
               ((_addonLetter.items || []).length ? " · lettering: " + _addonLetter.items.map((x) => '"' + x.text + '" ' + (x.font || "")).join(", ") : "") + (me ? " · who=" + me : ""));
@@ -70466,7 +70472,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // of selecting fine lines ... unless they specify") ═══ her question stays in her own words; the new work goes in a similar style to
       // their tattoo unless they name one.
       if (jobNow === "add" && _bodyPhoto && acted && acted.choose) { acted.choose = null; console.log("[TURN:IDEAS] add-on - her style card left out; her question stays in her words" + (me ? " · who=" + me : "")); }
-      let _ideasGrid = false, _addonPoss = false, _addonOwnWords = null;
+      let _ideasGrid = false, _addonPoss = false, _addonOwnWords = null, _addonMore = null;
       // ══ EVERYTHING THEY TYPED FOR THIS ADD-ON (v9.850) ═══ the same reading as the Imagine-8 tap below (v9.680/683): their words since the
       // add-on started, not taps and not the page's notes. Used to hold the first drawing for their yes, and to find any lettering.
       const _addTyped = () => { try {
@@ -70546,6 +70552,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i];
             if (e && e.role === "picture") { const _id = (String(e.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
               if (_id && await env.AURA_KV.get("bodycut:" + _id)) _addonPossCard = String(e.image);
+              // (v9.854) the last picture is an add-on drawn one at a time: a change builds on it (its design, from the marker).
+              else if (_id && jobNow === "add") { try { const _oneEnt = await env.AURA_KV.get("addonone:" + _id); if (_oneEnt) _addonMore = String(_oneEnt); } catch {} }
               break; } }
         } catch {}
         act = "change"; _ideasGrid = true;
@@ -70561,7 +70569,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             act = "none"; _ideasGrid = false; _heardOut = { go: true }; acted.choose = null;
             try { await talkStatePut(env, me, "addon_go", _w); } catch {}
             console.log("[TURN:IDEAS] add-on - her words and Imagine it; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
-          } else { _addonOwnWords = String(said).trim(); console.log("[TURN:IDEAS] their own idea, four versions on their photo"); }
+          } else {
+            _addonOwnWords = String(said).trim();
+            console.log(_addonMore ? "[TURN:IDEAS] their change, on the add-on picture they have (" + _addonMore + ")" : "[TURN:IDEAS] their own idea, on their photo");
+          }
         }
       }
       // ══ A CHANGE TO A DESIGN COMES BACK AS FOUR VERSIONS (2026-10-14, v9.599, Aaron) ═══════════════════
@@ -71887,6 +71898,66 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (_gm) _canvasNow = { width: parseInt(_gm[1], 10), height: parseInt(_gm[2], 10) };
             } catch {}
           }
+          // ══ AN ADD-ON IS DRAWN ONE AT A TIME (v9.854, 2026-11-06, Aaron: "we're gonna do one at a time - it's the only way I can
+          // guarantee a good result for the user") ═══════════════════════════════════════════════════════════════════════════════════
+          // MEASURED 2026-11-06 on the rose photo (img_mw54fujgkwwu), Flare at high, by command:
+          //  - ONE picture on their photo, at the photo's own shape, kept the rose line for line - place, size, stem, leaves, the arm and the
+          //    framing - five runs out of five (img_mw58jbmndcxp, img_mw58stofi2v0, img_mw58tdfkgor1, img_mw58u0ea5b2l, img_mw59rkbv919s).
+          //  - every SHEET the model laid out itself redrew the photo and moved the rose up her arm: 2x2 (img_mw58m4t9i9rw), 2x4
+          //    (img_mw58yvv56mnr), 4x2 (img_mw598cq4cvlc), 2x2 at 2304x3456 (img_mw59p0ezfh62). A page handed to it kept the places but
+          //    each design was too small to be good (img_mw59k0nbrn3t).
+          //  - the same words on gpt-image-2 at the shared edit setting came back muddy, the name unreadable (img_mw58gv9d43fi).
+          // So the first add-on picture is ONE edit of their photo, their words in it, "in a similar style to my tattoo" unless they name a
+          // style; the lettering after the freedom words (09:14: before them, "Rosa" came back as a scribble). A change after it is ONE
+          // edit of that picture (09:09: "can the daisies have a little soft yellow in the middle" - only the centres changed,
+          // img_mw58ajxic6tx). Model and quality: config:source:addon:model / :quality - empty means the new-tattoo sheet's
+          // (config:source:sheet8:model / :quality). The words: config:frame:addon:one and config:frame:addon:more ("____" is their words).
+          // The size is the photo's own shape (config:edit:size on the long edge), as every edit of a photo. A cover-up is unchanged.
+          let _addonOne = false, _oneParent = null;
+          if (String(jobNow || "") === "add" && _ideasGrid && !_addonPoss && !_designGrid && parentId === refDesign) {
+            const _ownW = _addonOwnWords ? String(_addonOwnWords).replace(/[\s.]+$/, "").slice(0, 600) : "";
+            if (_addonMore && _ownW) {
+              let _m = "This is my tattoo with the new part we are adding. Change it like this: ____. Keep everything else exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is.";
+              try { const _k = String((await env.AURA_KV.get("config:frame:addon:more")) || "").trim(); if (_k.includes("____")) _m = _k; } catch {}
+              _sentNow = _m.replace("____", _ownW);
+              _oneParent = _addonMore;
+              _wordsFrom = "addon_more";
+            } else {
+              let _o = "This is my current tattoo. I want to add to it, in a similar style to my tattoo: ____. Be bold and imaginative with how it grows - make it creative and amazing, the way a great tattoo artist would build on it. Keep my existing tattoo exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is.";
+              let _oFrom = "default";
+              try { const _k = String((await env.AURA_KV.get("config:frame:addon:one")) || "").trim(); if (_k.includes("____")) { _o = _k; _oFrom = "setting"; } } catch {}
+              // A style they named goes in place of "a similar style to my tattoo" (v9.852 kept it the same way).
+              const _addStyle1 = opts && opts.add_style ? String(opts.add_style).replace(/[^A-Za-z0-9 &'\/-]/g, "").trim().slice(0, 60) : "";
+              if (_addStyle1) { _o = _o.replace("in a similar style to my tattoo", "in the " + _addStyle1 + " style"); _oFrom += "+style"; }
+              // Nothing typed ("Show me some ideas" on its own): the sentence without the blank.
+              _sentNow = _ownW ? _o.replace("____", _ownW) : _o.replace(/:\s*____\./, ".").replace("____", "");
+              // Where it goes, when they said or tapped it - after what they want, before the freedom words.
+              if (_placeNow) {
+                const _atP = _sentNow.indexOf(" Be bold");
+                const _ps1 = " I want it to go " + _placeNow.replace(/[\s.]+$/, "") + ".";
+                _sentNow = _atP > 0 ? _sentNow.slice(0, _atP) + _ps1 + _sentNow.slice(_atP) : _sentNow + _ps1;
+                _oFrom += "+placement";
+              }
+              // Their lettering, after the freedom words and before the keep-it words (09:14 vs 09:16).
+              if (_addonGoWords && _addonLetter && (_addonLetter.items || []).length) {
+                const _lc1 = letterClause(_addonLetter, false, true);
+                const _atL = _sentNow.indexOf(" Keep my existing tattoo");
+                _sentNow = _atL > 0 ? _sentNow.slice(0, _atL) + _lc1 + _sentNow.slice(_atL) : _sentNow + _lc1;
+                _oFrom += "+lettering";
+                console.log("[TURN:IDEAS] their lettering goes in, before the keep-it words:" + _lc1);
+              }
+              _wordsFrom = "addon_one_" + _oFrom;
+            }
+            _ideasGrid = false; _addonOne = true; _herAsk = null;
+            _viaNow = null; _asNow = "design_evolve"; _canvasNow = null; _sizeNow = null; _withNow = null; _rawNow = true;
+            let _m1 = ""; try { _m1 = String((await env.AURA_KV.get("config:source:addon:model")) || "").trim(); } catch {}
+            _modelNow = /^gpt-image/i.test(_m1) ? _m1 : await sheet8Model(env);
+            let _q1 = ""; try { _q1 = String((await env.AURA_KV.get("config:source:addon:quality")) || "").trim().toLowerCase(); } catch {}
+            _qualNow = ["low", "medium", "high", "auto"].includes(_q1) ? _q1 : await sheet8DirectQuality(env);
+            _seedNow = 1 + Math.floor(Math.random() * 2000000000);
+            console.log("[TURN:IDEAS] add-on, one picture" + (_oneParent ? " - a change on the one they have (" + _oneParent + ")" : " on their photo") +
+              " · " + (_modelNow || "the shared edit model") + " at " + _qualNow + " · words from " + _wordsFrom + (me ? " · who=" + me : ""));
+          }
           // THE FOUR VERSIONS OF A CHANGE (v9.599): their words inside one fixed sentence (`config:frame:design:grid`,
           // "____" is their words), sent with the design to the chat model. Not when this turn is a pick off a grid.
           if (_designGrid && _gridPick) _designGrid = false;
@@ -72094,7 +72165,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
           };
-          let cur = (_designGrid && _designParent) ? _designParent : parentId, cp = null, _mockNote = null;
+          let cur = _oneParent || ((_designGrid && _designParent) ? _designParent : parentId), cp = null, _mockNote = null;
           const _stepLog = [];
           let _retried = null;
           for (let si = 0; si < _asks.length; si++) {
@@ -72280,6 +72351,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               _reaction = _done;
+            } else if (_addonOne) {
+              // (v9.854) one add-on picture: a short fixed line, no look - the picture is what they asked for, on their photo.
+              let _done = "Here it is on you. Love it? Tap Finalize This Design to make it yours - or tell me what to change and I'll imagine it again.";
+              try { const _k = String((await env.AURA_KV.get("config:say:addon_one_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              _reaction = _done;
             } else if (_fixedWhy === "pick") {
               _reaction = _fixedSay;   // v9.602 / v9.605: the picked version, no look - the fixed line stands, every round
             } else {
@@ -72298,6 +72374,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // CUT THE MOMENT IT COMES BACK (v9.678): the eight cards, each with its words.
           let _eight = null;
           if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, (_possDirect || _bodyDirect || _inspDirect || _changeDirect) ? { printed: true, waitUntil: _waitUntil } : null);
+          // (v9.854) AN ADD-ON DRAWN ONE AT A TIME IS MARKED: a change after it builds on this picture (its design), not on the bare photo.
+          if (_addonOne && cp?.ok && cp.image_url && cp.child) {
+            const _oid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+            if (_oid) { try { await env.AURA_KV.put("addonone:" + _oid, String(cp.child)); console.log("[CUT] add-on picture marked - a change builds on it: " + _oid + " -> " + cp.child); } catch {} }
+          }
           // THE ADD-ON FOUR ARE MARKED (v9.651): a pick off this sheet is cut out of it, never redrawn (cutBodyPanel).
           if (_ideasGrid && cp?.ok && cp.image_url) {
             const _bsid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
@@ -72309,7 +72390,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
                 ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { panels: true } : {}),
-                ...(_ideasGrid ? { body_sheet: true } : {}),
+                ...(_ideasGrid ? { body_sheet: true } : {}), ...(_addonOne ? { addon_one: true } : {}),
                 ...(_eight ? { cards8: _eight, cards: _eight.map((c) => ({ title: c.title || "", lines: c.lines || [] })) }
                   : (_designGrid && (readSaidCards(cp.said) || (cp.brief && readCards(cp.brief))) ? { cards: readSaidCards(cp.said) || readCards(cp.brief) } : {})),
                 ...((_designGrid && _designWords === "__poss__") || _addonPoss ? { possibilities: true } : {}),

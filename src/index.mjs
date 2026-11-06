@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.860.0-2026-11-06-broken-reply-read-field-by-field";
+const BUILD = "aura-core-v9.861.0-2026-11-06-add-on-talk-runs-straight-away";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68546,6 +68546,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             !(opts.pick || opts.use || opts.own || opts.name || opts.tile || opts.inspire || opts.inspire_go || opts.choose_go || opts.heard_go ||
               opts.heard_pick || opts.placed || opts.recolor || opts.touch || opts.change_now || opts.new_now || opts.pick_sheet || opts.change_of ||
               (Array.isArray(opts.all_ideas) && opts.all_ideas.length)));
+          // ══ A FRESH START WITH A PHOTO OF THEM IS A NEW ADD-ON (v9.861, 2026-11-06) ═══ MEASURED 15:01: Start a new tattoo, then the rose
+          // photo - no marker was cleared, so the add-on markers from the koi test (drawn 14:10) were still set: a yes would have been read
+          // as a change to a picture this tattoo never had, and the lettering of the last tattoo was still kept. Only on the front page, only
+          // fresh, only with their body photo and nothing riding on it that could draw or pick; the new-tattoo markers are not touched.
+          if (!_opener && !!(opts && opts.fresh) && (!opts.page || opts.page === "home" || opts.page === "job0") && !!refUrl && _bodyPhoto &&
+              !(opts.pick || opts.use || opts.own || opts.name || opts.tile || opts.inspire || opts.inspire_go || opts.choose_go || opts.heard_go ||
+                opts.heard_pick || opts.placed || opts.recolor || opts.touch || opts.change_now || opts.new_now || opts.pick_sheet || opts.change_of ||
+                (Array.isArray(opts.all_ideas) && opts.all_ideas.length))) {
+            try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", ""); await talkStatePut(env, me, "letter", "");
+                  await talkStatePut(env, me, "addon_talk", ""); } catch {}
+            console.log("[TURN:NEWSTART] a fresh start with a photo of them - a new add-on; the last tattoo's add-on markers cleared" + (me ? " · who=" + me : ""));
+          }
           _newFlow = (_opener ? /^i want to create a new tattoo\.?$/i.test(_op) : _styleStart ? true : String(_nf.new_flow || "") === "1") &&
                      !_bodyPhoto && !(opts && opts.inspire);
           _newStyle = (_opener || _styleStart) ? null : (String(_nf.new_style || "").trim() || null);
@@ -68688,7 +68700,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   await talkStatePut(env, me, "await_idea", _isNew ? "1" : "");
                   // v9.779: nothing drawn in this tattoo yet (set to 1 the moment anything is drawn or chosen in it - see "last" below)
                   await talkStatePut(env, me, "new_drawn", ""); await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", "");
-                  await talkStatePut(env, me, "letter", ""); await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", ""); } catch {}
+                  await talkStatePut(env, me, "letter", ""); await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "");
+                  await talkStatePut(env, me, "addon_talk", ""); } catch {}
             _ds = _isNew ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
@@ -70405,6 +70418,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           console.log("[TURN:JOB] the brief said add, but they never started Add to Existing and sent no photo of their body - a new design" + (me ? " · who=" + me : ""));
         }
       }
+      // (v9.861) THIS IS AN ADD-ON ON THEIR PHOTO - so their next turn may run straight away while nothing is drawn on it yet (the
+      // TURNJOB rule "an add-on still being talked through" reads this with addon_drawn). Anything else clears it.
+      if (me) { try { await talkStatePut(env, me, "addon_talk", (jobNow === "add" && _bodyPhoto) ? "1" : ""); } catch {} }
+      if (opts && opts.direct_addon && jobNow !== "add") { try { console.log("[TURNJOB] ran directly as an add-on, but this turn is " + (jobNow || "no job") + " - it runs on the connection" + (me ? " · who=" + me : "")); } catch {} }
       // ══ THE PICTURE IS WHAT IT IS MADE FROM (2026-10-01, v9.504, Aaron) ═════════════════════════
       // MEASURED (pta_3f0500a0ac85e2f7): a photo of a park arrived and was labelled `add` - every
       // picture is treated as their body, so "turn it into a tattoo" would have been drawn ON the park.
@@ -74744,6 +74761,27 @@ export class PublicEntry extends WorkerEntrypoint {
             }
           } catch {}
         }
+        // ══ AN ADD-ON STILL BEING TALKED THROUGH RUNS STRAIGHT AWAY (v9.861, 2026-11-06, Aaron: go) ═══ MEASURED 15:05:53 -> 15:06:00.6
+        // ("maybe, what would you put with it?" on the rose add-on): 2.2s to reach the job, 1.2s of it making the job, then 3.3s before it
+        // began (1.0s on the turn before) - for a turn that could not draw. Before anything is drawn on their photo, an add-on turn draws
+        // only on a line that is only a yes (v9.856) or a tap (Imagine it, a pick, a card) - every other reach for a drawing is held, her
+        // words with Imagine it (v9.850). So, as for a new tattoo (v9.824): while an add-on on their photo is being talked through and
+        // nothing is drawn on it, a turn with none of those runs here. A bare yes, a tap, a new photo, or anything after the first
+        // drawing still runs as a job.
+        if (!_direct && !!me && !!_tOpts.tid &&
+            !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
+            !_tOpts.change_now && !_tOpts.new_now && !_tOpts.pick_sheet && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of &&
+            !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire && !_tOpts.inspire_go &&
+            !/^i want number [1-8]\.?$/i.test(String(_said || "").trim()) &&
+            !/^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(String(_said || "").replace(/\[[^\]]*\]/g, " "))) {
+          try {
+            const _as = await talkStateGet(env, me, ["addon_talk", "addon_drawn", "new_flow"]);
+            if (String(_as.addon_talk || "") === "1" && String(_as.addon_drawn || "") !== "1" && String(_as.new_flow || "") !== "1") {
+              _direct = true; _tOpts.direct_addon = true;
+              console.log("[TURNJOB] turn " + _tOpts.tid + " runs directly - an add-on still being talked through, nothing drawn on their photo yet · who=" + me);
+            }
+          } catch {}
+        }
         let _gone = false;
         const _sendR = async (frame) => { try { await _w.write(_enc.encode(frame)); } catch { _gone = true; } };
         // ══ THEIR YES RUNS IMAGINE IT ON THE SAME CONNECTION (v9.825, 2026-11-03, Aaron: go) ═══ MEASURED 15:11:43: "ok yeah lets see it"
@@ -74829,7 +74867,7 @@ export class PublicEntry extends WorkerEntrypoint {
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
               from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
-              direct_no_draw: !!_tOpts.direct_no_draw,
+              direct_no_draw: !!_tOpts.direct_no_draw, direct_addon: !!_tOpts.direct_addon,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

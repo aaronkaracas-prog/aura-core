@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.854.0-2026-11-06-add-on-one-at-a-time";
+const BUILD = "aura-core-v9.855.0-2026-11-06-add-on-their-words-only";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -70460,6 +70460,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_freshPhoto || (_newPl && _newPl !== _placeNow)) {
             if (_newPl || _freshPhoto) _placeNow = _newPl || "";
             await talkStatePut(env, me, "placement", _placeNow);
+            // (v9.855) where the place came from: "1" when they tapped it (their choice), empty when she heard it - an add-on drawn one at a time
+            // sends only a place they chose.
+            await talkStatePut(env, me, "placement_tap", (_dirTap && _placeNow) ? "1" : "");
             console.log("[TURN:PLACE] " + (_placeNow ? "where it goes: \"" + _placeNow + "\"" + (_dirTap ? " (they tapped it)" : " (she heard it)") : "a new photo - no placement yet"));
           }
         } catch {}
@@ -70478,7 +70481,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       const _addTyped = () => { try {
           const _jobW = /^\s*i want to (?:add to a tattoo i already have|add to a tattoo|cover up a tattoo)[\s.,!-]*/i;
           const _tapW = /^\s*(?:show me some ideas|show me all of them|imagine\b.*|i want number [1-8]|i have my own idea|my own idea|fine-?\s?tune it|i want to change something|this is my tattoo|i choose\b.*|keep it like this|let'?s create my own\b.*|i like the .+ style|lettering:.*)[\s.!]*$/i;
-          const _bareW = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
+          // (v9.855) MEASURED 10:06: "yes please" went to the image model as part of their idea - the line matched one yes-word, not two.
+          // A line made only of yes-words, in any number ("yes please", "yeah go for it", "yes show me"), is their yes, not their idea.
+          const _bareW = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i;
           let _st = Math.max(0, tnow.length - 12);
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "them" && _jobW.test(String(tnow[i].said || ""))) { _st = i; break; } }
           const _ws = [];
@@ -70522,7 +70527,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         try {
           const _jobW = /^\s*i want to (?:add to a tattoo i already have|add to a tattoo|cover up a tattoo)[\s.,!-]*/i;
           const _tapW = /^\s*(?:show me some ideas|show me all of them|imagine\b.*|i want number [1-8]|i have my own idea|my own idea|fine-?\s?tune it|i want to change something|this is my tattoo|i choose\b.*|keep it like this|let'?s create my own\b.*|i like the .+ style)[\s.!]*$/i;
-          const _bareW = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
+          // (v9.855) MEASURED 10:06: "yes please" went to the image model as part of their idea - the line matched one yes-word, not two.
+          // A line made only of yes-words, in any number ("yes please", "yeah go for it", "yes show me"), is their yes, not their idea.
+          const _bareW = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i;
           let _st = Math.max(0, tnow.length - 12);
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "them" && _jobW.test(String(tnow[i].said || ""))) { _st = i; break; } }
           const _ws = [];
@@ -71931,8 +71938,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               if (_addStyle1) { _o = _o.replace("in a similar style to my tattoo", "in the " + _addStyle1 + " style"); _oFrom += "+style"; }
               // Nothing typed ("Show me some ideas" on its own): the sentence without the blank.
               _sentNow = _ownW ? _o.replace("____", _ownW) : _o.replace(/:\s*____\./, ".").replace("____", "");
-              // Where it goes, when they said or tapped it - after what they want, before the freedom words.
-              if (_placeNow) {
+              // Where it goes, ONLY when they tapped it (v9.855, 2026-11-06, Aaron: go). MEASURED 10:06: "I want it to go around the rose on my
+              // inner forearm." went to the image model - her words; they never said it. Her reading never reaches the image model; a direction
+              // they tapped is their choice and goes, after what they want, before the freedom words.
+              let _placeTap = false; try { _placeTap = String((await talkStateGet(env, me, ["placement_tap"])).placement_tap || "") === "1"; } catch {}
+              if (_placeNow && !_placeTap) console.log("[TURN:IDEAS] her place left out - they did not tap it: \"" + _placeNow + "\"");
+              if (_placeNow && _placeTap) {
                 const _atP = _sentNow.indexOf(" Be bold");
                 const _ps1 = " I want it to go " + _placeNow.replace(/[\s.]+$/, "") + ".";
                 _sentNow = _atP > 0 ? _sentNow.slice(0, _atP) + _ps1 + _sentNow.slice(_atP) : _sentNow + _ps1;

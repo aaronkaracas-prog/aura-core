@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.859.0-2026-11-06-spine-read-at-once";
+const BUILD = "aura-core-v9.860.0-2026-11-06-broken-reply-read-field-by-field";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66431,6 +66431,36 @@ function talkReadAct(txt) {
     let o = null, _cut = false;
     try { o = JSON.parse(String(txt || "").trim()); }
     catch { try { o = repairJson(String(txt || "")); _cut = true; } catch {} }
+    // ══ A BROKEN SPOT DOES NOT THROW HER WHOLE REPLY AWAY (v9.860, 2026-11-06, Aaron) ══════════════════
+    // MEASURED 14:38: her reply was right in every field, with one stray quote mark after her choose card
+    // (`"botanical"]}","do":"none"`). JSON.parse stopped at that character, repairJson only mends a reply
+    // cut off at the end, and the whole answer was dropped - the person saw "Tell me a bit more." and the
+    // backup model cost another 7.6s. When the reply cannot be read as a whole, each of her fields is read
+    // on its own, and what reads clean goes through the same checks below as any reply. Nothing is added.
+    if (!o || typeof o !== "object") {
+      const _src = String(txt || "");
+      const _one = (k) => {
+        const m = _src.match(new RegExp('"' + k + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"'));
+        if (!m) return null;
+        try { return JSON.parse('"' + m[1] + '"'); } catch { return m[1]; }
+      };
+      const _got = {};
+      for (const k of ["say", "reply", "message", "text", "do", "ask", "prompt", "words", "where_to", "go", "world"]) {
+        const v = _one(k); if (v != null) _got[k] = v;
+      }
+      const _ch = _src.match(/"choose"\s*:\s*(\{[^{}]*\})/);
+      if (_ch) { try { _got.choose = JSON.parse(_ch[1]); } catch {} }
+      for (const k of ["ideas", "directions"]) {
+        const _ar = _src.match(new RegExp('"' + k + '"\\s*:\\s*(\\[[^\\[\\]]*\\])'));
+        if (_ar) { try { _got[k] = JSON.parse(_ar[1]); } catch {} }
+      }
+      if (Object.keys(_got).length) {
+        let _at = -1; try { JSON.parse(_src.trim()); } catch (e) { const _p = String(e?.message || "").match(/position (\d+)/); if (_p) _at = Number(_p[1]); }
+        console.log("[TURN] her reply was broken JSON" + (_at >= 0 ? " at character " + _at + " (" + JSON.stringify(_src.slice(Math.max(0, _at - 30), _at + 30)) + ")" : "") +
+          " - her fields read one by one: " + Object.keys(_got).join(", "));
+        o = _got; _cut = false;
+      }
+    }
     if (o) o = unwrapSchema(o);
     if (!o || typeof o !== "object") return null;
     // ══ READ WHAT SHE WROTE (2026-10-01, v9.503) ═════════════════════════════════════════════

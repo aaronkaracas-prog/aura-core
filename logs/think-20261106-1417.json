@@ -1,2 +1,0 @@
-﻿{"ok":true,"ms":869,"brain_used":false,"cmd":"LOGS","payload":{"ok":true,"zone":"America/Los_Angeles","from":"14:14:00.000","to":"14:17:59.999","workers":{"think":{"ok":true,"events":93}},"lines":1,"log":["14:15:12.794  think aura-think GET 404"]}}
-

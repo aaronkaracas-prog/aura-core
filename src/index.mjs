@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.849.0-2026-11-05-title-read-from-the-box-alone";
+const BUILD = "aura-core-v9.850.0-2026-11-06-add-on-says-back-and-letters-first";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61545,6 +61545,27 @@ function letterItems(line) {
   for (const x of src) { if (x && !/^(none|n\/a|no|nothing)$/i.test(x) && !out.some((o) => o.toLowerCase() === x.toLowerCase())) out.push(x.slice(0, 80)); }
   return out.slice(0, 4);
 }
+// ══ WHAT IS WRITTEN IN AN ADD-ON OR COVER-UP (v9.850, 2026-11-06, Aaron: "yes same flow if there's lettering in it all that pops up") ══
+// MEASURED 07:27 (pta_c604bec19b267194): "her name was rosa ... she grew daisies" on Add to Existing - her reply said "with her name worked in"
+// and the 8 were drawn at once; one card of 8 had "Rosa", in a script the image model chose, and the lettering sheet never came up. The hearing
+// step that finds lettering only runs on Create; on their photo nothing asked. One short question finds it, in the same LETTERING form.
+// Model: `config:source:lettering:model`, else `config:source:heard:model`, else her talk model.
+async function letterFind(env, theirWords, herWords, talkModel) {
+  try {
+    let model = null;
+    try { model = String((await env.AURA_KV.get("config:source:lettering:model")) || "").trim() || String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+    const system = "You read what a person said about a tattoo they want. Only answer about lettering: words, names, dates or numbers that are to be " +
+      "written in the tattoo itself. If anything is to be written in it, reply with one line: LETTERING: each piece exactly as it will be written, " +
+      "each in double quotes, separated by |. If nothing is to be written in the tattoo, reply with one line: LETTERING: none";
+    const user = "What they said:\n" + String(theirWords || "").slice(0, 1500) + (herWords ? "\n\nWhat Aura said back to them:\n" + String(herWords).slice(0, 900) : "");
+    const r = await callBrain({ system, user, max_tokens: 2000, reasoning: "low", ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env);
+    const t = String((r && r.text) || "");
+    const m = t.match(/LETTERING\s*:\s*([^\n]+)/i);
+    const items = m ? letterItems(m[1]) : [];
+    console.log("[TURN:LETTER-FIND] asked " + (model || talkModel || "the default model") + " - answer: \"" + t.replace(/\s+/g, " ").slice(0, 200) + "\" -> " + (items.length ? items.map((x) => '"' + x + '"').join(", ") : "nothing to write"));
+    return items;
+  } catch (e) { console.log("[TURN:LETTER-FIND] could not ask: " + String(e?.message ?? e).slice(0, 160)); return []; }
+}
 // The lettering styles. The page shows the same list (LETTER_STYLES in mt-shell.html) - keep the two the same. Each is a free Google font for the
 // sheet; the id is the word the image model is given ("in Old English lettering").
 const LETTER_STYLES = [
@@ -68612,7 +68633,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
       let _heardIdea = null;
       let _drawSayP = null;   // (v9.826) her line as the drawing starts - shown when it comes, never waited for
-      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null;
+      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _addonGoWords = null, _addonLetter = null;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -68629,7 +68650,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held", "addon_go", "addon_drawn"]); } catch {}
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
           // because "design_change" from the 9:50 test was still set.
@@ -68652,7 +68673,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                   await talkStatePut(env, me, "await_idea", _isNew ? "1" : "");
                   // v9.779: nothing drawn in this tattoo yet (set to 1 the moment anything is drawn or chosen in it - see "last" below)
                   await talkStatePut(env, me, "new_drawn", ""); await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", "");
-                  await talkStatePut(env, me, "letter", ""); } catch {}
+                  await talkStatePut(env, me, "letter", ""); await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", ""); } catch {}
             _ds = _isNew ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
@@ -68796,6 +68817,29 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _heldChange = String((_held && _held.words) || "").slice(0, 600) || null;
             _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining that change for you now.");
             console.log("[TURN:LETTER] their lettering for the change: " + _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") + " - the change they asked for is drawn now: \"" + String(_heldChange || "").slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+          } else if (!_newFlow && _bodyPhoto && opts && opts.letter && Array.isArray(opts.letter.items) && opts.letter.items.length && String(_ds.addon_go || "")) {
+            // ══ THEY PICKED THE LETTERING FOR THEIR ADD-ON (v9.850, 2026-11-06, Aaron: "same flow if there's lettering in it") ═══ The same as
+            // a new tattoo (v9.844): kept for the whole tattoo, nothing drawn yet - "Rosa in Script - beautiful. Want me to imagine it?" and Imagine it.
+            const _old = letterParse(_ds.letter), _ids = new Set(LETTER_STYLES.map((x) => x.id));
+            const _picked = opts.letter.items.map((x) => ({ text: String((x && x.text) || "").trim().slice(0, 80), font: _ids.has(String((x && x.font) || "").toLowerCase()) ? String(x.font).toLowerCase() : "",
+              ...(x && x.from && letterKey(x.from) !== letterKey(x.text) ? { from: String(x.from).slice(0, 80) } : {}) }))
+              .filter((x) => x.text);
+            const _merged = _picked.concat(_old.items.filter((o) => !_picked.some((p) => letterKey(p.text) === letterKey(o.text) || letterKey(p.from) === letterKey(o.text))));
+            try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 4) })); } catch {}
+            const _groups = []; for (const x of _picked) { const g = _groups.find((q) => q.font === x.font); if (g) g.texts.push(x.text); else _groups.push({ font: x.font, texts: [x.text] }); }
+            const _and = (a) => a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
+            const _list = _and(_groups.map((g) => _and(g.texts.map((t) => "\u201c" + t + "\u201d")) + (g.font ? " in " + g.font.replace(/\b\w/g, (c) => c.toUpperCase()) : "")));
+            _fixedWhy = "heard_ready"; _fixedSay = (await _fx("letter_picked", "{list} - beautiful. Want me to imagine it?")).replace("{list}", _list);
+            _heardOut = { go: true };
+            console.log("[TURN:LETTER] add-on - they picked their lettering: " + _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") + " - kept, Imagine it shown" + (me ? " · who=" + me : ""));
+          } else if (!_newFlow && _bodyPhoto && opts && opts.heard_go && String(_ds.addon_go || "")) {
+            // ══ IMAGINE IT, ON THEIR PHOTO (v9.850) ═══ The add-on or cover-up they said yes to, from everything they told her before the yes,
+            // with the lettering they settled. She is not called; the 8 are drawn on their photo as before.
+            _addonGoWords = String(_ds.addon_go).slice(0, 600); _addonLetter = letterParse(_ds.letter);
+            _fixedWhy = "addon_go"; _fixedSay = await _fx("eight_go", "On it - I'm imagining your designs now. Every one is 100% unique and 100% yours.");
+            try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
+            console.log("[TURN:GO] add-on - Imagine it, drawn on their photo from their words: \"" + _addonGoWords.slice(0, 300) + "\"" +
+              ((_addonLetter.items || []).length ? " · lettering: " + _addonLetter.items.map((x) => '"' + x.text + '" ' + (x.font || "")).join(", ") : "") + (me ? " · who=" + me : ""));
           } else if (_newFlow && opts && opts.letter && Array.isArray(opts.letter.items) && opts.letter.items.length) {
             // ══ THEY PICKED THEIR LETTERING (v9.844, 2026-11-04, Aaron: go) ═══ The sheet sends each piece as they settled it (their edits and
             // Roman numerals already applied) with the style they tapped. Kept for the whole tattoo; nothing drawn yet - she says it back and
@@ -69527,7 +69571,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       if (_fixedSay && !acted && onDelta && !_heardStreamed) {
         if (_drawSayP) { const _od = onDelta; _drawSayP.then(async (x) => { if (!x) return; try { await _od(x); } catch {} }).catch(() => {}); }
         else { try { await onDelta(_fixedSay); } catch {} } }
-      if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : (_fixedWhy === "poss" || _fixedWhy === "inspire8") ? "change" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
+      if (_fixedSay && !acted) acted = { say: _fixedSay, act: ((_fixedWhy === "onme" || _fixedWhy === "placed") ? "onme" : (_fixedWhy === "poss" || _fixedWhy === "inspire8" || _fixedWhy === "addon_go") ? "change" : (_fixedWhy === "four_new" || (_fixedWhy === "more" && !_lastDesignChange)) ? "draw" : "none"),
                                          prompt: "", ask: "", words: "", ideas: [], use: [], lines: [], brief: null };
       if (_tapKeep && !acted) acted = { say: "It's saved in My Tattoos and your artist's files are being made now.",
                                         act: "none", prompt: "", use: [], brief: null };
@@ -70391,7 +70435,44 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         console.log("[TURN:PLACE] they said where - nothing drawn yet (her act was " + act + ")"); act = "none";
       }
       let _ideasGrid = false, _addonPoss = false, _addonOwnWords = null;
-      if (_addonPossCard && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
+      // ══ EVERYTHING THEY TYPED FOR THIS ADD-ON (v9.850) ═══ the same reading as the Imagine-8 tap below (v9.680/683): their words since the
+      // add-on started, not taps and not the page's notes. Used to hold the first drawing for their yes, and to find any lettering.
+      const _addTyped = () => { try {
+          const _jobW = /^\s*i want to (?:add to a tattoo i already have|add to a tattoo|cover up a tattoo)[\s.,!-]*/i;
+          const _tapW = /^\s*(?:show me some ideas|show me all of them|imagine\b.*|i want number [1-8]|i have my own idea|my own idea|fine-?\s?tune it|i want to change something|this is my tattoo|i choose\b.*|keep it like this|let'?s create my own\b.*|i like the .+ style|lettering:.*)[\s.!]*$/i;
+          const _bareW = /^\s*(yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect)[\s.!]*$/i;
+          let _st = Math.max(0, tnow.length - 12);
+          for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "them" && _jobW.test(String(tnow[i].said || ""))) { _st = i; break; } }
+          const _ws = [];
+          for (let i = _st; i < tnow.length; i++) { const e = tnow[i]; let t = String((e && e.role === "them" && e.said) || "").trim();
+            if (i === _st) t = t.replace(_jobW, "").trim();
+            t = t.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim().replace(/^show me:\s*/i, "");
+            if (!t || _tapW.test(t) || _bareW.test(t)) continue; _ws.push(t.replace(/[\s.]+$/, "")); }
+          const _now = String(said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "");
+          if (_now && !_tapW.test(_now) && !_bareW.test(_now) && !_ws.includes(_now)) _ws.push(_now);
+          return _ws.join(". ").slice(0, 600);
+        } catch { return String(said || "").trim().slice(0, 600); } };
+      // ══ LETTERING ON THEIR PHOTO GOES TO THE SHEET FIRST (v9.850, 2026-11-06, Aaron: "same flow if there's lettering in it all that pops
+      // up") ═══ Before anything is drawn on their photo, any lettering they want that has no style yet brings up the lettering sheet - her
+      // short line, nothing drawn. What they said is kept for Imagine it.
+      const _addLetterHold = async (words) => {
+        const _items = await letterFind(env, words, String((acted && acted.say) || ""), talkModel);
+        let _saved = { items: [] }; try { _saved = letterParse((await talkStateGet(env, me, ["letter"])).letter); } catch {}
+        const _new = _items.filter((t) => !letterHas(_saved, t));
+        if (!_new.length) return false;
+        const _chosen = (_saved.items || []).filter((x) => x && x.font).map((x) => ({ said: x.from || x.text, text: x.text, font: x.font }));
+        _heardOut = { letter: { items: _items.slice(0, 4), chosen: _chosen, styles: LETTER_STYLES.map((x) => x.id) } };
+        let _ln = "Love it. Before I imagine it, let's get the lettering exactly right.";
+        try { const _k = String((await env.AURA_KV.get("config:say:addon_letter")) || "").trim(); if (_k) _ln = _k; } catch {}
+        acted.say = _ln; acted.choose = null;
+        try { await talkStatePut(env, me, "addon_go", words); } catch {}
+        console.log("[TURN:LETTER] add-on - lettering with no style yet: " + _new.map((x) => '"' + x + '"').join(", ") + " - the lettering sheet comes up, nothing drawn" + (me ? " · who=" + me : ""));
+        return true;
+      };
+      if (_addonGoWords && refDesign && _bodyPhoto) {
+        act = "change"; _ideasGrid = true; _addonOwnWords = _addonGoWords;
+        console.log("[TURN:IDEAS] their add-on, after their yes - eight on their photo from their words" + ((_addonLetter && (_addonLetter.items || []).length) ? " and their lettering" : ""));
+      } else if (_addonPossCard && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true; _addonPoss = true;
         console.log("[TURN:IDEAS] eight possibilities of the one they chose, on their photo: " + _addonPossCard);
       } else if (_askIdeas && (jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
@@ -70419,6 +70500,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_ws.length) { _addonOwnWords = _ws.join(". ").slice(0, 600); console.log("[TURN:IDEAS] their own words go in: \"" + _addonOwnWords + "\""); }
         } catch (e) { console.log("[TURN:IDEAS] their words could not be read: " + String(e?.message ?? e).slice(0, 120)); }
         console.log("[TURN:IDEAS] eight drawn as one sheet on their photo, from the " + (_addonOwnWords ? "their-own-idea sentence" : "one fixed sentence"));
+        // (v9.850) a tap is their yes - but lettering with no style still goes to the sheet first
+        if (_addonOwnWords && await _addLetterHold(_addonOwnWords)) { act = "none"; _ideasGrid = false; _addonOwnWords = null; }
+        else { try { await talkStatePut(env, me, "addon_drawn", "1"); } catch {} }
       } else if ((jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire) && (act === "draw" || act === "change") &&
                  !_pickGo && !_cutPick && _fixedWhy !== "pick" && String(said || "").trim()) {
         // THEIR OWN WORDS COME BACK AS FOUR TOO (v9.667, 2026-10-18, Aaron: "I gave a tattoo my idea before suggestions - 4 style
@@ -70434,7 +70518,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         } catch {}
         act = "change"; _ideasGrid = true;
         if (_addonPossCard) { _addonPoss = true; _addonChangeWords = String(said).trim(); console.log("[TURN:IDEAS] their change, four versions on the design they chose: " + _addonPossCard); }
-        else { _addonOwnWords = String(said).trim(); console.log("[TURN:IDEAS] their own idea, four versions on their photo"); }
+        else {
+          // ══ SHE SAYS IT BACK, THEY SAY YES - ON THEIR PHOTO TOO (v9.850, 2026-11-06, Aaron: "yes same flow") ═══ MEASURED 07:27: the first
+          // add-on was drawn the moment she said "Let me show you what that could look like on your arm". Before anything is drawn on their
+          // photo, her words stand with Imagine it under them (or the lettering sheet first); their words are kept for the yes.
+          let _drawnYet = false; try { _drawnYet = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || "") === "1"; } catch {}
+          const _w = _drawnYet ? String(said).trim() : _addTyped();
+          if (await _addLetterHold(_w)) { act = "none"; _ideasGrid = false; }
+          else if (!_drawnYet) {
+            act = "none"; _ideasGrid = false; _heardOut = { go: true }; acted.choose = null;
+            try { await talkStatePut(env, me, "addon_go", _w); } catch {}
+            console.log("[TURN:IDEAS] add-on - her words and Imagine it; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
+          } else { _addonOwnWords = String(said).trim(); console.log("[TURN:IDEAS] their own idea, four versions on their photo"); }
+        }
       }
       // ══ A CHANGE TO A DESIGN COMES BACK AS FOUR VERSIONS (2026-10-14, v9.599, Aaron) ═══════════════════
       // "When they tell us what they want ... four different versions." On a new tattoo (not add / cover / rework),
@@ -71703,6 +71799,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 try { const _k = String((await env.AURA_KV.get("config:frame:cover:own")) || "").trim(); if (_k.includes("____")) _ow = _k; } catch {}
               }
               _go = _ow.replace("____", _addonOwnWords.replace(/[\s.]+$/, "").slice(0, 600) + ((_coverStyle || _addStyle) ? ", in the " + (_coverStyle || _addStyle) + " style" : "")); _goFrom = _coverNow ? "cover_own" + (_coverStyle ? "+style" : "") : "own";
+              // (v9.850) the lettering they settled on the sheet, the same clause a new tattoo gets
+              if (_addonGoWords && _addonLetter && (_addonLetter.items || []).length) { _go = letterFrame(_go + letterClause(_addonLetter, false), _addonLetter); _goFrom += "+lettering"; }
             }
             _sentNow = _go;
             _herAsk = null;

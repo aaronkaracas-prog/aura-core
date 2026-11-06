@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.862.0-2026-11-06-add-on-yes-shows-the-drawing-line";
+const BUILD = "aura-core-v9.863.0-2026-11-06-add-on-offer-comes-with-imagine-it";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -70649,6 +70649,28 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             console.log(_addonMore ? "[TURN:IDEAS] their change, on the add-on picture they have (" + _addonMore + ")" : "[TURN:IDEAS] their own idea, on their photo");
           }
         }
+      }
+      // ══ HER OFFER ON AN ADD-ON COMES WITH IMAGINE IT (v9.863, 2026-11-06, Aaron: go) ═══ MEASURED 15:39:07 (koi): "I'd love a second koi
+      // swimming up toward my right shoulder, with some water around it" - she said it back and "Let me show you what it'd look like on you.",
+      // but chose not to draw, so nothing was held: no Imagine it, only the page's general "Imagine ideas / I have my own idea", and a person
+      // who waited for the picture she promised got nothing. The rose run the same way got Imagine it only because her reply had reached for a
+      // drawing (v9.850). Now her words decide it, not her act: on an add-on on their photo, before anything is drawn on it, a reply that offers
+      // to show them (the same offer test the page's yes card uses) is held the same way - lettering first, else her words with Imagine it,
+      // which draws from everything they typed. Not on the turn their photo arrives, not after they asked for ideas.
+      if (me && jobNow === "add" && refDesign && _bodyPhoto && act === "none" && !_heardOut && !_fixedWhy && acted && !_ideasGrid &&
+          !(opts && (opts.ref || opts.inspire || opts.pick || opts.use || opts.own || opts.tile)) && !_askIdeas && _isOfferLine(acted.say)) {
+        try {
+          let _dy = false; try { _dy = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || "") === "1"; } catch {}
+          const _w = _dy ? "" : _addTyped();
+          if (_w) {
+            if (await _addLetterHold(_w)) { /* the lettering sheet comes up first, as on a reach for a drawing */ }
+            else {
+              _heardOut = { go: true }; acted.choose = null;
+              try { await talkStatePut(env, me, "addon_go", _w); } catch {}
+              console.log("[TURN:IDEAS] add-on - she offered to show them (\"" + String(acted.say).slice(0, 120) + "\") - Imagine it under her words; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
+            }
+          }
+        } catch (e) { try { console.log("[TURN:IDEAS] her offer could not be held: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
       }
       // (v9.862) the held words go now: the fixed line when the yes draws, otherwise what this turn says (her words, or the lettering line)
       if (_holdWords) {

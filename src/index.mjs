@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.858.0-2026-11-06-her-act-kept-without-words";
+const BUILD = "aura-core-v9.859.0-2026-11-06-spine-read-at-once";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -38437,87 +38437,60 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         let meta = {}; try { if (ent.metadata) meta = JSON.parse(ent.metadata); } catch {}
         const identity = { id: ent.id, type: ent.type, name: ent.name, identity_key: ent.identity_key, created_at: ent.created_at };
 
-        // 2. STATE - from KV spine state, default active
-        let state = "active";
-        try { const s = await env.AURA_KV.get(`pta:state:${id}`); if (s) state = s; } catch {}
+        // ══ THE SPINE'S PARTS ARE READ AT ONCE, NOT ONE AFTER ANOTHER (v9.859, 2026-11-06, Aaron) ═══════
+        // MEASURED 12:12:47 -> 12:12:51: aura-think's PTA_SPINE GET on a customer took 4.1s, and it sits in
+        // front of her answer every time her prompt is rebuilt (the first turn after she wakes). The parts
+        // below were read one after another - two D1 queries, two KV scans and nine KV reads, each waiting
+        // for the last. None depends on another, so they are asked for together. Same reads, same
+        // fallbacks, same answer - each part still keeps its own catch, so one failure empties only itself.
+        const _kvJson = async (key) => { try { const r = await env.AURA_KV.get(key); return r ? JSON.parse(r) : null; } catch { return null; } };
+        // A scan, then every matching key read together; results kept in the scan's order.
+        const _byApp = async (prefix, skip) => {
+          const out = {};
+          try {
+            const l = await env.AURA_KV.list({ prefix, limit: 200 });
+            const hits = (l.keys || []).filter((k) => k.name.endsWith(`:${id}`) && !(skip && k.name.startsWith(skip)));
+            const vals = await Promise.all(hits.map((k) => env.AURA_KV.get(k.name).catch(() => null)));
+            hits.forEach((k, i) => { const r = vals[i]; if (r) { const app = k.name.split(":")[1]; try { out[app] = JSON.parse(r); } catch {} } });
+          } catch {}
+          return out;
+        };
+        const [_state, _tl, _out, _inc, circles, _perm, _apps, _sched, _loc, purpose, trajectory, stewardship, _mem] = await Promise.all([
+          env.AURA_KV.get(`pta:state:${id}`).catch(() => null),
+          env.AURA_KV.get(`pta:timeline:${id}`).catch(() => null),
+          db.prepare("SELECT * FROM pta_edges WHERE from_id = ? LIMIT 100").bind(id).all().catch(() => null),
+          db.prepare("SELECT * FROM pta_edges WHERE to_id = ? LIMIT 100").bind(id).all().catch(() => null),
+          _byApp("circle:", null),
+          _kvJson(`pta:permissions:${id}`),
+          _byApp("profile:", "profile:idx:"),
+          _kvJson(`pta:schedule:${id}`),
+          _kvJson(`pta:location:${id}`),
+          _kvJson(`pta:purpose:${id}`),
+          _kvJson(`pta:trajectory:${id}`),
+          _kvJson(`pta:stewardship:${id}`),
+          _kvJson(`pta:memory:${id}`),
+        ]);
 
-        // 3. TIMELINE - from a single index key (strongly consistent, no list() lag)
+        const state = _state || "active";
+
         let timeline = [{ ts: ent.created_at, event: "PTA created", kind: "genesis" }];
-        try {
-          const tl = await env.AURA_KV.get(`pta:timeline:${id}`);
-          if (tl) { const evs = JSON.parse(tl); if (Array.isArray(evs)) timeline = timeline.concat(evs); }
-        } catch {}
+        try { if (_tl) { const evs = JSON.parse(_tl); if (Array.isArray(evs)) timeline = timeline.concat(evs); } } catch {}
 
-        // 4. RELATIONSHIPS - from D1 grant edges (both directions)
+        // Both edge queries answered or neither counts - exactly as the one try around them did before.
         let relationships = [];
-        try {
-          const out = await db.prepare("SELECT * FROM pta_edges WHERE from_id = ? LIMIT 100").bind(id).all();
-          const inc = await db.prepare("SELECT * FROM pta_edges WHERE to_id = ? LIMIT 100").bind(id).all();
-          for (const g of (out.results || [])) relationships.push({ direction: "outgoing", to: g.to_id, edge_type: g.edge_type, relationship: g.relationship });
-          for (const g of (inc.results || [])) relationships.push({ direction: "incoming", from: g.from_id, edge_type: g.edge_type, relationship: g.relationship });
-        } catch {}
-        // also pull app circles from KV
-        let circles = {};
-        try {
-          const cl = await env.AURA_KV.list({ prefix: `circle:`, limit: 200 });
-          for (const k of (cl.keys || [])) { if (k.name.endsWith(`:${id}`)) { const r = await env.AURA_KV.get(k.name); if (r) { const app = k.name.split(":")[1]; try { circles[app] = JSON.parse(r); } catch {} } } }
-        } catch {}
+        if (_out && _inc) {
+          for (const g of (_out.results || [])) relationships.push({ direction: "outgoing", to: g.to_id, edge_type: g.edge_type, relationship: g.relationship });
+          for (const g of (_inc.results || [])) relationships.push({ direction: "incoming", from: g.from_id, edge_type: g.edge_type, relationship: g.relationship });
+        }
 
-        // 5. PERMISSIONS - from KV permission rules, default owner-only
-        let permissions = { doorway: "owner-controlled", rules: [] };
-        try { const p = await env.AURA_KV.get(`pta:permissions:${id}`); if (p) permissions = JSON.parse(p); } catch {}
+        const permissions = _perm || { doorway: "owner-controlled", rules: [] };
 
-        // 6. CONTEXT - origin (how/why it came to be) + per-app profiles
-        let context = { origin: meta.origin || null, created_by: meta.created_by || null, reason: meta.reason || null, apps: {} };
-        try {
-          const pl = await env.AURA_KV.list({ prefix: `profile:`, limit: 200 });
-          for (const k of (pl.keys || [])) { if (k.name.endsWith(`:${id}`) && !k.name.startsWith("profile:idx:")) { const r = await env.AURA_KV.get(k.name); if (r) { const app = k.name.split(":")[1]; try { context.apps[app] = JSON.parse(r); } catch {} } } }
-        } catch {}
+        const context = { origin: meta.origin || null, created_by: meta.created_by || null, reason: meta.reason || null, apps: _apps };
 
-        // 7. SCHEDULE - the FORWARD EDGE. What is coming, due, awaited, committed. This is what
-        // makes a PTA alive in time: it has not just a past (timeline) and present (state) but a
-        // future. Generic for every PTA. Items: {id, due_at, about, action, status, created_at}.
         let schedule = [];
-        try {
-          const sc = await env.AURA_KV.get(`pta:schedule:${id}`);
-          if (sc) { const items = JSON.parse(sc); if (Array.isArray(items)) schedule = items.filter(it => it.status !== "done"); }
-        } catch {}
-
-        // 8. LOCATION - WHERE the entity is. A living thing exists in place as well as time.
-        // Generic for every PTA: a business has an address, a person has a city. Stored with
-        // coordinates so "near me" / distance-between-PTAs queries work. {address, city, region,
-        // country, lat, lng, place_name, updated_at}. Static location; live/changing is separate.
-        let location = null;
-        try {
-          const lc = await env.AURA_KV.get(`pta:location:${id}`);
-          if (lc) location = JSON.parse(lc);
-        } catch {}
-
-        // 9. PURPOSE - WHY this entity exists. Not goals (goals change, live in Aura's layer).
-        // Purpose persists. Family PTA: connection. Business PTA: serve customers. Image PTA: the
-        // reason it was made. A stable fact of the entity. {statement, set_by, set_at}.
-        let purpose = null;
-        try { const p = await env.AURA_KV.get(`pta:purpose:${id}`); if (p) purpose = JSON.parse(p); } catch {}
-
-        // 10. TRAJECTORY - what this entity is BECOMING. Not current state - direction, movement
-        // through time, future orientation. A business going from captured->claimed->growing. A
-        // person's arc. Reality: the recorded direction, not Aura's prediction. {direction, milestones[], updated_at}.
-        let trajectory = null;
-        try { const t = await env.AURA_KV.get(`pta:trajectory:${id}`); if (t) trajectory = JSON.parse(t); } catch {}
-
-        // 11. STEWARDSHIP - WHO is responsible for this entity. Creator, owner, steward, successor.
-        // Governance, inheritance, transfer, revocation. This is what carries an entity across death
-        // and change - the continuity-of-responsibility layer. {creator, owner, stewards[], successor, transferable, revoked}.
-        let stewardship = null;
-        try { const s = await env.AURA_KV.get(`pta:stewardship:${id}`); if (s) stewardship = JSON.parse(s); } catch {}
-
-        // 12. MEMORY - preserved meaningful EXPERIENCES and artifacts. Distinct from timeline:
-        // timeline is the discrete event log (created, paid, located - facts, auto-appended);
-        // memory is what is worth KEEPING (a conversation that mattered, a photo, a moment, an
-        // artifact PTA). Significance-gated: not every event is a memory. Reality (preserved
-        // experience), not interpretation (that is Aura's layer). {id, kind, content, ref, at}.
-        let memory = [];
-        try { const m = await env.AURA_KV.get(`pta:memory:${id}`); if (m) { const mm = JSON.parse(m); if (Array.isArray(mm)) memory = mm; } } catch {}
+        try { if (Array.isArray(_sched)) schedule = _sched.filter(it => it.status !== "done"); } catch {}
+        const location = _loc || null;
+        const memory = Array.isArray(_mem) ? _mem : [];
 
         const spine = { identity, state, timeline, relationships, circles, permissions, context, schedule, location, purpose, trajectory, stewardship, memory };
         return { cmd: "PTA_SPINE", payload: { ok: true, pta: id, spine } };

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.863.0-2026-11-06-add-on-offer-comes-with-imagine-it";
+const BUILD = "aura-core-v9.864.0-2026-11-06-spine-brief-for-her-person-block";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -38421,7 +38421,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // from wherever they already live (D1 entity + grants, KV profiles/circles/presence/timeline).
       // "Show me everything about this PTA" in one call - exactly what the brain and renderer need.
       // The six parts: identity, state, timeline, relationships, permissions, context.
-      // Usage: PTA_SPINE GET <pta_entity_id>
+      // Usage: PTA_SPINE GET <pta_entity_id> [BRIEF]   (BRIEF: identity, state, timeline and relationships only - v9.864)
       //        PTA_SPINE SET_STATE <pta_entity_id> <state>   (active|dormant|archived|...)
       //        PTA_SPINE EVENT <pta_entity_id> ::: <what happened>   (append to timeline)
       if (!isOp) return { cmd: "PTA_SPINE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -38436,6 +38436,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!ent) return { cmd: "PTA_SPINE", payload: { ok: false, error: "No PTA with id: " + id } };
         let meta = {}; try { if (ent.metadata) meta = JSON.parse(ent.metadata); } catch {}
         const identity = { id: ent.id, type: ent.type, name: ent.name, identity_key: ent.identity_key, created_at: ent.created_at };
+        // ══ THE BRIEF SPINE (v9.864, 2026-11-06, Aaron: go) ═══ MEASURED 15:02:06 and 15:06:04: aura-think's person block waited 1.8-1.9s
+        // for this read on the first turn after she wakes, and most of it was the two full key scans (circle:, profile:) - parts her person
+        // block never reads. It reads four: identity, state, timeline, relationships. `PTA_SPINE GET <id> BRIEF` reads only those; the full
+        // GET is unchanged for every other caller.
+        if (String(args[2] || "").toUpperCase() === "BRIEF") {
+          const [_bs, _btl, _bo, _bi] = await Promise.all([
+            env.AURA_KV.get(`pta:state:${id}`).catch(() => null),
+            env.AURA_KV.get(`pta:timeline:${id}`).catch(() => null),
+            db.prepare("SELECT * FROM pta_edges WHERE from_id = ? LIMIT 100").bind(id).all().catch(() => null),
+            db.prepare("SELECT * FROM pta_edges WHERE to_id = ? LIMIT 100").bind(id).all().catch(() => null),
+          ]);
+          let _btimeline = [{ ts: ent.created_at, event: "PTA created", kind: "genesis" }];
+          try { if (_btl) { const evs = JSON.parse(_btl); if (Array.isArray(evs)) _btimeline = _btimeline.concat(evs); } } catch {}
+          const _brels = [];
+          if (_bo && _bi) {
+            for (const g of (_bo.results || [])) _brels.push({ direction: "outgoing", to: g.to_id, edge_type: g.edge_type, relationship: g.relationship });
+            for (const g of (_bi.results || [])) _brels.push({ direction: "incoming", from: g.from_id, edge_type: g.edge_type, relationship: g.relationship });
+          }
+          return { cmd: "PTA_SPINE", payload: { ok: true, pta: id, brief: true,
+            spine: { identity, state: _bs || "active", timeline: _btimeline, relationships: _brels } } };
+        }
 
         // ══ THE SPINE'S PARTS ARE READ AT ONCE, NOT ONE AFTER ANOTHER (v9.859, 2026-11-06, Aaron) ═══════
         // MEASURED 12:12:47 -> 12:12:51: aura-think's PTA_SPINE GET on a customer took 4.1s, and it sits in
@@ -80324,7 +80345,7 @@ function openAlbum(idx){
         const _cmdWord = (line.split(/\s+/)[0] || "").toUpperCase();
         // (v9.810) with the internal key, reading a person's own record (PTA_SPINE GET) - never SET_STATE or EVENT, which change it.
         const _effIsOp = isOp || (_isInternal && INTERNAL_ALLOWED.includes(_cmdWord)) ||
-          (_isInternal && _cmdWord === "PTA_SPINE" && /^PTA_SPINE\s+GET\s+\S+\s*$/i.test(line.trim()));
+          (_isInternal && _cmdWord === "PTA_SPINE" && /^PTA_SPINE\s+GET\s+\S+(\s+BRIEF)?\s*$/i.test(line.trim()));   // (v9.864) BRIEF reads less, never more
         const _t0 = Date.now();
         const result = await processCommand(line, env, _effIsOp);
         const _elapsed = Date.now() - _t0;

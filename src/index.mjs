@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.876.0-2026-11-07-addon-place-names-the-end";
+const BUILD = "aura-core-v9.877.0-2026-11-07-addon-tap-first-sentence-cards-one-by-one";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -62116,8 +62116,12 @@ async function eightCards(env, sheetUrl, said, eopts) {
 // back with no words; the eyes (config:source:eyes:model) read the four cut cards at once - a title and one line about what was added -
 // and the cards go back with them. The ask is a setting (config:frame:addon:cardwords, "____" is what they asked for); the wait is capped
 // (config:talk:addon_words_ms, empty = 6000) - a card not read in time goes back without words, it is never held for them.
-const ADDON_CARD_WORDS_ASK = "This photo shows a person's existing tattoo with new tattoo work added to it. They asked for: ____. " +
-  "Name this design and say what was added. Reply in exactly this form and nothing else: TITLE | one short line about what was added. The title is 2 to 4 words.";
+// (v9.877) MEASURED 12:46:45: the whole sheet, read at once by Llama 4 Scout, put names on the wrong cards - the raven card was "Snake Mountain" and
+// the crow went to the tree card. A grid makes the eyes count positions; one card alone cannot be miscounted. The earlier fault of a card read alone
+// (v9.874: "Floral Garden" three times) came from naming the whole design - the existing tattoo is the same on all four - so it now names only the new work.
+const ADDON_CARD_WORDS_ASK = "This photo shows a person's existing tattoo with new tattoo work added to it. The existing tattoo is the same in every version - " +
+  "look only at the new work. Name the new work by what it actually shows, and say in one short line what it is and where it sits. " +
+  "Reply in exactly this form and nothing else: TITLE | line. The title is 2 to 4 words.";
 // ══ ONE LOOK AT THE WHOLE SHEET NAMES ALL FOUR (v9.874, 2026-11-07, Aaron: go) ═══ MEASURED 10:48 and 11:33: each card read on its own came
 // back "Floral Garden", "Floral Garden", "Floral Garden Tattoo" and "Moth and Rose", "Moth and Rose", "TITLE" - a card alone cannot know what
 // sets it apart. The eyes now see the four together and name each by what makes it different; a card left unnamed (or named "title") is read
@@ -62157,28 +62161,29 @@ async function addonCardWords(env, cards, asked, sheetUrl) {
   let ask = ADDON_CARD_WORDS_ASK, ms = 6000;
   try { const k = String((await env.AURA_KV.get("config:frame:addon:cardwords")) || "").trim(); if (k) ask = k; } catch {}
   try { const v = parseInt(String((await env.AURA_KV.get("config:talk:addon_words_ms")) || ""), 10); if (Number.isFinite(v) && v >= 1000) ms = v; } catch {}
-  // (v9.874) the whole sheet first; only a card it did not name is read on its own
-  let _sheetGot = null;
-  if (sheetUrl && cards.length === 4) { try { _sheetGot = await addonSheetWords(env, sheetUrl, asked, ms + 2000); } catch {} }
-  if (_sheetGot && _sheetGot.every(Boolean)) {
-    const out0 = cards.map((c, k) => ({ ...c, title: _sheetGot[k].title, lines: _sheetGot[k].line ? [_sheetGot[k].line] : [] }));
-    console.log("[CUT8] add-on card words read: 4 of 4 from the whole sheet · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s");
-    return out0;
-  }
+  // (v9.877) each card on its own first, all four at once, on the same dial as the sheet read (config:source:addon_names:model, empty = the
+  // eyes' own model); the whole sheet is read only if a card is left unnamed, and only for that card
+  let _nm = ""; try { _nm = String((await env.AURA_KV.get("config:source:addon_names:model")) || "").trim(); } catch {}
   const prompt = ask.includes("____") ? ask.replace("____", String(asked || "something added to their tattoo").replace(/[\s.]+$/, "").slice(0, 300)) : ask;
-  const reads = await Promise.all(cards.map((c, k) => (_sheetGot && _sheetGot[k]) ? null : Promise.race([new Promise((r) => setTimeout(() => r(null), ms)),
-    seeMedia({ url: c.image, prompt, max_tokens: 60 }, env)]).catch(() => null)));
-  const out = cards.map((c, k) => {
-    if (_sheetGot && _sheetGot[k]) return { ...c, title: _sheetGot[k].title, lines: _sheetGot[k].line ? [_sheetGot[k].line] : [] };
+  const reads = await Promise.all(cards.map((c) => Promise.race([new Promise((r) => setTimeout(() => r(null), ms)),
+    seeMedia({ url: c.image, prompt, max_tokens: 80, ...(_nm ? { model: _nm } : {}) }, env)]).catch(() => null)));
+  const _cardWords = (k) => {
     const rd = reads[k]; const raw = String((rd && rd.ok && rd.saw) || "").replace(/\s+/g, " ").trim();
     const parts = raw.replace(/\b(?:title|line)\s*:\s*/gi, "").split(/\s*\|\s*|\s+-\s+|\n/).map((x) => x.replace(/^["'*#\s]+|["'*.\s]+$/g, "").trim()).filter(Boolean);
     const title = parts[0] && parts[0].length <= 40 && parts[0].split(" ").length <= 6 && !/^(title|name|design)$/i.test(parts[0]) && !/\b(cannot|can't|sorry|unable)\b/i.test(parts[0]) ? parts[0] : "";
     const line = title && parts[1] && parts[1].length <= 140 ? parts[1] : "";
     if (!title) { try { console.log("[CUT8] add-on card " + (k + 1) + " - no words taken from: " + (raw ? "\"" + raw.slice(0, 160) + "\"" : String((rd && rd.error) || "no answer").slice(0, 160))); } catch {} }
-    return title ? { ...c, title, lines: line ? [line] : [] } : c;
+    return title ? { title, line } : null;
+  };
+  const _one = cards.map((c, k) => _cardWords(k));
+  let _sheetGot = null;
+  if (_one.some((x) => !x) && sheetUrl && cards.length === 4) { try { _sheetGot = await addonSheetWords(env, sheetUrl, asked, ms + 2000); } catch {} }
+  const out = cards.map((c, k) => {
+    const w = _one[k] || (_sheetGot && _sheetGot[k]) || null;
+    return w ? { ...c, title: w.title, lines: w.line ? [w.line] : [] } : c;
   });
   const got = out.filter((c) => c.title).length;
-  console.log("[CUT8] add-on card words read: " + got + " of " + cards.length + " · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s" +
+  console.log("[CUT8] add-on card words read: " + got + " of " + cards.length + " (" + _one.filter(Boolean).length + " card by card" + (_sheetGot ? ", the rest from the whole sheet" : "") + ", eyes " + (_nm || "default") + ") · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s" +
     (got ? " · " + out.map((c, k) => (k + 1) + "=" + (c.title ? c.title + " | " + ((c.lines || [])[0] || "") : "-")).join(" · ") : ""));
   return out;
 }
@@ -67318,6 +67323,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
   let _rawAcc = "", _sentSoFar = "";
   // (v9.862) set on an add-on's bare yes before anything is drawn: her words wait until core knows whether this turn draws (see below)
   let _holdWords = false, _yesDraws = false, _heldHerSay = null;   // (v9.869) her own words on a held turn that draws
+  let _placeTapHeld = false;   // (v9.877) the held turn was a tapped place - see where the held words go
   const _fwdDelta = onDelta ? (async (d) => {
     _rawAcc += d;
     if (_holdWords) return;
@@ -69685,7 +69691,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // picturing going there - tell me, or I can imagine some ideas..." stood over the drawing. Her words wait the same way.
             const _placeTapNow = /^\s*i want it to go\s+\S/i.test(String(said || ""));
             if (_adr !== "1" && (_isYes || _yesWith || _placeTapNow)) {
-              _holdWords = true;
+              _holdWords = true; _placeTapHeld = _placeTapNow;
               console.log("[TURN:YES] add-on, nothing drawn yet - her words wait until this turn knows whether it draws" + (me ? " · who=" + me : ""));
             } else if (_adr === "1" && !(opts && (opts.pick || opts.use || opts.own || opts.tile || opts.name || opts.inspire || opts.lock))) {
               _holdWords = true;
@@ -70962,9 +70968,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         _holdWords = false;
         // (v9.869) on a turn that draws, her own say-back with its "here it is" taken out - the fixed line only if too little is left
         if (_yesDraws && acted) {
-          const _pd = pareDrawLine(_heldHerSay);
+          let _pd = pareDrawLine(_heldHerSay);
+          // ══ A TAPPED PLACE SHOWS ONLY WHAT SHE UNDERSTOOD (v9.877, 2026-11-07, Aaron: go) ═══ MEASURED 12:45:55: "Up past my elbow onto the
+          // upper arm" drew the four while she said "...the start of a half sleeve. Now tell me what you're dreaming of adding up there, or say the
+          // word and I'll imagine some ideas..." - asked as a "tell me", not a "?", so the trim kept it. On a tapped place her first sentence is
+          // what she understood; everything after it is about the next step, and the drawing is that next step. Other yes-draws are unchanged.
+          if (_pd && _placeTapHeld) { const _one = (_pd.match(/^.+?[.!](?=\s|$)/) || [_pd])[0].trim(); if (_one.length >= 12) _pd = _one; }
           if (_pd) acted.say = _pd;
-          console.log("[TURN:YES] while it is drawn: " + (_pd ? "her say-back, pared" : "the fixed line (her words were only a claim)") + " · hers: \"" + String(_heldHerSay || "").slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+          console.log("[TURN:YES] while it is drawn: " + (_pd ? (_placeTapHeld ? "her first sentence (a tapped place)" : "her say-back, pared") : "the fixed line (her words were only a claim)") + " · hers: \"" + String(_heldHerSay || "").slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
         }
         // What the turn says now - the fixed drawing line, the lettering line, or her own words - is what shows; her raw stream only if nothing is set.
         let _out = String((acted && acted.say) || "");

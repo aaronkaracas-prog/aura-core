@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.864.0-2026-11-06-spine-brief-for-her-person-block";
+const BUILD = "aura-core-v9.865.0-2026-11-06-her-prompt-reads-are-not-moments";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -80384,7 +80384,15 @@ function openAlbum(idx){
         try {
           const _ROUTINE_READS = ["PING", "GETKV", "LISTKV", "HELP", "STAT", "STATUS", "LISTKEYS", "KEYS", "VERSION", "WHOAMI"];
           const _failed = !!(result && result.payload && result.payload.ok === false);
-          const _routine = _ROUTINE_READS.includes(_cmdWord);
+          // ══ HER PROMPT'S OWN READS ARE NOT MOMENTS (v9.865, 2026-11-06, Aaron: go) ═══ MEASURED 16:39:26-16:39:31: on the first turn
+          // after she woke, PTA_SPINE GET finished its reads at 16:39:26.78 and answered at 29.17 - 2.4s later - and again 1.5s after its
+          // reads on the refresh. That time was this block: every command that is not a routine read is written to her memory before it
+          // answers - a KV write, an embedding and a Vectorize write - so each customer turn stored "PTA_SPINE: GET <id>" and "FACT" as
+          // moments of her life. They are reads, like GETKV: PTA_SPINE GET and FACT (anything but FACT SET / FACT FORGET) now count as
+          // routine. A failed read is still remembered, as before; every act is unchanged.
+          const _readOnly = (_cmdWord === "PTA_SPINE" && /^PTA_SPINE\s+GET\b/i.test(String(line).trim())) ||
+                            (_cmdWord === "FACT" && !/^FACT\s+(SET|FORGET)\b/i.test(String(line).trim()));
+          const _routine = _ROUTINE_READS.includes(_cmdWord) || _readOnly;
           if (result && (!_routine || _failed)) {
             let _kind = "action";
             if (_failed) _kind = "failure";

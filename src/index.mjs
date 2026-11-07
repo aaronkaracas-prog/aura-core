@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.875.0-2026-11-07-addon-where-it-grows";
+const BUILD = "aura-core-v9.876.0-2026-11-07-addon-place-names-the-end";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -62134,7 +62134,11 @@ async function addonSheetWords(env, sheetUrl, asked, ms) {
   // (v9.875) MEASURED 11:57:49: the whole sheet came back "TOO_BIG" - the eyes read our own pictures at full size (2304x3456, over 4 MB).
   // They look at the same 1024px copy her own looks use (lookCopy).
   let _u = String(sheetUrl); try { _u = await lookCopy(env, sheetUrl); } catch {}
-  const rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), ms)), seeMedia({ url: _u, prompt, max_tokens: 220 }, env)]).catch(() => null);
+  // (v9.876) MEASURED 12:29:42: the eyes read the whole sheet (4 of 4) but named it in pairs - "Tree of Life", "Serpent", "Tree of Life", "Serpent" -
+  // for roots, a compass, ravens and a serpent. This one read has its own dial, so a stronger model can be set for it alone:
+  // config:source:addon_names:model (empty = the eyes' own model).
+  let _nm = ""; try { _nm = String((await env.AURA_KV.get("config:source:addon_names:model")) || "").trim(); } catch {}
+  const rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), ms)), seeMedia({ url: _u, prompt, max_tokens: 220, ...(_nm ? { model: _nm } : {}) }, env)]).catch(() => null);
   const raw = String((rd && rd.ok && rd.saw) || "");
   const got = [null, null, null, null];
   for (const ln of raw.split(/\r?\n/)) {
@@ -67953,7 +67957,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         // as a small card under her words; a tap sends it to her as if they had typed it.
         // THE PLACES IT COULD GO (2026-10-18, v9.655, Aaron) - the same words as aura-think's reply format.
         '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go, in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
-        '  "directions": ["when it\'s their own tattoo on a photo and they have not said where the new work goes: 2 or 3 places it can grow, read from the part of the body you see and how much of it the photo shows - past the edge of the photo too when the tattoo fills it - each in their words, finishing \'I want it to go ___\', e.g. \'down to my hand\', \'up to my bicep\', \'all the way to my shoulder\'"] - otherwise leave it out,\n' +
+        '  "directions": ["when it\'s their own tattoo on a photo and they have not said where the new work goes: 2 or 3 places it can grow, read from the part of the body you see and how much of it the photo shows - past the edge of the photo too when the tattoo fills it - each in their words, finishing \'I want it to go ___\', and each naming where the new work ends - the place it reaches, not only a way it heads - e.g. \'down over my wrist and onto the back of my hand\', \'up past my elbow to the top of my bicep\', \'all the way up to my shoulder\'"] - otherwise leave it out,\n' +
         '  "go": "only when they want to go somewhere else - one of the places named in WHY YOU ARE HERE, by its name; the app takes them there. If you can\'t tell where they want to go, ask them and leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
@@ -69677,7 +69681,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // after her offer, may draw too (v9.871), so her words wait the same way.
             const _yesWith = !_isYes && _isOfferLine(_prevAuraLine) && !_saidNo &&
               /\b(?:yes|yeah|yep|yup|sure|ok|okay|show me|let'?s see(?: it)?|lets see(?: it)?|do it|go for it|go ahead|let'?s do it)\b/i.test(String(said || ""));
-            if (_adr !== "1" && (_isYes || _yesWith)) {
+            // (v9.876) A TAPPED PLACE DRAWS TOO - MEASURED 12:28: "Down over my wrist toward my hand" drew the four while her streamed "What are you
+            // picturing going there - tell me, or I can imagine some ideas..." stood over the drawing. Her words wait the same way.
+            const _placeTapNow = /^\s*i want it to go\s+\S/i.test(String(said || ""));
+            if (_adr !== "1" && (_isYes || _yesWith || _placeTapNow)) {
               _holdWords = true;
               console.log("[TURN:YES] add-on, nothing drawn yet - her words wait until this turn knows whether it draws" + (me ? " · who=" + me : ""));
             } else if (_adr === "1" && !(opts && (opts.pick || opts.use || opts.own || opts.tile || opts.name || opts.inspire || opts.lock))) {
@@ -70811,6 +70818,10 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         console.log("[TURN:IDEAS] eight possibilities of the one they chose, on their photo: " + _addonPossCard);
       } else if (_askIdeas && (jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true;
+        // (v9.876) a tap that draws: her words with the question taken off (pared below), else the fixed line - never her question over the drawing
+        if (_holdWords && acted) { let _gl = "On it - I'm imagining four ideas on you now. Every one is 100% unique and 100% yours.";
+          try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _gl = _k; } catch {}
+          _heldHerSay = acted.say; acted.say = _gl; _yesDraws = true; }
         // THEIR WORDS GO IN (v9.680, 2026-10-19, Aaron): MEASURED 08:28 - "I like the Chicano style and I wanna have the word mom in it",
         // she agreed, then Imagine 8 cover-ups sent the plain sentence and the sheet was a raven and a dragon. Everything they typed in
         // this tattoo's conversation - not button taps, not the door's own words - goes into their-own-idea sentence, exactly as a new

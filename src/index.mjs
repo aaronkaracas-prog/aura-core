@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.867.0-2026-11-06-add-on-change-line-and-one-ask";
+const BUILD = "aura-core-v9.868.0-2026-11-07-one-picture-change-line";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -70701,7 +70701,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           } else {
             _addonOwnWords = String(said).trim();
             // (v9.867) held words: this turn draws the change - the fixed change line shows while it does, not her "here it is"
-            if (_holdWords && acted) { let _cl = "On it - imagining that change on you now."; try { const _k = String((await env.AURA_KV.get("config:say:addon_change8")) || "").trim(); if (_k) _cl = _k; } catch {} acted.say = _cl; _yesDraws = true; }
+            // (v9.868, Aaron: go) its own setting, config:say:addon_one_change - a change here draws ONE picture; addon_change8 is worded for
+            // the change that draws several ("Every one is 100% unique...") and stays with that one.
+            if (_holdWords && acted) { let _cl = "On it - imagining that change on you now."; try { const _k = String((await env.AURA_KV.get("config:say:addon_one_change")) || "").trim(); if (_k) _cl = _k; } catch {} acted.say = _cl; _yesDraws = true; }
             console.log(_addonMore ? "[TURN:IDEAS] their change, on the add-on picture they have (" + _addonMore + ")" : "[TURN:IDEAS] their own idea, on their photo");
           }
         }

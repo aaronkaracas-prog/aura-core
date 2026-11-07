@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.878.0-2026-11-07-addon-names-told-the-existing-tattoo";
+const BUILD = "aura-core-v9.879.0-2026-11-07-addon-fav-on-the-direct-pick";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -75293,6 +75293,9 @@ export class PublicEntry extends WorkerEntrypoint {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
               from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
               direct_no_draw: !!_tOpts.direct_no_draw, direct_addon: !!_tOpts.direct_addon,
+              // (v9.879) MEASURED 15:42:21: an add-on favorite opened from Favorites ran this direct pick ("a pick off img_mw71jzetxmpg") and
+              // its sheet never reached the turn - no [TURN:FAV], and she said "there's nothing numbered on your screen". The favorite rides here too.
+              addon_fav: _tOpts.addon_fav || null,
               waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} },
               onDelta: async (t) => { await _send("data: " + JSON.stringify({ delta: t }) + "\n\n"); },
               onStage: async (st, what) => { await _send("event: stage\ndata: " + JSON.stringify({ stage: st, ...(what ? { what } : {}) }) + "\n\n"); },

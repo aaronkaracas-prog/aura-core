@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.870.0-2026-11-07-question-clause-and-the-one";
+const BUILD = "aura-core-v9.871.0-2026-11-07-addon-four-ideas";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -62111,6 +62111,34 @@ async function eightCards(env, sheetUrl, said, eopts) {
     return cards;
   } catch (e) { console.log("[CUT8] failed: " + String(e?.message ?? e).slice(0, 160)); return null; }
 }
+// ══ THE WORDS UNDER EACH ADD-ON CARD, READ OFF THE CARD (v9.871, 2026-11-07, Aaron: "no text" on the sheet) ═══ MEASURED: words drawn on the
+// add-on sheet cost the tattoo its detail (img_mw6po3zuy3h9 - smaller snake heads, specks back - against img_mw6pgbaftnmf). The sheet comes
+// back with no words; the eyes (config:source:eyes:model) read the four cut cards at once - a title and one line about what was added -
+// and the cards go back with them. The ask is a setting (config:frame:addon:cardwords, "____" is what they asked for); the wait is capped
+// (config:talk:addon_words_ms, empty = 6000) - a card not read in time goes back without words, it is never held for them.
+const ADDON_CARD_WORDS_ASK = "This photo shows a person's existing tattoo with new tattoo work added to it. They asked for: ____. " +
+  "Name this design and say what was added. Reply in exactly this form and nothing else: TITLE | one short line about what was added. The title is 2 to 4 words.";
+async function addonCardWords(env, cards, asked) {
+  const _t0 = Date.now();
+  if (!Array.isArray(cards) || !cards.length) return cards;
+  let ask = ADDON_CARD_WORDS_ASK, ms = 6000;
+  try { const k = String((await env.AURA_KV.get("config:frame:addon:cardwords")) || "").trim(); if (k) ask = k; } catch {}
+  try { const v = parseInt(String((await env.AURA_KV.get("config:talk:addon_words_ms")) || ""), 10); if (Number.isFinite(v) && v >= 1000) ms = v; } catch {}
+  const prompt = ask.includes("____") ? ask.replace("____", String(asked || "something added to their tattoo").replace(/[\s.]+$/, "").slice(0, 300)) : ask;
+  const reads = await Promise.all(cards.map((c) => Promise.race([new Promise((r) => setTimeout(() => r(null), ms)),
+    seeMedia({ url: c.image, prompt, max_tokens: 60 }, env)]).catch(() => null)));
+  const out = cards.map((c, k) => {
+    const rd = reads[k]; const raw = String((rd && rd.ok && rd.saw) || "").replace(/\s+/g, " ").trim();
+    const parts = raw.split("|").map((x) => x.replace(/^["'*\s]+|["'*.\s]+$/g, "").trim());
+    const title = parts[0] && parts[0].length <= 40 && parts[0].split(" ").length <= 6 && !/\b(title|cannot|can't|sorry|photo)\b/i.test(parts[0]) ? parts[0] : "";
+    const line = title && parts[1] && parts[1].length <= 140 ? parts[1] : "";
+    return title ? { ...c, title, lines: line ? [line] : [] } : c;
+  });
+  const got = out.filter((c) => c.title).length;
+  console.log("[CUT8] add-on card words read: " + got + " of " + cards.length + " · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s" +
+    (got ? " · " + out.map((c, k) => (k + 1) + "=" + (c.title ? c.title + " | " + ((c.lines || [])[0] || "") : "-")).join(" · ") : ""));
+  return out;
+}
 const CARD_INFO_ASK = "In your written reply, also list the 4 cards in order, one per line, as: TITLE | first line | second line | one sentence about the design and where on the body it would look best.";
 async function cardInfoAsk(env) {
   try { const k = String((await env.AURA_KV.get("config:frame:cards:info")) || "").trim(); if (k) return k; } catch {}
@@ -66464,6 +66492,15 @@ async function talkStatePut(env, me, name, raw) {
 // gold. Here it is."), but it also claims the picture is there before it exists. This keeps her say-back and takes out only the
 // claims: a leading "Here it is -", a trailing "- here's the new version", any sentence still claiming it ("Here you go", "is this
 // the one", "how does it look") and any question, since the picture's own line asks next. Too little left: "" - the fixed line stays.
+// (v9.871) Her words held for Imagine it, with any sentence that says it is being drawn or is here taken out - "Drawing it now.",
+// "Here it is", "Coming right up". Her say-back stays; if nothing would be left, her words stand as they were.
+function dropDrawClaim(text) {
+  const t = String(text || "").trim(); if (!t) return t;
+  const claim = /\b(?:(?:i'?m |i am )?(?:drawing|imagining|sketching|creating|putting|making|working on) (?:it|that|this|them|one|it up)?\s*(?:on you|on your arm|up)?\s*(?:now|right now)\b|here it is|here you go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|coming (?:right )?up|on (?:its|the) way)/i;
+  const kept = t.split(/(?<=[.!?])\s+/).filter((x) => !claim.test(x));
+  const out = kept.join(" ").trim();
+  return out.length >= 12 ? out : t;
+}
 function pareDrawLine(text) {
   const t = String(text || "").replace(/\s+/g, " ").trim();
   if (!t) return "";
@@ -68723,7 +68760,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
       let _heardIdea = null;
       let _drawSayP = null;   // (v9.826) her line as the drawing starts - shown when it comes, never waited for
-      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _addonGoWords = null, _addonLetter = null, _addonLetterHeld = false;
+      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _addonGoWords = null, _addonLetter = null, _addonLetterHeld = false, _onAddonSheet = false;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -69506,6 +69543,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                        } catch {}
                        return false; })()) {
             _fixedWhy = "pick"; _cutPick = true; _fixedSay = await _fx("pick8", "This is the one you're working on - make it your tattoo, fine-tune it, or imagine possibilities of it.");
+            // (v9.871) a card off the four add-on ideas: no possibilities are offered on it yet, so the line does not offer them
+            try { const _ps = (String((opts && opts.pick_sheet) || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                  if (_ps && await env.AURA_KV.get("addonsheet:" + _ps)) _fixedSay = await _fx("pick_addon", "This is the one you're working on - make it your tattoo, or tell me what to change."); } catch {}
           } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-8]\.?$/i.test(_s) && !_bodyPhoto) {
             // CHOOSE, THEN THE OFFER (v9.628, 2026-10-16, Aaron): change it, imagine 4 possibilities, or finish.
             _fixedWhy = "pick"; _fixedSay = await _fx("pick8", "This is the one you're working on - make it your tattoo, fine-tune it, or imagine possibilities of it.");
@@ -70633,7 +70673,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // (v9.870) MEASURED 07:17: "I want to add something but not sure what, what would you suggest?" - the question was the last clause
           // of a sentence that opened with their idea, so it went in. A closing clause that asks her is cut too; their idea stays.
           const _askC = /,\s*(?:what|which|how|why|where|who|whats|what's|any (?:ideas|suggestions|thoughts)|do you (?:think|have|know|suggest)|thoughts)\b[^?]*\?\s*$/i;
-          const _dropAsk = (t) => t.split(/(?<=[.!?])\s+/).filter((x) => !(/\?\s*$/.test(x) && _askQ.test(x))).map((x) => x.replace(_askC, ".")).join(" ").trim();
+          // (v9.871) MEASURED 07:31: "ooh the hummingbird one, coming in toward the flower. yeah show me" sent "yeah show me" to the image model -
+          // a whole line of yes-words was left out, a yes-sentence at the end of a line was not. A sentence made only of yes-words is left out too.
+          const _dropAsk = (t) => t.split(/(?<=[.!?])\s+/).filter((x) => !(/\?\s*$/.test(x) && _askQ.test(x)) && !_bareW.test(x)).map((x) => x.replace(_askC, ".")).join(" ").trim();
           let _st = Math.max(0, tnow.length - 12);
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "them" && _jobW.test(String(tnow[i].said || ""))) { _st = i; break; } }
           const _ws = [];
@@ -70715,6 +70757,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               // (v9.857) MEASURED 10:44: a fresh add-on of the koi back found the rose add-on from the test before as the last picture and drew
               // the koi on HER arm. The mark now says which photo it was drawn on; only a picture drawn on the photo on screen now counts.
               else if (_id && jobNow === "add") { try {
+                // (v9.871) the four add-on ideas still on screen, none picked: their new words make a fresh four from everything they said
+                if (await env.AURA_KV.get("addonsheet:" + _id)) _onAddonSheet = true;
                 const _mk = JSON.parse((await env.AURA_KV.get("addonone:" + _id)) || "null");
                 if (_mk && _mk.ent && _mk.photo && String(_mk.photo) === String(refDesign)) _addonMore = String(_mk.ent);
                 else if (_mk) console.log("[TURN:IDEAS] the last add-on picture was drawn on another photo - not built on" + (me ? " · who=" + me : ""));
@@ -70738,8 +70782,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // said before it; the line while it draws is the fixed one, as for Imagine it. Lettering with no style still brings up the sheet
           // first; a yes that adds or changes anything still holds, said back, with Imagine it.
           const _yesOnly = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(String(said || "").replace(/\[[^\]]*\]/g, " "));
+          // ══ THEIR PICK AND A YES, AFTER HER OFFER, DRAWS TOO (v9.871, 2026-11-07, Aaron: "do them all") ═══ MEASURED 07:31: she asked
+          // "Want me to show you some ideas?", they answered "ooh the hummingbird one, coming in toward the flower. yeah show me", and it was
+          // held for Imagine it under her "Drawing it now." - they had said yes to the very thing she offered. A line with a yes in it, straight
+          // after her offer, draws now from everything they said - the same as a bare yes.
+          const _yesWithIt = !_yesOnly && _isOfferLine(_prevAuraLine) && !_saidNo &&
+            /\b(?:yes|yeah|yep|yup|sure|ok|okay|show me|let'?s see(?: it)?|do it|go for it|go ahead|let'?s do it)\b/i.test(String(said || ""));
           if (await _addLetterHold(_w)) { act = "none"; _ideasGrid = false; }
-          else if (!_drawnYet && _yesOnly && _w && jobNow === "add") {
+          else if (!_drawnYet && (_yesOnly || _yesWithIt) && _w && jobNow === "add") {
             _addonOwnWords = _w; acted.choose = null; _addonMore = null;   // (v9.857) nothing drawn in this tattoo yet - their photo, always
             let _goLine = "On it - I'm imagining it on you now. It's 100% unique and 100% yours.";
             try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
@@ -70749,10 +70799,14 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           }
           else if (!_drawnYet) {
             act = "none"; _ideasGrid = false; _heardOut = { go: true }; acted.choose = null; _addonMore = null;
+            // (v9.871) MEASURED 07:31: "...great pick, that rose is made for it. Drawing it now." stood over Imagine it with nothing drawing.
+            // Held for their yes, her words never say it is being drawn or is here: that sentence is taken out (her say-back stays).
+            if (acted && acted.say) { const _cl0 = dropDrawClaim(acted.say); if (_cl0 !== acted.say) { console.log("[TURN:IDEAS] held for Imagine it - her claim that it is drawing taken out: \"" + String(acted.say).slice(0, 200) + "\""); acted.say = _cl0; } }
             try { await talkStatePut(env, me, "addon_go", _w); } catch {}
             console.log("[TURN:IDEAS] add-on - her words and Imagine it; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
           } else {
-            _addonOwnWords = String(said).trim();
+            _addonOwnWords = _onAddonSheet ? _addTyped() : String(said).trim();
+            if (_onAddonSheet) console.log("[TURN:IDEAS] the four ideas are on screen and none was picked - a fresh four from everything they said: \"" + String(_addonOwnWords).slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
             // (v9.867) held words: this turn draws the change - the fixed change line shows while it does, not her "here it is"
             // (v9.868, Aaron: go) its own setting, config:say:addon_one_change - a change here draws ONE picture; addon_change8 is worded for
             // the change that draws several ("Every one is 100% unique...") and stays with that one.
@@ -70773,9 +70827,21 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         try {
           let _dy = false; try { _dy = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || "") === "1"; } catch {}
           const _w = _dy ? "" : _addTyped();
+          // (v9.871) their yes to her LAST offer rode with this line, and she offered again instead of drawing: it draws now, as a yes does
+          const _yesWithIt2 = _isOfferLine(_prevAuraLine) && !_saidNo &&
+            /\b(?:yes|yeah|yep|yup|sure|ok|okay|show me|let'?s see(?: it)?|do it|go for it|go ahead|let'?s do it)\b/i.test(String(said || ""));
           if (_w) {
             if (await _addLetterHold(_w)) { /* the lettering sheet comes up first, as on a reach for a drawing */ }
+            else if (_yesWithIt2) {
+              act = "change"; _ideasGrid = true; _addonOwnWords = _w; acted.choose = null; _addonMore = null;
+              let _goLine = "On it - I'm imagining it on you now. It's 100% unique and 100% yours.";
+              try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
+              _heldHerSay = acted.say; acted.say = _goLine; _yesDraws = true;
+              try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
+              console.log("[TURN:IDEAS] add-on - their yes rode with their words after her offer (\"" + String(said).trim().slice(0, 80) + "\") - drawn now from their words: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
+            }
             else {
+              const _cl1 = dropDrawClaim(acted.say); if (_cl1 !== acted.say) { console.log("[TURN:IDEAS] held for Imagine it - her claim that it is drawing taken out: \"" + String(acted.say).slice(0, 200) + "\""); acted.say = _cl1; }
               _heardOut = { go: true }; acted.choose = null;
               try { await talkStatePut(env, me, "addon_go", _w); } catch {}
               console.log("[TURN:IDEAS] add-on - she offered to show them (\"" + String(acted.say).slice(0, 120) + "\") - Imagine it under her words; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
@@ -72136,7 +72202,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // img_mw58ajxic6tx). Model and quality: config:source:addon:model / :quality - empty means the new-tattoo sheet's
           // (config:source:sheet8:model / :quality). The words: config:frame:addon:one and config:frame:addon:more ("____" is their words).
           // The size is the photo's own shape (config:edit:size on the long edge), as every edit of a photo. A cover-up is unchanged.
-          let _addonOne = false, _oneParent = null;
+          // ══ THE FIRST ADD-ON PICTURE IS FOUR IDEAS ON ONE SHEET (v9.871, 2026-11-07, Aaron: "we're doing 4 ... no text") ═══ PROVEN by command
+          // on the rose photo, Flare at high, 2304x3456, one sheet of four with no words on it: the hummingbird (img_mw6pcbuuz45y), the snake
+          // (img_mw6pgbaftnmf) and the snake in colour with the rose left black and grey (img_mw6pu2mygyh8) - four different ideas, every line
+          // connected, the bare skin clean, the rose kept. MEASURED on the way there: 8 and 6 to a sheet broke the lines and left specks; words
+          // drawn on the sheet cost the tattoo detail (img_mw6po3zuy3h9 against img_mw6pgbaftnmf); "4 different versions" came back as one
+          // design four times, "4 different ideas" with what must change between them came back as four. The sheet is cut into its four
+          // cards when it comes back (eightCards); a pick is cut off it, never redrawn, and a change after the pick is ONE picture on the card
+          // they picked (v9.854's change path, unchanged). The page size: config:source:addon:size (empty = 2304x3456).
+          let _addonOne = false, _oneParent = null, _addonSheet = false, _askedFor = null;
           if (String(jobNow || "") === "add" && _ideasGrid && !_addonPoss && !_designGrid && parentId === refDesign) {
             const _ownW = _addonOwnWords ? String(_addonOwnWords).replace(/[\s.]+$/, "").slice(0, 600) : "";
             if (_addonMore && _ownW) {
@@ -72146,7 +72220,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               _oneParent = _addonMore;
               _wordsFrom = "addon_more";
             } else {
-              let _o = "This is my current tattoo. I want to add to it, in a similar style to my tattoo: ____. Be bold and imaginative with how it grows - make it creative and amazing, the way a great tattoo artist would build on it. Keep my existing tattoo exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is.";
+              let _o = "This is my current tattoo. I want to add to it, in a similar style to my tattoo: ____. Show me 4 different ideas for that. Make every idea a completely different design - change the composition, where the new work sits on my arm, how far it spreads and what else is added around it, so no two look alike. Make the first one the closest to what I described, and for the other three be bold and imaginative with the idea. Everything you add is tattooed on my skin and stays inside the outline of my body - nothing goes past the edge onto my clothes or the background. Keep my existing tattoo exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is in every version. Make one tall page with a solid black background, divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";
               let _oFrom = "default";
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:one")) || "").trim(); if (_k.includes("____")) { _o = _k; _oFrom = "setting"; } } catch {}
               // A style they named goes in place of "a similar style to my tattoo" (v9.852 kept it the same way).
@@ -72160,7 +72234,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               let _placeTap = false; try { _placeTap = String((await talkStateGet(env, me, ["placement_tap"])).placement_tap || "") === "1"; } catch {}
               if (_placeNow && !_placeTap) console.log("[TURN:IDEAS] her place left out - they did not tap it: \"" + _placeNow + "\"");
               if (_placeNow && _placeTap) {
-                const _atP = _sentNow.indexOf(" Be bold");
+                let _atP = _sentNow.indexOf(" Show me 4"); if (_atP < 0) _atP = _sentNow.indexOf(" Be bold");
                 const _ps1 = " I want it to go " + _placeNow.replace(/[\s.]+$/, "") + ".";
                 _sentNow = _atP > 0 ? _sentNow.slice(0, _atP) + _ps1 + _sentNow.slice(_atP) : _sentNow + _ps1;
                 _oFrom += "+placement";
@@ -72174,15 +72248,25 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 console.log("[TURN:IDEAS] their lettering goes in, before the keep-it words:" + _lc1);
               }
               _wordsFrom = "addon_one_" + _oFrom;
+              // (v9.871) a sheet of four when the words ask for one (the proven sentence does); an older one-picture setting still draws one
+              _addonSheet = /\bShow me 4\b/.test(_sentNow);
             }
+            // (v9.871) what they asked for, for the version row: the change they typed, or the last thing they said they want
+            _askedFor = _oneParent ? (_ownW || null) : (() => { const _sg = String(_addonOwnWords || "").split(/\.\s+/).filter(Boolean); let _t = _sg.pop() || "";
+              if (_t.length < 15 && _sg.length) _t = _sg.pop() + ". " + _t; return _t.slice(0, 160) || null; })();
             _ideasGrid = false; _addonOne = true; _herAsk = null;
             _viaNow = null; _asNow = "design_evolve"; _canvasNow = null; _sizeNow = null; _withNow = null; _rawNow = true;
+            if (_addonSheet) {
+              _canvasNow = { width: 2304, height: 3456 };
+              try { const _gm = String((await env.AURA_KV.get("config:source:addon:size")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/);
+                    if (_gm) _canvasNow = { width: parseInt(_gm[1], 10), height: parseInt(_gm[2], 10) }; } catch {}
+            }
             let _m1 = ""; try { _m1 = String((await env.AURA_KV.get("config:source:addon:model")) || "").trim(); } catch {}
             _modelNow = /^gpt-image/i.test(_m1) ? _m1 : await sheet8Model(env);
             let _q1 = ""; try { _q1 = String((await env.AURA_KV.get("config:source:addon:quality")) || "").trim().toLowerCase(); } catch {}
             _qualNow = ["low", "medium", "high", "auto"].includes(_q1) ? _q1 : await sheet8DirectQuality(env);
             _seedNow = 1 + Math.floor(Math.random() * 2000000000);
-            console.log("[TURN:IDEAS] add-on, one picture" + (_oneParent ? " - a change on the one they have (" + _oneParent + ")" : " on their photo") +
+            console.log("[TURN:IDEAS] add-on, " + (_addonSheet ? "four ideas on one sheet (" + _canvasNow.width + "x" + _canvasNow.height + ")" : "one picture") + (_oneParent ? " - a change on the one they have (" + _oneParent + ")" : " on their photo") +
               " · " + (_modelNow || "the shared edit model") + " at " + _qualNow + " · words from " + _wordsFrom + (me ? " · who=" + me : ""));
           }
           // THE FOUR VERSIONS OF A CHANGE (v9.599): their words inside one fixed sentence (`config:frame:design:grid`,
@@ -72444,7 +72528,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                       url: _c.image_url, subject: "number " + _gridPickCut.n + ", cut from the four", source: "panel_cut", creator: me || null,
                       parent: cur, context: "they chose number " + _gridPickCut.n + " - cut from the sheet, nothing redrawn", access: "public" });
                     // A CARD CUT OFF AN ADD-ON SHEET IS MARKED (v9.661): Imagine 4 possibilities starts from it.
-                    if (_cid) { try { await env.AURA_KV.put("bodycut:" + _cid, "1"); } catch {} }
+                    // (v9.871) A CARD OFF THE FOUR ADD-ON IDEAS is marked the way one add-on picture is (v9.854): a change after the pick is ONE
+                    // picture on this card, drawn on the photo the sheet was drawn on - not four new versions.
+                    let _fromAddonSheet = null;
+                    try { const _sidA = (String(_gridPickCut.img || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                          _fromAddonSheet = _sidA ? JSON.parse((await env.AURA_KV.get("addonsheet:" + _sidA)) || "null") : null; } catch {}
+                    if (_cid && _fromAddonSheet && _reg && _reg.entity_id) {
+                      try { await env.AURA_KV.put("addonone:" + _cid, JSON.stringify({ ent: String(_reg.entity_id), photo: String(_fromAddonSheet.photo || refDesign) }));
+                            _pl("number " + _gridPickCut.n + " off the add-on sheet marked - a change builds on it: " + _cid + " -> " + _reg.entity_id); } catch {}
+                    } else if (_cid) { try { await env.AURA_KV.put("bodycut:" + _cid, "1"); } catch {} }
                     // (v9.816) the picked card keeps its printed name under its own id, so "new takes on <its name>" can say it
                     if (_cid && _cardT) { try { await env.AURA_KV.put("pickname:" + _cid, String(_cardT).slice(0, 80)); } catch {} }
                     t = { ok: true, image_url: _c.image_url, child: (_reg && _reg.entity_id) || null, cut: true,
@@ -72578,6 +72670,11 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               _reaction = _done;
+            } else if (_addonOne && _addonSheet) {
+              // (v9.871) the four ideas on their photo: a short fixed line, no look
+              let _done = "Here are four ideas on you. Tap the one you love, then Finalize it to make it yours - or Fine-Tune it and tell me what to change.";
+              try { const _k = String((await env.AURA_KV.get("config:say:addon_sheet_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              _reaction = _done;
             } else if (_addonOne) {
               // (v9.854) one add-on picture: a short fixed line, no look - the picture is what they asked for, on their photo.
               let _done = "Here it is on you. Love it? Tap Finalize This Design to make it yours - or tell me what to change and I'll imagine it again.";
@@ -72601,8 +72698,22 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // CUT THE MOMENT IT COMES BACK (v9.678): the eight cards, each with its words.
           let _eight = null;
           if ((_ideasGrid || _designGrid) && cp?.ok && cp.image_url) _eight = await eightCards(env, cp.image_url, cp.said, (_possDirect || _bodyDirect || _inspDirect || _changeDirect) ? { printed: true, waitUntil: _waitUntil } : null);
+          // (v9.871) THE FOUR ADD-ON IDEAS ARE CUT THE MOMENT THEY COME BACK, and the eyes read each card's words. The sheet is marked as an
+          // add-on sheet (the photo it was drawn on), so a pick off it is marked to be built on; the sheet itself is never built on.
+          if (_addonOne && _addonSheet && cp?.ok && cp.image_url) {
+            _eight = await eightCards(env, cp.image_url, null, null);
+            if (_eight && _eight.length) {
+              _eight = await addonCardWords(env, _eight, _addonOwnWords);
+              const _sid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+              if (_sid) { try { await env.AURA_KV.put("sheet8:" + _sid, JSON.stringify(_eight)); } catch {}
+                try { await Promise.all(_eight.map((c) => { const cid = (String(c.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                  return cid && c.title ? env.AURA_KV.put("cardinfo:" + cid, JSON.stringify({ title: c.title, lines: c.lines || [], sheet: _sid, n: c.n })).catch(() => {}) : null; })); } catch {}
+                try { await env.AURA_KV.put("addonsheet:" + _sid, JSON.stringify({ photo: String(refDesign) })); } catch {}
+                console.log("[CUT] add-on sheet of " + _eight.length + " cut and marked - a pick off it is built on: " + _sid); }
+            } else console.log("[CUT] add-on sheet could not be cut into its cards - shown whole");
+          }
           // (v9.854) AN ADD-ON DRAWN ONE AT A TIME IS MARKED: a change after it builds on this picture (its design), not on the bare photo.
-          if (_addonOne && cp?.ok && cp.image_url && cp.child) {
+          if (_addonOne && !_addonSheet && cp?.ok && cp.image_url && cp.child) {
             const _oid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
             // (v9.857) the mark carries the photo it was drawn on, so another tattoo's add-on never builds on it
             if (_oid) { try { await env.AURA_KV.put("addonone:" + _oid, JSON.stringify({ ent: String(cp.child), photo: String(refDesign) })); console.log("[CUT] add-on picture marked - a change builds on it: " + _oid + " -> " + cp.child + " · drawn on " + refDesign); } catch {} }
@@ -72617,8 +72728,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             ? { design: cp.child, image: cp.image_url,
                 changed: _asks.join(" | "),
                 words_from: _wordsFrom,
-                ...((_ideasGrid || _designGrid) ? { four_directions: true } : {}), ...(_designGrid ? { panels: true } : {}),
-                ...(_ideasGrid ? { body_sheet: true } : {}), ...(_addonOne ? { addon_one: true } : {}),
+                ...((_ideasGrid || _designGrid || (_addonSheet && _eight)) ? { four_directions: true } : {}), ...(_designGrid ? { panels: true } : {}),
+                ...(_ideasGrid ? { body_sheet: true } : {}), ...(_addonOne ? { addon_one: true } : {}), ...(_addonSheet ? { addon_sheet: true } : {}),
+                ...(_addonOne && _askedFor ? { asked_for: _askedFor } : {}),
                 ...(_eight ? { cards8: _eight, cards: _eight.map((c) => ({ title: c.title || "", lines: c.lines || [] })) }
                   : (_designGrid && (readSaidCards(cp.said) || (cp.brief && readCards(cp.brief))) ? { cards: readSaidCards(cp.said) || readCards(cp.brief) } : {})),
                 ...((_designGrid && _designWords === "__poss__") || _addonPoss ? { possibilities: true } : {}),
@@ -73291,6 +73403,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 ...((drew && drew.image && !drew.failed && !drew.for_the_artist)
                   ? [{ ts: _atP, image: drew.image, design: drew.design || null,
                        words: String(drew.changed || drew.asked || "").slice(0, 300),
+                       // (v9.871) what they asked for, in their words - the version row's caption; and an add-on sheet is marked as one
+                       ...(drew.asked_for ? { asked: String(drew.asked_for).slice(0, 160) } : {}),
+                       ...(drew.addon_sheet ? { addon_sheet: true } : {}),
                        // A look at it on them is not a new version of the design (2026-10-08, v9.544).
                        ...(drew.on_me ? { on_me: true } : {}),
                        // AN EIGHT-CARD SHEET KEEPS ITS CARDS (v9.737, 2026-10-23, Aaron): reopening the tattoo shows the cut cards

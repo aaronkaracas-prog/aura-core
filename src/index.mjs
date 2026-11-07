@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.869.0-2026-11-07-say-back-while-drawn-ask-again";
+const BUILD = "aura-core-v9.870.0-2026-11-07-question-clause-and-the-one";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66468,7 +66468,8 @@ function pareDrawLine(text) {
   const t = String(text || "").replace(/\s+/g, " ").trim();
   if (!t) return "";
   const lead = /^\s*(?:here it is|here you go|here we go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|ta-?da|voil[aà])\s*[-–—:,.!]+\s*/i;
-  const claim = /\b(here it is|here you go|here(?:'|’)s (it|your|the)|there you go|take a look|check it out|have a look|is this the one|how does (it|that|this) look)\b/i;
+  // (v9.870) MEASURED 07:18: "If this is the one, or you want to tweak anything, just say." - the same claim, said the other way round
+  const claim = /\b(here it is|here you go|here(?:'|’)s (it|your|the)|there you go|take a look|check it out|have a look|is this the one|this is the one|tweak anything|how does (it|that|this) look)\b/i;
   const parts = t.split(/(?<=[.!?])\s+/);
   const kept = [];
   for (let p of parts) {
@@ -70624,14 +70625,25 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // (v9.855) MEASURED 10:06: "yes please" went to the image model as part of their idea - the line matched one yes-word, not two.
           // A line made only of yes-words, in any number ("yes please", "yeah go for it", "yes show me"), is their yes, not their idea.
           const _bareW = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i;
+          // ══ THEIR QUESTIONS TO HER ARE NOT THE PICTURE (v9.869, 2026-11-07, Aaron: "do them all") ═══ MEASURED 17:11 and 06:57: "what would
+          // you do with it?" and "what would you suggest?" went to the image model inside their idea. A sentence of theirs that asks HER
+          // something - ends in "?" and opens with what / which / how / why / where / who / any ideas / do you think - is left out of the
+          // picture's words. A question that carries an idea ("maybe a dragon chasing it?", "can you add a bee?") stays, in their words.
+          const _askQ = /^\s*(?:what|which|how|why|where|who|whats|what's|any (?:ideas|suggestions|thoughts)|do you (?:think|have|know|suggest)|thoughts)\b/i;
+          // (v9.870) MEASURED 07:17: "I want to add something but not sure what, what would you suggest?" - the question was the last clause
+          // of a sentence that opened with their idea, so it went in. A closing clause that asks her is cut too; their idea stays.
+          const _askC = /,\s*(?:what|which|how|why|where|who|whats|what's|any (?:ideas|suggestions|thoughts)|do you (?:think|have|know|suggest)|thoughts)\b[^?]*\?\s*$/i;
+          const _dropAsk = (t) => t.split(/(?<=[.!?])\s+/).filter((x) => !(/\?\s*$/.test(x) && _askQ.test(x))).map((x) => x.replace(_askC, ".")).join(" ").trim();
           let _st = Math.max(0, tnow.length - 12);
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "them" && _jobW.test(String(tnow[i].said || ""))) { _st = i; break; } }
           const _ws = [];
           for (let i = _st; i < tnow.length; i++) { const e = tnow[i]; let t = String((e && e.role === "them" && e.said) || "").trim();
             if (i === _st) t = t.replace(_jobW, "").trim();
             t = t.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim().replace(/^show me:\s*/i, "");
-            if (!t || _tapW.test(t) || _bareW.test(t)) continue; _ws.push(t.replace(/[\s.]+$/, "")); }
-          const _now = String(said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "");
+            if (!t || _tapW.test(t) || _bareW.test(t)) continue;
+            t = _dropAsk(t); if (!t) continue;
+            _ws.push(t.replace(/[\s.]+$/, "")); }
+          const _now = _dropAsk(String(said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim()).replace(/[\s.]+$/, "");
           if (_now && !_tapW.test(_now) && !_bareW.test(_now) && !_ws.includes(_now)) _ws.push(_now);
           return _ws.join(". ").slice(0, 600);
         } catch { return String(said || "").trim().slice(0, 600); } };

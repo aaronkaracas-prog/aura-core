@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.871.0-2026-11-07-addon-four-ideas";
+const BUILD = "aura-core-v9.872.0-2026-11-07-addon-change-after-pick";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -62129,9 +62129,10 @@ async function addonCardWords(env, cards, asked) {
     seeMedia({ url: c.image, prompt, max_tokens: 60 }, env)]).catch(() => null)));
   const out = cards.map((c, k) => {
     const rd = reads[k]; const raw = String((rd && rd.ok && rd.saw) || "").replace(/\s+/g, " ").trim();
-    const parts = raw.split("|").map((x) => x.replace(/^["'*\s]+|["'*.\s]+$/g, "").trim());
-    const title = parts[0] && parts[0].length <= 40 && parts[0].split(" ").length <= 6 && !/\b(title|cannot|can't|sorry|photo)\b/i.test(parts[0]) ? parts[0] : "";
+    const parts = raw.replace(/\b(?:title|line)\s*:\s*/gi, "").split(/\s*\|\s*|\s+-\s+|\n/).map((x) => x.replace(/^["'*#\s]+|["'*.\s]+$/g, "").trim()).filter(Boolean);
+    const title = parts[0] && parts[0].length <= 40 && parts[0].split(" ").length <= 6 && !/\b(cannot|can't|sorry|unable)\b/i.test(parts[0]) ? parts[0] : "";
     const line = title && parts[1] && parts[1].length <= 140 ? parts[1] : "";
+    if (!title) { try { console.log("[CUT8] add-on card " + (k + 1) + " - no words taken from: " + (raw ? "\"" + raw.slice(0, 160) + "\"" : String((rd && rd.error) || "no answer").slice(0, 160))); } catch {} }
     return title ? { ...c, title, lines: line ? [line] : [] } : c;
   });
   const got = out.filter((c) => c.title).length;
@@ -69599,7 +69600,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (onDelta && me && _bodyPhoto && !["cover", "rework", "from"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase())) {
             let _adr = ""; try { _adr = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || ""); } catch {}
             const _isYes = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(String(said || "").replace(/\[[^\]]*\]/g, " "));
-            if (_adr !== "1" && _isYes) {
+            // (v9.871) MEASURED 10:33: "ooh yeah i like that ... lets see it" after her offer drew, but her streamed "...Here it is on your arm."
+            // stood for the minute the four took - only a line made of yes-words held her words. A yes-word riding with their words, straight
+            // after her offer, may draw too (v9.871), so her words wait the same way.
+            const _yesWith = !_isYes && _isOfferLine(_prevAuraLine) && !_saidNo &&
+              /\b(?:yes|yeah|yep|yup|sure|ok|okay|show me|let'?s see(?: it)?|lets see(?: it)?|do it|go for it|go ahead|let'?s do it)\b/i.test(String(said || ""));
+            if (_adr !== "1" && (_isYes || _yesWith)) {
               _holdWords = true;
               console.log("[TURN:YES] add-on, nothing drawn yet - her words wait until this turn knows whether it draws" + (me ? " · who=" + me : ""));
             } else if (_adr === "1" && !(opts && (opts.pick || opts.use || opts.own || opts.tile || opts.name || opts.inspire || opts.lock))) {
@@ -70669,13 +70675,15 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // you do with it?" and "what would you suggest?" went to the image model inside their idea. A sentence of theirs that asks HER
           // something - ends in "?" and opens with what / which / how / why / where / who / any ideas / do you think - is left out of the
           // picture's words. A question that carries an idea ("maybe a dragon chasing it?", "can you add a bee?") stays, in their words.
-          const _askQ = /^\s*(?:what|which|how|why|where|who|whats|what's|any (?:ideas|suggestions|thoughts)|do you (?:think|have|know|suggest)|thoughts)\b/i;
+          // (v9.871) MEASURED 10:34: "hmm would it look better with one big butterfly or a few little ones?" went to the image model - a filler
+          // word before the question, and a "would it / should I / is it" question to her. Both are hers to answer, not the picture's.
+          const _askQ = /^\s*(?:(?:hmm+|hm+|so|ok|okay|um+|uh+|well|idk|honestly|and|but)[,.\s]+)*(?:what|which|how|why|where|who|whats|what's|any (?:ideas|suggestions|thoughts)|do you (?:think|have|know|suggest|like)|thoughts|would (?:it|that|this|they)|should (?:i|it|we)|is (?:it|that|this)|does (?:it|that|this)|could (?:it|that|this)|wouldn'?t it)\b/i;
           // (v9.870) MEASURED 07:17: "I want to add something but not sure what, what would you suggest?" - the question was the last clause
           // of a sentence that opened with their idea, so it went in. A closing clause that asks her is cut too; their idea stays.
           const _askC = /,\s*(?:what|which|how|why|where|who|whats|what's|any (?:ideas|suggestions|thoughts)|do you (?:think|have|know|suggest)|thoughts)\b[^?]*\?\s*$/i;
           // (v9.871) MEASURED 07:31: "ooh the hummingbird one, coming in toward the flower. yeah show me" sent "yeah show me" to the image model -
           // a whole line of yes-words was left out, a yes-sentence at the end of a line was not. A sentence made only of yes-words is left out too.
-          const _dropAsk = (t) => t.split(/(?<=[.!?])\s+/).filter((x) => !(/\?\s*$/.test(x) && _askQ.test(x)) && !_bareW.test(x)).map((x) => x.replace(_askC, ".")).join(" ").trim();
+          const _dropAsk = (t) => t.split(/(?<=[.!?])\s+/).filter((x) => !(/\?\s*$/.test(x) && _askQ.test(x)) && !_bareW.test(x) && !/^\s*(?:idk|i dunno|dunno|not sure|i'?m not sure|hmm+|lol|haha+|ok|okay|so)[\s.!,]*$/i.test(x)).map((x) => x.replace(_askC, ".")).join(" ").trim();
           let _st = Math.max(0, tnow.length - 12);
           for (let i = tnow.length - 1; i >= 0; i--) { if (tnow[i] && tnow[i].role === "them" && _jobW.test(String(tnow[i].said || ""))) { _st = i; break; } }
           const _ws = [];
@@ -70706,6 +70714,23 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         console.log("[TURN:LETTER] add-on - lettering with no style yet: " + _new.map((x) => '"' + x + '"').join(", ") + " - the lettering sheet comes up, nothing drawn" + (me ? " · who=" + me : ""));
         return true;
       };
+      // ══ A CHANGE ON THE ADD-ON THEY HAVE IS DRAWN (v9.871, 2026-11-07) ═══ MEASURED 10:35: they picked a card, tapped Fine-Tune, and typed
+      // "can you give the butterflies some soft blue in their wings? keep the rose black and grey" - she said it back with "Let me show you
+      // that." and chose to talk, so nothing was drawn and the page showed its yes card. Fine-Tune's "their next words are the change"
+      // (await_change) was only read on a new tattoo. On an add-on with a picture already on their photo, their words after Fine-Tune - or
+      // words she answers by offering to show them - are their change, and it is drawn now.
+      if (me && jobNow === "add" && refDesign && _bodyPhoto && act === "none" && !_fixedWhy && !_heardOut && String(said || "").trim() &&
+          !/^\s*i want to change something\.?\s*$/i.test(String(said || "")) && !_saidNo && !(opts && (opts.pick || opts.use || opts.lock || opts.inspire))) {
+        try {
+          const _aw = await talkStateGet(env, me, ["await_change", "addon_drawn"]);
+          const _afterTune = String(_aw.await_change || "") === "1";
+          if (String(_aw.addon_drawn || "") === "1" && (_afterTune || (acted && _isOfferLine(acted.say)))) {
+            act = "change";
+            if (_afterTune) { try { await talkStatePut(env, me, "await_change", ""); } catch {} }
+            console.log("[TURN:IDEAS] add-on - their change on the picture they have is drawn now (" + (_afterTune ? "after Fine-Tune" : "she offered to show it") + "): \"" + String(said).trim().slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
+          }
+        } catch {}
+      }
       if (_addonGoWords && refDesign && _bodyPhoto) {
         act = "change"; _ideasGrid = true; _addonOwnWords = _addonGoWords;
         console.log("[TURN:IDEAS] their " + (jobNow === "cover" ? "cover-up" : "add-on") + ", after their yes - " + (jobNow === "cover" ? "eight" : "one picture") + " on their photo from their words" + ((_addonLetter && (_addonLetter.items || []).length) ? " and their lettering" : ""));
@@ -70787,7 +70812,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // held for Imagine it under her "Drawing it now." - they had said yes to the very thing she offered. A line with a yes in it, straight
           // after her offer, draws now from everything they said - the same as a bare yes.
           const _yesWithIt = !_yesOnly && _isOfferLine(_prevAuraLine) && !_saidNo &&
-            /\b(?:yes|yeah|yep|yup|sure|ok|okay|show me|let'?s see(?: it)?|do it|go for it|go ahead|let'?s do it)\b/i.test(String(said || ""));
+            /\b(?:yes|yeah|yep|yup|sure|ok|okay|show me|let'?s see(?: it)?|lets see(?: it)?|do it|go for it|go ahead|let'?s do it)\b/i.test(String(said || ""));
           if (await _addLetterHold(_w)) { act = "none"; _ideasGrid = false; }
           else if (!_drawnYet && (_yesOnly || _yesWithIt) && _w && jobNow === "add") {
             _addonOwnWords = _w; acted.choose = null; _addonMore = null;   // (v9.857) nothing drawn in this tattoo yet - their photo, always
@@ -70829,7 +70854,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           const _w = _dy ? "" : _addTyped();
           // (v9.871) their yes to her LAST offer rode with this line, and she offered again instead of drawing: it draws now, as a yes does
           const _yesWithIt2 = _isOfferLine(_prevAuraLine) && !_saidNo &&
-            /\b(?:yes|yeah|yep|yup|sure|ok|okay|show me|let'?s see(?: it)?|do it|go for it|go ahead|let'?s do it)\b/i.test(String(said || ""));
+            /\b(?:yes|yeah|yep|yup|sure|ok|okay|show me|let'?s see(?: it)?|lets see(?: it)?|do it|go for it|go ahead|let'?s do it)\b/i.test(String(said || ""));
           if (_w) {
             if (await _addLetterHold(_w)) { /* the lettering sheet comes up first, as on a reach for a drawing */ }
             else if (_yesWithIt2) {

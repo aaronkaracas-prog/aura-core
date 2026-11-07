@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.868.0-2026-11-07-one-picture-change-line";
+const BUILD = "aura-core-v9.869.0-2026-11-07-say-back-while-drawn-ask-again";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66458,6 +66458,34 @@ async function talkStatePut(env, me, name, raw) {
 // These four lived inside auraTalk. The artist files now run as a background job, which is handed
 // plain data, not the conversation's closures - so each helper is defined once here and both the
 // conversation and the job use the same one. Bodies unchanged.
+// ══ WHAT SHE SAYS WHILE IT IS DRAWN - HER OWN SAY-BACK, NEVER "HERE IT IS" (v9.869, 2026-11-07, Aaron) ═══════════════════════
+// "whenever aura is making changes we see what changes she's making ... give them back what they're asking for ... pare it back to
+// what they just asked for." Her reply on a drawing turn says back what is being made ("You got it - moon twice the size and in
+// gold. Here it is."), but it also claims the picture is there before it exists. This keeps her say-back and takes out only the
+// claims: a leading "Here it is -", a trailing "- here's the new version", any sentence still claiming it ("Here you go", "is this
+// the one", "how does it look") and any question, since the picture's own line asks next. Too little left: "" - the fixed line stays.
+function pareDrawLine(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  const lead = /^\s*(?:here it is|here you go|here we go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|ta-?da|voil[aà])\s*[-–—:,.!]+\s*/i;
+  const claim = /\b(here it is|here you go|here(?:'|’)s (it|your|the)|there you go|take a look|check it out|have a look|is this the one|how does (it|that|this) look)\b/i;
+  const parts = t.split(/(?<=[.!?])\s+/);
+  const kept = [];
+  for (let p of parts) {
+    p = p.replace(lead, "").replace(/\s*[-–—,:]\s*(?:here it is|here you go|there you go|here(?:'|’)s (?:it|your|the)[^.!?]*)\s*([.!]?)\s*$/i, "$1");
+    if (!p) continue;
+    p = p.charAt(0).toUpperCase() + p.slice(1);
+    if (claim.test(p)) continue;
+    if (/\?\s*$/.test(p)) continue;
+    kept.push(p);
+  }
+  let out = kept.join(" ").trim();
+  if (out.length < 12) return "";
+  if (!/^(on it|you got it|got it|love|done|sure|absolutely|okay|ok|perfect|yes|yep|great|beautiful|nice|making|adding|imagining)\b/i.test(out))
+    out = "On it - " + out.charAt(0).toLowerCase() + out.slice(1);
+  return out;
+}
+
 function talkReadAct(txt) {
     let o = null, _cut = false;
     try { o = JSON.parse(String(txt || "").trim()); }
@@ -67208,7 +67236,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
   // would duplicate her words on screen.
   let _rawAcc = "", _sentSoFar = "";
   // (v9.862) set on an add-on's bare yes before anything is drawn: her words wait until core knows whether this turn draws (see below)
-  let _holdWords = false, _yesDraws = false;
+  let _holdWords = false, _yesDraws = false, _heldHerSay = null;   // (v9.869) her own words on a held turn that draws
   const _fwdDelta = onDelta ? (async (d) => {
     _rawAcc += d;
     if (_holdWords) return;
@@ -69625,6 +69653,19 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
                 acted = { say: _raw.slice(0, 900), act: "none", prompt: "", ask: "", use: [], brief: null };
               }
             }
+            // ══ A REPLY THAT CANNOT BE READ IS ASKED FOR AGAIN, ONCE (v9.869, 2026-11-07, Aaron: "there should be an obvious answer") ═══
+            // MEASURED 14:38 yesterday: her reply could not be read, and the turn then read the BRIEF EXTRACTOR's answer as if it were her
+            // reply - a different model, asked a different question, whose answer is never a reply (gpt-oss-120b gave only its reasoning,
+            // "content": null) - so the person got "Tell me a bit more." The obvious answer is her: the same line, asked once more.
+            if (!acted) {
+              try {
+                const _again = await proxyToAgent(env, agentLine,
+                  false, me, ((seeing && !refHeld) || _photoStill) ? refUrl : (_ownLook || null), world, null);
+                const _a2 = (_again && _again.reply && !_again.failed) ? readAct(_again.reply) : null;
+                if (_a2) { acted = _a2; proxied = _again; }
+                console.log("[TURN] her reply could not be read - asked her again, once: " + (_a2 ? "read" : "still not read") + (me ? " · who=" + me : ""));
+              } catch (e) { console.log("[TURN] asking her again failed: " + String(e?.message ?? e).slice(0, 120)); }
+            }
             if (acted) { agentVia = proxied.instance || "agent"; proxied_rung = proxied.rung || null; }
             else agentNote = "her reply did not parse :: " +
                              String(proxied.reply).trim().slice(0, 300);
@@ -70671,7 +70712,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         act = "change"; _ideasGrid = true;
         if (_addonPossCard) { _addonPoss = true; _addonChangeWords = String(said).trim(); console.log("[TURN:IDEAS] their change, four versions on the design they chose: " + _addonPossCard);
           // (v9.867) held words: this turn draws - the fixed change line shows while it does
-          if (_holdWords && acted) { let _cl = "On it - imagining that change on you now."; try { const _k = String((await env.AURA_KV.get("config:say:addon_change8")) || "").trim(); if (_k) _cl = _k; } catch {} acted.say = _cl; _yesDraws = true; } }
+          if (_holdWords && acted) { let _cl = "On it - imagining that change on you now."; try { const _k = String((await env.AURA_KV.get("config:say:addon_change8")) || "").trim(); if (_k) _cl = _k; } catch {} _heldHerSay = acted.say; acted.say = _cl; _yesDraws = true; } }
         else {
           // ══ SHE SAYS IT BACK, THEY SAY YES - ON THEIR PHOTO TOO (v9.850, 2026-11-06, Aaron: "yes same flow") ═══ MEASURED 07:27: the first
           // add-on was drawn the moment she said "Let me show you what that could look like on your arm". Before anything is drawn on their
@@ -70690,7 +70731,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             _addonOwnWords = _w; acted.choose = null; _addonMore = null;   // (v9.857) nothing drawn in this tattoo yet - their photo, always
             let _goLine = "On it - I'm imagining it on you now. It's 100% unique and 100% yours.";
             try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
-            acted.say = _goLine; _yesDraws = true;
+            _heldHerSay = acted.say; acted.say = _goLine; _yesDraws = true;
             try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
             console.log("[TURN:IDEAS] add-on - \"" + String(said).trim().slice(0, 60) + "\" is a yes to her offer - drawn now from their words: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
           }
@@ -70703,7 +70744,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // (v9.867) held words: this turn draws the change - the fixed change line shows while it does, not her "here it is"
             // (v9.868, Aaron: go) its own setting, config:say:addon_one_change - a change here draws ONE picture; addon_change8 is worded for
             // the change that draws several ("Every one is 100% unique...") and stays with that one.
-            if (_holdWords && acted) { let _cl = "On it - imagining that change on you now."; try { const _k = String((await env.AURA_KV.get("config:say:addon_one_change")) || "").trim(); if (_k) _cl = _k; } catch {} acted.say = _cl; _yesDraws = true; }
+            if (_holdWords && acted) { let _cl = "On it - imagining that change on you now."; try { const _k = String((await env.AURA_KV.get("config:say:addon_one_change")) || "").trim(); if (_k) _cl = _k; } catch {} _heldHerSay = acted.say; acted.say = _cl; _yesDraws = true; }
             console.log(_addonMore ? "[TURN:IDEAS] their change, on the add-on picture they have (" + _addonMore + ")" : "[TURN:IDEAS] their own idea, on their photo");
           }
         }
@@ -70733,6 +70774,12 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // (v9.862) the held words go now: the fixed line when the yes draws, otherwise what this turn says (her words, or the lettering line)
       if (_holdWords) {
         _holdWords = false;
+        // (v9.869) on a turn that draws, her own say-back with its "here it is" taken out - the fixed line only if too little is left
+        if (_yesDraws && acted) {
+          const _pd = pareDrawLine(_heldHerSay);
+          if (_pd) acted.say = _pd;
+          console.log("[TURN:YES] while it is drawn: " + (_pd ? "her say-back, pared" : "the fixed line (her words were only a claim)") + " · hers: \"" + String(_heldHerSay || "").slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+        }
         // What the turn says now - the fixed drawing line, the lettering line, or her own words - is what shows; her raw stream only if nothing is set.
         let _out = String((acted && acted.say) || "");
         if (!_out && !_yesDraws) { const _c = _sayFrom(_rawAcc); if (_c) _out = _c; }

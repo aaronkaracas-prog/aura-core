@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.866.0-2026-11-06-import-writes-together";
+const BUILD = "aura-core-v9.867.0-2026-11-06-add-on-change-line-and-one-ask";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69523,10 +69523,20 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           // rose stays exactly as it is." - was on screen for the 30s before any picture existed; the fixed line set after her reply never
           // showed, because her words had already gone out. On a line that is only a yes, on their photo, before anything is drawn on it, her
           // words are held until core knows: if it draws, the fixed line goes; if not, her own words go, exactly as she wrote them.
-          if (onDelta && me && _bodyPhoto && !["cover", "rework", "from"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase()) &&
-              /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(String(said || "").replace(/\[[^\]]*\]/g, " "))) {
-            try { if (String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || "") !== "1") _holdWords = true; } catch {}
-            if (_holdWords) console.log("[TURN:YES] add-on, nothing drawn yet - her words wait until this turn knows whether it draws" + (me ? " · who=" + me : ""));
+          // (v9.867) AND A CHANGE ON AN ADD-ON TOO - MEASURED 17:12:53 and 17:14:08 (koi): "can you make the falling petals a lighter softer
+          // pink..." and "the moon's too small..." - her streamed "Here you go - is this the one" / "Here it is." stood for the 30s the picture
+          // took. Once something is drawn on their photo, any typed turn may be a change, so her words wait the same way: if it draws, the
+          // fixed change line (config:say:addon_change8) goes; if not, what the turn says.
+          if (onDelta && me && _bodyPhoto && !["cover", "rework", "from"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase())) {
+            let _adr = ""; try { _adr = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || ""); } catch {}
+            const _isYes = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(String(said || "").replace(/\[[^\]]*\]/g, " "));
+            if (_adr !== "1" && _isYes) {
+              _holdWords = true;
+              console.log("[TURN:YES] add-on, nothing drawn yet - her words wait until this turn knows whether it draws" + (me ? " · who=" + me : ""));
+            } else if (_adr === "1" && !(opts && (opts.pick || opts.use || opts.own || opts.tile || opts.name || opts.inspire || opts.lock))) {
+              _holdWords = true;
+              console.log("[TURN:YES] add-on with a picture on their photo - her words wait until this turn knows whether it changes it" + (me ? " · who=" + me : ""));
+            }
           }
           let proxied = await proxyToAgent(env, agentLine,
             false, me, ((seeing && !refHeld) || _photoStill) ? refUrl : (_ownLook || null), world, _fwdDelta);
@@ -70189,7 +70199,18 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       // A FIXED TAP IS ITS OWN GO (v9.697, 2026-10-21): MEASURED 13:39 - "Imagine more" under an unpicked sheet chose the fixed
       // `more` road, and then this check stopped it ("no go-ahead in their words"), because v9.695 made an unpicked sheet count as
       // no design yet. A fixed line is a button they pressed - Imagine more, Continue, a pick - never something to second-guess here.
-      if ((act === "draw" || act === "change") && !_drewNow() && !_fixedWhy &&
+      // ══ AN ADD-ON ON THEIR PHOTO IS HELD LATER, NOT ASKED TWICE (v9.867, 2026-11-06, Aaron: go) ═══ MEASURED 17:11:11 (koi): her reply
+      // reached for a drawing, this check found no go-ahead in their words, and asked her a second time to reply without drawing - 8.1s
+      // more and a second model call - before the add-on hold (v9.850) did what it always does there: her words, with Imagine it, nothing
+      // drawn. On an add-on on their photo with nothing drawn on it yet, that hold is the one guard; this check stands aside for it.
+      let _addonHoldsIt = false;
+      if ((act === "draw" || act === "change") && me && _bodyPhoto && refDesign && !_fixedWhy &&
+          !["rework", "from"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase()) &&
+          !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
+        try { _addonHoldsIt = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || "") !== "1"; } catch {}
+        if (_addonHoldsIt) console.log("[TURN:GO] add-on on their photo, nothing drawn on it yet - no second ask; the add-on hold decides" + (me ? " · who=" + me : ""));
+      }
+      if ((act === "draw" || act === "change") && !_drewNow() && !_fixedWhy && !_addonHoldsIt &&
           !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
         const _them = String(said || "").trim();
         let _prevAura = "";
@@ -70592,7 +70613,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       };
       if (_addonGoWords && refDesign && _bodyPhoto) {
         act = "change"; _ideasGrid = true; _addonOwnWords = _addonGoWords;
-        console.log("[TURN:IDEAS] their add-on, after their yes - eight on their photo from their words" + ((_addonLetter && (_addonLetter.items || []).length) ? " and their lettering" : ""));
+        console.log("[TURN:IDEAS] their " + (jobNow === "cover" ? "cover-up" : "add-on") + ", after their yes - " + (jobNow === "cover" ? "eight" : "one picture") + " on their photo from their words" + ((_addonLetter && (_addonLetter.items || []).length) ? " and their lettering" : ""));
       } else if (_addonPossCard && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true; _addonPoss = true;
         console.log("[TURN:IDEAS] eight possibilities of the one they chose, on their photo: " + _addonPossCard);
@@ -70648,7 +70669,9 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
               break; } }
         } catch {}
         act = "change"; _ideasGrid = true;
-        if (_addonPossCard) { _addonPoss = true; _addonChangeWords = String(said).trim(); console.log("[TURN:IDEAS] their change, four versions on the design they chose: " + _addonPossCard); }
+        if (_addonPossCard) { _addonPoss = true; _addonChangeWords = String(said).trim(); console.log("[TURN:IDEAS] their change, four versions on the design they chose: " + _addonPossCard);
+          // (v9.867) held words: this turn draws - the fixed change line shows while it does
+          if (_holdWords && acted) { let _cl = "On it - imagining that change on you now."; try { const _k = String((await env.AURA_KV.get("config:say:addon_change8")) || "").trim(); if (_k) _cl = _k; } catch {} acted.say = _cl; _yesDraws = true; } }
         else {
           // ══ SHE SAYS IT BACK, THEY SAY YES - ON THEIR PHOTO TOO (v9.850, 2026-11-06, Aaron: "yes same flow") ═══ MEASURED 07:27: the first
           // add-on was drawn the moment she said "Let me show you what that could look like on your arm". Before anything is drawn on their
@@ -70677,6 +70700,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             console.log("[TURN:IDEAS] add-on - her words and Imagine it; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
           } else {
             _addonOwnWords = String(said).trim();
+            // (v9.867) held words: this turn draws the change - the fixed change line shows while it does, not her "here it is"
+            if (_holdWords && acted) { let _cl = "On it - imagining that change on you now."; try { const _k = String((await env.AURA_KV.get("config:say:addon_change8")) || "").trim(); if (_k) _cl = _k; } catch {} acted.say = _cl; _yesDraws = true; }
             console.log(_addonMore ? "[TURN:IDEAS] their change, on the add-on picture they have (" + _addonMore + ")" : "[TURN:IDEAS] their own idea, on their photo");
           }
         }

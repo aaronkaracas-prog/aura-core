@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.865.0-2026-11-06-her-prompt-reads-are-not-moments";
+const BUILD = "aura-core-v9.866.0-2026-11-06-import-writes-together";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -5524,10 +5524,13 @@ async function registerSmartFile(env, { id, filetype, name, url, subject, source
   const entId = ent && ent.payload && ent.payload.id;
   if (!entId) return { ok: false, error: "could not register smart file" };
   const ev = [{ ts: new Date().toISOString(), event: parent ? `New version: ${subject || name || fileId}` : `Created: ${subject || name || fileId}`, kind: parent ? "versioned" : "created", by: creator || "pta_aura" }];
-  let evs = ev; try { const tl = await env.AURA_KV.get(`pta:timeline:${entId}`); if (tl) evs = (JSON.parse(tl) || []).concat(ev); } catch {}
-  await env.AURA_KV.put(`pta:timeline:${entId}`, JSON.stringify(evs)).catch(() => {});
-  if (creator) await processCommand("GRAPH_LINK " + JSON.stringify({ from: creator, rel: "created", to: entId, context: (context || subject || "").slice(0, 120) }), env, true).catch(() => {});
-  if (parent) await processCommand("GRAPH_LINK " + JSON.stringify({ from: entId, rel: "derived_from", to: parent, context: (context || subject || "").slice(0, 120) }), env, true).catch(() => {});
+  // (v9.866) its timeline and its links are written together - none reads another
+  await Promise.all([
+    (async () => { let evs = ev; try { const tl = await env.AURA_KV.get(`pta:timeline:${entId}`); if (tl) evs = (JSON.parse(tl) || []).concat(ev); } catch {}
+                   await env.AURA_KV.put(`pta:timeline:${entId}`, JSON.stringify(evs)).catch(() => {}); })(),
+    creator ? Promise.resolve().then(() => processCommand("GRAPH_LINK " + JSON.stringify({ from: creator, rel: "created", to: entId, context: (context || subject || "").slice(0, 120) }), env, true)).catch(() => {}) : null,
+    parent ? Promise.resolve().then(() => processCommand("GRAPH_LINK " + JSON.stringify({ from: entId, rel: "derived_from", to: parent, context: (context || subject || "").slice(0, 120) }), env, true)).catch(() => {}) : null,
+  ]);
   return { ok: true, entity_id: entId, file_id: fileId };
 }
 // resolve a smart file by entity id (ent_/file ent) or by file id / key - accepts legacy type:"image" too
@@ -20285,9 +20288,7 @@ async function successionGate(env) {
           .map(x => x.toString(16).padStart(2, "0")).join("");
         let iBin = "";
         for (let i = 0; i < iBytes.length; i += 8192) iBin += String.fromCharCode.apply(null, iBytes.subarray(i, i + 8192));
-        if (env.AURA_IMAGES) { try { await env.AURA_IMAGES.put(iId + ".png", iBytes, { httpMetadata: { contentType: iType } }); } catch {} }
         const _fetchedBy = iHow;   // our own store | plain | browser headers | cloudflare browser
-        await env.AURA_KV.put("image:" + iId, btoa(iBin));
         const iUrl = "https://" + (await imageHost(env)) + "/image/" + iId;
 
         // ══ SHE HAS EYES. STOP DESCRIBING PICTURES TO HER (2026-09-15) ═══════════════════
@@ -20311,9 +20312,7 @@ async function successionGate(env) {
         // one - and a label that is merely thin beats a label that is confidently wrong.
         const iSaw = null;
 
-        await env.AURA_KV.put("imagemeta:" + iId, JSON.stringify({ id: iId,
-          prompt: ip.context || iSaw || "imported image", created: new Date().toISOString(),
-          entity: iBy, source: "import", imported_from: ref, content_type: iType, url: iUrl })).catch(() => {});
+        // (v9.866) the meta, the picture and the record are written together below
 
         // ══ WHAT SHE SAW BEATS WHAT THE CALLER CALLED IT (2026-09-07) ═══════════════════
         // MEASURED: a photograph of a cartoon fish with a human face imported, and the record
@@ -20324,10 +20323,21 @@ async function successionGate(env) {
         // started from a label rather than a look. The caller's context says WHY it arrived; only
         // the description says WHAT it is, and the second is the fact.
         const iSubject = iSaw || ip.context || "an imported image";
-        const iReg = await registerSmartFile(env, { id: iId, filetype: "image",
-          name: iSubject.slice(0, 80), url: iUrl,
-          subject: iSubject, source: "import",
-          creator: iBy, parent: null, context: ip.context || null, access: "controlled" });
+        // ══ THE FOUR WRITES OF AN IMPORT GO TOGETHER (v9.866, 2026-11-06, Aaron: go) ═══ MEASURED 16:49:44 (rose, a fresh start): "import 2.1s"
+        // on the turn's own clock, before she was asked - the picture to R2, the picture to KV, its meta to KV, then its record in the graph
+        // (and that record's timeline and its link to them), each waiting for the one before. None needs another: they now run at once.
+        // Same writes, same keys, same answer; the picture to KV still fails the import if it fails, as before, and the rest stay best-effort.
+        const [, , , iReg] = await Promise.all([
+          env.AURA_IMAGES ? env.AURA_IMAGES.put(iId + ".png", iBytes, { httpMetadata: { contentType: iType } }).catch(() => null) : null,
+          env.AURA_KV.put("image:" + iId, btoa(iBin)),
+          env.AURA_KV.put("imagemeta:" + iId, JSON.stringify({ id: iId,
+            prompt: ip.context || iSaw || "imported image", created: new Date().toISOString(),
+            entity: iBy, source: "import", imported_from: ref, content_type: iType, url: iUrl })).catch(() => {}),
+          registerSmartFile(env, { id: iId, filetype: "image",
+            name: iSubject.slice(0, 80), url: iUrl,
+            subject: iSubject, source: "import",
+            creator: iBy, parent: null, context: ip.context || null, access: "controlled" }),
+        ]);
 
         return { cmd: "IMAGE", payload: { ok: true, id: iId, entity: (iReg && iReg.entity_id) || null,
           image_url: iUrl, imported_from: ref, bytes: iBytes.length, content_type: iType,

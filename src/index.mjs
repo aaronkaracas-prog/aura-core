@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.872.0-2026-11-07-addon-change-after-pick";
+const BUILD = "aura-core-v9.873.0-2026-11-07-addon-imagine-says-back";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -68969,7 +68969,17 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // (v9.854) an add-on is drawn one at a time - one picture, so the line says one. A cover-up is still the eight.
             _fixedSay = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover"
               ? await _fx("eight_go", "On it - I'm imagining your designs now. Every one is 100% unique and 100% yours.")
-              : await _fx("addon_one_go", "On it - I'm imagining it on you now. It's 100% unique and 100% yours.");
+              : await _fx("addon_one_go", "On it - I'm imagining four ideas on you now. Every one is 100% unique and 100% yours.");
+            // ══ IMAGINE IT SAYS BACK WHAT SHE IS IMAGINING (v9.873, 2026-11-07, Aaron: "when Aura is imagining this she should be coming back
+            // with what she's imagining") ═══ MEASURED 11:05 (rose + bee, New School): the tap on Imagine it showed the fixed "On it - I'm
+            // imagining it on you now..." - a typed yes already shows her say-back (v9.869). On an add-on the line while it draws is her own
+            // last words, the offer to show them taken out ("Let me show you what that looks like on your arm.") and pared the same way as a
+            // typed yes; the fixed line only when nothing of hers is left. She is not called.
+            if (String((carriedObj && carriedObj.job) || "").toLowerCase() !== "cover" && _prevAuraLine) {
+              const _hb = String(_prevAuraLine).replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+/).filter((x) => x && !_isOfferLine(x)).join(" ");
+              const _hp = pareDrawLine(_hb);
+              if (_hp) { _fixedSay = _hp; console.log("[TURN:GO] add-on - Imagine it says back her words: \"" + _hp.slice(0, 200) + "\""); }
+            }
             try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
             console.log("[TURN:GO] add-on - Imagine it, drawn on their photo from their words: \"" + _addonGoWords.slice(0, 300) + "\"" +
               ((_addonLetter.items || []).length ? " · lettering: " + _addonLetter.items.map((x) => '"' + x.text + '" ' + (x.font || "")).join(", ") : "") + (me ? " · who=" + me : ""));
@@ -70816,7 +70826,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (await _addLetterHold(_w)) { act = "none"; _ideasGrid = false; }
           else if (!_drawnYet && (_yesOnly || _yesWithIt) && _w && jobNow === "add") {
             _addonOwnWords = _w; acted.choose = null; _addonMore = null;   // (v9.857) nothing drawn in this tattoo yet - their photo, always
-            let _goLine = "On it - I'm imagining it on you now. It's 100% unique and 100% yours.";
+            let _goLine = "On it - I'm imagining four ideas on you now. Every one is 100% unique and 100% yours.";
             try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
             _heldHerSay = acted.say; acted.say = _goLine; _yesDraws = true;
             try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
@@ -70859,7 +70869,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             if (await _addLetterHold(_w)) { /* the lettering sheet comes up first, as on a reach for a drawing */ }
             else if (_yesWithIt2) {
               act = "change"; _ideasGrid = true; _addonOwnWords = _w; acted.choose = null; _addonMore = null;
-              let _goLine = "On it - I'm imagining it on you now. It's 100% unique and 100% yours.";
+              let _goLine = "On it - I'm imagining four ideas on you now. Every one is 100% unique and 100% yours.";
               try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
               _heldHerSay = acted.say; acted.say = _goLine; _yesDraws = true;
               try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.877.0-2026-11-07-addon-tap-first-sentence-cards-one-by-one";
+const BUILD = "aura-core-v9.878.0-2026-11-07-addon-names-told-the-existing-tattoo";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -62155,7 +62155,7 @@ async function addonSheetWords(env, sheetUrl, asked, ms) {
   console.log("[CUT8] add-on sheet read once - " + got.filter(Boolean).length + " of 4 named" + (got.some(Boolean) ? " · " + got.map((g, k) => (k + 1) + "=" + (g ? g.title + " | " + g.line : "-")).join(" · ") : " · it said: " + JSON.stringify(raw.slice(0, 200) || String((rd && rd.error) || "no answer"))));
   return got;
 }
-async function addonCardWords(env, cards, asked, sheetUrl) {
+async function addonCardWords(env, cards, asked, sheetUrl, existing) {
   const _t0 = Date.now();
   if (!Array.isArray(cards) || !cards.length) return cards;
   let ask = ADDON_CARD_WORDS_ASK, ms = 6000;
@@ -62164,7 +62164,13 @@ async function addonCardWords(env, cards, asked, sheetUrl) {
   // (v9.877) each card on its own first, all four at once, on the same dial as the sheet read (config:source:addon_names:model, empty = the
   // eyes' own model); the whole sheet is read only if a card is left unnamed, and only for that card
   let _nm = ""; try { _nm = String((await env.AURA_KV.get("config:source:addon_names:model")) || "").trim(); } catch {}
-  const prompt = ask.includes("____") ? ask.replace("____", String(asked || "something added to their tattoo").replace(/[\s.]+$/, "").slice(0, 300)) : ask;
+  let prompt = ask.includes("____") ? ask.replace("____", String(asked || "something added to their tattoo").replace(/[\s.]+$/, "").slice(0, 300)) : ask;
+  // (v9.878) the eyes are told what the existing tattoo is - her own words when their photo arrived - so they can leave it out
+  const _ex = String(existing || "").replace(/\s+/g, " ").replace(/["\u201c\u201d]/g, "'").trim().slice(0, 300);
+  if (_ex) {
+    const _exLine = "The existing tattoo, as it was described when their photo arrived: \"" + _ex + "\" Name only what is not part of it.";
+    prompt = /look only at the new work\./i.test(prompt) ? prompt.replace(/look only at the new work\./i, (m) => m + " " + _exLine) : _exLine + " " + prompt;
+  }
   const reads = await Promise.all(cards.map((c) => Promise.race([new Promise((r) => setTimeout(() => r(null), ms)),
     seeMedia({ url: c.image, prompt, max_tokens: 80, ...(_nm ? { model: _nm } : {}) }, env)]).catch(() => null)));
   const _cardWords = (k) => {
@@ -62183,7 +62189,7 @@ async function addonCardWords(env, cards, asked, sheetUrl) {
     return w ? { ...c, title: w.title, lines: w.line ? [w.line] : [] } : c;
   });
   const got = out.filter((c) => c.title).length;
-  console.log("[CUT8] add-on card words read: " + got + " of " + cards.length + " (" + _one.filter(Boolean).length + " card by card" + (_sheetGot ? ", the rest from the whole sheet" : "") + ", eyes " + (_nm || "default") + ") · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s" +
+  console.log("[CUT8] add-on card words read: " + got + " of " + cards.length + " (" + _one.filter(Boolean).length + " card by card" + (_sheetGot ? ", the rest from the whole sheet" : "") + ", eyes " + (_nm || "default") + (_ex ? ", told the existing tattoo: \"" + _ex.slice(0, 120) + "\"" : ", not told the existing tattoo") + ") · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s" +
     (got ? " · " + out.map((c, k) => (k + 1) + "=" + (c.title ? c.title + " | " + ((c.lines || [])[0] || "") : "-")).join(" · ") : ""));
   return out;
 }
@@ -67404,7 +67410,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
           const _sidF = (String(opts.addon_fav).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
           const _mkF = _sidF ? JSON.parse((await env.AURA_KV.get("addonsheet:" + _sidF)) || "null") : null;
           if (_mkF && _mkF.photo && _mkF.url) {
-            const _refF = { saw: _mkF.saw || null, url: String(_mkF.url), design: String(_mkF.photo), at: new Date().toISOString(), body: true, liked: false };
+            const _refF = { saw: _mkF.saw || null, her: _mkF.her || null, url: String(_mkF.url), design: String(_mkF.photo), at: new Date().toISOString(), body: true, liked: false };
             await talkStatePut(env, me, "ref", JSON.stringify(_refF));
             try { await talkStatePut(env, me, "addon_drawn", "1"); await talkStatePut(env, me, "addon_go", ""); } catch {}
             let _tlF = []; try { _tlF = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || []; } catch {}
@@ -67728,6 +67734,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
 let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto = false, _likedPic = false;
+let _refHer = null;   // (v9.878) her own first sentence about their photo, kept with it when core's look gave nothing
       // ══ A PHOTOGRAPH THAT ARRIVED IS NOT A DRAWING (2026-09-16, v9.270) ══════════════════
       // `talk:last` is written on a REF turn with `image: refUrl` so the pixels survive the turn.
       // Correct - but three readers took "lastDrawn has an image" to mean SHE DREW IT. The go-ahead
@@ -67839,7 +67846,7 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         // No new picture this turn - carry the one they already sent.
         try {
           const held = await _pre.ref;
-          if (held) { refSaw = held.saw || null; refUrl = held.url || null;
+          if (held) { refSaw = held.saw || null; refUrl = held.url || null; _refHer = held.her || null;
                       refDesign = held.design || null; refHeld = true; _refAt = held.at || null;
                       _bodyPhoto = held.body === true; _likedPic = held.liked === true; }
         } catch {}
@@ -72822,13 +72829,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
           if (_addonOne && _addonSheet && cp?.ok && cp.image_url) {
             _eight = await eightCards(env, cp.image_url, null, null);
             if (_eight && _eight.length) {
-              _eight = await addonCardWords(env, _eight, _addonOwnWords, cp.image_url);
+              _eight = await addonCardWords(env, _eight, _addonOwnWords, cp.image_url, _refHer || refSaw || null);
               const _sid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
               if (_sid) { try { await env.AURA_KV.put("sheet8:" + _sid, JSON.stringify(_eight)); } catch {}
                 try { await Promise.all(_eight.map((c) => { const cid = (String(c.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
                   return cid && c.title ? env.AURA_KV.put("cardinfo:" + cid, JSON.stringify({ title: c.title, lines: c.lines || [], sheet: _sid, n: c.n })).catch(() => {}) : null; })); } catch {}
                 // (v9.874) the photo's address and what was seen in it ride with the mark, so a heart on a card can open on it again
-                try { await env.AURA_KV.put("addonsheet:" + _sid, JSON.stringify({ photo: String(refDesign), url: refUrl ? String(refUrl) : null, saw: refSaw ? String(refSaw).slice(0, 800) : null })); } catch {}
+                try { await env.AURA_KV.put("addonsheet:" + _sid, JSON.stringify({ photo: String(refDesign), url: refUrl ? String(refUrl) : null, saw: refSaw ? String(refSaw).slice(0, 800) : null, her: _refHer ? String(_refHer).slice(0, 300) : null })); } catch {}
                 console.log("[CUT] add-on sheet of " + _eight.length + " cut and marked - a pick off it is built on: " + _sid); }
             } else console.log("[CUT] add-on sheet could not be cut into its cards - shown whole");
           }
@@ -73372,6 +73379,23 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
       const _drawFailed = !!(drew && drew.failed);
       if (_drawFailed) { try { console.log("[BRIEF] the picture failed - nothing from this turn is saved to the brief"); } catch {} }
       if (_freshPhoto) { try { console.log("[BRIEF] their photo arrived - mirror photo, as she read it: " + String((intent && intent.mirror_photo) || "not given") + (me ? " · who=" + me : "")); } catch {} }
+      // ══ HER WORDS ABOUT THEIR PHOTO STAY WITH IT (v9.878, 2026-11-07, Aaron: go) ═══ MEASURED 15:14: the eyes naming the four add-on cards called
+      // two of them "Clock Tree Design" - the tattoo they already have. A card alone cannot tell old work from new, and the photo's stored look was
+      // empty (addonsheet saw:null). She described it when it arrived ("a clock with a tree growing through it, roots turning into Celtic knotwork,
+      // black and grey..."); her first sentence is kept with the photo when core's own look gave nothing, and the eyes are told it when they name.
+      if (_freshPhoto && me && !refSaw && acted && acted.say) {
+        try {
+          const _hs = String(acted.say).replace(/\s+/g, " ").trim();
+          const _h1 = ((_hs.match(/^.+?[.!](?=\s|$)/) || [_hs])[0]).slice(0, 300).trim();
+          if (_h1.length >= 20 && !/\?\s*$/.test(_h1)) {
+            const _rr = talkParse((await talkStateGet(env, me, ["ref"])).ref);
+            if (_rr && typeof _rr === "object" && !Array.isArray(_rr)) {
+              _rr.her = _h1; await talkStatePut(env, me, "ref", JSON.stringify(_rr)); _refHer = _h1;
+              console.log("[BRIEF] their photo, in her words, kept with it: \"" + _h1 + "\"" + (me ? " · who=" + me : ""));
+            }
+          }
+        } catch (e) { try { console.log("[BRIEF] her words about the photo could not be kept: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+      }
       if (me && intent && typeof intent === "object" && !_drawFailed) {
         try {
           const merged = Object.assign({}, carriedObj || {});

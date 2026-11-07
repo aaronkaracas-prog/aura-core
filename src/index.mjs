@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.874.0-2026-11-07-addon-fav-sheet-names";
+const BUILD = "aura-core-v9.875.0-2026-11-07-addon-where-it-grows";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -62131,7 +62131,9 @@ async function addonSheetWords(env, sheetUrl, asked, ms) {
   let ask = ADDON_SHEET_WORDS_ASK;
   try { const k = String((await env.AURA_KV.get("config:frame:addon:sheetwords")) || "").trim(); if (k) ask = k; } catch {}
   const prompt = ask.includes("____") ? ask.replace("____", String(asked || "something added to their tattoo").replace(/[\s.]+$/, "").slice(0, 300)) : ask;
-  const _u = String(sheetUrl) + (String(sheetUrl).includes("?") ? "&" : "?") + "w=1152";
+  // (v9.875) MEASURED 11:57:49: the whole sheet came back "TOO_BIG" - the eyes read our own pictures at full size (2304x3456, over 4 MB).
+  // They look at the same 1024px copy her own looks use (lookCopy).
+  let _u = String(sheetUrl); try { _u = await lookCopy(env, sheetUrl); } catch {}
   const rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), ms)), seeMedia({ url: _u, prompt, max_tokens: 220 }, env)]).catch(() => null);
   const raw = String((rd && rd.ok && rd.saw) || "");
   const got = [null, null, null, null];
@@ -67945,12 +67947,13 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
         "{\n" +
         // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
         // so the floor and her live agent cannot disagree.
-        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give design ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, offer to show them 8 in one picture - don\'t list directions in your words. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
+        '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. Say what you actually see - the part of the body, where on it the tattoo sits, and whether the photo shows bare skin around it to grow into; if the tattoo fills the photo, say so plainly and ask where they want it to grow. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give design ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, offer to show them 8 in one picture - don\'t list directions in your words. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
         // as a small card under her words; a tap sends it to her as if they had typed it.
         // THE PLACES IT COULD GO (2026-10-18, v9.655, Aaron) - the same words as aura-think's reply format.
         '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go, in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
+        '  "directions": ["when it\'s their own tattoo on a photo and they have not said where the new work goes: 2 or 3 places it can grow, read from the part of the body you see and how much of it the photo shows - past the edge of the photo too when the tattoo fills it - each in their words, finishing \'I want it to go ___\', e.g. \'down to my hand\', \'up to my bicep\', \'all the way to my shoulder\'"] - otherwise leave it out,\n' +
         '  "go": "only when they want to go somewhere else - one of the places named in WHY YOU ARE HERE, by its name; the app takes them there. If you can\'t tell where they want to go, ask them and leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
@@ -69037,14 +69040,8 @@ let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto
             // imagining it on you now..." - a typed yes already shows her say-back (v9.869). On an add-on the line while it draws is her own
             // last words, the offer to show them taken out ("Let me show you what that looks like on your arm.") and pared the same way as a
             // typed yes; the fixed line only when nothing of hers is left. She is not called.
-            if (String((carriedObj && carriedObj.job) || "").toLowerCase() !== "cover" && _prevAuraLine) {
-              // (v9.874) MEASURED 11:32: "On it - it would - that soft pale green..." - her answer word at the start ("It would -", "Yes -")
-              // was a reply to their question; while it draws, the line starts at what she is imagining.
-              const _hb = String(_prevAuraLine).replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+/).filter((x) => x && !_isOfferLine(x)).join(" ")
-                .replace(/^(?:(?:oh|ooh|yes|yeah|yep|absolutely|definitely|totally|of course|for sure|100%|it (?:would|will|does|can|could)|that (?:would|will|works))\b[\s,!.:;\-\u2013\u2014]*)+/i, "");
-              const _hp = pareDrawLine(_hb);
-              if (_hp) { _fixedSay = _hp; console.log("[TURN:GO] add-on - Imagine it says back her words: \"" + _hp.slice(0, 200) + "\""); }
-            }
+            // (v9.875, 2026-11-07, Aaron: "both of these responses came back before the draw - it should only be once") MEASURED 12:00: her
+            // offer and then, on the tap, the same words again. Her words already stand right above it - the tap shows the short line only.
             try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
             console.log("[TURN:GO] add-on - Imagine it, drawn on their photo from their words: \"" + _addonGoWords.slice(0, 300) + "\"" +
               ((_addonLetter.items || []).length ? " · lettering: " + _addonLetter.items.map((x) => '"' + x.text + '" ' + (x.font || "")).join(", ") : "") + (me ? " · who=" + me : ""));

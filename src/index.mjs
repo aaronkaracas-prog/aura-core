@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.893.0-2026-11-08-size-holds-and-widens";
+const BUILD = "aura-core-v9.894.0-2026-11-08-the-box-they-mark";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67435,7 +67435,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // is cleared where it is kept: the brief, the piece on screen, the held photo, the record of
       // her design and of the last look on them.
       if (me && opts && opts.fresh) {
-        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added", "addon_ideas", "addon_what", "addon_close"]) {
+        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added", "addon_ideas", "addon_what", "addon_close", "addon_box"]) {
           try { await talkStatePut(env, me, _k, ""); } catch {}
         }
       }
@@ -70815,6 +70815,24 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           }
         } catch {}
       }
+      // ══ THE BOX THEY MARKED (v9.894) ═══ On an add-on, their photo with the green box comes in as the picture the four are drawn on; it
+      // is kept for this photo (a new photo clears it), it replaces any place tapped before, and the turn draws nothing - she says she has
+      // it and her ideas come up.
+      if (me && _freshPhoto) { try { await talkStatePut(env, me, "addon_box", ""); } catch {} }
+      const _boxTurn = !!(me && opts && opts.addon_box && /^https:\/\//i.test(String(opts.addon_box)) && String(jobNow || "") === "add");
+      if (_boxTurn) {
+        try {
+          const _bi = await processCommand("IMAGE IMPORT " + String(opts.addon_box) + " " + JSON.stringify({ context: "their photo with a green box where the new work goes", by: me }), env, true);
+          const _bp = (_bi && _bi.payload) ? _bi.payload : _bi;
+          const _be = _bp && _bp.ok ? (_bp.entity || null) : null;
+          if (_be) {
+            await talkStatePut(env, me, "addon_box", String(_be));
+            await talkStatePut(env, me, "placement", ""); await talkStatePut(env, me, "placement_tap", ""); _placeNow = "";
+            console.log("[TURN:BOX] they marked where it goes - their photo with the green box, kept for the draw: " + _be + " (" + String(opts.addon_box) + ")" + (me ? " · who=" + me : ""));
+          } else console.log("[TURN:BOX] their marked photo could not be kept: " + String((_bp && _bp.error) || "no entity").slice(0, 160) + (me ? " · who=" + me : ""));
+        } catch (e) { console.log("[TURN:BOX] their marked photo could not be kept: " + String(e && e.message || e).slice(0, 160)); }
+        if (act === "draw" || act === "change" || act === "onme") { console.log("[TURN:BOX] where it goes is marked - nothing drawn yet (her act was " + act + ")"); act = "none"; }
+      }
       // A tapped direction answers her question - it is not a request to draw yet.
       if (_dirTap && (act === "draw" || act === "change" || act === "onme")) {
         console.log("[TURN:PLACE] they said where - nothing drawn yet (her act was " + act + ")"); act = "none";
@@ -72432,7 +72450,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // design four times, "4 different ideas" with what must change between them came back as four. The sheet is cut into its four
           // cards when it comes back (eightCards); a pick is cut off it, never redrawn, and a change after the pick is ONE picture on the card
           // they picked (v9.854's change path, unchanged). The page size: config:source:addon:size (empty = 2304x3456).
-          let _addonOne = false, _oneParent = null, _addonSheet = false, _askedFor = null;
+          let _addonOne = false, _oneParent = null, _addonSheet = false, _askedFor = null, _boxParent = null;
           if (String(jobNow || "") === "add" && _ideasGrid && !_addonPoss && !_designGrid && parentId === refDesign) {
             const _ownW = _addonOwnWords ? String(_addonOwnWords).replace(/[\s.]+$/, "").slice(0, 600) : "";
             if (_addonMore && _ownW) {
@@ -72469,12 +72487,26 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 _sentNow = _atP > 0 ? _sentNow.slice(0, _atP) + _ps1 + _sentNow.slice(_atP) : _sentNow + _ps1;
                 _oFrom += "+placement";
               }
+              // ══ WHERE THEY MARKED IT (v9.894) ═══ Their photo with the green box is the picture drawn on, and one line says the new work goes
+              // inside it (config:frame:addon:box). The box is the place and the size - no tapped place, no close-up line with it.
+              let _boxE = ""; try { _boxE = String((await talkStateGet(env, me, ["addon_box"])).addon_box || "").trim(); } catch {}
+              if (_boxE) {
+                let _bx = "Put all of the new work inside the green box on my photo, and remove the green box.";
+                try { const _k = String((await env.AURA_KV.get("config:frame:addon:box")) || "").trim(); if (_k) _bx = _k; } catch {}
+                _sentNow = _sentNow.replace(/ I want it(?: to go)? [^.]*\./, "");
+                // the green box on their photo must not be kept - "keep my photo exactly as it is" goes; the tattoo's own keep-it words stay
+                _sentNow = _sentNow.replace(/ - and keep my photo exactly as it is( in every version)?(?=\.)/, "");
+                let _atB = _sentNow.indexOf(" Show me 4"); if (_atB < 0) _atB = _sentNow.indexOf(" Make every idea");
+                _sentNow = _atB > 0 ? _sentNow.slice(0, _atB) + " " + _bx + _sentNow.slice(_atB) : _sentNow + " " + _bx;
+                _boxParent = _boxE; _oFrom += "+box";
+                console.log("[TURN:IDEAS] drawn on their photo with the box they marked (" + _boxE + "): \"" + _bx + "\"" + (me ? " · who=" + me : ""));
+              }
               // ══ A PHOTO TOO CLOSE TO GROW IN (v9.888, 2026-11-08, Aaron: "if someone shows a close up and we're not showing more of their body
               // we need to extend the canvas - that's the only difference") ═══ When her read of the photo said it is too close (addon_close), one
               // line asks for more of their body (config:frame:addon:close), before the skin and keep-it words. Nothing else changes.
               // (v9.889, Aaron: "unless we tell the image model expand this up or down, right or left") the line names which way, in her words
               let _closeP = ""; try { _closeP = String((await talkStateGet(env, me, ["addon_close"])).addon_close || "").trim(); } catch {}
-              if (_closeP) {
+              if (_closeP && !_boxE) {
                 const _dirC = (/^(1|yes|true)$/i.test(_closeP) ? "my body around it" : _closeP).replace(/[\s.]+$/, "");
                 let _cl = "My photo is too close to fit the new work - zoom out to show more of ____, the way my body really is, so there is room - never shrink, move or redraw my existing tattoo to make space.";
                 try { const _k = String((await env.AURA_KV.get("config:frame:addon:close")) || "").trim(); if (_k.includes("____")) _cl = _k; } catch {}
@@ -72725,7 +72757,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               return (r && r.payload) ? r.payload : r;
             } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
           };
-          let cur = _oneParent || ((_designGrid && _designParent) ? _designParent : parentId), cp = null, _mockNote = null;
+          let cur = _oneParent || _boxParent || ((_designGrid && _designParent) ? _designParent : parentId), cp = null, _mockNote = null;
           const _stepLog = [];
           let _retried = null;
           for (let si = 0; si < _asks.length; si++) {
@@ -75192,6 +75224,19 @@ export class PublicEntry extends WorkerEntrypoint {
           await env.AURA_KV.put("image:" + _tmp, _b64, b.recolor ? {} : { expirationTtl: 2 * 3600 });
           _ref = "https://" + (await imageHost(env)) + "/image/" + _tmp;
         }
+        // ══ WHERE IT GOES, MARKED ON THEIR PHOTO (v9.894, 2026-11-08, Aaron: "someone presents their tattoo first - we need placement so they
+        // can stretch it left, right, all the way down, angle it any way they want - then we tell the image model to extend it in this
+        // section") ═══ The page sends their photo with a green box drawn where the new work goes; it is kept like a photo, two hours.
+        let _boxRef = null;
+        const _boxIn = String(b.addon_box || "").trim();
+        if (/^data:image\//i.test(_boxIn)) {
+          const _bb = _boxIn.replace(/^data:[^,]+,/, "");
+          if (_bb.length * 0.75 <= 6 * 1024 * 1024) {
+            const _bt = "img_t" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map(x => x.toString(16).padStart(2, "0")).join("");
+            await env.AURA_KV.put("image:" + _bt, _bb, { expirationTtl: 2 * 3600 });
+            _boxRef = "https://" + (await imageHost(env)) + "/image/" + _bt;
+          }
+        }
         // ══ SEE IT ON YOU, AFTER LOCK-IN, THROUGH HER (2026-10-08, v9.544, Aaron) ═══════════════
         // "It has to be a discussion... Aura has to look at the image like she does already." The
         // put-it-on-them step already works in the conversation (the "See It On You" card): she asks
@@ -75234,7 +75279,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -75263,7 +75308,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // THE TURN RUNS AS A JOB, THIS CONNECTION ONLY RELAYS IT (v9.681). Same options as the turn below, as plain data.
         const _tOpts = {
           tid: b.tid ? String(b.tid).slice(0, 40) : null,
-          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null };
+          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null };
         // ══ A START THAT CANNOT DRAW RUNS STRAIGHT AWAY (v9.792, 2026-11-01, Aaron: go) ═══ MEASURED 17:20:08 -> 17:20:10.6: the job took
         // 2.2s just to begin (1.5-4.1s across today) for a fixed line that then took 1.3s. The job exists so a 30-90s drawing survives a
         // dropped connection; a start never draws. ONLY these run directly: a new-tattoo / add / cover opener on its own, or a fresh "Let's
@@ -75452,7 +75497,7 @@ export class PublicEntry extends WorkerEntrypoint {
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
               from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
-              direct_no_draw: !!_tOpts.direct_no_draw, direct_addon: !!_tOpts.direct_addon,
+              direct_no_draw: !!_tOpts.direct_no_draw, direct_addon: !!_tOpts.direct_addon, addon_box: _tOpts.addon_box || null,
               // (v9.879) MEASURED 15:42:21: an add-on favorite opened from Favorites ran this direct pick ("a pick off img_mw71jzetxmpg") and
               // its sheet never reached the turn - no [TURN:FAV], and she said "there's nothing numbered on your screen". The favorite rides here too.
               addon_fav: _tOpts.addon_fav || null,

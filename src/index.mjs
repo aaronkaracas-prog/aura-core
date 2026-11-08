@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.880.0-2026-11-07-addon-fav-sheet-is-the-last-drawing";
+const BUILD = "aura-core-v9.881.0-2026-11-07-addon-fav-sheet-never-the-photo";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67422,7 +67422,10 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
             const _lastF = { design: _dF, image: String(opts.addon_fav), subject: null, at: new Date().toISOString() };
             try { await talkStatePut(env, me, "last", JSON.stringify(_lastF)); } catch {}
             _pre.last = Promise.resolve(_lastF);
-            _tlF.push({ ts: new Date().toISOString(), role: "picture", image: String(opts.addon_fav), design: _dF, words: "their four add-on ideas, opened again from Favorites", grid: true });
+            // (v9.881) MEASURED 16:09:47: on the timeline the sheet must never carry the PHOTO's design - a change is drawn on the photo, the draw
+            // looked for "the picture of the photo's design" and found this sheet, and "swap the two ravens for a dragon..." was read as picking
+            // number 2 ("two") - the Viking card was cut and shown, no dragon drawn. Only the sheet's own design goes here; with none, nothing.
+            _tlF.push({ ts: new Date().toISOString(), role: "picture", image: String(opts.addon_fav), design: _mkF.design ? String(_mkF.design) : null, words: "their four add-on ideas, opened again from Favorites", grid: true });
             if (_tlF.length > 60) _tlF = _tlF.slice(-60);
             await talkStatePut(env, me, "timeline", JSON.stringify(_tlF));
             _pre.ref = Promise.resolve(_refF);

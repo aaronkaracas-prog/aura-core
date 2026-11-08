@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.885.0-2026-11-07-addon-ideas-buttons-dark-sheet-cut";
+const BUILD = "aura-core-v9.886.0-2026-11-07-addon-imagine-ideas-draws-hers";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -70900,6 +70900,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           if (_ws.length) { _addonOwnWords = _ws.join(". ").slice(0, 600); console.log("[TURN:IDEAS] their own words go in: \"" + _addonOwnWords + "\""); }
           // (v9.885) a tapped idea of hers is what is drawn - "I don't know, what do you suggest" before it is not an idea
           if (_ideaTap) { _addonOwnWords = addonIdeaWords(String(said).replace(/^\s*show me:\s*/i, "")).slice(0, 600); console.log("[TURN:IDEAS] her idea they tapped goes in: \"" + _addonOwnWords + "\""); }
+          // (v9.886) MEASURED 17:34 (snake): her four ideas were on screen with Imagine ideas under them - that tap draws one of each of hers too,
+          // not their "honestly no idea what to add"
+          else { try { const _hi = JSON.parse(String((await talkStateGet(env, me, ["addon_ideas"])).addon_ideas || "[]"));
+            if (Array.isArray(_hi) && _hi.length >= 2) { _addonOwnWords = "one of each of these: " + _hi.slice(0, 4).map((x, k) => (k + 1) + ") " + addonIdeaWords(x)).join("; ");
+              console.log("[TURN:IDEAS] her ideas go in, one of each: \"" + _addonOwnWords.slice(0, 400) + "\""); } } catch {} }
           try { await talkStatePut(env, me, "addon_ideas", ""); } catch {}
         } catch (e) { console.log("[TURN:IDEAS] their words could not be read: " + String(e?.message ?? e).slice(0, 120)); }
         console.log("[TURN:IDEAS] eight drawn as one sheet on their photo, from the " + (_addonOwnWords ? "their-own-idea sentence" : "one fixed sentence"));

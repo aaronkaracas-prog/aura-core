@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.889.0-2026-11-08-close-photo-direction";
+const BUILD = "aura-core-v9.890.0-2026-11-08-lettering-only-theirs";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61566,12 +61566,16 @@ function letterItems(line) {
 // step that finds lettering only runs on Create; on their photo nothing asked. One short question finds it, in the same LETTERING form.
 // Model: `config:source:lettering:model`, else `config:source:heard:model`, else her talk model.
 async function letterFind(env, theirWords, herWords, talkModel) {
+  // ══ ONLY WHAT THEY ASKED FOR (v9.890, 2026-11-08, Aaron: "she can suggest names and dates... actually let's just have her not recommend
+  // names and dates - the person knows if they want that stuff, but if they ask for it this should pop up") ═══ MEASURED 08:14 (clock, "my dad
+  // was a sailor... big waves and a lighthouse"): her reply suggested his initials and dates, the instruction counted her suggestions, and the
+  // lettering sheet came up with "His Initials And Dates" that nobody asked for. Her words still go along so "her name" and the like can be read.
   try {
     let model = null;
     try { model = String((await env.AURA_KV.get("config:source:lettering:model")) || "").trim() || String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
     const system = "You read what a person said about a tattoo they want. Only answer about lettering: words, names, dates or numbers that are to be " +
       "written in the tattoo itself. If anything is to be written in it, reply with one line: LETTERING: each piece exactly as it will be written, " +
-      "each in double quotes, separated by |. Count anything Aura suggested writing in it that they have not turned down. " +
+      "each in double quotes, separated by |. Count only what they themselves asked to have written - never something only Aura suggested. " +
       "If nothing is to be written in the tattoo, reply with one line: LETTERING: none";
     const user = "What they said:\n" + String(theirWords || "").slice(0, 1500) + (herWords ? "\n\nWhat Aura said back to them:\n" + String(herWords).slice(0, 900) : "");
     const r = await callBrain({ system, user, max_tokens: 2000, reasoning: "low", ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env);
@@ -72422,7 +72426,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // new artwork" drew ONE picture. The change sentence asks for four versions on one sheet (proven by command 05:40 on the reaper card,
               // img_mw7vpyoz941u), cut into cards like the first sheet; a pick off it is built on the same way. The setting decides: an older
               // one-picture setting still draws one.
-              let _m = "This is my tattoo with the new part we are adding. Change it like this: ____. Show me 4 different versions of that change, so no two look alike. Everything stays tattooed on my skin, inside the outline of my body - nothing goes past the edge onto my clothes or the background. Keep everything else exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is in every version. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";
+              let _m = "This is my tattoo with the new part we are adding. Change it like this: ____. Show me 4 different versions of that change. Make the first one the closest to what I described, and for the other three be bold and imaginative with the change - each one a different take on it, so no two look alike. Change only what I named - everything else keeps its exact shape, color and place in every version. Everything stays tattooed on my skin, inside the outline of my body - nothing goes past the edge onto my clothes or the background. Keep everything else exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is in every version. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";   // (v9.890) word for word the stored config:frame:addon:more, 2026-11-08 08:00
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:more")) || "").trim(); if (_k.includes("____")) _m = _k; } catch {}
               _sentNow = _m.replace("____", _ownW);
               _oneParent = _addonMore;

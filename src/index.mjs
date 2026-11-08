@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.888.0-2026-11-08-addon-ideas-are-buttons";
+const BUILD = "aura-core-v9.889.0-2026-11-08-close-photo-direction";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66685,7 +66685,8 @@ function talkReadAct(txt) {
              change: typeof o.change === "string" ? o.change.trim().slice(0, 300) : "",
              // (v9.888) her one line of what to add to their tattoo, and whether their photo is too close to grow in
              add: typeof o.add === "string" ? o.add.trim().slice(0, 300) : "",
-             extend: o.extend === true || /^(true|yes)$/i.test(String(o.extend || "").trim()),
+             // (v9.889) her words for which way their body carries on past a close photo ("my arm up past the elbow"); a bare yes is kept as "yes"
+             extend: (typeof o.extend === "string" && o.extend.trim() && !/^(false|no|none|null)$/i.test(o.extend.trim())) ? o.extend.trim().slice(0, 120) : (o.extend === true ? "yes" : ""),
              // ══ HER ONE QUESTION, AS A CARD (v9.689, 2026-10-21, Aaron: "she asks, they hit the dot, then continue") ══
              // Two or three styles that fit what they said; the page adds "Just imagine some ideas for me" and a Continue.
              choose: (o.choose && typeof o.choose === "object" && Array.isArray(o.choose.styles) && o.choose.styles.length)
@@ -72450,10 +72451,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // ══ A PHOTO TOO CLOSE TO GROW IN (v9.888, 2026-11-08, Aaron: "if someone shows a close up and we're not showing more of their body
               // we need to extend the canvas - that's the only difference") ═══ When her read of the photo said it is too close (addon_close), one
               // line asks for more of their body (config:frame:addon:close), before the skin and keep-it words. Nothing else changes.
-              let _closeP = false; try { _closeP = String((await talkStateGet(env, me, ["addon_close"])).addon_close || "") === "1"; } catch {}
+              // (v9.889, Aaron: "unless we tell the image model expand this up or down, right or left") the line names which way, in her words
+              let _closeP = ""; try { _closeP = String((await talkStateGet(env, me, ["addon_close"])).addon_close || "").trim(); } catch {}
               if (_closeP) {
-                let _cl = "My photo is too close to fit the new work - show more of my body around it, the way my body really is, so there is room.";
-                try { const _k = String((await env.AURA_KV.get("config:frame:addon:close")) || "").trim(); if (_k) _cl = _k; } catch {}
+                const _dirC = (/^(1|yes|true)$/i.test(_closeP) ? "my body around it" : _closeP).replace(/[\s.]+$/, "");
+                let _cl = "My photo is too close to fit the new work - zoom out to show more of ____, the way my body really is, so there is room - never shrink, move or redraw my existing tattoo to make space.";
+                try { const _k = String((await env.AURA_KV.get("config:frame:addon:close")) || "").trim(); if (_k.includes("____")) _cl = _k; } catch {}
+                _cl = _cl.replace("____", _dirC);
+                // a close photo is widened, so "keep my photo exactly as it is" would fight the line above - the photo's own words go, the tattoo's stay
+                _sentNow = _sentNow.replace(/ - and keep my photo exactly as it is( in every version)?(?=\.)/, "");
                 const _atC = _sentNow.indexOf(" Everything you add");
                 _sentNow = _atC > 0 ? _sentNow.slice(0, _atC) + " " + _cl + _sentNow.slice(_atC) : _sentNow + " " + _cl;
                 _oFrom += "+close";
@@ -73839,7 +73845,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // ══ A PHOTO TOO CLOSE TO GROW IN (v9.888, Aaron: "she should always read the photo to see if it needs extending") ═══ Her read of the
       // photo that just arrived says whether it is too close; the add-on sentence then asks for more of their body (config:frame:addon:close).
       if (me && _freshPhoto && acted) {
-        try { await talkStatePut(env, me, "addon_close", acted.extend ? "1" : ""); if (acted.extend) console.log("[BRIEF] their photo is too close to grow in, as she read it - the canvas is widened" + (me ? " · who=" + me : "")); } catch {}
+        try { await talkStatePut(env, me, "addon_close", acted.extend ? String(acted.extend) : ""); if (acted.extend) console.log("[BRIEF] their photo is too close to grow in, as she read it - the canvas is widened: \"" + String(acted.extend) + "\"" + (me ? " · who=" + me : "")); } catch {}
       }
       let _ideasOut = null;
       if (me && _bodyPhoto && !_fixedWhy && !(drew && drew.image) && acted &&

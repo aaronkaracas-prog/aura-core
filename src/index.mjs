@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.886.0-2026-11-07-addon-imagine-ideas-draws-hers";
+const BUILD = "aura-core-v9.887.0-2026-11-08-addon-change-four-her-line";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66616,7 +66616,7 @@ function talkReadAct(txt) {
         try { return JSON.parse('"' + m[1] + '"'); } catch { return m[1]; }
       };
       const _got = {};
-      for (const k of ["say", "reply", "message", "text", "do", "ask", "prompt", "words", "where_to", "go", "world"]) {
+      for (const k of ["say", "reply", "message", "text", "do", "ask", "prompt", "words", "where_to", "go", "world", "change"]) {
         const v = _one(k); if (v != null) _got[k] = v;
       }
       const _ch = _src.match(/"choose"\s*:\s*(\{[^{}]*\})/);
@@ -66678,6 +66678,8 @@ function talkReadAct(txt) {
              ask: typeof o.ask === "string" ? o.ask.trim().slice(0, 2000) : "",
              words: typeof o.words === "string" ? o.words.trim().slice(0, 2000) : "",
              ideas: strList(o.ideas, 4, 160).map((x) => x.replace(/\*\*/g, "")),
+             // (v9.887) her one line of the change on the picture they have - what is drawn on an add-on change
+             change: typeof o.change === "string" ? o.change.trim().slice(0, 300) : "",
              // ══ HER ONE QUESTION, AS A CARD (v9.689, 2026-10-21, Aaron: "she asks, they hit the dot, then continue") ══
              // Two or three styles that fit what they said; the page adds "Just imagine some ideas for me" and a Continue.
              choose: (o.choose && typeof o.choose === "object" && Array.isArray(o.choose.styles) && o.choose.styles.length)
@@ -70975,6 +70977,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             console.log("[TURN:IDEAS] add-on - her words and Imagine it; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
           } else {
             _addonOwnWords = _onAddonSheet ? _addTyped() : String(said).trim();
+            // ══ HER LINE OF THE CHANGE IS WHAT IS DRAWN (v9.887, 2026-11-08, Aaron: "yes on one and two") ═══ MEASURED 06:13: after Fine-Tune,
+            // "Let's add color to all the new artwork" went to the image model as typed. What is drawn is what she says back - on a change to
+            // the picture they have, her one plain line of the change (her reply's `change`); their own words only when she gave none.
+            if (!_onAddonSheet && _addonMore && acted && typeof acted.change === "string" && acted.change.trim()) {
+              console.log("[TURN:IDEAS] the change, in her line: \"" + acted.change.trim().slice(0, 200) + "\" - they typed: \"" + String(said).trim().slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+              _addonOwnWords = acted.change.trim().slice(0, 300);
+            } else if (_addonMore) console.log("[TURN:IDEAS] the change - she gave no line of it, their words go: \"" + String(said).trim().slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
             if (_onAddonSheet) console.log("[TURN:IDEAS] the four ideas are on screen and none was picked - a fresh four from everything they said: \"" + String(_addonOwnWords).slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
             // (v9.867) held words: this turn draws the change - the fixed change line shows while it does, not her "here it is"
             // (v9.868, Aaron: go) its own setting, config:say:addon_one_change - a change here draws ONE picture; addon_change8 is worded for
@@ -72394,13 +72403,19 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           if (String(jobNow || "") === "add" && _ideasGrid && !_addonPoss && !_designGrid && parentId === refDesign) {
             const _ownW = _addonOwnWords ? String(_addonOwnWords).replace(/[\s.]+$/, "").slice(0, 600) : "";
             if (_addonMore && _ownW) {
-              let _m = "This is my tattoo with the new part we are adding. Change it like this: ____. Keep everything else exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is.";
+              // ══ A CHANGE COMES BACK AS FOUR TOO (v9.887, 2026-11-08, Aaron: "we were gonna do the 4 card always on this even on changes - it
+              // should have came back with four different color options") ═══ MEASURED 06:13 (peony on the calf): "Let's add color to all the
+              // new artwork" drew ONE picture. The change sentence asks for four versions on one sheet (proven by command 05:40 on the reaper card,
+              // img_mw7vpyoz941u), cut into cards like the first sheet; a pick off it is built on the same way. The setting decides: an older
+              // one-picture setting still draws one.
+              let _m = "This is my tattoo with the new part we are adding. Change it like this: ____. Show me 4 different versions of that change, so no two look alike. Everything stays tattooed on my skin, inside the outline of my body - nothing goes past the edge onto my clothes or the background. Keep everything else exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is in every version. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:more")) || "").trim(); if (_k.includes("____")) _m = _k; } catch {}
               _sentNow = _m.replace("____", _ownW);
               _oneParent = _addonMore;
               _wordsFrom = "addon_more";
             } else {
-              let _o = "This is my current tattoo. I want to add to it, in a similar style to my tattoo: ____. Show me 4 different ideas for that. Make every idea a completely different design - change the composition, where the new work sits on my arm, how far it spreads and what else is added around it, so no two look alike. Make the first one the closest to what I described, and for the other three be bold and imaginative with the idea. Everything you add is tattooed on my skin and stays inside the outline of my body - nothing goes past the edge onto my clothes or the background. Keep my existing tattoo exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is in every version. Make one tall page with a solid black background, divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";
+              // (v9.887) the default is the stored setting word for word (config:frame:addon:one, 2026-11-07 17:53) - no "my arm", no black background
+              let _o = "This is my current tattoo. I want to add to it, in a similar style to my tattoo: ____. Show me 4 different ideas for that. Make every idea a completely different design - change the composition, where the new work sits on my body, how far it spreads and what else is added around it, so no two look alike. Make the first one the closest to what I described, and for the other three be bold and imaginative with the idea. Everything you add is tattooed on my skin and stays inside the outline of my body - nothing goes past the edge onto my clothes or the background. Keep my existing tattoo exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is in every version. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";
               let _oFrom = "default";
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:one")) || "").trim(); if (_k.includes("____")) { _o = _k; _oFrom = "setting"; } } catch {}
               // A style they named goes in place of "a similar style to my tattoo" (v9.852 kept it the same way).
@@ -72429,8 +72444,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               }
               _wordsFrom = "addon_one_" + _oFrom;
               // (v9.871) a sheet of four when the words ask for one (the proven sentence does); an older one-picture setting still draws one
-              _addonSheet = /\bShow me 4\b/.test(_sentNow);
             }
+            // (v9.871) a sheet of four when the words ask for one; an older one-picture setting still draws one
+            // (v9.887) a change on the one they picked too - the change sentence asks for four
+            _addonSheet = /\bShow me 4\b/.test(_sentNow);
             // (v9.871) what they asked for, for the version row: the change they typed, or the last thing they said they want
             _askedFor = _oneParent ? (_ownW || null) : (() => { const _sg = String(_addonOwnWords || "").split(/\.\s+/).filter(Boolean); let _t = _sg.pop() || "";
               if (_t.length < 15 && _sg.length) _t = _sg.pop() + ". " + _t; return _t.slice(0, 160) || null; })();
@@ -72855,6 +72872,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // (v9.885, Aaron: "I do not want to mention that she's imagining four ideas") the lines never count the ideas
               let _done = "Here are your ideas on you. Tap the one you love, then Finalize it to make it yours - or Fine-Tune it and tell me what to change.";
               try { const _k = String((await env.AURA_KV.get("config:say:addon_sheet_done")) || "").trim(); if (_k) _done = _k; } catch {}
+              // (v9.887) four versions of a change: its own line, config:say:addon_change_sheet_done
+              if (_oneParent) { _done = "Here are some versions of that change on you. Tap the one you love, then Finalize it to make it yours - or Fine-Tune it and tell me what else to change.";
+                try { const _k = String((await env.AURA_KV.get("config:say:addon_change_sheet_done")) || "").trim(); if (_k) _done = _k; } catch {} }
               _reaction = _done;
             } else if (_addonOne) {
               // (v9.854) one add-on picture: a short fixed line, no look - the picture is what they asked for, on their photo.
@@ -73695,7 +73715,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 try { await env.AURA_KV.put(_mark, "1", { expirationTtl: 60 * 60 * 24 * 90 }); } catch {}
                 _waitUntil((async () => {
                   try {
+                    // (v9.887, Aaron: "she read this as a forearm piece") MEASURED 06:14: the peony on a calf was named "Snake and Peony Forearm" - she
+                    // had said "sitting on your calf" when the photo arrived, and naming saw only a close crop. On their photo, her first read goes with it.
+                    const _hr = ((typeof jobNow !== "undefined" && jobNow === "add") && _refHer) ? String(_refHer).replace(/"/g, "'").slice(0, 300) : "";
                     const q = await proxyToAgent(env, "[FOR YOU, NOT THEM. This is the tattoo design they are working on." +
+                      (_hr ? " Their photo, as you described it when it arrived: \"" + _hr + "\"." : "") +
                       " Reply with exactly one line. NAME: a name for it, two to five words, the way a person would name it.]",
                       false, me + "_side", _imgFirst, world);
                     let _sayTxt = ""; try { const _j = JSON.parse(String((q && q.reply) || "")); if (_j && typeof _j.say === "string") _sayTxt = _j.say; } catch {}

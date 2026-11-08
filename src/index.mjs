@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.884.0-2026-11-07-name-follows-the-change-fav-before-photo";
+const BUILD = "aura-core-v9.885.0-2026-11-07-addon-ideas-buttons-dark-sheet-cut";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -60838,6 +60838,17 @@ async function cutAllCards(env, url, copts) {
         if (mn < 0.3 && (!starts.length || y - starts[starts.length - 1] > H * 0.04)) starts.push(y); }
       blk = 0;
     }
+    // ══ A DARK PHOTO RUNS INTO THE BLACK (v9.885, 2026-11-07, Aaron: "all proceed") ═══ MEASURED 17:12:59 on img_mw750rdyo9y5 (a snake on a
+    // collarbone, shot against a dark wall): "no cards found" - every card begins with the photo's dark top, so no card ever began "mostly not
+    // black" after a gap, and the four came back as one sheet. When a column has no card start at all, its cards are what lies between the
+    // black gaps (3+ rows black across the column), each at least 15% of the page tall. Sheets that found their cards before are untouched.
+    if (!starts.length) {
+      const _segs = []; let _st = 0, _y = 0;
+      while (_y < H) { if (blackRow[_y]) { let _e = _y; while (_e < H && blackRow[_e]) _e++; if (_e - _y >= 3) { if (_y > _st) _segs.push([_st, _y]); _st = _e; } _y = _e; } else _y++; }
+      if (H > _st) _segs.push([_st, H]);
+      for (const [a, b] of _segs) if (b - a >= H * 0.15) boxes.push({ x0, x1, top: a, bot: b });
+      continue;
+    }
     for (let i = 0; i < starts.length; i++) {
       const st = starts[i], next = i + 1 < starts.length ? starts[i + 1] : H;
       let y = next - 1; while (y > st && blackRow[y]) y--;
@@ -62130,6 +62141,10 @@ const ADDON_SHEET_WORDS_ASK = "This picture is a grid of 4 pictures, 2 across an
   "Each shows the same person's existing tattoo with new tattoo work added. They asked for: ____. Give each of the 4 its own name that tells it apart from " +
   "the other three - from what is different about it - and one short line about what was added. Reply with exactly 4 lines and nothing else: " +
   "1. Name | line, then 2., 3. and 4. the same way. Each name is 2 to 4 words and no two names share their main words.";
+// (v9.885) one of her add-on ideas, "Snake garden - flowers spilling down the chest", as the words a picture is made from: "Snake garden, flowers spilling down the chest"
+function addonIdeaWords(x) {
+  return String(x || "").replace(/\s+/g, " ").trim().replace(/^(.{2,70}?)\s+[-\u2013\u2014:]\s+/, "$1, ").replace(/[\s.]+$/, "");
+}
 async function addonSheetWords(env, sheetUrl, asked, ms) {
   if (!sheetUrl) return null;
   let ask = ADDON_SHEET_WORDS_ASK;
@@ -67399,7 +67414,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // is cleared where it is kept: the brief, the piece on screen, the held photo, the record of
       // her design and of the last look on them.
       if (me && opts && opts.fresh) {
-        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added"]) {
+        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added", "addon_ideas"]) {
           try { await talkStatePut(env, me, _k, ""); } catch {}
         }
       }
@@ -68875,7 +68890,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held", "addon_go", "addon_drawn"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held", "addon_go", "addon_drawn", "addon_ideas"]); } catch {}
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
           // because "design_change" from the 9:50 test was still set.
@@ -69062,11 +69077,18 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // ══ IMAGINE IT, ON THEIR PHOTO (v9.850) ═══ The add-on or cover-up they said yes to, from everything they told her before the yes,
             // with the lettering they settled. She is not called; the 8 are drawn on their photo as before.
             _addonGoWords = String(_ds.addon_go).slice(0, 600); _addonLetter = letterParse(_ds.letter);
+            // ══ IMAGINE IT DRAWS HER IDEAS (v9.885, 2026-11-07, Aaron: "all proceed") ═══ MEASURED 17:12: she had offered four ideas and the
+            // picture was made from their "I don't know what do you suggest I want to add to it". When her ideas are on screen (her last
+            // reply on this add-on, kept as addon_ideas), Imagine it draws one of each, in her words.
+            try { const _hi = JSON.parse(String(_ds.addon_ideas || "[]")); if (Array.isArray(_hi) && _hi.length >= 2) {
+              _addonGoWords = "one of each of these: " + _hi.slice(0, 4).map((x, k) => (k + 1) + ") " + addonIdeaWords(x)).join("; ");
+              console.log("[TURN:GO] add-on - Imagine it draws her ideas, one of each: \"" + _addonGoWords.slice(0, 400) + "\"" + (me ? " · who=" + me : "")); } } catch {}
+            try { await talkStatePut(env, me, "addon_ideas", ""); } catch {}
             _fixedWhy = "addon_go";
             // (v9.854) an add-on is drawn one at a time - one picture, so the line says one. A cover-up is still the eight.
             _fixedSay = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover"
               ? await _fx("eight_go", "On it - I'm imagining your designs now. Every one is 100% unique and 100% yours.")
-              : await _fx("addon_one_go", "On it - I'm imagining four ideas on you now. Every one is 100% unique and 100% yours.");
+              : await _fx("addon_one_go", "On it - I'm imagining some amazing ideas for you now. Every one is 100% unique and 100% yours.");
             // ══ IMAGINE IT SAYS BACK WHAT SHE IS IMAGINING (v9.873, 2026-11-07, Aaron: "when Aura is imagining this she should be coming back
             // with what she's imagining") ═══ MEASURED 11:05 (rose + bee, New School): the tap on Imagine it showed the fixed "On it - I'm
             // imagining it on you now..." - a typed yes already shows her say-back (v9.869). On an add-on the line while it draws is her own
@@ -69711,7 +69733,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               /\b(?:yes|yeah|yep|yup|sure|ok|okay|show me|let'?s see(?: it)?|lets see(?: it)?|do it|go for it|go ahead|let'?s do it)\b/i.test(String(said || ""));
             // (v9.876) A TAPPED PLACE DRAWS TOO - MEASURED 12:28: "Down over my wrist toward my hand" drew the four while her streamed "What are you
             // picturing going there - tell me, or I can imagine some ideas..." stood over the drawing. Her words wait the same way.
-            const _placeTapNow = /^\s*i want it to go\s+\S/i.test(String(said || ""));
+            const _placeTapNow = /^\s*i want it to go\s+\S/i.test(String(said || "")) || /^\s*show me:\s*\S/i.test(String(said || ""));   // (v9.885) a tapped idea too
             if (_adr !== "1" && (_isYes || _yesWith || _placeTapNow)) {
               _holdWords = true; _placeTapHeld = _placeTapNow;
               console.log("[TURN:YES] add-on, nothing drawn yet - her words wait until this turn knows whether it draws" + (me ? " · who=" + me : ""));
@@ -70387,7 +70409,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // down to my wrist") sets where it goes and draws the four-directions sheet with it - no second tap.
       // (The add-on test is where the four are drawn, below: jobNow add, their photo held - it is not known yet here.)
       const _placeTap = /^\s*i want it to go\s+\S/i.test(String(said || ""));
-      const _askIdeas = _ideasLine || _placeTap;
+      // ══ A TAPPED IDEA DRAWS IT (v9.885, 2026-11-07, Aaron: "options back to click ... just like placement") ═══ On their photo, before
+      // anything is drawn, her idea buttons send "Show me: <idea>" - drawn at once as four versions of that idea, the same as a tapped place.
+      const _ideaTap = !!_bodyPhoto && /^\s*show me:\s*\S/i.test(String(said || ""));
+      const _askIdeas = _ideasLine || _placeTap || _ideaTap;
       if (_askIdeas && _fixedWhy !== "more" && (act === "draw" || act === "change" || act === "onme")) {
         console.log("[TURN:IDEAS] they asked for ideas - she gives them, nothing drawn (her act was " + act + ")"); act = "none";
       }
@@ -70847,7 +70872,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       } else if (_askIdeas && (jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true;
         // (v9.876) a tap that draws: her words with the question taken off (pared below), else the fixed line - never her question over the drawing
-        if (_holdWords && acted) { let _gl = "On it - I'm imagining four ideas on you now. Every one is 100% unique and 100% yours.";
+        if (_holdWords && acted) { let _gl = "On it - I'm imagining some amazing ideas for you now. Every one is 100% unique and 100% yours.";
           try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _gl = _k; } catch {}
           _heldHerSay = acted.say; acted.say = _gl; _yesDraws = true; }
         // THEIR WORDS GO IN (v9.680, 2026-10-19, Aaron): MEASURED 08:28 - "I like the Chicano style and I wanna have the word mom in it",
@@ -70873,6 +70898,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             if (!t || _tapW.test(t) || _bareW.test(t)) continue;
             _ws.push(t.replace(/[\s.]+$/, "")); }
           if (_ws.length) { _addonOwnWords = _ws.join(". ").slice(0, 600); console.log("[TURN:IDEAS] their own words go in: \"" + _addonOwnWords + "\""); }
+          // (v9.885) a tapped idea of hers is what is drawn - "I don't know, what do you suggest" before it is not an idea
+          if (_ideaTap) { _addonOwnWords = addonIdeaWords(String(said).replace(/^\s*show me:\s*/i, "")).slice(0, 600); console.log("[TURN:IDEAS] her idea they tapped goes in: \"" + _addonOwnWords + "\""); }
+          try { await talkStatePut(env, me, "addon_ideas", ""); } catch {}
         } catch (e) { console.log("[TURN:IDEAS] their words could not be read: " + String(e?.message ?? e).slice(0, 120)); }
         console.log("[TURN:IDEAS] eight drawn as one sheet on their photo, from the " + (_addonOwnWords ? "their-own-idea sentence" : "one fixed sentence"));
         // (v9.850/851) a tap is their yes - lettering with no style was found before her line went out, and brought up the sheet
@@ -70927,7 +70955,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           if (await _addLetterHold(_w)) { act = "none"; _ideasGrid = false; }
           else if (!_drawnYet && (_yesOnly || _yesWithIt) && _w && jobNow === "add") {
             _addonOwnWords = _w; acted.choose = null; _addonMore = null;   // (v9.857) nothing drawn in this tattoo yet - their photo, always
-            let _goLine = "On it - I'm imagining four ideas on you now. Every one is 100% unique and 100% yours.";
+            let _goLine = "On it - I'm imagining some amazing ideas for you now. Every one is 100% unique and 100% yours.";
             try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
             _heldHerSay = acted.say; acted.say = _goLine; _yesDraws = true;
             try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
@@ -70970,7 +70998,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             if (await _addLetterHold(_w)) { /* the lettering sheet comes up first, as on a reach for a drawing */ }
             else if (_yesWithIt2) {
               act = "change"; _ideasGrid = true; _addonOwnWords = _w; acted.choose = null; _addonMore = null;
-              let _goLine = "On it - I'm imagining four ideas on you now. Every one is 100% unique and 100% yours.";
+              let _goLine = "On it - I'm imagining some amazing ideas for you now. Every one is 100% unique and 100% yours.";
               try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
               _heldHerSay = acted.say; acted.say = _goLine; _yesDraws = true;
               try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "1"); } catch {}
@@ -72819,7 +72847,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               _reaction = _done;
             } else if (_addonOne && _addonSheet) {
               // (v9.871) the four ideas on their photo: a short fixed line, no look
-              let _done = "Here are four ideas on you. Tap the one you love, then Finalize it to make it yours - or Fine-Tune it and tell me what to change.";
+              // (v9.885, Aaron: "I do not want to mention that she's imagining four ideas") the lines never count the ideas
+              let _done = "Here are your ideas on you. Tap the one you love, then Finalize it to make it yours - or Fine-Tune it and tell me what to change.";
               try { const _k = String((await env.AURA_KV.get("config:say:addon_sheet_done")) || "").trim(); if (_k) _done = _k; } catch {}
               _reaction = _done;
             } else if (_addonOne) {
@@ -73745,6 +73774,17 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       }
       // WHAT HAPPENED, FOR THE TEST (v9.604): who answered, and every word the image model got, never cut.
       let _picsGot = []; try { _picsGot = (_TURN_ALS.getStore() || {}).pics || []; } catch {}
+      // ══ HER IDEAS GO OUT AS BUTTONS AND ARE KEPT FOR IMAGINE IT (v9.885, 2026-11-07, Aaron: "all proceed") ═══ On their photo (not a
+      // cover-up), before anything is drawn this turn, her ideas (2 to 4) go to the page and are kept as addon_ideas; any reply of hers without
+      // ideas clears them, so Imagine it never draws ideas from an earlier turn.
+      let _ideasOut = null;
+      if (me && _bodyPhoto && !_fixedWhy && !(drew && drew.image) && acted &&
+          String((intent && intent.job) || (carriedObj && carriedObj.job) || "").toLowerCase() !== "cover") {
+        const _iz = Array.isArray(acted.ideas) ? acted.ideas.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4) : [];
+        _ideasOut = _iz.length >= 2 ? _iz : null;
+        try { await talkStatePut(env, me, "addon_ideas", _ideasOut ? JSON.stringify(_ideasOut) : ""); } catch {}
+        if (_ideasOut) { try { console.log("[TURN:IDEAS] add-on - her ideas as buttons: " + _ideasOut.map((x) => '"' + x.slice(0, 80) + '"').join(", ") + (me ? " · who=" + me : "")); } catch {} }
+      }
       return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,
                answered_by: _fixedWhy ? ("fixed line (" + _fixedWhy + ")" + (_reaction && _reaction !== _fixedSay ? " + her look" : "")) : (_tapKeep ? "tap (her short line after)" : "Aura"),
                ...(_picsGot.length ? { image_model_got: _picsGot } : {}),
@@ -73767,6 +73807,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                ...(_goOut ? { go: acted.go } : {}),
                // HER PLACES (v9.655): on an add-on photo, the page shows each as a button.
                ...((Array.isArray(acted.directions) && acted.directions.length) ? { directions: acted.directions } : {}),
+               // HER IDEAS (v9.885): on their photo, before anything is drawn - each a button under her words, with Imagine it
+               ...(_ideasOut ? { ideas: _ideasOut } : {}),
                ...(_herTurn ? { her_turn: _herTurn } : {}),
                ...(over_budget ? { over_budget: true } : {}),
                ...(acted.prompt ? { prompt: acted.prompt } : {}),

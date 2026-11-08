@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.883.0-2026-11-07-addon-change-never-reads-a-sheet-number";
+const BUILD = "aura-core-v9.884.0-2026-11-07-name-follows-the-change-fav-before-photo";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -64826,6 +64826,11 @@ export class PtaDurableObject {
     // in the Bleeding Hearts"), and the card locked in, ROYAL RED VELVET, was never used. Now the title printed on the card they pick
     // names the tattoo, every pick replaces it with the new card's, and a name of hers never replaces a card's. Her name is used only
     // for a tattoo with no printed card name.
+    // ══ THE NAME FOLLOWS THE CHANGE (v9.884, 2026-11-07, Aaron: "Yes have the name follow the change") ═══ MEASURED 16:49-16:50: the Two Ravens
+    // card became a dragon ("swap the two ravens for a dragon..."); she named it "Clocktower Dragon Sleeve" after the change and "Timekeeper Dragon"
+    // at lock-in, and both were refused - "kept the card's printed name: Two Ravens". A card's printed name stands only while the design is that
+    // card; once a change is drawn on it, her names take over (the change, then This Is My Tattoo). A new pick off a card names it again.
+    if (pt.card_changed && pj.card_named && !pt.card_named) { pj.card_named = false; try { console.log("[NAME] the card's name no longer stands - the design was changed: " + String(pj.title || "?").slice(0, 80)); } catch {} }
     if (pt.card_named && pt.name_final) { pj.card_named = true; pj.her_named = false; pj.title = String(pt.name_final).slice(0, 80);
                                           if (pt.about) pj.about = String(pt.about).slice(0, 800); }
     else if (pt.her_name && pt.name_final) {
@@ -73550,7 +73555,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             await projectAppend(env, me, _pid, {
               lines: [
                 { ts: _atP, role: "them", said: String(said || "").slice(0, 600),
-                  ...((wantRef && refUrl) ? { photo: refUrl } : {}) },
+                  // (v9.884) MEASURED 16:51: an add-on reopened from Favorites had no "Before · their tattoo now" in its artist files - the page
+                  // takes Before from the first line of the tattoo that carries a photo, and the photo had been sent in an earlier session. The
+                  // favorite brings its photo back (the sheet's mark), so it goes on this line the same way an uploaded one does.
+                  ...(((wantRef || (opts && opts.addon_fav)) && refUrl) ? { photo: refUrl } : {}) },
                 { ts: _atP, role: "aura", said: _said.slice(0, 600) } ],
               // A CATALOGUE DESIGN THEY CHOSE (2026-09-26): taken as it is, or being changed - it is the
               // first picture of this tattoo, so My Tattoos shows it rather than "0 pictures".
@@ -73664,7 +73672,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                     // v9.795: a plain line from her ("Hummingbird Heart Wreath", 17:47:54) is her name however it comes
                     if (!n && (_sayTxt || (q && q.reply && !q.failed))) { const _one = (String(_sayTxt || q.reply).split(/\n+/).map((x) => x.trim()).filter(Boolean)[0]) || ""; if (_one && !/[:{}]/.test(_one) && _one.split(/\s+/).length <= 7) n = clean(_one); }
                     if (n && (n.split(/\s+/).length > 7 || /^(locked( in)?|your tattoo|tattoo|untitled|name|none|n\/a)$/i.test(n.trim()))) n = "";
-                    if (n) await projectAppend(env, me, _pidE, { name_final: n, her_name: true });
+                    // (v9.884, Aaron: "have the name follow the change") a design that is not the card as picked is no longer the card's name
+                    if (n) await projectAppend(env, me, _pidE, { name_final: n, her_name: true, card_changed: true });
                     else { try { await env.AURA_KV.delete(_mark); } catch {} }
                     console.log("[NAME] she named it from its first design: " + (n || "? - " + String((q && (q.reply || q.failed)) || "(nothing)").replace(/\s+/g, " ").slice(0, 200)) + (me ? " · who=" + me : ""));
                   } catch (e) { try { await env.AURA_KV.delete(_mark); } catch {} try { console.log("[NAME] first-design naming failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }

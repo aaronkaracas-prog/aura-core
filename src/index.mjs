@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.890.0-2026-11-08-lettering-only-theirs";
+const BUILD = "aura-core-v9.891.0-2026-11-08-whole-piece-keeps-colors";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66137,7 +66137,13 @@ async function makeArtistFiles(env, ctx) {
                 if (_name) _name = _name.replace(/^(The|A|An)\b/, (w) => w.toLowerCase());
               }
             } catch {}
-            const _whole = await _flat("Draw this whole tattoo flat on plain white paper, with no body and no skin.");
+            // ══ THE WHOLE PIECE KEEPS ITS COLORS (v9.891, 2026-11-08, Aaron: go) ═══ MEASURED: the black-and-grey rose (07:30) and the lighthouse
+            // clock (10:09, img_mw8594e2b9tl) came back brown all over, the gold beam lost in it - the sentence said nothing of color and the skin's
+            // warmth went onto the paper. PROVEN by command 10:14 on the locked card: with the color line the waves stay black and grey and the
+            // beam stays gold (img_mw85i8ibjlve). The sentence is a setting (config:frame:addon:whole), tuned without a deploy.
+            let _wholeW = "Draw this whole tattoo flat on plain white paper, with no body and no skin. Keep every color exactly as it is in the tattoo - the black and grey stays black and grey, and any color stays that same color.";
+            try { const _k = String((await env.AURA_KV.get("config:frame:addon:whole")) || "").trim(); if (_k) _wholeW = _k; } catch {}
+            const _whole = await _flat(_wholeW);
             if (_whole) _addSheets.push({ panel: "Whole piece", asked: "the whole tattoo", flat: _whole.flat,
                                           id: _whole.id, seeIn: _seeWhole || 0, checked: null, ok: true });
             // ══ THE NEW-WORK SHEET NEVER DISAPPEARS SILENTLY (2026-10-01, v9.502, Aaron) ══════════════
@@ -66167,6 +66173,8 @@ async function makeArtistFiles(env, ctx) {
             if (refDesign && /^https?:\/\//i.test(String(mockUrl || ""))) {
               let _nw = "The first picture is my original tattoo. The second picture is the new look. Draw only the new art - everything in the second picture that is not in the first - flat on plain white paper, with no body and no skin.";
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:newwork")) || "").trim(); if (_k) _nw = _k; } catch {}
+              // (v9.891) the new work keeps its colors too - the same line as the whole piece, added when the setting says nothing of color
+              if (!/\bcolou?rs?\b/i.test(_nw)) _nw += " Keep every color exactly as it is in the tattoo - the black and grey stays black and grey, and any color stays that same color.";
               const _new = await _flat(_nw, refDesign, [mockUrl]);
               if (_new) {
                 _addSheets.push({ panel: "New work", asked: _name || "everything new", flat: _new.flat, id: _new.id,

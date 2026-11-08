@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.887.0-2026-11-08-addon-change-four-her-line";
+const BUILD = "aura-core-v9.888.0-2026-11-08-addon-ideas-are-buttons";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66571,7 +66571,7 @@ async function talkStatePut(env, me, name, raw) {
 function dropDrawClaim(text) {
   const t = String(text || "").trim(); if (!t) return t;
   const claim = /\b(?:(?:i'?m |i am )?(?:drawing|imagining|sketching|creating|putting|making|working on) (?:it|that|this|them|one|it up)?\s*(?:on you|on your arm|up)?\s*(?:now|right now)\b|here it is|here you go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|coming (?:right )?up|on (?:its|the) way)/i;
-  const kept = t.split(/(?<=[.!?])\s+/).filter((x) => !claim.test(x));
+  const kept = t.split(/(?<=[.!?])\s+/).filter((x) => !claim.test(x) && !/^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i.test(x));   // (v9.888) a done-word alone
   const out = kept.join(" ").trim();
   return out.length >= 12 ? out : t;
 }
@@ -66581,13 +66581,16 @@ function pareDrawLine(text) {
   const lead = /^\s*(?:here it is|here you go|here we go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|ta-?da|voil[aà])\s*[-–—:,.!]+\s*/i;
   // (v9.870) MEASURED 07:18: "If this is the one, or you want to tweak anything, just say." - the same claim, said the other way round
   const claim = /\b(here it is|here you go|here(?:'|’)s (it|your|the)|there you go|take a look|check it out|have a look|is this the one|this is the one|tweak anything|how does (it|that|this) look)\b/i;
+  // (v9.888) MEASURED 06:46: "...that'll make the whole piece feel alive. Changed." stood over a picture still drawing - a sentence that is
+  // only a done-word says it is finished
+  const doneOnly = /^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i;
   const parts = t.split(/(?<=[.!?])\s+/);
   const kept = [];
   for (let p of parts) {
     p = p.replace(lead, "").replace(/\s*[-–—,:]\s*(?:here it is|here you go|there you go|here(?:'|’)s (?:it|your|the)[^.!?]*)\s*([.!]?)\s*$/i, "$1");
     if (!p) continue;
     p = p.charAt(0).toUpperCase() + p.slice(1);
-    if (claim.test(p)) continue;
+    if (claim.test(p) || doneOnly.test(p)) continue;
     if (/\?\s*$/.test(p)) continue;
     kept.push(p);
   }
@@ -66616,7 +66619,7 @@ function talkReadAct(txt) {
         try { return JSON.parse('"' + m[1] + '"'); } catch { return m[1]; }
       };
       const _got = {};
-      for (const k of ["say", "reply", "message", "text", "do", "ask", "prompt", "words", "where_to", "go", "world", "change"]) {
+      for (const k of ["say", "reply", "message", "text", "do", "ask", "prompt", "words", "where_to", "go", "world", "change", "add", "extend"]) {
         const v = _one(k); if (v != null) _got[k] = v;
       }
       const _ch = _src.match(/"choose"\s*:\s*(\{[^{}]*\})/);
@@ -66680,6 +66683,9 @@ function talkReadAct(txt) {
              ideas: strList(o.ideas, 4, 160).map((x) => x.replace(/\*\*/g, "")),
              // (v9.887) her one line of the change on the picture they have - what is drawn on an add-on change
              change: typeof o.change === "string" ? o.change.trim().slice(0, 300) : "",
+             // (v9.888) her one line of what to add to their tattoo, and whether their photo is too close to grow in
+             add: typeof o.add === "string" ? o.add.trim().slice(0, 300) : "",
+             extend: o.extend === true || /^(true|yes)$/i.test(String(o.extend || "").trim()),
              // ══ HER ONE QUESTION, AS A CARD (v9.689, 2026-10-21, Aaron: "she asks, they hit the dot, then continue") ══
              // Two or three styles that fit what they said; the page adds "Just imagine some ideas for me" and a Continue.
              choose: (o.choose && typeof o.choose === "object" && Array.isArray(o.choose.styles) && o.choose.styles.length)
@@ -67416,7 +67422,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // is cleared where it is kept: the brief, the piece on screen, the held photo, the record of
       // her design and of the last look on them.
       if (me && opts && opts.fresh) {
-        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added", "addon_ideas"]) {
+        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added", "addon_ideas", "addon_what", "addon_close"]) {
           try { await talkStatePut(env, me, _k, ""); } catch {}
         }
       }
@@ -69082,9 +69088,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // ══ IMAGINE IT DRAWS HER IDEAS (v9.885, 2026-11-07, Aaron: "all proceed") ═══ MEASURED 17:12: she had offered four ideas and the
             // picture was made from their "I don't know what do you suggest I want to add to it". When her ideas are on screen (her last
             // reply on this add-on, kept as addon_ideas), Imagine it draws one of each, in her words.
-            try { const _hi = JSON.parse(String(_ds.addon_ideas || "[]")); if (Array.isArray(_hi) && _hi.length >= 2) {
-              _addonGoWords = "one of each of these: " + _hi.slice(0, 4).map((x, k) => (k + 1) + ") " + addonIdeaWords(x)).join("; ");
-              console.log("[TURN:GO] add-on - Imagine it draws her ideas, one of each: \"" + _addonGoWords.slice(0, 400) + "\"" + (me ? " · who=" + me : "")); } } catch {}
+            // (v9.888, Aaron: "click one idea to get four variations of that idea") Imagine it no longer draws one of each of her ideas: it draws
+            // what she said back of their idea (addon_what, her `add` line) - their typed words only when she gave none.
+            try { const _hw = String((await talkStateGet(env, me, ["addon_what"])).addon_what || "").trim();
+              if (_hw) { console.log("[TURN:GO] add-on - Imagine it draws her line of what to add: \"" + _hw.slice(0, 200) + "\" - they typed: \"" + _addonGoWords.slice(0, 200) + "\"" + (me ? " · who=" + me : "")); _addonGoWords = _hw.slice(0, 300); } } catch {}
             try { await talkStatePut(env, me, "addon_ideas", ""); } catch {}
             _fixedWhy = "addon_go";
             // (v9.854) an add-on is drawn one at a time - one picture, so the line says one. A cover-up is still the eight.
@@ -69622,11 +69629,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                        // cover sentence (`config:frame:cover:grid`) came back as four cover-ups in colour, the tiger hidden.
                        for (let i = tnow.length - 1; i >= 0; i--) { const _t = tnow[i];
                          if (_t && _t.role === "them" && /^\s*i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(String(_t.said || "")))
-                           return /^\s*i want to (add to|cover up) a tattoo/i.test(String(_t.said || "")); }
+                           return /^\s*i want to cover up a tattoo/i.test(String(_t.said || "")); }   // (v9.888) an add-on asks her - below
                        // NO TILE, SAME ROAD (v9.664, 2026-10-18, Aaron: "I should never be able to trigger an old pattern"): MEASURED
                        // 10:33 - a photo sent straight into the chat, "I want to add to it": the job was add (job=add) but this
                        // waited for the Add to Existing opening line, so the old ideas path drew. The job core already holds decides.
-                       return ["add", "cover"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase()); })()) {
+                       // ══ ON AN ADD-ON, ASKING FOR IDEAS GETS HER IDEAS (v9.888, 2026-11-08, Aaron: "once they say yeah give me your ideas
+                       // they'll just be buttons, and then click one idea to get four variations of that idea") ═══ "Give me some ideas" no
+                       // longer draws the plain sentence on an add-on: she answers with her ideas as buttons, and a tapped idea draws four.
+                       // A cover-up keeps its road.
+                       return String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover"; })()) {
             // NAMED BY ITS JOB (v9.721): the cover-up 8 was logged as addon_ideas.
             _fixedWhy = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover" ? "cover_ideas" : "addon_ideas";
             _fixedSay = String((carriedObj && carriedObj.job) || "").toLowerCase() === "cover"
@@ -70871,7 +70882,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       } else if (_addonPossCard && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true; _addonPoss = true;
         console.log("[TURN:IDEAS] eight possibilities of the one they chose, on their photo: " + _addonPossCard);
-      } else if (_askIdeas && (jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
+      } else if (_askIdeas && (jobNow === "cover" || (jobNow === "add" && !_ideasLine)) && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true;
         // (v9.876) a tap that draws: her words with the question taken off (pared below), else the fixed line - never her question over the drawing
         if (_holdWords && acted) { let _gl = "On it - I'm imagining some amazing ideas for you now. Every one is 100% unique and 100% yours.";
@@ -70902,11 +70913,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           if (_ws.length) { _addonOwnWords = _ws.join(". ").slice(0, 600); console.log("[TURN:IDEAS] their own words go in: \"" + _addonOwnWords + "\""); }
           // (v9.885) a tapped idea of hers is what is drawn - "I don't know, what do you suggest" before it is not an idea
           if (_ideaTap) { _addonOwnWords = addonIdeaWords(String(said).replace(/^\s*show me:\s*/i, "")).slice(0, 600); console.log("[TURN:IDEAS] her idea they tapped goes in: \"" + _addonOwnWords + "\""); }
-          // (v9.886) MEASURED 17:34 (snake): her four ideas were on screen with Imagine ideas under them - that tap draws one of each of hers too,
-          // not their "honestly no idea what to add"
-          else { try { const _hi = JSON.parse(String((await talkStateGet(env, me, ["addon_ideas"])).addon_ideas || "[]"));
-            if (Array.isArray(_hi) && _hi.length >= 2) { _addonOwnWords = "one of each of these: " + _hi.slice(0, 4).map((x, k) => (k + 1) + ") " + addonIdeaWords(x)).join("; ");
-              console.log("[TURN:IDEAS] her ideas go in, one of each: \"" + _addonOwnWords.slice(0, 400) + "\""); } } catch {} }
+          // (v9.888, Aaron: "click one idea to get four variations of that idea") one of each of her ideas is no longer drawn - a tapped idea is
           try { await talkStatePut(env, me, "addon_ideas", ""); } catch {}
         } catch (e) { console.log("[TURN:IDEAS] their words could not be read: " + String(e?.message ?? e).slice(0, 120)); }
         console.log("[TURN:IDEAS] eight drawn as one sheet on their photo, from the " + (_addonOwnWords ? "their-own-idea sentence" : "one fixed sentence"));
@@ -70962,6 +70969,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           if (await _addLetterHold(_w)) { act = "none"; _ideasGrid = false; }
           else if (!_drawnYet && (_yesOnly || _yesWithIt) && _w && jobNow === "add") {
             _addonOwnWords = _w; acted.choose = null; _addonMore = null;   // (v9.857) nothing drawn in this tattoo yet - their photo, always
+            // (v9.888, Aaron: "yes on one and two") what is drawn is what she said back: her line of what to add, else their typed words
+            try { const _hw = String((acted && acted.add) || (await talkStateGet(env, me, ["addon_what"])).addon_what || "").trim();
+              if (_hw) { console.log("[TURN:IDEAS] what to add, in her line: \"" + _hw.slice(0, 200) + "\" - they typed: \"" + String(_w).slice(0, 200) + "\"" + (me ? " · who=" + me : "")); _addonOwnWords = _hw.slice(0, 300); } } catch {}
             let _goLine = "On it - I'm imagining some amazing ideas for you now. Every one is 100% unique and 100% yours.";
             try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
             _heldHerSay = acted.say; acted.say = _goLine; _yesDraws = true;
@@ -71012,6 +71022,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             if (await _addLetterHold(_w)) { /* the lettering sheet comes up first, as on a reach for a drawing */ }
             else if (_yesWithIt2) {
               act = "change"; _ideasGrid = true; _addonOwnWords = _w; acted.choose = null; _addonMore = null;
+              // (v9.888, Aaron: "yes on one and two") what is drawn is what she said back: her line of what to add, else their typed words
+              try { const _hw = String((acted && acted.add) || (await talkStateGet(env, me, ["addon_what"])).addon_what || "").trim();
+                if (_hw) { console.log("[TURN:IDEAS] what to add, in her line: \"" + _hw.slice(0, 200) + "\" - they typed: \"" + String(_w).slice(0, 200) + "\"" + (me ? " · who=" + me : "")); _addonOwnWords = _hw.slice(0, 300); } } catch {}
               let _goLine = "On it - I'm imagining some amazing ideas for you now. Every one is 100% unique and 100% yours.";
               try { const _k = String((await env.AURA_KV.get("config:say:addon_one_go")) || "").trim(); if (_k) _goLine = _k; } catch {}
               _heldHerSay = acted.say; acted.say = _goLine; _yesDraws = true;
@@ -72434,6 +72447,18 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 _sentNow = _atP > 0 ? _sentNow.slice(0, _atP) + _ps1 + _sentNow.slice(_atP) : _sentNow + _ps1;
                 _oFrom += "+placement";
               }
+              // ══ A PHOTO TOO CLOSE TO GROW IN (v9.888, 2026-11-08, Aaron: "if someone shows a close up and we're not showing more of their body
+              // we need to extend the canvas - that's the only difference") ═══ When her read of the photo said it is too close (addon_close), one
+              // line asks for more of their body (config:frame:addon:close), before the skin and keep-it words. Nothing else changes.
+              let _closeP = false; try { _closeP = String((await talkStateGet(env, me, ["addon_close"])).addon_close || "") === "1"; } catch {}
+              if (_closeP) {
+                let _cl = "My photo is too close to fit the new work - show more of my body around it, the way my body really is, so there is room.";
+                try { const _k = String((await env.AURA_KV.get("config:frame:addon:close")) || "").trim(); if (_k) _cl = _k; } catch {}
+                const _atC = _sentNow.indexOf(" Everything you add");
+                _sentNow = _atC > 0 ? _sentNow.slice(0, _atC) + " " + _cl + _sentNow.slice(_atC) : _sentNow + " " + _cl;
+                _oFrom += "+close";
+                console.log("[TURN:IDEAS] their photo is too close - the canvas line goes in: \"" + _cl + "\"" + (me ? " · who=" + me : ""));
+              }
               // Their lettering, after the freedom words and before the keep-it words (09:14 vs 09:16).
               if (_addonGoWords && _addonLetter && (_addonLetter.items || []).length) {
                 const _lc1 = letterClause(_addonLetter, false, true);
@@ -73806,6 +73831,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // ══ HER IDEAS GO OUT AS BUTTONS AND ARE KEPT FOR IMAGINE IT (v9.885, 2026-11-07, Aaron: "all proceed") ═══ On their photo (not a
       // cover-up), before anything is drawn this turn, her ideas (2 to 4) go to the page and are kept as addon_ideas; any reply of hers without
       // ideas clears them, so Imagine it never draws ideas from an earlier turn.
+      // ══ WHAT SHE SAID BACK, KEPT FOR THE DRAW (v9.888, 2026-11-08, Aaron: "yes on one and two") ═══ On an add-on before anything is drawn,
+      // her one line of what to add (her `add`) is kept; Imagine it or their yes draws it instead of everything they typed.
+      if (me && _bodyPhoto && acted && acted.add && !(drew && drew.image) && String((typeof jobNow !== "undefined" && jobNow) || "") === "add") {
+        try { await talkStatePut(env, me, "addon_what", String(acted.add).slice(0, 300)); console.log("[TURN:IDEAS] her line of what to add, kept for the draw: \"" + String(acted.add).slice(0, 200) + "\"" + (me ? " · who=" + me : "")); } catch {}
+      }
+      // ══ A PHOTO TOO CLOSE TO GROW IN (v9.888, Aaron: "she should always read the photo to see if it needs extending") ═══ Her read of the
+      // photo that just arrived says whether it is too close; the add-on sentence then asks for more of their body (config:frame:addon:close).
+      if (me && _freshPhoto && acted) {
+        try { await talkStatePut(env, me, "addon_close", acted.extend ? "1" : ""); if (acted.extend) console.log("[BRIEF] their photo is too close to grow in, as she read it - the canvas is widened" + (me ? " · who=" + me : "")); } catch {}
+      }
       let _ideasOut = null;
       if (me && _bodyPhoto && !_fixedWhy && !(drew && drew.image) && acted &&
           String((intent && intent.job) || (carriedObj && carriedObj.job) || "").toLowerCase() !== "cover") {

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.879.0-2026-11-07-addon-fav-on-the-direct-pick";
+const BUILD = "aura-core-v9.880.0-2026-11-07-addon-fav-sheet-is-the-last-drawing";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67415,7 +67415,14 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
             try { await talkStatePut(env, me, "addon_drawn", "1"); await talkStatePut(env, me, "addon_go", ""); } catch {}
             let _tlF = []; try { _tlF = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || []; } catch {}
             if (!Array.isArray(_tlF)) _tlF = [];
-            _tlF.push({ ts: new Date().toISOString(), role: "picture", image: String(opts.addon_fav), design: null, words: "their four add-on ideas, opened again from Favorites", grid: true });
+            // (v9.880) MEASURED 15:56:59: [TURN:FAV] set the photo and the sheet, yet "I want number 3" was not a pick (act=none, drew=no) - a pick
+            // is read only when there is a last drawing, and a fresh start has none. The sheet is the last drawing again, as it was when the four
+            // were on screen: its own design when its mark carries it (sheets marked from v9.880), otherwise the photo it was drawn on.
+            const _dF = String(_mkF.design || _mkF.photo);
+            const _lastF = { design: _dF, image: String(opts.addon_fav), subject: null, at: new Date().toISOString() };
+            try { await talkStatePut(env, me, "last", JSON.stringify(_lastF)); } catch {}
+            _pre.last = Promise.resolve(_lastF);
+            _tlF.push({ ts: new Date().toISOString(), role: "picture", image: String(opts.addon_fav), design: _dF, words: "their four add-on ideas, opened again from Favorites", grid: true });
             if (_tlF.length > 60) _tlF = _tlF.slice(-60);
             await talkStatePut(env, me, "timeline", JSON.stringify(_tlF));
             _pre.ref = Promise.resolve(_refF);
@@ -72835,7 +72842,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 try { await Promise.all(_eight.map((c) => { const cid = (String(c.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
                   return cid && c.title ? env.AURA_KV.put("cardinfo:" + cid, JSON.stringify({ title: c.title, lines: c.lines || [], sheet: _sid, n: c.n })).catch(() => {}) : null; })); } catch {}
                 // (v9.874) the photo's address and what was seen in it ride with the mark, so a heart on a card can open on it again
-                try { await env.AURA_KV.put("addonsheet:" + _sid, JSON.stringify({ photo: String(refDesign), url: refUrl ? String(refUrl) : null, saw: refSaw ? String(refSaw).slice(0, 800) : null, her: _refHer ? String(_refHer).slice(0, 300) : null })); } catch {}
+                try { await env.AURA_KV.put("addonsheet:" + _sid, JSON.stringify({ photo: String(refDesign), url: refUrl ? String(refUrl) : null, saw: refSaw ? String(refSaw).slice(0, 800) : null, her: _refHer ? String(_refHer).slice(0, 300) : null, design: cp.child ? String(cp.child) : null })); } catch {}
                 console.log("[CUT] add-on sheet of " + _eight.length + " cut and marked - a pick off it is built on: " + _sid); }
             } else console.log("[CUT] add-on sheet could not be cut into its cards - shown whole");
           }

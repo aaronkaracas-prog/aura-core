@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.895.0-2026-11-08-build-the-body-out";
+const BUILD = "aura-core-v9.896.0-2026-11-08-the-box-stays-on-the-photo";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66699,7 +66699,7 @@ function talkReadAct(txt) {
              add: typeof o.add === "string" ? o.add.trim().slice(0, 300) : "",
              // (v9.889) her words for which way their body carries on past a close photo ("my arm up past the elbow"); a bare yes is kept as "yes"
              extend: (typeof o.extend === "string" && o.extend.trim() && !/^(false|no|none|null)$/i.test(o.extend.trim())) ? o.extend.trim().slice(0, 120) : (o.extend === true ? "yes" : ""),
-             // (v9.895) the body part their tattoo is on, in her words ("my forearm") - for building their body out past the photo
+             // (v9.895) the body part their tattoo is on, in her words ("my forearm") - (v9.896) the build-out is gone; kept for the no-room words
              body: (typeof o.body === "string" && o.body.trim()) ? o.body.trim().replace(/[.\s]+$/, "").slice(0, 80) : "",
              // ══ HER ONE QUESTION, AS A CARD (v9.689, 2026-10-21, Aaron: "she asks, they hit the dot, then continue") ══
              // Two or three styles that fit what they said; the page adds "Just imagine some ideas for me" and a Continue.
@@ -67787,7 +67787,6 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
 let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto = false, _likedPic = false;
-let _builtOut = null;   // (v9.895) their body built out past the photo, handed back to the page
 let _refHer = null;   // (v9.878) her own first sentence about their photo, kept with it when core's look gave nothing
       // ══ A PHOTOGRAPH THAT ARRIVED IS NOT A DRAWING (2026-09-16, v9.270) ══════════════════
       // `talk:last` is written on a REF turn with `image: refUrl` so the pixels survive the turn.
@@ -68960,11 +68959,6 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // model gets the exact spot." The page sends their photo with the design laid on it where they put it. She is not
             // called; the picture model only makes it real ink, there.
             _fixedWhy = "placed"; _fixedSay = await _fx("onme_coming", "Putting it on you now.");
-          } else if (opts && opts.addon_pad && opts.addon_mask && opts.addon_box) {
-            // ══ THEIR BODY, BUILT OUT PAST THE PHOTO (v9.895, 2026-11-08, Aaron: "when someone gives us an image we stamp it on a bigger
-            // palette ... if your body part is not here you can extend it further ... and we say build the body out too") ═══ One fixed
-            // line; the body is built below, and the page puts their box back on it.
-            _fixedWhy = "build"; _fixedSay = await _fx("addon_build", "Building out the rest of your body so there's room for the new work - one moment.");
           } else if (opts && opts.choose_go && !_bodyPhoto && !(opts && opts.inspire)) {
             // ══ CONTINUE ON HER CARD (v9.689, 2026-10-21, Aaron) ═══════════════════════════════════════════════════
             // They picked a style she offered (or "just imagine some ideas for me") and pressed Continue: that is their go. The
@@ -70827,34 +70821,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // is kept for this photo (a new photo clears it), it replaces any place tapped before, and the turn draws nothing - she says she has
       // it and her ideas come up.
       if (me && _freshPhoto) { try { await talkStatePut(env, me, "addon_box", ""); } catch {} }
-      const _buildTurn = !!(me && opts && opts.addon_pad && opts.addon_mask && opts.addon_box && String(jobNow || "") === "add");
-      _builtOut = null;
-      if (_buildTurn) {
-        // ══ BUILD THEIR BODY OUT (v9.895) ═══ PROVEN by command 13:14 (img_mw8by4zbij2j): their photo on a bigger grey palette, a mask
-        // that locks their photo, and one sentence naming the body part and which way it carries on - the hand was built below the
-        // wrist, the tattoo and the arm untouched, the new skin clean. The words: config:frame:addon:build ("____" is the body part,
-        // "{dir}" which way); the model: config:source:addon_build:model (else the sheet's), quality config:source:addon_build:quality.
-        try {
-          let _body = ""; try { _body = String((await talkStateGet(env, me, ["addon_body"])).addon_body || "").trim(); } catch {}
-          if (!/^my\b/i.test(_body)) _body = _body ? "my " + _body : "my body";
-          const _dirW = String(opts.addon_dir || "").trim() || "past the edge of my photo";
-          let _bw = "This is a photo of ____ with my tattoo on it, on a bigger grey canvas. Fill only the grey area: continue my body the way it really carries on - ____ going {dir} - with the same skin, lighting and background as my photo. The new skin has no tattoo on it. Keep my photo exactly as it is.";
-          try { const _k = String((await env.AURA_KV.get("config:frame:addon:build")) || "").trim(); if (_k.includes("____")) _bw = _k; } catch {}
-          _bw = _bw.split("____").join(_body).replace("{dir}", _dirW);
-          let _bm = ""; try { _bm = String((await env.AURA_KV.get("config:source:addon_build:model")) || "").trim(); } catch {}
-          if (!_bm) { try { _bm = String(await sheet8Model(env) || ""); } catch {} }
-          let _bq = "high"; try { const _k = String((await env.AURA_KV.get("config:source:addon_build:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(_k)) _bq = _k; } catch {}
-          const _bspec = { subject: _bw, refs: [String(opts.addon_pad)], raw: true, source: "onme", quality: _bq, mask: String(opts.addon_mask), ...(_bm ? { model: _bm } : {}) };
-          console.log("[TURN:BUILD] their box goes past their photo - their body is built out first, only in the grey: \"" + _bw + "\" · " + (_bm || "the shared edit model") + " at " + _bq + (me ? " · who=" + me : ""));
-          const _br = await processCommand("SHOW_IT " + JSON.stringify(_bspec), env, true);
-          const _bp = (_br && _br.payload) ? _br.payload : _br;
-          if (_bp && _bp.ok && _bp.image_url) { _builtOut = String(_bp.image_url);
-            console.log("[TURN:BUILD] built -> " + _builtOut + " · $" + String(_bp.cost_usd || "?") + " - the page puts their box back on it" + (me ? " · who=" + me : "")); }
-          else console.log("[TURN:BUILD] their body could not be built out: " + String((_bp && _bp.error) || "no picture").slice(0, 200) + (me ? " · who=" + me : ""));
-        } catch (e) { console.log("[TURN:BUILD] their body could not be built out: " + String(e && e.message || e).slice(0, 200)); }
-        if (act === "draw" || act === "change" || act === "onme") act = "none";
-      }
-      const _boxTurn = !_buildTurn && !!(me && opts && opts.addon_box && /^https:\/\//i.test(String(opts.addon_box)) && String(jobNow || "") === "add");
+      const _boxTurn = !!(me && opts && opts.addon_box && /^https:\/\//i.test(String(opts.addon_box)) && String(jobNow || "") === "add");
       if (_boxTurn) {
         try {
           const _bi = await processCommand("IMAGE IMPORT " + String(opts.addon_box) + " " + JSON.stringify({ context: "their photo with a green box where the new work goes", by: me }), env, true);
@@ -73914,7 +73881,6 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             offer: (!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_said)) || undefined,
             heard: (_heardOut && !(drew && drew.image)) ? _heardOut : undefined,
             directions: (Array.isArray(acted.directions) && acted.directions.length) ? acted.directions : null,
-            addon_built: (typeof _builtOut !== "undefined" && _builtOut) ? _builtOut : undefined,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
             // THE SAME ANSWER EITHER WAY (v9.634, 2026-10-16, Aaron: "there should not be two paths"): the whole `drew` as it
             // went live - a hand-picked part dropped `cut`, `possibilities` and `cards`, so a recovered pick showed the wrong buttons.
@@ -73969,8 +73935,6 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                ...(_goOut ? { go: acted.go } : {}),
                // HER PLACES (v9.655): on an add-on photo, the page shows each as a button.
                ...((Array.isArray(acted.directions) && acted.directions.length) ? { directions: acted.directions } : {}),
-               // (v9.895) their body built out past the photo - the page puts their box back on it and goes on
-               ...(_builtOut ? { addon_built: _builtOut } : {}),
                // HER IDEAS (v9.885): on their photo, before anything is drawn - each a button under her words, with Imagine it
                ...(_ideasOut ? { ideas: _ideasOut } : {}),
                ...(_herTurn ? { her_turn: _herTurn } : {}),
@@ -75276,14 +75240,6 @@ export class PublicEntry extends WorkerEntrypoint {
             _boxRef = "https://" + (await imageHost(env)) + "/image/" + _bt;
           }
         }
-        // (v9.895) a box past the edge of their photo: their photo on a bigger grey palette (no box) and the mask that locks their photo
-        const _keepPic = async (v) => { const d = String(v || "").trim(); if (!/^data:image\//i.test(d)) return null;
-          const bb = d.replace(/^data:[^,]+,/, ""); if (bb.length * 0.75 > 8 * 1024 * 1024) return null;
-          const t = "img_t" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map(x => x.toString(16).padStart(2, "0")).join("");
-          await env.AURA_KV.put("image:" + t, bb, { expirationTtl: 2 * 3600 });
-          return "https://" + (await imageHost(env)) + "/image/" + t; };
-        const _padRef = await _keepPic(b.addon_pad), _maskRef = await _keepPic(b.addon_mask);
-        const _padDir = String(b.addon_dir || "").replace(/[^a-z ,-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 120);
         // ══ SEE IT ON YOU, AFTER LOCK-IN, THROUGH HER (2026-10-08, v9.544, Aaron) ═══════════════
         // "It has to be a discussion... Aura has to look at the image like she does already." The
         // put-it-on-them step already works in the conversation (the "See It On You" card): she asks
@@ -75326,7 +75282,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, addon_pad: _padRef || null, addon_mask: _maskRef || null, addon_dir: _padDir || null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -75355,7 +75311,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // THE TURN RUNS AS A JOB, THIS CONNECTION ONLY RELAYS IT (v9.681). Same options as the turn below, as plain data.
         const _tOpts = {
           tid: b.tid ? String(b.tid).slice(0, 40) : null,
-          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, addon_pad: _padRef || null, addon_mask: _maskRef || null, addon_dir: _padDir || null, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null };
+          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null };
         // ══ A START THAT CANNOT DRAW RUNS STRAIGHT AWAY (v9.792, 2026-11-01, Aaron: go) ═══ MEASURED 17:20:08 -> 17:20:10.6: the job took
         // 2.2s just to begin (1.5-4.1s across today) for a fixed line that then took 1.3s. The job exists so a 30-90s drawing survives a
         // dropped connection; a start never draws. ONLY these run directly: a new-tattoo / add / cover opener on its own, or a fresh "Let's
@@ -75448,7 +75404,7 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!_direct && !!me && !!_tOpts.tid &&
             !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor && !(_tOpts.all_ideas && _tOpts.all_ideas.length) &&
             !_tOpts.change_now && !_tOpts.new_now && !_tOpts.pick_sheet && !_tOpts.choose_go && !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of &&
-            !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire && !_tOpts.inspire_go && !_tOpts.addon_pad &&
+            !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.lock && !_tOpts.inspire && !_tOpts.inspire_go &&
             !/^i want number [1-8]\.?$/i.test(String(_said || "").trim()) &&
             !/^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(String(_said || "").replace(/\[[^\]]*\]/g, " "))) {
           try {
@@ -75545,7 +75501,6 @@ export class PublicEntry extends WorkerEntrypoint {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
               from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null,
               direct_no_draw: !!_tOpts.direct_no_draw, direct_addon: !!_tOpts.direct_addon, addon_box: _tOpts.addon_box || null,
-              addon_pad: _tOpts.addon_pad || null, addon_mask: _tOpts.addon_mask || null, addon_dir: _tOpts.addon_dir || null,
               // (v9.879) MEASURED 15:42:21: an add-on favorite opened from Favorites ran this direct pick ("a pick off img_mw71jzetxmpg") and
               // its sheet never reached the turn - no [TURN:FAV], and she said "there's nothing numbered on your screen". The favorite rides here too.
               addon_fav: _tOpts.addon_fav || null,

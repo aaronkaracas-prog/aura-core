@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.881.0-2026-11-07-addon-fav-sheet-never-the-photo";
+const BUILD = "aura-core-v9.882.0-2026-11-07-addon-fav-sheet-once-on-the-timeline";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67415,6 +67415,10 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
             try { await talkStatePut(env, me, "addon_drawn", "1"); await talkStatePut(env, me, "addon_go", ""); } catch {}
             let _tlF = []; try { _tlF = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || []; } catch {}
             if (!Array.isArray(_tlF)) _tlF = [];
+            // (v9.882) MEASURED 16:28: the timeline is the person's whole history, kept through a fresh start, and the same favorite opened at
+            // 16:08 had left its sheet there marked with the photo's design (v9.880) - the dragon change found it and cut card 2 again. The sheet
+            // is on the timeline once: opening a favorite takes out its earlier entries before it goes back on.
+            _tlF = _tlF.filter((e) => !(e && e.role === "picture" && e.image === String(opts.addon_fav)));
             // (v9.880) MEASURED 15:56:59: [TURN:FAV] set the photo and the sheet, yet "I want number 3" was not a pick (act=none, drew=no) - a pick
             // is read only when there is a last drawing, and a fresh start has none. The sheet is the last drawing again, as it was when the four
             // were on screen: its own design when its mark carries it (sheets marked from v9.880), otherwise the photo it was drawn on.

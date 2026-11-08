@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.891.0-2026-11-08-whole-piece-keeps-colors";
+const BUILD = "aura-core-v9.892.0-2026-11-08-size-first";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66706,7 +66706,7 @@ function talkReadAct(txt) {
                    styles: strList(o.choose.styles, 3, 48).map((x) => x.replace(/\*\*/g, "").replace(/[.\s]+$/, "")) }
                : null,
              // HER IDEAS AS PICTURE WORDS (2026-10-12, v9.584, Aaron): the same four, written for the picture.
-             directions: strList(o.directions, 4, 80).map((x) => x.replace(/^\s*i want it to go\s+/i, "").replace(/[.\s]+$/, "")),
+             directions: strList(o.directions, 4, 80).map((x) => x.replace(/^\s*i want it(?: to go)?\s+/i, "").replace(/[.\s]+$/, "")),
              where_to: (typeof o.where_to === "string") ? o.where_to.trim().slice(0, 160) : "",
              // WHERE SHE TAKES THEM (v9.664): one of the places her world's purpose names - a short name, nothing else.
              go: (typeof o.go === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.go.trim())) ? o.go.trim().toLowerCase()
@@ -70825,7 +70825,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // add-on started, not taps and not the page's notes. Used to hold the first drawing for their yes, and to find any lettering.
       const _addTyped = () => { try {
           const _jobW = /^\s*i want to (?:add to a tattoo i already have|add to a tattoo|cover up a tattoo)[\s.,!-]*/i;
-          const _tapW = /^\s*(?:show me some ideas|show me all of them|imagine\b.*|i want number [1-8]|i have my own idea|my own idea|fine-?\s?tune it|i want to change something|this is my tattoo|i choose\b.*|keep it like this|let'?s create my own\b.*|i like the .+ style|lettering:.*)[\s.!]*$/i;
+          const _tapW = /^\s*(?:show me some ideas|show me all of them|imagine\b.*|i want number [1-8]|i have my own idea|i want it to go\b.*|my own idea|fine-?\s?tune it|i want to change something|this is my tattoo|i choose\b.*|keep it like this|let'?s create my own\b.*|i like the .+ style|lettering:.*)[\s.!]*$/i;
           // (v9.855) MEASURED 10:06: "yes please" went to the image model as part of their idea - the line matched one yes-word, not two.
           // A line made only of yes-words, in any number ("yes please", "yeah go for it", "yes show me"), is their yes, not their idea.
           const _bareW = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i;
@@ -70895,7 +70895,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       } else if (_addonPossCard && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
         act = "change"; _ideasGrid = true; _addonPoss = true;
         console.log("[TURN:IDEAS] eight possibilities of the one they chose, on their photo: " + _addonPossCard);
-      } else if (_askIdeas && (jobNow === "cover" || (jobNow === "add" && !_ideasLine)) && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
+      } else if (_askIdeas && (jobNow === "cover" || (jobNow === "add" && !_ideasLine && !_placeTap)) && refDesign && _bodyPhoto && !(opts && opts.inspire)) {
+        // ══ HOW BIG FIRST, THEN THE IDEAS (v9.892, 2026-11-08, Aaron: "first we'll question them - how big and how far do you want to
+        // extend this ... once we establish that, everything else will fall into place") ═══ On an add-on a tapped size ("I want it to go
+        // medium, down onto my chest") is kept as where it goes (placement, tapped) and draws nothing: she says it back and her ideas come
+        // as buttons. A tapped idea, or their own idea, then draws four with the size in the words. A cover-up's tapped place still draws.
         act = "change"; _ideasGrid = true;
         // (v9.876) a tap that draws: her words with the question taken off (pared below), else the fixed line - never her question over the drawing
         if (_holdWords && acted) { let _gl = "On it - I'm imagining some amazing ideas for you now. Every one is 100% unique and 100% yours.";
@@ -70907,7 +70911,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         // tattoo already does. Nothing typed: the plain sentence, as before.
         try {
           const _jobW = /^\s*i want to (?:add to a tattoo i already have|add to a tattoo|cover up a tattoo)[\s.,!-]*/i;
-          const _tapW = /^\s*(?:show me some ideas|show me all of them|imagine\b.*|i want number [1-8]|i have my own idea|my own idea|fine-?\s?tune it|i want to change something|this is my tattoo|i choose\b.*|keep it like this|let'?s create my own\b.*|i like the .+ style)[\s.!]*$/i;
+          const _tapW = /^\s*(?:show me some ideas|show me all of them|imagine\b.*|i want number [1-8]|i have my own idea|i want it to go\b.*|my own idea|fine-?\s?tune it|i want to change something|this is my tattoo|i choose\b.*|keep it like this|let'?s create my own\b.*|i like the .+ style)[\s.!]*$/i;
           // (v9.855) MEASURED 10:06: "yes please" went to the image model as part of their idea - the line matched one yes-word, not two.
           // A line made only of yes-words, in any number ("yes please", "yeah go for it", "yes show me"), is their yes, not their idea.
           const _bareW = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i;
@@ -72456,7 +72460,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (_placeNow && !_placeTap) console.log("[TURN:IDEAS] her place left out - they did not tap it: \"" + _placeNow + "\"");
               if (_placeNow && _placeTap) {
                 let _atP = _sentNow.indexOf(" Show me 4"); if (_atP < 0) _atP = _sentNow.indexOf(" Be bold");
-                const _ps1 = " I want it to go " + _placeNow.replace(/[\s.]+$/, "") + ".";
+                // (v9.892) a size they tapped reads "I want it medium, down onto my chest." - a place, "I want it to go down my arm."
+                const _plc = _placeNow.replace(/[\s.]+$/, "");
+                const _ps1 = (/^(?:small|medium|large|big|bigger)\b/i.test(_plc) ? " I want it " : " I want it to go ") + _plc + ".";
                 _sentNow = _atP > 0 ? _sentNow.slice(0, _atP) + _ps1 + _sentNow.slice(_atP) : _sentNow + _ps1;
                 _oFrom += "+placement";
               }

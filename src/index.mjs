@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.892.0-2026-11-08-size-first";
+const BUILD = "aura-core-v9.893.0-2026-11-08-size-holds-and-widens";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -70800,7 +70800,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           _placeNow = _freshPhoto ? "" : String((await talkStateGet(env, me, ["placement"])).placement || "").trim();
           // A BARE "I want it to go" IS NO PLACE (v9.655): MEASURED 04:38 - her where_to was those words alone and the grid
           // was sent "I want it to go I want it to go." The phrase comes off with or without words after it; nothing left, nothing kept.
-          const _herPl = String((acted && acted.where_to) || "").trim().replace(/^i want it to go\b\s*/i, "").replace(/[.!\s]+$/, "");
+          // (v9.893) A BUTTON IS NOT THEM SAYING WHERE: MEASURED 11:44 (clock) - they tapped "Large, connecting it toward the shoulder", then
+          // tapped her raven idea; she wrote the size back in her own words ("going up toward the shoulder"), it replaced the size they
+          // tapped as one "she heard", and the picture went without it. On a page tap (her idea, Give me some ideas) her where_to is left out.
+          const _herPl = (_ideaTap || _ideasLine) ? "" : String((acted && acted.where_to) || "").trim().replace(/^i want it to go\b\s*/i, "").replace(/[.!\s]+$/, "");
           const _newPl = _dirTap ? _dirTap[1].trim() : _herPl;
           if (_freshPhoto || (_newPl && _newPl !== _placeNow)) {
             if (_newPl || _freshPhoto) _placeNow = _newPl || "";
@@ -73862,7 +73865,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       }
       // ══ A PHOTO TOO CLOSE TO GROW IN (v9.888, Aaron: "she should always read the photo to see if it needs extending") ═══ Her read of the
       // photo that just arrived says whether it is too close; the add-on sentence then asks for more of their body (config:frame:addon:close).
-      if (me && _freshPhoto && acted) {
+      // (v9.893) and again when they tap how big: MEASURED 11:44 (clock) - "Large, toward the shoulder" was drawn on the forearm photo as it
+      // was, because nothing asked for the rest of the arm. Her read on the size turn says whether that size reaches past the photo's edge.
+      if (me && (_freshPhoto || (/^\s*i want it to go\s+\S/i.test(String(said || "")) && String((typeof jobNow !== "undefined" && jobNow) || "") === "add")) && acted) {
         try { await talkStatePut(env, me, "addon_close", acted.extend ? String(acted.extend) : ""); if (acted.extend) console.log("[BRIEF] their photo is too close to grow in, as she read it - the canvas is widened: \"" + String(acted.extend) + "\"" + (me ? " · who=" + me : "")); } catch {}
       }
       let _ideasOut = null;

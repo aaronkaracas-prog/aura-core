@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.896.0-2026-11-08-the-box-stays-on-the-photo";
+const BUILD = "aura-core-v9.897.0-2026-11-08-imagine-first";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66708,7 +66708,11 @@ function talkReadAct(txt) {
                    styles: strList(o.choose.styles, 3, 48).map((x) => x.replace(/\*\*/g, "").replace(/[.\s]+$/, "")) }
                : null,
              // HER IDEAS AS PICTURE WORDS (2026-10-12, v9.584, Aaron): the same four, written for the picture.
-             directions: strList(o.directions, 4, 80).map((x) => x.replace(/^\s*i want it(?: to go)?\s+/i, "").replace(/[.\s]+$/, "")),
+             // (v9.897) MEASURED 15:43 (clock): "down past my wrist toward my hand, carrying the roots and knotwo" - the 80 characters were cut
+             // before "I want it to go" came off, mid-word, and the cut words went to the image model. Off first, then cut at a word.
+             directions: strList(o.directions, 4, 240).map((x) => { let s = x.replace(/^\s*i want it(?: to go)?\s+/i, "").replace(/[.\s]+$/, "");
+               if (s.length > 100) { s = s.slice(0, 100); const sp = s.lastIndexOf(" "); if (sp > 40) s = s.slice(0, sp); s = s.replace(/[\s,;:-]+$/, ""); }
+               return s; }),
              where_to: (typeof o.where_to === "string") ? o.where_to.trim().slice(0, 160) : "",
              // WHERE SHE TAKES THEM (v9.664): one of the places her world's purpose names - a short name, nothing else.
              go: (typeof o.go === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.go.trim())) ? o.go.trim().toLowerCase()
@@ -70440,7 +70444,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // ══ A TAPPED IDEA DRAWS IT (v9.885, 2026-11-07, Aaron: "options back to click ... just like placement") ═══ On their photo, before
       // anything is drawn, her idea buttons send "Show me: <idea>" - drawn at once as four versions of that idea, the same as a tapped place.
       const _ideaTap = !!_bodyPhoto && /^\s*show me:\s*\S/i.test(String(said || ""));
-      const _askIdeas = _ideasLine || _placeTap || _ideaTap;
+      // ══ IMAGINE IDEAS FOR ME (v9.897, 2026-11-08, Aaron: "when we just imagined add-ons it's always amazing ... step back to that
+      // direction") ═══ The wild card under her read of their photo: four bold add-ons from the proven sentence, no idea and no place in it -
+      // the picture finds where. The words are excluded from what they typed ("imagine ..." is a tap), so nothing else goes in.
+      const _wildTap = !!_bodyPhoto && /^\s*imagine ideas for me\.?\s*$/i.test(String(said || ""));
+      const _askIdeas = _ideasLine || _placeTap || _ideaTap || _wildTap;
       if (_askIdeas && _fixedWhy !== "more" && (act === "draw" || act === "change" || act === "onme")) {
         console.log("[TURN:IDEAS] they asked for ideas - she gives them, nothing drawn (her act was " + act + ")"); act = "none";
       }
@@ -70805,7 +70813,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // (v9.893) A BUTTON IS NOT THEM SAYING WHERE: MEASURED 11:44 (clock) - they tapped "Large, connecting it toward the shoulder", then
           // tapped her raven idea; she wrote the size back in her own words ("going up toward the shoulder"), it replaced the size they
           // tapped as one "she heard", and the picture went without it. On a page tap (her idea, Give me some ideas) her where_to is left out.
-          const _herPl = (_ideaTap || _ideasLine) ? "" : String((acted && acted.where_to) || "").trim().replace(/^i want it to go\b\s*/i, "").replace(/[.!\s]+$/, "");
+          const _herPl = (_ideaTap || _ideasLine || _wildTap) ? "" : String((acted && acted.where_to) || "").trim().replace(/^i want it to go\b\s*/i, "").replace(/[.!\s]+$/, "");
           const _newPl = _dirTap ? _dirTap[1].trim() : _herPl;
           if (_freshPhoto || (_newPl && _newPl !== _placeNow)) {
             if (_newPl || _freshPhoto) _placeNow = _newPl || "";

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.922.0-2026-11-09-clean-bottom-edge-one-orientation";
+const BUILD = "aura-core-v9.923.0-2026-11-09-roman-numbers-and-logo-above-the-words";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -125,7 +125,18 @@ async function inkitStamp(env, img) {
   const lw = Math.max(40, Math.round(W * 0.26)), lh = Math.max(1, Math.round(lg0.get_height() * lw / lg0.get_width()));
   const lg = photonResize(lg0, lw, lh, PhotonSampling.Lanczos3);
   // v9.773 (Aaron: "the inkit logo to the lower left as far as we can"): 3% in from the edges -> 1%.
-  const m = Math.max(2, Math.round(W * 0.01)), x = m, y = Math.max(0, H - lh - m);
+  const m = Math.max(2, Math.round(W * 0.01)), x = m;
+  let y = Math.max(0, H - lh - m);
+  // ══ NOT ON THE CARD'S WORDS (v9.923, 2026-11-09, Aaron: go) ═══ MEASURED 15:09 (img_ca8feaee0bd92afafd046, Snow Leopard I): on a card
+  // whose words the image model drew in a box at its foot, the logo went in the bottom-left corner on top of the box - over "SAME
+  // COMPOSITION, NEW BEAST." That copy is what the phone shows until the catalog card arrives. When the box is found, the logo sits just
+  // above it, still lower left.
+  try {
+    const px = img.get_raw_pixels();
+    const lum = (xx, yy) => { const o = (yy * W + xx) * 4; return (px[o] + px[o + 1] + px[o + 2]) / 3; };
+    const bx = _boxFind(lum, W, H);
+    if (bx && bx.top > H * 0.5 && bx.top - lh - m > 0) y = bx.top - lh - m;
+  } catch {}
   try { photonWatermark(img, lg, BigInt(x), BigInt(y)); } catch { photonWatermark(img, lg, x, y); }
   try { lg.free(); } catch {} try { lg0.free(); } catch {}
   return true;
@@ -62191,7 +62202,11 @@ async function premakeSetCopies(env, sheetId, cards) {
 // ══ A CARD'S NAME IS NOT ITS NUMBER (v9.921, 2026-11-09, Aaron: go) ═══ MEASURED 14:25 (prj_2f0280192fee4309): the sheet draws each title
 // with its number in front, the eyes read it as printed - "4. CIRCLE OF LIFE" - and the tattoo and its artist file were named "4. Circle of
 // Life". The number in front ("4. ", "4) ", "#4 - ") comes off wherever a printed title is read; the name itself is kept exactly.
-const cardTitleClean = (t) => String(t || "").replace(/^\s*#?\d{1,2}\s*[.):\-\u2013\u2014]\s*/, "").trim();
+// (v9.923, 2026-11-09, Aaron: go) MEASURED 15:10 (prj_930e8ba287b24d87): a change sheet numbered its titles the other way - "SNOW LEOPARD I"
+// to "SNOW LEOPARD VIII" - and the tattoo was named "Snow Leopard Iii". A Roman numeral I to VIII (a sheet has 8 cards) at the end of a printed
+// title is the card's number too, and comes off the same way; anything before it is kept exactly.
+const cardTitleClean = (t) => String(t || "").replace(/^\s*#?\d{1,2}\s*[.):\-\u2013\u2014]\s*/, "")
+  .replace(/\s+(?:VIII|VII|VI|V|IV|III|II|I)\s*$/, "").trim();
 const CARD_BOX_ASK = "This is the caption box from a tattoo design card. Its first line, in large bold capital letters, is the title; " +
   "the smaller words under it are not part of the title. Reply with only the title, exactly as printed, nothing else.";
 const CARD_TITLE_ASK = "This is a tattoo design card. The title is in the box with a thin black outline under the artwork: the first line in that box, " +

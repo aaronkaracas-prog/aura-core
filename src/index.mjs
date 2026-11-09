@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.903.0-2026-11-08-sheet-change-frees-card-name";
+const BUILD = "aura-core-v9.904.0-2026-11-08-cover-offer-held-typed-yes-draws";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69136,7 +69136,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             _fixedWhy = "heard_ready"; _fixedSay = (await _fx("letter_picked", "{list} - beautiful. Want me to imagine it?")).replace("{list}", _list);
             _heardOut = { go: true };
             console.log("[TURN:LETTER] add-on - they picked their lettering: " + _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") + " - kept, Imagine it shown" + (me ? " · who=" + me : ""));
-          } else if (!_newFlow && _bodyPhoto && opts && opts.heard_go && String(_ds.addon_go || "")) {
+          } else if (!_newFlow && _bodyPhoto && String(_ds.addon_go || "") && ((opts && opts.heard_go) ||
+                     // ══ A TYPED YES IS THE TAP (v9.904, 2026-11-08, Aaron: go) ═══ MEASURED 20:27: their words were held under her offer and
+                     // they typed "yes show me" instead of tapping Imagine it; she answered "Here it is" and nothing was drawn. A line that is only
+                     // a yes, while their words are held and nothing is drawn on their photo yet, goes the way the tap does.
+                     (String(_ds.addon_drawn || "") !== "1" && /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(_s.replace(/\[[^\]]*\]/g, " "))))) {
+            if (!(opts && opts.heard_go)) { try { console.log("[TURN:GO] \"" + _s.slice(0, 60) + "\" is a yes to the held Imagine it - drawn as the tap is" + (me ? " · who=" + me : "")); } catch {} }
             // ══ IMAGINE IT, ON THEIR PHOTO (v9.850) ═══ The add-on or cover-up they said yes to, from everything they told her before the yes,
             // with the lettering they settled. She is not called; the 8 are drawn on their photo as before.
             _addonGoWords = String(_ds.addon_go).slice(0, 600); _addonLetter = letterParse(_ds.letter);
@@ -71097,7 +71102,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // drawing (v9.850). Now her words decide it, not her act: on an add-on on their photo, before anything is drawn on it, a reply that offers
       // to show them (the same offer test the page's yes card uses) is held the same way - lettering first, else her words with Imagine it,
       // which draws from everything they typed. Not on the turn their photo arrives, not after they asked for ideas.
-      if (me && jobNow === "add" && refDesign && _bodyPhoto && act === "none" && !_heardOut && !_fixedWhy && acted && !_ideasGrid &&
+      // (v9.904, 2026-11-08, Aaron: go) MEASURED 20:27 (wrist cover-up): "Something small, like a swallow in flight" - she offered "Want me to
+      // show you one on your wrist?", nothing was held because this was add-on only, and on "yes show me" she answered "Here it is..." with
+      // nothing drawn. A cover-up on their photo is held the same way as an add-on.
+      if (me && (jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && act === "none" && !_heardOut && !_fixedWhy && acted && !_ideasGrid &&
           !(opts && (opts.ref || opts.inspire || opts.pick || opts.use || opts.own || opts.tile)) && !_askIdeas && _isOfferLine(acted.say)) {
         try {
           let _dy = false; try { _dy = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || "") === "1"; } catch {}

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.901.0-2026-11-08-change-on-two-pictures";
+const BUILD = "aura-core-v9.902.0-2026-11-08-new-work-knows-the-old";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66181,6 +66181,22 @@ async function makeArtistFiles(env, ctx) {
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:newwork")) || "").trim(); if (_k) _nw = _k; } catch {}
               // (v9.891) the new work keeps its colors too - the same line as the whole piece, added when the setting says nothing of color
               if (!/\bcolou?rs?\b/i.test(_nw)) _nw += " Keep every color exactly as it is in the tattoo - the black and grey stays black and grey, and any color stays that same color.";
+              // ══ THE NEW WORK KNOWS WHAT THE OLD TATTOO IS (v9.902, 2026-11-08, Aaron: go) ═══ MEASURED 17:31 (clock "Ship in Storm"): the new-work
+              // sheet drew the clock's ornate frame and the knot - their own ink. PROVEN by command 18:38 (img_mw8ni8wxfnks): the same two pictures
+              // with her own read of their photo after the first sentence - the frame was left out. Her read, as she said it when the photo
+              // arrived (talk state `ref`, the same photo), her opener ("That's a strong piece -") taken off. No read: the sentence as before.
+              if (jobNow === "add" && me) {
+                try {
+                  const _rs = talkParse((await talkStateGet(env, me, ["ref"])).ref) || null;
+                  let _hr = (_rs && _rs.her && (!refUrl || !_rs.url || String(_rs.url) === String(refUrl))) ? String(_rs.her) : "";
+                  _hr = _hr.replace(/\s+/g, " ").trim().replace(/^[^-\u2013\u2014.!?]{0,60}?\s[-\u2013\u2014]\s/, "").replace(/\byour\b/gi, "my").replace(/[\s.!]+$/, "").slice(0, 300);
+                  if (_hr) {
+                    const _hl = " My tattoo in the first picture is: " + _hr + ".";
+                    _nw = /^The first picture is my tattoo as it is today\./.test(_nw) ? _nw.replace(/^The first picture is my tattoo as it is today\./, (m) => m + _hl) : _hl.trim() + " " + _nw;
+                    try { console.log("[FILES] the new-work sheet is told what their tattoo is, in her words:" + _hl + (me ? " · who=" + me : "")); } catch {}
+                  }
+                } catch {}
+              }
               const _new = await _flat(_nw, refDesign, [mockUrl]);
               if (_new) {
                 _addSheets.push({ panel: "New work", asked: _name || "everything new", flat: _new.flat, id: _new.id,

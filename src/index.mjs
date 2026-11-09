@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.910.0-2026-11-09-get-inspired-pictures-checked-by-her-eyes";
+const BUILD = "aura-core-v9.911.0-2026-11-09-her-eyes-answer-no-only-to-a-miss";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -58920,13 +58920,17 @@ async function braveImages(env, query, count, world) {
 // 25000) - what is not answered by then stays. The model: `config:source:inspire_check:model` - EMPTY MEANS NO CHECK (the default eyes
 // model is too small to judge this; one is chosen by side-by-side test first). The two questions are settings:
 // `config:frame:inspire:check:world` and `config:frame:inspire:check:tattoos` ("____" is their words).
-const INSPIRE_CHECK_WORLD = "This picture came from a search for \"____\". Is it a clear picture of ____ itself? Answer yes or no.";
-const INSPIRE_CHECK_TATTOOS = "This picture came from a search for \"____\" tattoos. Is it a real tattoo of ____? Answer yes or no.";
-async function inspireCheck(env, items, words, world, model, budgetMs) {
+// NO ONLY TO A MISS (v9.911, 2026-11-09). MEASURED 10:39: "Is it a clear picture of Harley Davidson itself?" on five whole Harleys - Llama 4
+// Scout said no to four, Mistral Small to all five ("No. The picture shows a Harley-Davidson..."): asked to prove what it is, a model doubts.
+// Asked to turn down only what is plainly something else, everything else stands.
+const INSPIRE_CHECK_WORLD = "This picture came from a search for \"____\". Answer no only if it is mainly something else: a close-up of one part, a logo, a sign, text, a toy or model, or a different subject. Otherwise answer yes.";
+const INSPIRE_CHECK_TATTOOS = "This picture came from a search for \"____\" tattoos. Answer no only if it is not a real tattoo on someone, or it is a tattoo of something other than ____. Otherwise answer yes.";
+async function inspireCheck(env, items, words, world, model, budgetMs, askOver) {
   let ask = world ? INSPIRE_CHECK_WORLD : INSPIRE_CHECK_TATTOOS;
   try { const k = String((await env.AURA_KV.get(world ? "config:frame:inspire:check:world" : "config:frame:inspire:check:tattoos")) || "").trim(); if (k.includes("____")) ask = k; } catch {}
+  if (askOver && String(askOver).includes("____")) ask = String(askOver);
   ask = ask.split("____").join(String(words || "").trim());
-  const t0 = Date.now(); const out = new Array(items.length).fill(null); const said = new Array(items.length).fill("");
+  const t0 = Date.now(); const out = new Array(items.length).fill(null); const said = new Array(items.length).fill(""); const errs = {};
   let next = 0, tokens = 0;
   const one = async () => {
     while (next < items.length && Date.now() - t0 < budgetMs) {
@@ -58934,6 +58938,7 @@ async function inspireCheck(env, items, words, world, model, budgetMs) {
       try {
         const r = await Promise.race([new Promise((res) => setTimeout(() => res(null), Math.max(1000, budgetMs - (Date.now() - t0)))),
           seeMedia({ url: it.thumb || it.image, prompt: ask, max_tokens: 8, model }, env)]);
+        if (!r) errs.LATE = (errs.LATE || 0) + 1; else if (!r.ok) { const ek = String(r.error || "FAILED").slice(0, 80); errs[ek] = (errs[ek] || 0) + 1; }
         const a = String((r && r.ok && r.saw) || "").trim(); said[i] = a.slice(0, 40);
         if (r && r.tokens_in) tokens += Number(r.tokens_in) || 0;
         if (/^\W*yes\b/i.test(a)) out[i] = true; else if (/^\W*no\b/i.test(a)) out[i] = false;
@@ -58941,7 +58946,7 @@ async function inspireCheck(env, items, words, world, model, budgetMs) {
     }
   };
   await Promise.all(Array.from({ length: Math.min(10, items.length) }, one));
-  return { yes: out, said, ask, ms: Date.now() - t0, tokens_in: tokens };
+  return { yes: out, said, ask, ms: Date.now() - t0, tokens_in: tokens, errors: errs };
 }
 // One Cloudflare web search (AI Gateway). The provider is a dial, `config:inspire:search:provider` (ceramic | exa | linkup).
 async function cfWebSearch(env, query, provider, limit) {
@@ -75224,9 +75229,10 @@ export class PublicEntry extends WorkerEntrypoint {
         const models = (Array.isArray(b.models) ? b.models : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4);
         if (!models.length) return { ok: false, error: "NO_MODELS" };
         const n = Math.max(1, Math.min(100, Number(b.n) || 100)); const list = j.items.slice(0, n);
-        const runs = await Promise.all(models.map(async (m) => { const c = await inspireCheck(env, list, j.words || q, j.kind === "world", m, 60000);
+        // (v9.911) { ask } - a question to try on the same pictures ("____" is their words); a model that fails says why.
+        const runs = await Promise.all(models.map(async (m) => { const c = await inspireCheck(env, list, j.words || q, j.kind === "world", m, 25000, b.ask || null);
           return { model: m, ms: c.ms, tokens_in: c.tokens_in, ask: c.ask, yes: c.yes.filter((v) => v === true).length, no: c.yes.filter((v) => v === false).length,
-            none: c.yes.filter((v) => v === null).length, said: c.said }; }));
+            none: c.yes.filter((v) => v === null).length, errors: c.errors, said: c.said }; }));
         try { console.log("[INSPIRE] side by side on \"" + q + "\" (" + list.length + " pictures): " + runs.map((r) => r.model + " yes " + r.yes + " no " + r.no + " none " + r.none + " " + r.ms + "ms").join(" | ")); } catch {}
         return { ok: true, q, kind: j.kind, pictures: list.map((x) => ({ title: x.title, from: x.from, thumb: x.thumb || x.image })), runs };
       }

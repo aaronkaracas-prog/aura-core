@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.909.0-2026-11-09-the-world-searches-isolated";
+const BUILD = "aura-core-v9.910.0-2026-11-09-get-inspired-pictures-checked-by-her-eyes";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -58914,6 +58914,35 @@ async function braveImages(env, query, count, world) {
     thumb: (x.thumbnail && x.thumbnail.src) || null,
     host: (x.meta_url && x.meta_url.hostname) || x.source || null })) };
 }
+// ══ HER EYES CHECK WHAT CAME BACK (v9.910, 2026-11-09, Aaron: "she'll see all hundred that come back - get rid of the ones that are not
+// valid for what we want ... let's check them all"). Every picture of a search, before any is shown: its small preview and one yes-or-no
+// question. "no" is left out; a picture she could not answer stays. Ten at a time, `config:inspire:check_ms` for the whole lot (default
+// 25000) - what is not answered by then stays. The model: `config:source:inspire_check:model` - EMPTY MEANS NO CHECK (the default eyes
+// model is too small to judge this; one is chosen by side-by-side test first). The two questions are settings:
+// `config:frame:inspire:check:world` and `config:frame:inspire:check:tattoos` ("____" is their words).
+const INSPIRE_CHECK_WORLD = "This picture came from a search for \"____\". Is it a clear picture of ____ itself? Answer yes or no.";
+const INSPIRE_CHECK_TATTOOS = "This picture came from a search for \"____\" tattoos. Is it a real tattoo of ____? Answer yes or no.";
+async function inspireCheck(env, items, words, world, model, budgetMs) {
+  let ask = world ? INSPIRE_CHECK_WORLD : INSPIRE_CHECK_TATTOOS;
+  try { const k = String((await env.AURA_KV.get(world ? "config:frame:inspire:check:world" : "config:frame:inspire:check:tattoos")) || "").trim(); if (k.includes("____")) ask = k; } catch {}
+  ask = ask.split("____").join(String(words || "").trim());
+  const t0 = Date.now(); const out = new Array(items.length).fill(null); const said = new Array(items.length).fill("");
+  let next = 0, tokens = 0;
+  const one = async () => {
+    while (next < items.length && Date.now() - t0 < budgetMs) {
+      const i = next++; const it = items[i];
+      try {
+        const r = await Promise.race([new Promise((res) => setTimeout(() => res(null), Math.max(1000, budgetMs - (Date.now() - t0)))),
+          seeMedia({ url: it.thumb || it.image, prompt: ask, max_tokens: 8, model }, env)]);
+        const a = String((r && r.ok && r.saw) || "").trim(); said[i] = a.slice(0, 40);
+        if (r && r.tokens_in) tokens += Number(r.tokens_in) || 0;
+        if (/^\W*yes\b/i.test(a)) out[i] = true; else if (/^\W*no\b/i.test(a)) out[i] = false;
+      } catch {}
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(10, items.length) }, one));
+  return { yes: out, said, ask, ms: Date.now() - t0, tokens_in: tokens };
+}
 // One Cloudflare web search (AI Gateway). The provider is a dial, `config:inspire:search:provider` (ceramic | exa | linkup).
 async function cfWebSearch(env, query, provider, limit) {
   const gatewayId = String((await env.AURA_KV.get("config:gateway:name").catch(() => null)) || "default").trim();
@@ -75117,13 +75146,27 @@ export class PublicEntry extends WorkerEntrypoint {
                 ...(x.it.thumb ? { thumb: x.it.thumb } : {}) }); }
           }
           const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
-          try { await env.AURA_KV.put(_k, JSON.stringify({ items, kind: _world ? "world" : "tattoos" }), { expirationTtl: 3600 }); } catch {}
+          // (v9.910) every picture as it came, for the side-by-side test of eyes (action inspire_check_test)
+          try { await env.AURA_KV.put(_k + ":all", JSON.stringify({ items, kind: _world ? "world" : "tattoos", words: _kw }), { expirationTtl: 3600 }); } catch {}
+          let _shown = items, _chk = "";
+          let _cm = ""; try { _cm = String((await env.AURA_KV.get("config:source:inspire_check:model")) || "").trim(); } catch {}
+          if (_cm && items.length) {
+            let _cms = 25000; try { const v = parseInt(String((await env.AURA_KV.get("config:inspire:check_ms")) || ""), 10); if (Number.isFinite(v) && v > 0) _cms = v; } catch {}
+            const c = await inspireCheck(env, items, _kw, _world, _cm, _cms);
+            const kept = items.filter((x, i) => c.yes[i] !== false);
+            const gone = items.filter((x, i) => c.yes[i] === false);
+            const unanswered = c.yes.filter((v) => v === null).length;
+            if (kept.length) _shown = kept;
+            _chk = " · her eyes (" + _cm + "): kept " + kept.length + ", left out " + gone.length + ", not answered " + unanswered + " · " + c.ms + "ms" + (c.tokens_in ? " · " + c.tokens_in + " tokens in" : "");
+            try { console.log("[INSPIRE] her eyes checked " + items.length + " - asked \"" + c.ask + "\" - left out: " + gone.slice(0, 25).map((x) => "\"" + String(x.title || x.from || "").slice(0, 50) + "\"").join(", ") + (me ? " · who=" + me : "")); } catch {}
+          }
+          try { await env.AURA_KV.put(_k, JSON.stringify({ items: _shown, kind: _world ? "world" : "tattoos" }), { expirationTtl: 3600 }); } catch {}
           const _by = {}; items.forEach((x) => { _by[x.from] = (_by[x.from] || 0) + 1; });
           console.log("[INSPIRE] cloudflare search" + (_world ? " (the world)" : " (real tattoos)") + " - they said \"" + q + "\", searched \"" + (_world ? _wq : _kw) + "\" - each search results/kept: " + _counts.join(", ") +
             (_closest ? " (wider: their words one at a time)" : "") + (_subj.length ? " - subject: " + _subj.join(",") : " - no subject, vague words only") + " - sent " + items.length + " (" + Object.entries(_by).map(([k, v]) => k + " " + v).join(", ") + ") · " +
-            (Date.now() - _t0) + "ms · $" + _spend.toFixed(5) + " (no model)" + (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 240) : ""));
-          if (!items.length) return { ok: false, q, words: _kw, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };
-          return { ok: true, q, words: _kw, kind: _world ? "world" : "tattoos", closest: _closest, items, ms: Date.now() - _t0 };
+            (Date.now() - _t0) + "ms · $" + _spend.toFixed(5) + " (search)" + _chk + (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 240) : ""));
+          if (!_shown.length) return { ok: false, q, words: _kw, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };
+          return { ok: true, q, words: _kw, kind: _world ? "world" : "tattoos", closest: _closest, items: _shown, ms: Date.now() - _t0 };
         }
         // NOTHING IS SAVED (2026-10-24, Aaron: "we're not saving any of this stuff - all we're doing is discovery"): every search
         // is new. The list is held one hour only, so a tap can fetch the photo they chose.
@@ -75171,6 +75214,22 @@ export class PublicEntry extends WorkerEntrypoint {
       // search will go again") ═══ The photo they are looking at in Get Inspired is read once by the eyes - its style and what it shows -
       // and those words go back to the page, which runs the search again on them. Only a photo from that search's saved list.
       // Dials: config:frame:inspire:like (the question; empty = below), config:source:inspire_like:model (empty = the eyes' own model).
+      // ══ SIDE BY SIDE (v9.910): the same pictures of a search, as they came, through each eyes model named - nothing is left out, nothing
+      // shown; what each said, picture by picture. { q, models: [..] } - the models are named by whoever runs the test, never in this file.
+      if (action === "inspire_check_test") {
+        const q = String(b.q || "").replace(/\s+/g, " ").trim().slice(0, 160);
+        const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120) + ":all";
+        let j = null; try { j = JSON.parse((await env.AURA_KV.get(_k)) || "null"); } catch {}
+        if (!j || !Array.isArray(j.items) || !j.items.length) return { ok: false, error: "SEARCH_IT_FIRST" };
+        const models = (Array.isArray(b.models) ? b.models : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4);
+        if (!models.length) return { ok: false, error: "NO_MODELS" };
+        const n = Math.max(1, Math.min(100, Number(b.n) || 100)); const list = j.items.slice(0, n);
+        const runs = await Promise.all(models.map(async (m) => { const c = await inspireCheck(env, list, j.words || q, j.kind === "world", m, 60000);
+          return { model: m, ms: c.ms, tokens_in: c.tokens_in, ask: c.ask, yes: c.yes.filter((v) => v === true).length, no: c.yes.filter((v) => v === false).length,
+            none: c.yes.filter((v) => v === null).length, said: c.said }; }));
+        try { console.log("[INSPIRE] side by side on \"" + q + "\" (" + list.length + " pictures): " + runs.map((r) => r.model + " yes " + r.yes + " no " + r.no + " none " + r.none + " " + r.ms + "ms").join(" | ")); } catch {}
+        return { ok: true, q, kind: j.kind, pictures: list.map((x) => ({ title: x.title, from: x.from, thumb: x.thumb || x.image })), runs };
+      }
       if (action === "inspire_like") {
         const _t0 = Date.now();
         const q = String(b.q || "").replace(/\s+/g, " ").trim().slice(0, 160);

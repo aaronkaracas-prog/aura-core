@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.906.0-2026-11-09-more-like-this-keeps-long-subject";
+const BUILD = "aura-core-v9.907.0-2026-11-09-inspired-tattoos-or-the-world";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -72651,7 +72651,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (refUrl && me) {
                 const _rt0 = Date.now(); let _read = "";
                 try {
-                  const q = await proxyToAgent(env, "[FOR YOU, NOT THEM. They found this picture while looking for tattoo ideas and want tattoo designs made from it." +
+                  // (v9.907) A picture from the world has no tattoo in it - she says what is in it instead.
+                  let _ikw = false; try { _ikw = String((await talkStateGet(env, me, ["inspire_kind"])).inspire_kind || "") === "world"; } catch {}
+                  const q = await proxyToAgent(env, _ikw
+                    ? "[FOR YOU, NOT THEM. They found this picture while looking for ideas and want tattoo designs made from it. In one short sentence, say what is in it and what makes it stand out.]"
+                    : "[FOR YOU, NOT THEM. They found this picture while looking for tattoo ideas and want tattoo designs made from it." +
                     " In one short sentence, say what the tattoo in it is and what makes it stand out - the tattoo itself, not the person, their clothes or the room." +
                     " If there is more than one tattoo, the one that stands out most.]", false, me + "_side", refUrl, world);
                   let _sayTxt = ""; try { const _j = JSON.parse(String((q && q.reply) || "")); if (_j && typeof _j.say === "string") _sayTxt = _j.say; } catch {}
@@ -74956,6 +74960,11 @@ export class PublicEntry extends WorkerEntrypoint {
         const q = String(b.q || "").replace(/\s+/g, " ").trim().slice(0, 160);
         if (!q) return { ok: false, error: "NO_WORDS" };
         const _t0 = Date.now();
+        // ══ REAL TATTOOS OR THE WORLD (v9.907, 2026-11-09, Aaron: "inspiration does not have to come from tattoos people have done -
+        // inspiration comes from the whole world ... it has to be separate"). They choose on the page: "tattoos" is the search as it was;
+        // "world" is real pictures of anything - their words alone, no "tattoo" put on them, no tattoo rule on what is kept.
+        // Its places are a dial: `config:inspire:world_sources` (same shape as config:inspire:cf_sources).
+        const _world = String(b.kind || "") === "world";
         // WHERE WE LOOK (2026-10-24, Aaron): five sites, a dial - `config:inspire:sites`, a JSON list of domains.
         let sites = ["pinterest.com", "instagram.com", "tattoodo.com", "reddit.com", "tattoolife.com"];
         try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:sites")) || "null");
@@ -74985,6 +74994,12 @@ export class PublicEntry extends WorkerEntrypoint {
             { site: "deviantart.com", provider: "exa", variants: 1, only: "/art/", name: "DeviantArt" },
             { site: "tumblr.com", provider: "exa", variants: 1, only: "tumblr\\.com/[^/?#]+/\\d+|/post/\\d+", name: "Tumblr" }];
           try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && (x.site || x.provider === "brave")).slice(0, 6); } catch {}
+          if (_world) {
+            // The whole web's pictures and Pinterest's pins - the two that are not tattoo sites.
+            sources = [{ site: "", provider: "brave", variants: 1, only: "", name: "Brave" },
+                       { site: "pinterest.com/pin", provider: "exa", variants: 1, only: "/pin/", name: "Pinterest" }];
+            try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:world_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && (x.site || x.provider === "brave")).slice(0, 6); } catch {}
+          }
           // KEYWORDS (v9.749): MEASURED 15:46 - "Show me cat tattoos" found articles, "cat tattoo" found tattoos. Their talk words come out.
           const _TALK = new Set(["show","me","some","any","few","i","im","i'm","want","wanna","to","see","can","could","you","please","find","look",
             "looking","give","get","fun","cool","awesome","nice","great","really","ideas","idea","inspiration","designs","design","tattoos","tattoo",
@@ -74999,10 +75014,10 @@ export class PublicEntry extends WorkerEntrypoint {
           let _exaWords = "____ tattoo";
           try { const k = String((await env.AURA_KV.get("config:inspire:exa_words")) || "").trim(); if (k.includes("____")) _exaWords = k; } catch {}
           const _search = (src, words) => {
-            const qs = ((src.provider || "ceramic") === "exa" ? [_exaWords.replace("____", words)] : [words + " tattoo", words + " tattoo design", words + " tattoos"])
+            const qs = (_world ? [words] : (src.provider || "ceramic") === "exa" ? [_exaWords.replace("____", words)] : [words + " tattoo", words + " tattoo design", words + " tattoos"])
               .slice(0, Math.max(1, Math.min(3, Number(src.variants) || 1)));
             if (src.provider === "brave") { _spend += _COST.brave;
-              const bq = words + " tattoo";
+              const bq = _world ? words : words + " tattoo";
               return Promise.all([braveImages(env, bq, 50).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
             return Promise.all(qs.map((qq) => { _spend += _COST[src.provider] || 0;
               return cfWebSearch(env, qq + " site:" + src.site, src.provider || "ceramic", 10).then((r) => ({ ...r, q: qq }))
@@ -75027,7 +75042,7 @@ export class PublicEntry extends WorkerEntrypoint {
                 if (src.only && !new RegExp(src.only).test(u)) return;
                 // ONLY TATTOOS (v9.751, Aaron: "we're only interested in tattoo images"): the page has to say it is a tattoo - its address,
                 // its title or its own words. A page about something else is left out before its picture is ever fetched.
-                if (!/tattoo|\bink(ed)?\b/i.test(u + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) return;
+                if (!_world && !/tattoo|\bink(ed)?\b/i.test(u + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) return;
                 // (v9.753) the description too - MEASURED 17:22: Pinterest puts the subject in its tags, so 6 of 10 "tribal realism" pins whose
                 // titles did not say it were dropped.
                 if (!_onSubject(u.replace(/[-_/]+/g, " ") + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) return;
@@ -75071,13 +75086,13 @@ export class PublicEntry extends WorkerEntrypoint {
                 ...(x.it.thumb ? { thumb: x.it.thumb } : {}) }); }
           }
           const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
-          try { await env.AURA_KV.put(_k, JSON.stringify({ items }), { expirationTtl: 3600 }); } catch {}
+          try { await env.AURA_KV.put(_k, JSON.stringify({ items, kind: _world ? "world" : "tattoos" }), { expirationTtl: 3600 }); } catch {}
           const _by = {}; items.forEach((x) => { _by[x.from] = (_by[x.from] || 0) + 1; });
-          console.log("[INSPIRE] cloudflare search - they said \"" + q + "\", searched \"" + _kw + "\" - each search results/kept: " + _counts.join(", ") +
+          console.log("[INSPIRE] cloudflare search" + (_world ? " (the world)" : " (real tattoos)") + " - they said \"" + q + "\", searched \"" + _kw + "\" - each search results/kept: " + _counts.join(", ") +
             (_closest ? " (wider: their words one at a time)" : "") + (_subj.length ? " - subject: " + _subj.join(",") : " - no subject, vague words only") + " - sent " + items.length + " (" + Object.entries(_by).map(([k, v]) => k + " " + v).join(", ") + ") · " +
             (Date.now() - _t0) + "ms · $" + _spend.toFixed(5) + " (no model)" + (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 240) : ""));
           if (!items.length) return { ok: false, q, words: _kw, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };
-          return { ok: true, q, words: _kw, closest: _closest, items, ms: Date.now() - _t0 };
+          return { ok: true, q, words: _kw, kind: _world ? "world" : "tattoos", closest: _closest, items, ms: Date.now() - _t0 };
         }
         // NOTHING IS SAVED (2026-10-24, Aaron: "we're not saving any of this stuff - all we're doing is discovery"): every search
         // is new. The list is held one hour only, so a tap can fetch the photo they chose.
@@ -75130,13 +75145,18 @@ export class PublicEntry extends WorkerEntrypoint {
         const q = String(b.q || "").replace(/\s+/g, " ").trim().slice(0, 160);
         const url = String(b.url || "").trim();
         const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
-        let hit = null;
-        try { const j = JSON.parse((await env.AURA_KV.get(_k)) || "{}"); hit = (j.items || []).find((x) => x && x.image === url) || null; } catch {}
+        let hit = null, _lw = false;
+        try { const j = JSON.parse((await env.AURA_KV.get(_k)) || "{}"); hit = (j.items || []).find((x) => x && x.image === url) || null; _lw = j.kind === "world"; } catch {}
         if (!hit) return { ok: false, error: "NOT_LISTED" };
         let ask = "This is a photo of a real tattoo. Answer with one line only, in this shape: style | what it shows. The style is the tattoo style " +
           "(for example Neo-Traditional, Japanese, Fine-Line, Blackwork). What it shows is 2 to 6 plain words for its subject. For example: " +
           "Neo-Traditional | woman portrait in a crystal ball";
         try { const k2 = String((await env.AURA_KV.get("config:frame:inspire:like")) || "").trim(); if (k2) ask = k2; } catch {}
+        // (v9.907) A picture from the world is not a tattoo - its own question, the subject only: `config:frame:inspire:like:world`.
+        if (_lw) {
+          ask = "This is a photo. Answer with one line only: the main subject of this photo, in 2 to 4 plain words.";
+          try { const k3 = String((await env.AURA_KV.get("config:frame:inspire:like:world")) || "").trim(); if (k3) ask = k3; } catch {}
+        }
         let _nm = ""; try { _nm = String((await env.AURA_KV.get("config:source:inspire_like:model")) || "").trim(); } catch {}
         const _see = async (u) => Promise.race([new Promise((r) => setTimeout(() => r(null), 9000)),
           seeMedia({ url: u, prompt: ask, max_tokens: 60, ...(_nm ? { model: _nm } : {}) }, env)]).catch(() => null);
@@ -75144,11 +75164,12 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!(rd && rd.ok && rd.saw) && hit.thumb && hit.thumb !== url) rd = await _see(url);
         const raw = String((rd && rd.ok && rd.saw) || "").replace(/[*_`"]+/g, "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean)[0] || "";
         const parts = raw.split(/\s*\|\s*/).map((x) => x.replace(/^(style|what it shows|subject)\s*:\s*/i, "").replace(/[.\s]+$/, "").trim());
-        const style = parts[0] && parts[0].split(" ").length <= 4 && !/\b(cannot|can't|sorry|unable)\b/i.test(parts[0]) ? parts[0] : "";
+        const style = _lw ? "" : parts[0] && parts[0].split(" ").length <= 4 && !/\b(cannot|can't|sorry|unable)\b/i.test(parts[0]) ? parts[0] : "";
         // (v9.906, Aaron: go) MEASURED 08:53: "Portrait of a woman's face with elaborate headdress and jewelry" (10 words) was thrown away at 8,
         // and the search ran on "Blackwork" alone. A long subject still searches; a missing one does not.
-        const subject = parts[1] && parts[1].split(" ").length <= 12 ? parts[1] : "";
-        console.log("[INSPIRE] more like this - the eyes read \"" + raw.slice(0, 120) + "\" -> style \"" + style + "\" · subject \"" + subject + "\" · " + (Date.now() - _t0) + "ms" + (me ? " · who=" + me : ""));
+        const _sp = _lw ? parts[parts.length - 1] : parts[1];   // (v9.907) the world's answer is the subject alone
+        const subject = _sp && _sp.split(" ").length <= 12 && !/\b(cannot|can't|sorry|unable)\b/i.test(_sp) ? _sp : "";
+        console.log("[INSPIRE] more like this" + (_lw ? " (the world)" : "") + " - the eyes read \"" + raw.slice(0, 120) + "\" -> style \"" + style + "\" · subject \"" + subject + "\" · " + (Date.now() - _t0) + "ms" + (me ? " · who=" + me : ""));
         if (!style && !subject) return { ok: false, error: "NOT_READ" };
         return { ok: true, style, subject, words: [style, subject].filter(Boolean).join(" ").slice(0, 120), ms: Date.now() - _t0 };
       }
@@ -75159,8 +75180,10 @@ export class PublicEntry extends WorkerEntrypoint {
         const url = String(b.url || "").trim();
         const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
         let listed = false;
-        let _thumb = null;
-        try { const j = JSON.parse((await env.AURA_KV.get(_k)) || "{}"); const hit = (j.items || []).find((x) => x && x.image === url); listed = !!hit; _thumb = (hit && hit.thumb) || null; } catch {}
+        let _thumb = null, _tk = "";
+        try { const j = JSON.parse((await env.AURA_KV.get(_k)) || "{}"); const hit = (j.items || []).find((x) => x && x.image === url); listed = !!hit; _thumb = (hit && hit.thumb) || null; _tk = j.kind === "world" ? "world" : ""; } catch {}
+        // (v9.907) her read before the eight is told whether it is a tattoo or a picture from the world.
+        if (listed && me) { try { await talkStatePut(env, me, "inspire_kind", _tk); } catch {} }
         if (!listed || !/^https:\/\//i.test(url)) return { ok: false, error: "NOT_FROM_THE_SEARCH" };
         try {
           const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" }, redirect: "follow" });

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.898.0-2026-11-08-imagining-line";
+const BUILD = "aura-core-v9.899.0-2026-11-08-wild-is-wild";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67377,6 +67377,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
   // (v9.862) set on an add-on's bare yes before anything is drawn: her words wait until core knows whether this turn draws (see below)
   let _holdWords = false, _yesDraws = false, _heldHerSay = null;   // (v9.869) her own words on a held turn that draws
   let _placeTapHeld = false;   // (v9.877) the held turn was a tapped place - see where the held words go
+  let _wildHeld = false;   // (v9.899) the held turn was Imagine ideas for me - the fixed imagining line goes, not her say-back
   const _fwdDelta = onDelta ? (async (d) => {
     _rawAcc += d;
     if (_holdWords) return;
@@ -69770,7 +69771,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // dragon could grow. Tap one and I'll show it on your photo" stood over the drawing. Her words wait; the fixed imagining line goes.
             const _wildNow = /^\s*imagine ideas for me\.?\s*$/i.test(String(said || ""));
             if (_adr !== "1" && (_isYes || _yesWith || _placeTapNow || _wildNow)) {
-              _holdWords = true; _placeTapHeld = _placeTapNow;
+              _holdWords = true; _placeTapHeld = _placeTapNow; _wildHeld = _wildNow;
               console.log("[TURN:YES] add-on, nothing drawn yet - her words wait until this turn knows whether it draws" + (me ? " · who=" + me : ""));
             } else if (_adr === "1" && !(opts && (opts.pick || opts.use || opts.own || opts.tile || opts.name || opts.inspire || opts.lock))) {
               _holdWords = true;
@@ -71102,8 +71103,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // word and I'll imagine some ideas..." - asked as a "tell me", not a "?", so the trim kept it. On a tapped place her first sentence is
           // what she understood; everything after it is about the next step, and the drawing is that next step. Other yes-draws are unchanged.
           if (_pd && _placeTapHeld) { const _one = (_pd.match(/^.+?[.!](?=\s|$)/) || [_pd])[0].trim(); if (_one.length >= 12) _pd = _one; }
+          // (v9.899) MEASURED 16:50 (dragon): her say-back, pared, was "Four different directions ... tap one if it grabs you" over the drawing.
+          // On Imagine ideas for me nothing was said back - the fixed imagining line goes.
+          if (_wildHeld) _pd = "";
           if (_pd) acted.say = _pd;
-          console.log("[TURN:YES] while it is drawn: " + (_pd ? (_placeTapHeld ? "her first sentence (a tapped place)" : "her say-back, pared") : "the fixed line (her words were only a claim)") + " · hers: \"" + String(_heldHerSay || "").slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+          console.log("[TURN:YES] while it is drawn: " + (_wildHeld ? "the fixed imagining line (Imagine ideas for me) - " : "") + (_pd ? (_placeTapHeld ? "her first sentence (a tapped place)" : "her say-back, pared") : "the fixed line (her words were only a claim)") + " · hers: \"" + String(_heldHerSay || "").slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
         }
         // What the turn says now - the fixed drawing line, the lettering line, or her own words - is what shows; her raw stream only if nothing is set.
         let _out = String((acted && acted.say) || "");
@@ -72522,7 +72526,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // line asks for more of their body (config:frame:addon:close), before the skin and keep-it words. Nothing else changes.
               // (v9.889, Aaron: "unless we tell the image model expand this up or down, right or left") the line names which way, in her words
               let _closeP = ""; try { _closeP = String((await talkStateGet(env, me, ["addon_close"])).addon_close || "").trim(); } catch {}
-              if (_closeP && !_boxE) {
+              // (v9.899) MEASURED 16:50: Imagine ideas for me went out with her read of the photo as a place ("zoom out to show more of my upper
+              // arm, open skin below the dragon toward the elbow and above toward the neck") - the wild card has no idea and no place in it.
+              const _wildNoClose = /^\s*imagine ideas for me\.?\s*$/i.test(String(said || ""));
+              if (_wildNoClose && _closeP) console.log("[TURN:IDEAS] Imagine ideas for me - her close-up line left out: \"" + _closeP.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
+              if (_closeP && !_boxE && !_wildNoClose) {
                 const _dirC = (/^(1|yes|true)$/i.test(_closeP) ? "my body around it" : _closeP).replace(/[\s.]+$/, "");
                 let _cl = "My photo is too close to fit the new work - zoom out to show more of ____, the way my body really is, so there is room - never shrink, move or redraw my existing tattoo to make space.";
                 try { const _k = String((await env.AURA_KV.get("config:frame:addon:close")) || "").trim(); if (_k.includes("____")) _cl = _k; } catch {}

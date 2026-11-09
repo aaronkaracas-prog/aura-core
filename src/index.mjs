@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.905.0-2026-11-09-inspire-more-like-this";
+const BUILD = "aura-core-v9.906.0-2026-11-09-more-like-this-keeps-long-subject";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -75145,7 +75145,9 @@ export class PublicEntry extends WorkerEntrypoint {
         const raw = String((rd && rd.ok && rd.saw) || "").replace(/[*_`"]+/g, "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean)[0] || "";
         const parts = raw.split(/\s*\|\s*/).map((x) => x.replace(/^(style|what it shows|subject)\s*:\s*/i, "").replace(/[.\s]+$/, "").trim());
         const style = parts[0] && parts[0].split(" ").length <= 4 && !/\b(cannot|can't|sorry|unable)\b/i.test(parts[0]) ? parts[0] : "";
-        const subject = parts[1] && parts[1].split(" ").length <= 8 ? parts[1] : "";
+        // (v9.906, Aaron: go) MEASURED 08:53: "Portrait of a woman's face with elaborate headdress and jewelry" (10 words) was thrown away at 8,
+        // and the search ran on "Blackwork" alone. A long subject still searches; a missing one does not.
+        const subject = parts[1] && parts[1].split(" ").length <= 12 ? parts[1] : "";
         console.log("[INSPIRE] more like this - the eyes read \"" + raw.slice(0, 120) + "\" -> style \"" + style + "\" · subject \"" + subject + "\" · " + (Date.now() - _t0) + "ms" + (me ? " · who=" + me : ""));
         if (!style && !subject) return { ok: false, error: "NOT_READ" };
         return { ok: true, style, subject, words: [style, subject].filter(Boolean).join(" ").slice(0, 120), ms: Date.now() - _t0 };

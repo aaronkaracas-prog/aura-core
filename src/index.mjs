@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.915.0-2026-11-09-real-tattoos-on-skin-and-designs";
+const BUILD = "aura-core-v9.916.0-2026-11-09-saved-inspiration-can-be-worked-on";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -75321,6 +75321,11 @@ export class PublicEntry extends WorkerEntrypoint {
         let listed = false;
         let _thumb = null, _tk = "";
         try { const j = JSON.parse((await env.AURA_KV.get(_k)) || "{}"); const hit = (j.items || []).find((x) => x && x.image === url); listed = !!hit; _thumb = (hit && hit.thumb) || null; _tk = j.kind === "world" ? "world" : ""; } catch {}
+        // SAVED INSPIRATION CAN BE WORKED ON (v9.916, 2026-11-09, Aaron: "it's no difference if they've saved it ... prompt them the same way").
+        // A search's list lasts an hour; a picture they hearted is theirs to open any time - one of their own saved pictures is taken too.
+        if (!listed && me) { try { const fl = talkParse((await talkStateGet(env, me, ["favorites"])).favorites) || [];
+          const fv = Array.isArray(fl) ? fl.find((x) => x && x.url === url && x.kind === "inspiration") : null;
+          if (fv) { listed = true; _tk = fv.world ? "world" : ""; } } catch {} }
         // (v9.907) her read before the eight is told whether it is a tattoo or a picture from the world.
         if (listed && me) { try { await talkStatePut(env, me, "inspire_kind", _tk); } catch {} }
         if (!listed || !/^https:\/\//i.test(url)) return { ok: false, error: "NOT_FROM_THE_SEARCH" };
@@ -75436,7 +75441,7 @@ export class PublicEntry extends WorkerEntrypoint {
           if (on) list.unshift({ url, label: _lab.slice(0, 300), ...(_addonFav ? { addon: true } : {}),
             kind: it.kind ? String(it.kind).slice(0, 120) : null,
             category: it.category ? String(it.category).slice(0, 120) : null,
-            trend: !!it.trend, ...(q ? { q } : {}),
+            trend: !!it.trend, ...(q ? { q } : {}), ...(it.world ? { world: true } : {}),   // (v9.916) a picture saved from The World
             ...(/^https:\/\//i.test(String(it.from || "")) ? { from: String(it.from).slice(0, 300) } : {}),
             // What the design is, from the card the chat model wrote (v9.626) - for its "i".
             ...(it.about ? { about: String(it.about).slice(0, 800) } : {}),

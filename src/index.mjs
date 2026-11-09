@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.907.0-2026-11-09-inspired-tattoos-or-the-world";
+const BUILD = "aura-core-v9.908.0-2026-11-09-the-world-is-brave-in-its-own-order";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -58880,7 +58880,7 @@ async function pagePicture(url) {
 // images"). Google's own image API is closed to new customers and ends 2027-01-01; Brave's image search is the legitimate "Images tab" -
 // a grid of pictures from its own index of the web. Looked at by hand 20:28 on search.brave.com: "realistic tattoos" gave single, close
 // tattoo photos (mostly boredpanda.com). Key: `secret:brave_search`. $5 per 1,000 searches. No model.
-async function braveImages(env, query, count) {
+async function braveImages(env, query, count, world) {
   const key = await getSecret(env, "brave_search");
   if (!key) return { ok: false, error: "NO_BRAVE_KEY - secret:brave_search is empty" };
   const u = "https://api.search.brave.com/res/v1/images/search?q=" + encodeURIComponent(String(query).slice(0, 400)) +
@@ -58899,6 +58899,13 @@ async function braveImages(env, query, count) {
   let _skip = ["amazon.", "etsy.com", "ebay.", "stock.adobe.com", "shutterstock.com", "istockphoto.com", "dreamstime.com", "alamy.com",
                "freepik.com", "vecteezy.com", "123rf.com", "depositphotos.com", "gettyimages."];
   try { const k = String((await env.AURA_KV.get("config:inspire:skip_sites")) || "").trim(); if (k) _skip = k.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean); } catch {}
+  // THE WORLD KEEPS STOCK AND ART SITES (v9.908, 2026-11-09, Aaron: go). MEASURED 09:38 on search.brave.com - "dragon": the best pictures
+  // were Vecteezy, Dreamstime, Canva and Pixabay, the very sites the tattoo list drops. Only shops are left out of the world:
+  // `config:inspire:world_skip_sites` (comma-separated, replaces this one).
+  if (world) {
+    _skip = ["amazon.", "etsy.com", "ebay."];
+    try { const k = String((await env.AURA_KV.get("config:inspire:world_skip_sites")) || "").trim(); if (k) _skip = k.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean); } catch {}
+  }
   const _shop = (x) => { const h = String((x.meta_url && x.meta_url.hostname) || x.source || "").toLowerCase().replace(/^www\./, "");
     return _skip.some((d) => h === d || h.startsWith(d) || h.endsWith("." + d) || (d.endsWith(".") && h.includes(d))); };
   return { ok: true, items: (Array.isArray(j.results) ? j.results : []).filter((x) => !_cover(x) && !_shop(x)).map((x) => ({
@@ -74995,9 +75002,10 @@ export class PublicEntry extends WorkerEntrypoint {
             { site: "tumblr.com", provider: "exa", variants: 1, only: "tumblr\\.com/[^/?#]+/\\d+|/post/\\d+", name: "Tumblr" }];
           try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && (x.site || x.provider === "brave")).slice(0, 6); } catch {}
           if (_world) {
-            // The whole web's pictures and Pinterest's pins - the two that are not tattoo sites.
-            sources = [{ site: "", provider: "brave", variants: 1, only: "", name: "Brave" },
-                       { site: "pinterest.com/pin", provider: "exa", variants: 1, only: "/pin/", name: "Pinterest" }];
+            // BRAVE ALONE, IN ITS OWN ORDER (v9.908, 2026-11-09, Aaron: go). MEASURED 09:32 - "1958 Corvette" and "dragons": the paint-chip
+            // charts, the colour-code guide and the dragon size chart all came from Pinterest, found by the words on the pin, not the picture;
+            // and one-from-each-in-turn put Pinterest's worst beside Brave's best. Brave's own Images page gave whole cars and finished dragons.
+            sources = [{ site: "", provider: "brave", variants: 1, only: "", name: "Brave" }];
             try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:world_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && (x.site || x.provider === "brave")).slice(0, 6); } catch {}
           }
           // KEYWORDS (v9.749): MEASURED 15:46 - "Show me cat tattoos" found articles, "cat tattoo" found tattoos. Their talk words come out.
@@ -75018,7 +75026,7 @@ export class PublicEntry extends WorkerEntrypoint {
               .slice(0, Math.max(1, Math.min(3, Number(src.variants) || 1)));
             if (src.provider === "brave") { _spend += _COST.brave;
               const bq = _world ? words : words + " tattoo";
-              return Promise.all([braveImages(env, bq, 50).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
+              return Promise.all([braveImages(env, bq, _world ? 100 : 50, _world).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
             return Promise.all(qs.map((qq) => { _spend += _COST[src.provider] || 0;
               return cfWebSearch(env, qq + " site:" + src.site, src.provider || "ceramic", 10).then((r) => ({ ...r, q: qq }))
                 .catch((e) => ({ ok: false, error: String((e && e.message) || e), q: qq })); }));
@@ -75057,7 +75065,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // EVERYTHING THAT PASSED (v9.758, MEASURED 21:36 - "new school": 34 passed, 24 sent, 10 thrown away after being found and paid
           // for; Aaron: "let's move up the number then the user can decide how far it wants to keep going"). Brave is asked for 50 (the
           // same $0.005 a search); every picture that passes goes back, up to 150, and "Show more" walks through them.
-          const _pics = (list) => Promise.all(list.slice(0, 60).map(async (it) => {
+          const _pics = (list) => Promise.all(list.slice(0, _world ? 100 : 60).map(async (it) => {   // (v9.908) the world's 100 Brave pictures carry their own image - none is fetched
             let img = it.image && !_JUNKPIC.test(it.image) ? it.image : null, about = null, title2 = null;
             if (!img) { const p = await pagePicture(it.url); if (p.image && !_JUNKPIC.test(p.image)) img = p.image; about = p.about; title2 = p.title; }
             return img ? { it, img, about, title2 } : null; })).then((a) => a.filter(Boolean));

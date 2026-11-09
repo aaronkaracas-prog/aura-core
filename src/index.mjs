@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.921.0-2026-11-09-card-names-and-clean-edges";
+const BUILD = "aura-core-v9.922.0-2026-11-09-clean-bottom-edge-one-orientation";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -60825,8 +60825,14 @@ function _innerFrame(lum, x0, x1, top, bot) {
   { let on = false; for (let x = x0; x < x0 + mx; x++) { if (colDark(x) > 0.7) { L = x + 1; on = true; } else if (on) break; } }
   { let on = false; for (let x = x1 - 1; x >= x1 - mx; x--) { if (colDark(x) > 0.7) { R = x; on = true; } else if (on) break; } }
   { let on = false; for (let y = top; y < top + my; y++) { if (rowDark(y) > 0.6) { T = y + 1; on = true; } else if (on) break; } }
+  // (v9.922, 2026-11-09, Aaron: go) THE BOTTOM EDGE TOO. MEASURED 14:51 (img_c11fd53e851d9c3e95eed, Bamboo Portrait): the art's last row was
+  // grey across 95% of it (about 175) - the soft edge of the words box's top line - printed as a line under the colour page and made the
+  // design measure 605 wide instead of 522, which turned its page sideways. Only the few rows just above the box are looked at, so art
+  // that reaches down to it is never cut into.
+  let B = bot;
+  { let on = false; for (let y = bot - 1; y >= Math.max(top, bot - 6); y--) { if (rowDark(y) > 0.6) { B = y; on = true; } else if (on) break; } }
   const pad = 3;
-  return { x0: L > x0 ? L + pad : x0, x1: R < x1 ? R - pad : x1, top: T > top ? T + pad : top };
+  return { x0: L > x0 ? L + pad : x0, x1: R < x1 ? R - pad : x1, top: T > top ? T + pad : top, bot: B < bot ? Math.max(top + 1, B - pad) : bot };
 }
 
 // ══ CUT EVERY CARD OFF A SHEET, HOWEVER MANY (v9.674, 2026-10-18, Aaron) ═══════════════════════════════
@@ -60971,7 +60977,7 @@ async function cutAllCards(env, url, copts) {
           artBot = _bt;
           // the card's own outline is a thin frame just inside its edge - the design is cut from inside it, so no line travels with it
           const fr = _innerFrame(lum, x0, x1, top, artBot);
-          ax0 = fr.x0; ax1 = fr.x1; aTop = fr.top;
+          ax0 = fr.x0; ax1 = fr.x1; aTop = fr.top; artBot = fr.bot;
         }
       }
       if (artBot > aTop) {
@@ -61101,8 +61107,9 @@ function printLayout(pB64, pIn, pLong, opts) {
         // ONE PAGE, THE WHOLE DESIGN (v9.662, 2026-10-18, Aaron): the artist sizes it in their own stencil app; the page holds
         // the whole piece as big as the paper allows, portrait or landscape, whichever is bigger.
         let _fitLand = null;
+        // (v9.922) a caller may name the page's way round (opts.land) so every page of one tattoo turns the same way
         if (opts.fit) { const _pt = Math.min(9.98, 7.48 * H / W), _ls = Math.min(7.48, 9.98 * H / W);
-                        _fitLand = _ls > _pt + 0.01; pIn = Math.max(_pt, _ls); }
+                        _fitLand = typeof opts.land === "boolean" ? opts.land : _ls > _pt + 0.01; pIn = _fitLand ? _ls : _pt; }
         // VECTOR FIRST: the line art traced to outlines prints sharp at any height, so the pixel
         // ceiling below no longer applies. If tracing fails, everything below runs as it always has.
         if (opts.trace !== false) try {
@@ -61266,13 +61273,19 @@ async function artistPdf(env, o) {
       x1 = Math.max(0, x1 - pad); y1 = Math.max(0, y1 - pad); x2 = Math.min(W - 1, x2 + pad); y2 = Math.min(H - 1, y2 + pad);
       const iw = x2 - x1 + 1, ih = y2 - y1 + 1;
       const _pt = Math.min(9.98, 7.48 * ih / iw), _ls = Math.min(7.48, 9.98 * ih / iw);
-      _boxes[url] = { fx: x1 / W, fy: y1 / H, fw: iw / W, fh: ih / H, tall: Math.max(_pt, _ls), wide: Math.max(_pt, _ls) * iw / ih, land: _ls > _pt + 0.01 };
+      _boxes[url] = { fx: x1 / W, fy: y1 / H, fw: iw / W, fh: ih / H, r: ih / iw, tall: Math.max(_pt, _ls), wide: Math.max(_pt, _ls) * iw / ih, land: _ls > _pt + 0.01 };
       return _boxes[url];
     } catch (e) { try { console.log("[ARTIST-PDF] could not find the ink of " + id + ": " + String(e?.message ?? e).slice(0, 120)); } catch {} return null; }
   };
-  const _byAddress = async (url, mirror) => {
+  // ══ ONE WAY ROUND FOR EVERY PAGE (v9.922, 2026-11-09, Aaron: go) ═══ MEASURED 14:52 (Bamboo Portrait, doc_mw9uw9tydcy2): pages 3, 4, 6,
+  // 7, 9 came out sideways and the shading guide (5, 8) upright - each stencil is the image model's own drawing, measured on its own, and
+  // a near-square design tips either way on a hair's difference. The way round is decided once per tattoo, from the colour design's own
+  // shape, and every page - linework, shading, realism, mirrored - is fitted that way round.
+  const _fitWay = (B, land) => { const tall = land ? Math.min(7.48, 9.98 * B.r) : Math.min(9.98, 7.48 * B.r); return { ...B, land, tall, wide: tall / B.r }; };
+  const _byAddress = async (url, mirror, land) => {
     _boxTried++;
-    const B = await _inkBox(url);
+    let B = await _inkBox(url);
+    if (B && typeof land === "boolean") B = _fitWay(B, land);
     if (!B) return { html: '<div class="art" style="height:10in"><img style="' + (mirror ? "transform:scaleX(-1);" : "") + 'max-height:10in;max-width:7.5in;width:auto;height:auto" src="' + esc(url) + '"></div>', land: false };
     _boxed++;
     const iw = B.wide / B.fw, ih = B.tall / B.fh;
@@ -61297,6 +61310,10 @@ async function artistPdf(env, o) {
     const laid = {};
     // (v9.920) the ink of every picture page is found first, before the linework is traced and held
     for (const it of items) if (!it.trace) await _inkBox(it.url);
+    // (v9.922) this tattoo's way round: the colour design's shape; with no colour design, the first page that was measured, else the linework's
+    let _pLand = null;
+    { const _cb = pn.colour ? _boxes[pn.colour] : null; if (_cb) _pLand = _cb.land;
+      else for (const it of items) { const _b = !it.trace ? _boxes[it.url] : null; if (_b) { _pLand = _b.land; break; } } }
     for (const it of items) {
       // ══ THE PICTURES GO BY ADDRESS, NOT INSIDE THE PAGE (v9.718, 2026-10-22, Aaron: "the artist files are getting hung up still") ══
       // MEASURED 12:54 (pta_8c4f4cd6f9f7f3db): with only the linework traced (1,110,954 chars at 12:54:17), the job was still killed
@@ -61305,7 +61322,7 @@ async function artistPdf(env, o) {
       // realism map now go in as their own address: the browser fetches them itself and nothing of them is held here. One page each,
       // fitted to the paper, the mirrored one flipped by the page. Only the traced linework is laid out here.
       if (!it.trace) {
-        const start = page, _bx = await _byAddress(it.url, !!it.mirror);
+        const start = page, _bx = await _byAddress(it.url, !!it.mirror, _pLand == null ? undefined : _pLand);
         body += _bx.html;
         page++;
         if (!it.colour && _tall == null) _tall = Number(pn.inches) || null;
@@ -61317,10 +61334,12 @@ async function artistPdf(env, o) {
       if (!L) {
         const b64 = await bytesOf(it.url);
         if (!b64) { guide.push([(pn.name ? pn.name + " - " : "") + it.label, "not available"]); continue; }
-        try { L = printLayout(b64, pn.inches, !!pn.long, it.colour ? { trace: false, jpeg: true, fit: true } : (it.trace ? { fit: true, vecMax: _vMaxA } : { trace: false, fit: true })); }
+        const _way = _pLand == null ? {} : { land: _pLand };
+        try { L = printLayout(b64, pn.inches, !!pn.long, it.colour ? { trace: false, jpeg: true, fit: true, ..._way } : (it.trace ? { fit: true, vecMax: _vMaxA, ..._way } : { trace: false, fit: true, ..._way })); }
         catch (e) { guide.push([(pn.name ? pn.name + " - " : "") + it.label, "could not be laid out"]); continue; }
         if (L.pVec) { L.gid = "a" + (vecN++); defs += '<g id="' + L.gid + '">' + L.pVec + "</g>"; anyVec = true; }
         laid[it.url] = L;
+        if (_pLand == null) _pLand = L.pOrient === "landscape";   // (v9.922) nothing measured before it - the pages after it follow it
       }
       // ══ TOO BUSY TO TRACE: BY ADDRESS, LIKE THE SHADING GUIDE (v9.775, 2026-10-31) ═══════════════════════════════════════════
       // MEASURED 08:33-08:36 (pta_ed8bd7cc93dfd9b7, Samurai Tiger with Dragon and Peonies): the linework traced to 1,837,195 characters,
@@ -61329,7 +61348,7 @@ async function artistPdf(env, o) {
       // address, exactly as the shading guide and the colour design do (v9.718): the browser fetches it, nothing of it is held here.
       if (it.trace && L && !L.pVec && !it.colour) {
         L.pSlices = [];   // its pixel pages are not used - let them go
-        const start = page, _bx = await _byAddress(it.url, !!it.mirror);
+        const start = page, _bx = await _byAddress(it.url, !!it.mirror, _pLand == null ? undefined : _pLand);
         body += _bx.html;
         page++;
         if (!first) first = L;

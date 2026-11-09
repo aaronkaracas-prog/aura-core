@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.902.0-2026-11-08-new-work-knows-the-old";
+const BUILD = "aura-core-v9.903.0-2026-11-08-sheet-change-frees-card-name";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -73785,6 +73785,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                        // EVOLVE ONCE (v9.766, 2026-10-27, Aaron: "they cannot keep evolving that image"): a set of 8 new takes on a design
                        // is marked, so a tattoo reopened from My Tattoos knows it was already evolved and does not offer it again.
                        ...(drew.possibilities ? { poss: true } : {}) }] : []) ],
+              // ══ THE NAME FOLLOWS THE CHANGE ON A SHEET TOO (v9.903, 2026-11-08, Aaron: go) ═══ MEASURED 19:45: the Ocean Rise card was
+              // fine-tuned into an orange koi with a red sun; the change came back as a sheet of 8, they locked in THE RISING SUN, and the
+              // project kept "Ocean Rise" - "kept the card's printed name: Ocean Rise - her name not used: The Rising Sun". The v9.884 rule
+              // (a changed card no longer names it) only fired on a single picture. A new sheet drawn on the tattoo now counts as a change
+              // too; a pick off a card still names it.
+              ...((drew && drew.image && !drew.failed && !drew.for_the_artist && !drew.on_me && Array.isArray(drew.cards8) && drew.cards8.length &&
+                   !(drew.card && drew.card.title)) ? { card_changed: true } : {}),
               // Named from its first picture - the words it was drawn from, up to the first comma.
               // A catalogue pick is named after the design they chose ("Micro-Real Lion").
               // Her brief's subject when she has one ("geisha with hannya mask") - the words a picture

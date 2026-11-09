@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.899.0-2026-11-08-wild-is-wild";
+const BUILD = "aura-core-v9.900.0-2026-11-08-cut-lets-go";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -60794,11 +60794,13 @@ async function cutAllCards(env, url, copts) {
   const _ck = (_art ? "cutall5:" : "cutall3:") + id;
   const was = await env.AURA_KV.get(_ck).catch(() => null);
   if (was) { try { return JSON.parse(was); } catch {} }
-  const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
+  let b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
   if (!b64) return { ok: false, error: "picture not found: " + id };
   const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+  // (v9.900) the sheet's text is let go once it is decoded - see "LET GO AS IT GOES" below
+  b64 = null;
   const W = im.get_width(), H = im.get_height();
-  const px = im.get_raw_pixels();
+  let px = im.get_raw_pixels();
   try { im.free(); } catch {}
   const lum = (x, y) => { const o = (y * W + x) * 4; return (px[o] + px[o + 1] + px[o + 2]) / 3; };
   const runs = (flags, minLen, maxGap) => {
@@ -60951,10 +60953,14 @@ async function cutAllCards(env, url, copts) {
         }
       }
     }
-    _allPuts.push(..._puts);
+    // ══ LET GO AS IT GOES (v9.900, 2026-11-08, Aaron: go) ═══ MEASURED 17:22, 17:26, 17:30, 17:35 (and 10:02, 10:05, 10:31, 16:38): "Worker
+    // exceeded memory limit" about 20s after every add-on sheet drawn in a job - after the turn had answered, so her memory writes for that
+    // turn died with it. The whole sheet's pixels (2304x3456, ~32 MB) stayed held to the end, and all four cards' saved text with them until
+    // one store at the end. Each card is now stored as it is cut (its own pieces side by side), and the sheet's pixels go once the last is cut.
+    await Promise.all(_puts);
     cards.push(card);
   }
-  // The stores run side by side (v9.708) instead of each card waiting for the one before.
+  px = null;
   await Promise.all(_allPuts);
   const out = { ok: true, from: id, sheet: W + "x" + H, columns: cols.length, count: cards.length, cards };
   await env.AURA_KV.put(_ck, JSON.stringify(out)).catch(() => {});
@@ -75460,7 +75466,9 @@ export class PublicEntry extends WorkerEntrypoint {
             // while our code kept running and delivered at 17:01:49 - that time it came. If the code is ever stopped too, nothing
             // would arrive and the page would wait to the 14-minute end. Every 10s the job's own status is read; once it has
             // ended, the answer gets `config:talk:orphan_ms` (default 120000) to arrive, then the stuck line goes instead.
-            let _jobEnded = 0, _lastJobCheck = 0, _orphanMs = 120000;
+            // (v9.900) MEASURED 17:25:27, 17:28:27, 17:34:33: "jsrpc ERROR" 0.3s after every "runs as job" - the first status ask came before
+            // the job could answer. The first ask now waits the same 10s as every one after it.
+            let _jobEnded = 0, _lastJobCheck = Date.now(), _orphanMs = 120000;
             try { const _ov = parseInt(String((await env.AURA_KV.get("config:talk:orphan_ms")) || ""), 10); if (Number.isFinite(_ov) && _ov >= 10000) _orphanMs = _ov; } catch {}
             while (!_gone && Date.now() - t0 < 14 * 60000) {
               if (!_jobEnded && Date.now() - _lastJobCheck > 10000) {

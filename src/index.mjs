@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.908.0-2026-11-09-the-world-is-brave-in-its-own-order";
+const BUILD = "aura-core-v9.909.0-2026-11-09-the-world-searches-isolated";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -75042,24 +75042,41 @@ export class PublicEntry extends WorkerEntrypoint {
             const named = sources.find((s2) => s2.site && s2.name && h === String(s2.site).split("/")[0].replace(/^www\./, ""));
             if (named) return named.name; if (/(^|\.)pinterest\./.test(h)) return "Pinterest"; return h; };
           const _seen = new Set();
+          // REPEATS BY THE PICTURE (v9.909, 2026-11-09, Aaron: "if there's 100 we'll keep a 100 ... remove duplicate stuff"). MEASURED 09:44-09:45:
+          // Brave gave 96 dragons and 48 Corvettes, 20 and 18 were kept - a repeat was told by its web page, so a page with five different photos
+          // kept one. A picture Brave hands back is told by the picture itself; a page with no picture of its own still by its page.
+          // Each drop is counted by its reason, in the log.
           const _gather = (src, res) => { const out = [];
             res.forEach((x) => {
               if (!x.ok) { _bad.push(src.name + ": " + x.error); return; }
-              let n = 0;
-              x.items.forEach((it) => { const u = String(it.url || ""); if (!u || _seen.has(u)) return;
-                if (src.only && !new RegExp(src.only).test(u)) return;
+              let n = 0; const _why = { repeat: 0, wrong_page: 0, not_tattoo: 0, off_subject: 0, no_link: 0 };
+              x.items.forEach((it) => { const u = String(it.url || ""); const _key = it.image ? "img:" + it.image : u;
+                if (!u) { _why.no_link++; return; } if (_seen.has(_key)) { _why.repeat++; return; }
+                if (src.only && !new RegExp(src.only).test(u)) { _why.wrong_page++; return; }
                 // ONLY TATTOOS (v9.751, Aaron: "we're only interested in tattoo images"): the page has to say it is a tattoo - its address,
                 // its title or its own words. A page about something else is left out before its picture is ever fetched.
-                if (!_world && !/tattoo|\bink(ed)?\b/i.test(u + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) return;
+                if (!_world && !/tattoo|\bink(ed)?\b/i.test(u + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) { _why.not_tattoo++; return; }
                 // (v9.753) the description too - MEASURED 17:22: Pinterest puts the subject in its tags, so 6 of 10 "tribal realism" pins whose
                 // titles did not say it were dropped.
-                if (!_onSubject(u.replace(/[-_/]+/g, " ") + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) return;
-                _seen.add(u); out.push({ ...it, src }); n++; });
-              _counts.push(src.name + " \"" + x.q + "\" " + x.items.length + "/" + n);
+                if (!_onSubject(u.replace(/[-_/]+/g, " ") + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) { _why.off_subject++; return; }
+                _seen.add(_key); out.push({ ...it, src }); n++; });
+              const _wl = Object.entries(_why).filter(([, v]) => v).map(([k, v]) => k.replace("_", " ") + " " + v).join(", ");
+              _counts.push(src.name + " \"" + x.q + "\" " + x.items.length + "/" + n + (_wl ? " (dropped: " + _wl + ")" : ""));
             });
             return out; };
+          // ══ "ISOLATED" - THE WORD ARTISTS SEARCH WITH (v9.909, 2026-11-09, Aaron: "pretend we're a graphic artist searching for something").
+          // MEASURED 10:05-10:07 on search.brave.com: "harley davidson" gave tank close-ups, badges and dealership signs; "harley davidson
+          // isolated" gave only whole bikes. Rose, butterfly, dragon, 1958 corvette and golden retriever "isolated": every one the whole thing
+          // ("reference photo" gave close-ups, "artwork" paintings for sale). One word after theirs, the same for everything - no subject named,
+          // no model. A setting: `config:inspire:world_words` ("____" is their words; default "____ isolated").
+          let _wq = _kw;
+          if (_world) {
+            let _wf = "____ isolated";
+            try { const k = String((await env.AURA_KV.get("config:inspire:world_words")) || "").trim(); if (k.includes("____")) _wf = k; } catch {}
+            _wq = _wf.replace("____", _kw).replace(/\s+/g, " ").trim();
+          }
           // Each source on its own words, all at once.
-          let perSource = await Promise.all(sources.map(async (src) => _gather(src, await _search(src, _kw))));
+          let perSource = await Promise.all(sources.map(async (src) => _gather(src, await _search(src, _world ? _wq : _kw))));
           // The picture: the one the search returned, or the page's own; a logo or a blank share image does not count.
           // SHOW MORE (v9.752): the page shows 8 at a time.
           // EVERYTHING THAT PASSED (v9.758, MEASURED 21:36 - "new school": 34 passed, 24 sent, 10 thrown away after being found and paid
@@ -75070,6 +75087,12 @@ export class PublicEntry extends WorkerEntrypoint {
             if (!img) { const p = await pagePicture(it.url); if (p.image && !_JUNKPIC.test(p.image)) img = p.image; about = p.about; title2 = p.title; }
             return img ? { it, img, about, title2 } : null; })).then((a) => a.filter(Boolean));
           let withPics = await Promise.all(perSource.map(_pics));
+          // (v9.909) Thin - fewer than 12 - with the added word: their own words are searched too, after.
+          if (_world && _wq !== _kw && withPics.reduce((a, b) => a + b.length, 0) < 12) {
+            const _more = await Promise.all(sources.map(async (src) => _pics(_gather(src, await _search(src, _kw)))));
+            withPics = withPics.map((list, k) => list.concat(_more[k] || []));
+            try { console.log("[INSPIRE] the world - the search was thin, their own words searched too"); } catch {}
+          }
           // WIDER WHEN THIN - BY WHAT WILL BE SHOWN (v9.753): MEASURED 17:22 - "tribal realism" found 6, counted before the pictures, so it
           // never widened, and 3 were shown. Now: fewer than 8 with a picture and more than one word, each source searches each word on its own.
           let _closest = false;
@@ -75096,7 +75119,7 @@ export class PublicEntry extends WorkerEntrypoint {
           const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
           try { await env.AURA_KV.put(_k, JSON.stringify({ items, kind: _world ? "world" : "tattoos" }), { expirationTtl: 3600 }); } catch {}
           const _by = {}; items.forEach((x) => { _by[x.from] = (_by[x.from] || 0) + 1; });
-          console.log("[INSPIRE] cloudflare search" + (_world ? " (the world)" : " (real tattoos)") + " - they said \"" + q + "\", searched \"" + _kw + "\" - each search results/kept: " + _counts.join(", ") +
+          console.log("[INSPIRE] cloudflare search" + (_world ? " (the world)" : " (real tattoos)") + " - they said \"" + q + "\", searched \"" + (_world ? _wq : _kw) + "\" - each search results/kept: " + _counts.join(", ") +
             (_closest ? " (wider: their words one at a time)" : "") + (_subj.length ? " - subject: " + _subj.join(",") : " - no subject, vague words only") + " - sent " + items.length + " (" + Object.entries(_by).map(([k, v]) => k + " " + v).join(", ") + ") · " +
             (Date.now() - _t0) + "ms · $" + _spend.toFixed(5) + " (no model)" + (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 240) : ""));
           if (!items.length) return { ok: false, q, words: _kw, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.916.0-2026-11-09-saved-inspiration-can-be-worked-on";
+const BUILD = "aura-core-v9.917.0-2026-11-09-make-it-my-own-is-a-change";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -72679,7 +72679,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // a tattoo design". The first sheet from a photo has its own sentence (`config:frame:inkit:grid`, "____" is their
             // words); every change after it - a design is on screen by then - keeps the change sentence above, untouched.
             const _inkFirst = (typeof _fromPic !== "undefined" && _fromPic) && !_drewNow() && _designWords !== "__poss__" && _designWords !== "__inspire__";
-            if (_inkFirst) {
+            // ══ MAKE IT MY OWN IS A CHANGE (v9.917, 2026-11-09, Aaron: go). MEASURED 12:19: a jester skull from Get Inspired and "love the jester
+            // hat but make it a cat skull instead" went out as the photo sentence - "This is my photo ... Make number 1 the closest to the photo" -
+            // and 6 of 8 kept the human skull. A picture they chose to make their own is a design they are changing: the change sentence
+            // above, as it is. The mark is kept 30 minutes and used once.
+            let _ownPic = false;
+            if (_inkFirst && me) { try { const _ot = Number((await talkStateGet(env, me, ["inspire_own"])).inspire_own || 0);
+              _ownPic = _ot > 0 && Date.now() - _ot < 1800000; if (_ot) await talkStatePut(env, me, "inspire_own", ""); } catch {} }
+            if (_ownPic) { try { console.log("[TURN:DESIGN] their own picture to change (Make it my own) - the change sentence, not the photo sentence" + (me ? " · who=" + me : "")); } catch {} }
+            if (_inkFirst && !_ownPic) {
               _dg = "This is my photo. I want to turn it into a tattoo: ____. Show me 8 different tattoo designs made from it. Make number 1 the closest to the photo. For the others, be bold and imaginative. Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down";
               try { const _k = String((await env.AURA_KV.get("config:frame:inkit:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
               _inkFirstTurn = true;
@@ -72706,6 +72714,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   let _sayTxt = ""; try { const _j = JSON.parse(String((q && q.reply) || "")); if (_j && typeof _j.say === "string") _sayTxt = _j.say; } catch {}
                   if (!_sayTxt) { const _m = String((q && q.reply) || "").match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (_m) { try { _sayTxt = JSON.parse('"' + _m[1] + '"'); } catch {} } }
                   _read = String(_sayTxt || ((q && !q.failed) ? q.reply : "") || "").replace(/\s+/g, " ").trim();
+                  // ONE SENTENCE (v9.917, 2026-11-09, Aaron: go). MEASURED 09:30 and 12:21: she was asked for one short sentence and gave two or three -
+                  // "That's a stunning shot ... translates beautifully into a tattoo", "Lighthouses like this tend to stand for guidance ..." - and all of
+                  // it went to the image model. Only her first sentence goes.
+                  const _rs = _read.match(/^.+?[.!?](?=\s|$)/); if (_rs) _read = _rs[0].trim();
                   if (/^\s*[{\[]/.test(_read) || _read.length > 300) _read = "";
                 } catch {}
                 if (_read && /^This is my inspiration\./.test(_dg)) _dg = _dg.replace(/^This is my inspiration\./, "This is my inspiration: " + _read.replace(/[\s.]+$/, "") + ".");
@@ -75328,6 +75340,8 @@ export class PublicEntry extends WorkerEntrypoint {
           if (fv) { listed = true; _tk = fv.world ? "world" : ""; } } catch {} }
         // (v9.907) her read before the eight is told whether it is a tattoo or a picture from the world.
         if (listed && me) { try { await talkStatePut(env, me, "inspire_kind", _tk); } catch {} }
+        // (v9.917) "Make it my own" - the picture is a design they want changed; the time is kept so their next words are drawn as a change.
+        if (listed && me) { try { await talkStatePut(env, me, "inspire_own", String(b.mode || "") === "own" ? String(Date.now()) : ""); } catch {} }
         if (!listed || !/^https:\/\//i.test(url)) return { ok: false, error: "NOT_FROM_THE_SEARCH" };
         try {
           const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" }, redirect: "follow" });

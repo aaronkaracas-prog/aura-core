@@ -1,0 +1,1 @@
+This is a photo of a real tattoo. Answer with one line only, in this shape: style | what it shows. The style is the tattoo style (for example Neo-Traditional, Japanese, Fine-Line, Blackwork). What it shows is the main subject only, in 2 to 4 plain words.

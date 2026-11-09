@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.918.0-2026-11-09-make-it-my-own-is-not-their-body";
+const BUILD = "aura-core-v9.919.0-2026-11-09-make-it-my-own-draws-as-a-change";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61511,6 +61511,8 @@ const SHEET8_BODY = "Show the whole tattoo in every picture, nothing cut off at 
 // own shape and white around it - The Warrior closest, then dragon, tiger, koi, hannya, serpent, crane, journey; every title spelled
 // right. Aaron: "this is my inspiration ... make me a complete tattoo" - the photo may be part of a tattoo, so the model is told only
 // that it is inspiration and that each design is complete. Only "Imagine from this" uses it. A setting: `config:frame:inspire:grid`.
+// The change sentence (v9.919: one copy, read by the change four and by Make it my own). Setting: config:frame:design:grid ("____" is their words).
+const DESIGN_CHANGE_SENTENCE = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the style of my design. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about what you changed and why in white. No numbers anywhere.";
 const INSPIRE8_SENTENCE = "This is my inspiration. Make me 8 different complete tattoo designs from it - each one a finished design with its own outer shape, shown whole with white space all around it, nothing cut off at the edges. Make the first one the closest to my inspiration. For the others, be bold and imaginative. Make one tall page with a solid black background, divided into a grid of 8 equal cards, 2 across and 4 down, with a wide black gap between them. Each card is all white with a thin black outline around it: one complete tattoo design centred at the top - not on skin - and under it, inside a box with a thin black outline, a short title in bold black capital letters, and under it two short lines in black describing the design. No numbers anywhere.";
 const SHEET8_FLAT = "Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down, each picture a white panel with the whole tattoo artwork as large as it fits - not on skin - in a clean white frame with rounded corners, with a wide black gap between them. No text, no titles, no numbers, no words anywhere on the page. In your written reply, list the 8 designs in order, left to right and top to bottom, one per line, as: TITLE | first line | second line.";
 // THE DIRECT ENDING (v9.708): the words each card carries are drawn under it - nothing writes a reply, nobody lists them after.
@@ -72675,7 +72677,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // "____" is their words), sent with the design to the chat model. Not when this turn is a pick off a grid.
           if (_designGrid && _gridPick) _designGrid = false;
           if (_designGrid) {
-            let _dg = "This is my tattoo design. I want to change it: ____. Show me 4 different versions of that change, all in the same style as my design. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the style of my design. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about what you changed and why in white. No numbers anywhere.";
+            let _dg = DESIGN_CHANGE_SENTENCE;
             try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
             // ══ A PHOTO IS NOT A TATTOO DESIGN (v9.736, 2026-10-23, Aaron: "go") ════════════════════════════════════════════
             // MEASURED 10:25 (beach couple) and 12:00 (VW Beetle): Ink It's first eight went out as "This is my tattoo design. I want
@@ -73275,6 +73277,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // (img_mvjxwna6nu2m, $0.065, 31.3s): 8 cards from the picture, titled and lined. Same loop, same ending, the picture as the
             // reference. With no words of theirs yet the middle sentence goes. Setting: config:frame:new:picture (needs ____ ).
             const _picNow = !!(_likedPic && refUrl && !_bodyPhoto);
+            // ══ MAKE IT MY OWN DRAWS AS A CHANGE (v9.919, 2026-11-09, Aaron: go) ═══ MEASURED 13:33:47 (img_mw9s2k35a3uu): the jester skull from
+            // Make it my own and "love the jester hat but make it a cat skull instead" went out as the new-idea sentence - "This is my tattoo idea:
+            // cat skull wearing a jester hat ..." - with the jester skull attached and never named, and 8 of 8 came back human skulls. The picture
+            // they chose to make their own is their design: the change sentence, their words in it, the picture with it. The mark (inspire_take,
+            // kept 30 minutes) is used once.
+            let _ownNow = false;
+            if (refUrl && !_bodyPhoto && _words && me) { try { const _ot = Number((await talkStateGet(env, me, ["inspire_own"])).inspire_own || 0);
+              _ownNow = _ot > 0 && Date.now() - _ot < 1800000; if (_ot) await talkStatePut(env, me, "inspire_own", ""); } catch {} }
             if (_words || _picNow) {
               let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep each subject as itself. Make them in color. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
               let _st = ", all in the {name} style";
@@ -73285,6 +73295,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 if (!_words) _ng = _ng.replace(/\s*This is what I want to do with it: ____\./, "");
                 console.log("[TURN:NEW] a picture they like goes with their words: " + refUrl + (me ? " · who=" + me : ""));
               }
+              if (_ownNow) {
+                _ng = DESIGN_CHANGE_SENTENCE;
+                try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
+                console.log("[TURN:NEW] their own picture to change (Make it my own) - the change sentence, with the picture: " + refUrl + (me ? " \u00b7 who=" + me : ""));
+              }
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
               // ══ NO STYLE PICKED: EACH ONE A DIFFERENT STYLE (v9.818, 2026-11-03, Aaron: "when there's no style requested we're gonna have to tell
               // it give me eight versions each one a different style") ═══ MEASURED 13:02 (img_mw167fbfl6be, the lineman's hard hat): with no style
@@ -73292,8 +73307,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // a picked style is sent exactly as tested (all 41). Setting: config:frame:new:grid:nostyle (empty value = say nothing).
               let _ns = ", each in a different tattoo style";
               try { const _k = await env.AURA_KV.get("config:frame:new:grid:nostyle"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim().replace(/^,\s*/, ""); _ns = _t ? ", " + _t : ""; } } catch {}
-              if (!_newStyle && _ns) { try { console.log("[TURN:NEW] no style picked - asked for" + _ns.slice(1) + (me ? " · who=" + me : "")); } catch {} }
+              if (!_newStyle && _ns && !_ownNow) { try { console.log("[TURN:NEW] no style picked - asked for" + _ns.slice(1) + (me ? " · who=" + me : "")); } catch {} }
               askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : _ns);
+              // (v9.919) on their own picture, number 1 is their change with the rest of it kept - as on every change (v9.846)
+              if (_ownNow) askLine = askLine.replace(/(Make (?:number 1|the first one) the closest to what I described)\./, "$1, with everything else in my design kept as it is.");
               // ══ ALL OF HER IDEAS AT ONCE (v9.627, 2026-10-16, Aaron: "let me see all 4 absolutely") ══════════════════════
               // "Show me all of them" under her idea cards: one sheet, each card one of her ideas, in her order - instead of four
               // versions of one. Their own words stay the idea; only the "4 different designs of it" clause changes.

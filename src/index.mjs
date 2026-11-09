@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.897.0-2026-11-08-imagine-first";
+const BUILD = "aura-core-v9.898.0-2026-11-08-imagining-line";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69766,7 +69766,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // (v9.876) A TAPPED PLACE DRAWS TOO - MEASURED 12:28: "Down over my wrist toward my hand" drew the four while her streamed "What are you
             // picturing going there - tell me, or I can imagine some ideas..." stood over the drawing. Her words wait the same way.
             const _placeTapNow = /^\s*i want it to go\s+\S/i.test(String(said || "")) || /^\s*show me:\s*\S/i.test(String(said || ""));   // (v9.885) a tapped idea too
-            if (_adr !== "1" && (_isYes || _yesWith || _placeTapNow)) {
+            // (v9.898) MEASURED 16:34 (dragon): "Imagine ideas for me" drew the four while her streamed "here are four different ways this
+            // dragon could grow. Tap one and I'll show it on your photo" stood over the drawing. Her words wait; the fixed imagining line goes.
+            const _wildNow = /^\s*imagine ideas for me\.?\s*$/i.test(String(said || ""));
+            if (_adr !== "1" && (_isYes || _yesWith || _placeTapNow || _wildNow)) {
               _holdWords = true; _placeTapHeld = _placeTapNow;
               console.log("[TURN:YES] add-on, nothing drawn yet - her words wait until this turn knows whether it draws" + (me ? " · who=" + me : ""));
             } else if (_adr === "1" && !(opts && (opts.pick || opts.use || opts.own || opts.tile || opts.name || opts.inspire || opts.lock))) {
@@ -72484,6 +72487,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (_addStyle1) { _o = _o.replace("in a similar style to my tattoo", "in the " + _addStyle1 + " style"); _oFrom += "+style"; }
               // Nothing typed ("Show me some ideas" on its own): the sentence without the blank.
               _sentNow = _ownW ? _o.replace("____", _ownW) : _o.replace(/:\s*____\./, ".").replace("____", "");
+              // (v9.898) MEASURED 16:34: with no idea the sentence still read "Show me 4 different ideas for that" and "bold and imaginative with
+              // the idea" - there is no "that" and no idea. Only those words go, only when nothing was asked for; the rest stays word for word.
+              if (!_ownW) _sentNow = _sentNow.replace(/(Show me 4 different ideas) for that\./, "$1.").replace(/ with the idea(,)/, "$1");
               // Where it goes, ONLY when they tapped it (v9.855, 2026-11-06, Aaron: go). MEASURED 10:06: "I want it to go around the rose on my
               // inner forearm." went to the image model - her words; they never said it. Her reading never reaches the image model; a direction
               // they tapped is their choice and goes, after what they want, before the freedom words.

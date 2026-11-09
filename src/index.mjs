@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.911.0-2026-11-09-her-eyes-answer-no-only-to-a-miss";
+const BUILD = "aura-core-v9.912.0-2026-11-09-her-eyes-check-real-tattoos-only";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -58945,7 +58945,8 @@ async function inspireCheck(env, items, words, world, model, budgetMs, askOver) 
       } catch {}
     }
   };
-  await Promise.all(Array.from({ length: Math.min(10, items.length) }, one));
+  // (v9.912) twenty at a time - MEASURED 10:51: ten at a time took 8-10s for 60-88 pictures.
+  await Promise.all(Array.from({ length: Math.min(20, items.length) }, one));
   return { yes: out, said, ask, ms: Date.now() - t0, tokens_in: tokens, errors: errs };
 }
 // One Cloudflare web search (AI Gateway). The provider is a dial, `config:inspire:search:provider` (ceramic | exa | linkup).
@@ -75155,7 +75156,11 @@ export class PublicEntry extends WorkerEntrypoint {
           try { await env.AURA_KV.put(_k + ":all", JSON.stringify({ items, kind: _world ? "world" : "tattoos", words: _kw }), { expirationTtl: 3600 }); } catch {}
           let _shown = items, _chk = "";
           let _cm = ""; try { _cm = String((await env.AURA_KV.get("config:source:inspire_check:model")) || "").trim(); } catch {}
-          if (_cm && items.length) {
+          // REAL TATTOOS ONLY (v9.912, 2026-11-09, Aaron: "did we even achieve a payoff if we're checking real world stuff"). MEASURED 10:56: on The
+          // World's 88 Harleys, of the 10 she left out 6 were whole Harleys and 3 the one money box - "isolated" had already done the work. On
+          // Real Tattoos she left out exactly the misses. The World is checked only if `config:inspire:check:world_on` is "on".
+          let _cw = false; if (_world) { try { _cw = String((await env.AURA_KV.get("config:inspire:check:world_on")) || "").trim().toLowerCase() === "on"; } catch {} }
+          if (_cm && items.length && (!_world || _cw)) {
             let _cms = 25000; try { const v = parseInt(String((await env.AURA_KV.get("config:inspire:check_ms")) || ""), 10); if (Number.isFinite(v) && v > 0) _cms = v; } catch {}
             const c = await inspireCheck(env, items, _kw, _world, _cm, _cms);
             const kept = items.filter((x, i) => c.yes[i] !== false);

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.904.0-2026-11-08-cover-offer-held-typed-yes-draws";
+const BUILD = "aura-core-v9.905.0-2026-11-09-inspire-more-like-this";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -75120,6 +75120,35 @@ export class PublicEntry extends WorkerEntrypoint {
             (usd != null ? " · $" + usd.toFixed(4) + " (xAI)" : " · cost not reported by xAI - raw: " + JSON.stringify(u).slice(0, 300)));
         } catch {}
         return { ok: true, q, items, ms: Date.now() - _t0 };
+      }
+      // ══ MORE LIKE THIS (v9.905, 2026-11-09, Aaron: "when you say more like this we're actually getting into that function and then the
+      // search will go again") ═══ The photo they are looking at in Get Inspired is read once by the eyes - its style and what it shows -
+      // and those words go back to the page, which runs the search again on them. Only a photo from that search's saved list.
+      // Dials: config:frame:inspire:like (the question; empty = below), config:source:inspire_like:model (empty = the eyes' own model).
+      if (action === "inspire_like") {
+        const _t0 = Date.now();
+        const q = String(b.q || "").replace(/\s+/g, " ").trim().slice(0, 160);
+        const url = String(b.url || "").trim();
+        const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
+        let hit = null;
+        try { const j = JSON.parse((await env.AURA_KV.get(_k)) || "{}"); hit = (j.items || []).find((x) => x && x.image === url) || null; } catch {}
+        if (!hit) return { ok: false, error: "NOT_LISTED" };
+        let ask = "This is a photo of a real tattoo. Answer with one line only, in this shape: style | what it shows. The style is the tattoo style " +
+          "(for example Neo-Traditional, Japanese, Fine-Line, Blackwork). What it shows is 2 to 6 plain words for its subject. For example: " +
+          "Neo-Traditional | woman portrait in a crystal ball";
+        try { const k2 = String((await env.AURA_KV.get("config:frame:inspire:like")) || "").trim(); if (k2) ask = k2; } catch {}
+        let _nm = ""; try { _nm = String((await env.AURA_KV.get("config:source:inspire_like:model")) || "").trim(); } catch {}
+        const _see = async (u) => Promise.race([new Promise((r) => setTimeout(() => r(null), 9000)),
+          seeMedia({ url: u, prompt: ask, max_tokens: 60, ...(_nm ? { model: _nm } : {}) }, env)]).catch(() => null);
+        let rd = await _see(hit.thumb || url);
+        if (!(rd && rd.ok && rd.saw) && hit.thumb && hit.thumb !== url) rd = await _see(url);
+        const raw = String((rd && rd.ok && rd.saw) || "").replace(/[*_`"]+/g, "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean)[0] || "";
+        const parts = raw.split(/\s*\|\s*/).map((x) => x.replace(/^(style|what it shows|subject)\s*:\s*/i, "").replace(/[.\s]+$/, "").trim());
+        const style = parts[0] && parts[0].split(" ").length <= 4 && !/\b(cannot|can't|sorry|unable)\b/i.test(parts[0]) ? parts[0] : "";
+        const subject = parts[1] && parts[1].split(" ").length <= 8 ? parts[1] : "";
+        console.log("[INSPIRE] more like this - the eyes read \"" + raw.slice(0, 120) + "\" -> style \"" + style + "\" · subject \"" + subject + "\" · " + (Date.now() - _t0) + "ms" + (me ? " · who=" + me : ""));
+        if (!style && !subject) return { ok: false, error: "NOT_READ" };
+        return { ok: true, style, subject, words: [style, subject].filter(Boolean).join(" ").slice(0, 120), ms: Date.now() - _t0 };
       }
       // The photo they tapped, fetched here (their browser cannot read another site's picture) and handed back as their own
       // photo - it then goes to her exactly as a photo they uploaded. Only a photo from that search's saved list.

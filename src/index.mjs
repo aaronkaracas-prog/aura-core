@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.920.0-2026-11-09-artist-pages-one-size";
+const BUILD = "aura-core-v9.921.0-2026-11-09-card-names-and-clean-edges";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -60811,14 +60811,20 @@ function _boxFind(lum, W, H) {
   return null;
 }
 // The thin outline just inside a card's edge (within its outer 8%): the design is taken from inside it. None found - the edges stay.
+// (v9.921, 2026-11-09, Aaron: go) THE FRAME'S GREY EDGE GOES TOO. MEASURED 14:26 (img_c17c5612e7370d8dfcfc6, Circle of Life): the art's first
+// column was grey from top to bottom (brightness about 150) - the soft edge of the card's outline, lighter than the 110 a frame was counted
+// at - so it stayed on the artwork, printed as a thin line down the colour page and made the page's fit start at it. A frame column or row
+// is now anything darker than 200 across most of the card; art never runs top to bottom in the outer 8%.
 function _innerFrame(lum, x0, x1, top, bot) {
   const cw = x1 - x0, ch = bot - top, mx = Math.max(4, Math.round(cw * 0.08)), my = Math.max(4, Math.round(ch * 0.08));
-  const colDark = (x) => { let n = 0, d = 0; for (let y = top; y < bot; y += 2) { n++; if (lum(x, y) < 110) d++; } return d / n; };
-  const rowDark = (y) => { let n = 0, d = 0; for (let x = x0; x < x1; x += 2) { n++; if (lum(x, y) < 110) d++; } return d / n; };
+  const colDark = (x) => { let n = 0, d = 0; for (let y = top; y < bot; y += 2) { n++; if (lum(x, y) < 200) d++; } return d / n; };
+  const rowDark = (y) => { let n = 0, d = 0; for (let x = x0; x < x1; x += 2) { n++; if (lum(x, y) < 200) d++; } return d / n; };
   let L = x0, R = x1, T = top;
-  for (let x = x0; x < x0 + mx; x++) if (colDark(x) > 0.7) L = x + 1;
-  for (let x = x1 - 1; x >= x1 - mx; x--) if (colDark(x) > 0.7) R = x;
-  for (let y = top; y < top + my; y++) if (rowDark(y) > 0.6) T = y + 1;
+  // (v9.921) the frame is the first dark run in from the edge and stops at the white after it - a design that fills its card (a
+  // framed scene) is never eaten into past that gap
+  { let on = false; for (let x = x0; x < x0 + mx; x++) { if (colDark(x) > 0.7) { L = x + 1; on = true; } else if (on) break; } }
+  { let on = false; for (let x = x1 - 1; x >= x1 - mx; x--) { if (colDark(x) > 0.7) { R = x; on = true; } else if (on) break; } }
+  { let on = false; for (let y = top; y < top + my; y++) { if (rowDark(y) > 0.6) { T = y + 1; on = true; } else if (on) break; } }
   const pad = 3;
   return { x0: L > x0 ? L + pad : x0, x1: R < x1 ? R - pad : x1, top: T > top ? T + pad : top };
 }
@@ -62163,6 +62169,10 @@ async function premakeSetCopies(env, sheetId, cards) {
 // (v9.848, 2026-11-05, Aaron: go) MEASURED 07:19:16 and 07:36: card 3 "THE ARCH" was named "BE STILL", and "CLASSIC RIBBON" was named
 // "FOREVER" - the tattoo's own lettering, large at the top of the artwork, was read as the title.
 // (v9.849) read from the card's words box on its own when there is one - the artwork, and its lettering, are not in the picture at all
+// ══ A CARD'S NAME IS NOT ITS NUMBER (v9.921, 2026-11-09, Aaron: go) ═══ MEASURED 14:25 (prj_2f0280192fee4309): the sheet draws each title
+// with its number in front, the eyes read it as printed - "4. CIRCLE OF LIFE" - and the tattoo and its artist file were named "4. Circle of
+// Life". The number in front ("4. ", "4) ", "#4 - ") comes off wherever a printed title is read; the name itself is kept exactly.
+const cardTitleClean = (t) => String(t || "").replace(/^\s*#?\d{1,2}\s*[.):\-\u2013\u2014]\s*/, "").trim();
 const CARD_BOX_ASK = "This is the caption box from a tattoo design card. Its first line, in large bold capital letters, is the title; " +
   "the smaller words under it are not part of the title. Reply with only the title, exactly as printed, nothing else.";
 const CARD_TITLE_ASK = "This is a tattoo design card. The title is in the box with a thin black outline under the artwork: the first line in that box, " +
@@ -62204,7 +62214,7 @@ async function eightCards(env, sheetUrl, said, eopts) {
         try { _bg((async () => {
           const reads = await Promise.all(cards.map((c) => Promise.race([new Promise((r) => setTimeout(() => r(null), 15000)),
             seeMedia({ url: c.words || c.image, prompt: c.words ? CARD_BOX_ASK : CARD_TITLE_ASK, max_tokens: 48 }, env)]).catch(() => null)));
-          const titles = reads.map((rd) => { const tt = String((rd && rd.ok && rd.saw) || "").replace(/^["'*\s]+|["'*.\s]+$/g, "").replace(/\s+/g, " ").trim();
+          const titles = reads.map((rd) => { const tt = cardTitleClean(String((rd && rd.ok && rd.saw) || "").replace(/^["'*\s]+|["'*.\s]+$/g, "").replace(/\s+/g, " ").trim());
             return (tt && tt.length <= 40 && tt.split(" ").length <= 6 && !/[\n:]/.test(tt) && !/\b(title|card|tattoo design|cannot|can't|sorry)\b/i.test(tt)) ? tt.toUpperCase() : null; });
           const got = titles.filter(Boolean).length;
           if (got) {
@@ -72978,7 +72988,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                         if (_full) {
                           const _rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), 8000)),
                             seeMedia({ url: _box || _full, prompt: _box ? CARD_BOX_ASK : CARD_TITLE_ASK, max_tokens: 48 }, env)]);
-                          const _tt = String((_rd && _rd.ok && _rd.saw) || "").replace(/^["'*\s]+|["'*.\s]+$/g, "").replace(/\s+/g, " ").trim();
+                          const _tt = cardTitleClean(String((_rd && _rd.ok && _rd.saw) || "").replace(/^["'*\s]+|["'*.\s]+$/g, "").replace(/\s+/g, " ").trim());
                           if (_tt && _tt.length <= 40 && _tt.split(" ").length <= 6 && !/[\n:]/.test(_tt) && !/\b(title|card|tattoo design|cannot|can't|sorry)\b/i.test(_tt)) {
                             _gridPickCut.card = { title: _tt.toUpperCase(), lines: [] };
                             try { const _cid0 = (String(_full).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];

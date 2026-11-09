@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.913.0-2026-11-09-the-world-shows-the-thing-and-tattoos-of-it";
+const BUILD = "aura-core-v9.914.0-2026-11-09-the-world-is-only-the-world";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -58897,13 +58897,15 @@ async function braveImages(env, query, count, world) {
   // Amazon thing"). They sell stick-on tattoos, prints and watermarked drawings - not real tattoos. The list is a dial:
   // `config:inspire:skip_sites` (comma-separated, replaces this one).
   let _skip = ["amazon.", "etsy.com", "ebay.", "stock.adobe.com", "shutterstock.com", "istockphoto.com", "dreamstime.com", "alamy.com",
-               "freepik.com", "vecteezy.com", "123rf.com", "depositphotos.com", "gettyimages."];
+               "freepik.com", "vecteezy.com", "123rf.com", "depositphotos.com", "gettyimages.",
+               // (v9.914, Aaron: go) AI tattoo generators - their pictures are made, not found. MEASURED 11:21: in almost every search.
+               "blackink.ai", "tattoosai.com"];
   try { const k = String((await env.AURA_KV.get("config:inspire:skip_sites")) || "").trim(); if (k) _skip = k.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean); } catch {}
   // THE WORLD KEEPS STOCK AND ART SITES (v9.908, 2026-11-09, Aaron: go). MEASURED 09:38 on search.brave.com - "dragon": the best pictures
   // were Vecteezy, Dreamstime, Canva and Pixabay, the very sites the tattoo list drops. Only shops are left out of the world:
   // `config:inspire:world_skip_sites` (comma-separated, replaces this one).
   if (world) {
-    _skip = ["amazon.", "etsy.com", "ebay."];
+    _skip = ["amazon.", "etsy.com", "ebay.", "redbubble.com", "blackink.ai", "tattoosai.com"];   // (v9.914) Redbubble sells prints; the two AI generators
     try { const k = String((await env.AURA_KV.get("config:inspire:world_skip_sites")) || "").trim(); if (k) _skip = k.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean); } catch {}
   }
   const _shop = (x) => { const h = String((x.meta_url && x.meta_url.hostname) || x.source || "").toLowerCase().replace(/^www\./, "");
@@ -75040,10 +75042,9 @@ export class PublicEntry extends WorkerEntrypoint {
             // BRAVE ALONE, IN ITS OWN ORDER (v9.908, 2026-11-09, Aaron: go). MEASURED 09:32 - "1958 Corvette" and "dragons": the paint-chip
             // charts, the colour-code guide and the dragon size chart all came from Pinterest, found by the words on the pin, not the picture;
             // and one-from-each-in-turn put Pinterest's worst beside Brave's best. Brave's own Images page gave whole cars and finished dragons.
-            // THE THING AND TATTOOS OF IT (v9.913, 2026-11-09, Aaron: "inspiration is seen on other people so I don't want to force them typing in
-            // tattoo ... maybe a combination"). Two Brave searches, taken in turn: the thing itself, and tattoo designs of it.
-            sources = [{ site: "", provider: "brave", variants: 1, only: "", name: "Brave", wkind: "thing" },
-                       { site: "", provider: "brave", variants: 1, only: "", name: "Brave tattoos", wkind: "tattoo" }];
+            // ONLY THE WORLD (v9.914, 2026-11-09, Aaron: "it's either or - search for real world stuff or search for tattoo stuff"). v9.913 mixed
+            // tattoo designs in; that is Real Tattoos' job. One search: the thing.
+            sources = [{ site: "", provider: "brave", variants: 1, only: "", name: "Brave" }];
             try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:world_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && (x.site || x.provider === "brave")).slice(0, 6); } catch {}
           }
           // KEYWORDS (v9.749): MEASURED 15:46 - "Show me cat tattoos" found articles, "cat tattoo" found tattoos. Their talk words come out.
@@ -75107,7 +75108,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // isolated" gave only whole bikes. Rose, butterfly, dragon, 1958 corvette and golden retriever "isolated": every one the whole thing
           // ("reference photo" gave close-ups, "artwork" paintings for sale). One word after theirs, the same for everything - no subject named,
           // no model. A setting: `config:inspire:world_words` ("____" is their words; default "____ isolated").
-          let _wq = _kw, _wqT = _kw;
+          let _wq = _kw;
           if (_world) {
             // A STYLE ON ITS OWN SEARCHES PLAIN (v9.913). MEASURED 11:04-11:11: "tribal isolated" gave "isolated tribes" and ancient tools,
             // "renaissance isolated" stock models eating hot dogs; plain "renaissance" gave the masterpieces, plain "tribal" tribal designs,
@@ -75117,13 +75118,14 @@ export class PublicEntry extends WorkerEntrypoint {
             const _isStyle = STYLE_41.some((n) => _lk.includes(" " + n.toLowerCase().replace(/\s*\/\s*/g, " ") + " "));
             let _wf = "____ isolated";
             try { const k = String((await env.AURA_KV.get("config:inspire:world_words")) || "").trim(); if (k.includes("____")) _wf = k; } catch {}
-            let _wt = "____ tattoo isolated";
-            try { const k = String((await env.AURA_KV.get("config:inspire:world_tattoo_words")) || "").trim(); if (k.includes("____")) _wt = k; } catch {}
-            _wq = _isStyle ? _kw : _wf.replace("____", _kw).replace(/\s+/g, " ").trim();
-            _wqT = _wt.replace("____", _kw).replace(/\s+/g, " ").trim();
+            // THEIR "TATTOO" STAYS IN THE WORLD (v9.914). The word is taken out for Real Tattoos, which puts it back itself; in the world it
+            // was simply lost - "tribal tattoos" searched as "tribal isolated". Typed, it is searched: "tribal tattoos isolated".
+            const _tw = (String(q).toLowerCase().match(/\btattoo(s)?\b/) || [""])[0];
+            const _base = _tw ? (_kw + " " + _tw).trim() : _kw;
+            _wq = (_isStyle && !_tw) ? _kw : _wf.replace("____", _base).replace(/\s+/g, " ").trim();
           }
           // Each source on its own words, all at once.
-          let perSource = await Promise.all(sources.map(async (src) => _gather(src, await _search(src, _world ? (src.wkind === "tattoo" ? _wqT : _wq) : _kw))));
+          let perSource = await Promise.all(sources.map(async (src) => _gather(src, await _search(src, _world ? _wq : _kw))));
           // The picture: the one the search returned, or the page's own; a logo or a blank share image does not count.
           // SHOW MORE (v9.752): the page shows 8 at a time.
           // EVERYTHING THAT PASSED (v9.758, MEASURED 21:36 - "new school": 34 passed, 24 sent, 10 thrown away after being found and paid
@@ -75184,7 +75186,7 @@ export class PublicEntry extends WorkerEntrypoint {
           }
           try { await env.AURA_KV.put(_k, JSON.stringify({ items: _shown, kind: _world ? "world" : "tattoos" }), { expirationTtl: 3600 }); } catch {}
           const _by = {}; items.forEach((x) => { _by[x.from] = (_by[x.from] || 0) + 1; });
-          console.log("[INSPIRE] cloudflare search" + (_world ? " (the world)" : " (real tattoos)") + " - they said \"" + q + "\", searched \"" + (_world ? _wq + "\" + \"" + _wqT : _kw) + "\" - each search results/kept: " + _counts.join(", ") +
+          console.log("[INSPIRE] cloudflare search" + (_world ? " (the world)" : " (real tattoos)") + " - they said \"" + q + "\", searched \"" + (_world ? _wq : _kw) + "\" - each search results/kept: " + _counts.join(", ") +
             (_closest ? " (wider: their words one at a time)" : "") + (_subj.length ? " - subject: " + _subj.join(",") : " - no subject, vague words only") + " - sent " + items.length + " (" + Object.entries(_by).map(([k, v]) => k + " " + v).join(", ") + ") · " +
             (Date.now() - _t0) + "ms · $" + _spend.toFixed(5) + " (search)" + _chk + (_bad.length ? " · failed: " + _bad.join(" | ").slice(0, 240) : ""));
           if (!_shown.length) return { ok: false, q, words: _kw, error: _bad.length ? "SEARCH_FAILED" : "NOTHING_FOUND" };

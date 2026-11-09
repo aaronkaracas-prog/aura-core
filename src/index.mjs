@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.900.0-2026-11-08-cut-lets-go";
+const BUILD = "aura-core-v9.901.0-2026-11-08-change-on-two-pictures";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67131,7 +67131,7 @@ async function startTalkJob(env, data) {
 async function runTalkJob(env, d) {
   const me = d.me, tid = (d.opts && d.opts.tid) || null, t0 = Date.now();
   let text = "", stg = "", what = "", lastW = 0, trail = null;
-  const pend = [];
+  const pend = []; let _pendN = 0;
   // ══ A PROGRESS NOTE NEVER HOLDS UP THE TURN (v9.694, 2026-10-21, Aaron) ═══════════════════════════════════════════
   // MEASURED 12:30:27 -> 12:30:40: one `turnlive` write to the Durable Object hung 13s and came back "internal error", and the
   // drawing could not start until it gave up - 13 of a 73s turn. The note is only the page's "what's happening now" line, so
@@ -67147,7 +67147,16 @@ async function runTalkJob(env, d) {
   let out;
   try {
     out = await auraTalk(env, me, d.stage, d.said, d.hist, { ...(d.opts || {}), in_job: true, world: worldFor(d.host),
-      waitUntil: (pr) => { pend.push(Promise.resolve(pr).catch(() => null)); },
+      // ══ EACH BACKGROUND TASK NAMED IN THE LOG (v9.901, 2026-11-08, Aaron: go) ═══ MEASURED 17:54:23 -> 17:54:45: "Worker exceeded memory
+      // limit" 22s after a drawing job's turn had finished, while her background work ran - which piece, the log could not say. Each task
+      // now logs when it is queued (with the functions that queued it) and when it ends; the one that starts and never ends is the one.
+      waitUntil: (pr) => {
+        const k = ++_pendN, t1 = Date.now(); let who = "";
+        try { who = String(new Error().stack || "").split("\n").slice(2, 6).map((s) => (s.match(/at\s+(?:async\s+)?([A-Za-z0-9_$.<>]+)/) || [])[1]).filter(Boolean).join(" < "); } catch {}
+        try { console.log("[TURNJOB] background " + k + " queued (" + (who || "?") + ")" + (me ? " · who=" + me : "")); } catch {}
+        pend.push(Promise.resolve(pr).then(() => { try { console.log("[TURNJOB] background " + k + " done in " + (Date.now() - t1) + "ms (" + (who || "?") + ")"); } catch {} },
+          (e) => { try { console.log("[TURNJOB] background " + k + " failed in " + (Date.now() - t1) + "ms (" + (who || "?") + "): " + String(e?.message ?? e).slice(0, 120)); } catch {} }));
+      },
       // (v9.828) MEASURED 15:56:29.8: her drawing line came in 0.8s but reached the page only with the finished 8 (36s later) - it fell inside
       // the 0.7s gap between notes and nothing was written after it. Text held back by the gap is written as soon as the gap ends.
       onDelta: async (t) => { text += String(t || ""); await live(false);
@@ -67164,8 +67173,12 @@ async function runTalkJob(env, d) {
   try { await liveChain; } catch {}
   try { console.log("[TURNJOB] turn " + tid + " finished in " + ((Date.now() - t0) / 1000).toFixed(1) + "s · ok=" + !!(out && out.ok !== false) + (me ? " · who=" + me : "")); } catch {}
   // Her work behind the reply (naming at This Is My Tattoo, and the like) finishes inside the job, never cut off.
-  if (pend.length) { try { await Promise.all(pend); } catch {} }
-  return { ok: !!(out && out.ok !== false) };
+  // (v9.901) the finished turn - the drawn sheet, its cards, everything in it - is let go before the wait; only whether it worked is kept
+  const _okOut = !!(out && out.ok !== false); out = null;
+  if (pend.length) { const _pw = Date.now(); try { console.log("[TURNJOB] turn " + tid + " - waiting on " + pend.length + " background task(s)" + (me ? " · who=" + me : "")); } catch {}
+    try { await Promise.all(pend); } catch {}
+    try { console.log("[TURNJOB] turn " + tid + " - background done in " + (Date.now() - _pw) + "ms" + (me ? " · who=" + me : "")); } catch {} }
+  return { ok: _okOut };
 }
 
 async function runArtistFilesJob(env, d) {
@@ -72482,7 +72495,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // new artwork" drew ONE picture. The change sentence asks for four versions on one sheet (proven by command 05:40 on the reaper card,
               // img_mw7vpyoz941u), cut into cards like the first sheet; a pick off it is built on the same way. The setting decides: an older
               // one-picture setting still draws one.
-              let _m = "This is my tattoo with the new part we are adding. Change it like this: ____. Show me 4 different versions of that change. Make the first one the closest to what I described, and for the other three be bold and imaginative with the change - each one a different take on it, so no two look alike. Change only what I named - everything else keeps its exact shape, color and place in every version. Everything stays tattooed on my skin, inside the outline of my body - nothing goes past the edge onto my clothes or the background. Keep everything else exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is in every version. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";   // (v9.890) word for word the stored config:frame:addon:more, 2026-11-08 08:00
+              let _m = "The first picture is my tattoo with the new part we are adding. The second picture is my tattoo as it is today. Change the new part like this: ____. Show me 4 different versions of that change. Make the first one exactly what I described. For the other three, take the change further in a different direction each - a different color, shape, size or layout for the new part - so all four look clearly different at a glance. In every version my tattoo from the second picture stays exactly as it is - the same size, shape, color and place on my body. Everything stays tattooed on my skin, inside the outline of my body - nothing goes past the edge onto my clothes or the background. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";   // (v9.890) word for word the stored config:frame:addon:more, 2026-11-08 08:00
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:more")) || "").trim(); if (_k.includes("____")) _m = _k; } catch {}
               _sentNow = _m.replace("____", _ownW);
               _oneParent = _addonMore;
@@ -72567,6 +72580,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (_t.length < 15 && _sg.length) _t = _sg.pop() + ". " + _t; return _t.slice(0, 160) || null; })();
             _ideasGrid = false; _addonOne = true; _herAsk = null;
             _viaNow = null; _asNow = "design_evolve"; _canvasNow = null; _sizeNow = null; _withNow = null; _rawNow = true;
+            // ══ A CHANGE SEES THEIR TATTOO AS IT IS TODAY (v9.901, 2026-11-08, Aaron: go) ═══ PROVEN by command 18:05 (img_mw8mbd8kyrq8): the card
+            // and their photo, "change the new part", the first exactly as asked and three that switch it up - four clearly different, against
+            // 17:54 (img_mw8lxe8xxjzb), one picture and "change only what I named": the same four. MEASURED 17:35 (koi): with one picture the
+            // model could not tell their dragon from the new koi and turned the dragon blue. The card goes first (it is built on), their photo second.
+            if (_oneParent && refUrl && /^https:\/\//i.test(String(refUrl))) { _withNow = [String(refUrl)]; console.log("[TURN:IDEAS] the change goes with their photo as it is today: " + refUrl + (me ? " · who=" + me : "")); }
             if (_addonSheet) {
               _canvasNow = { width: 2304, height: 3456 };
               try { const _gm = String((await env.AURA_KV.get("config:source:addon:size")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/);

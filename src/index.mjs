@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.919.0-2026-11-09-make-it-my-own-draws-as-a-change";
+const BUILD = "aura-core-v9.920.0-2026-11-09-artist-pages-one-size";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -61232,6 +61232,48 @@ async function artistPdf(env, o) {
     return id ? await env.AURA_KV.get("image:" + id).catch(() => null) : null;
   };
   let defs = "", body = "", page = 3, vecN = 0, first = null, anyVec = false;   // page 1 the job sheet, page 2 how to use them
+  // ══ EVERY PAGE THE SAME SIZE (v9.920, 2026-11-09, Aaron: go) ═══ MEASURED 13:42 (Frost Blade, doc_mw9serrq2i9n): the linework page was cut
+  // to its ink and filled the page; the colour, shading and realism pages went in as the whole picture - white border and all - at the
+  // picture's own pixel size, so the tattoo printed smaller on them, and each stencil's border is its own. Every picture page is now cut to
+  // its own ink and fitted to the paper the way the linework is (same 1% margin, same portrait-or-landscape rule). The ink is found on the
+  // 480-wide copy the site already keeps, so the picture still goes in by its address and nothing big is held here. No copy: as before.
+  const _boxes = {};
+  let _boxed = 0, _boxTried = 0;
+  const _inkBox = async (url) => {
+    if (url in _boxes) return _boxes[url];
+    _boxes[url] = null;
+    const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
+    if (!id) return null;
+    try {
+      const r = await picSmallCopy(env, id, 480, false);
+      if (!r) return null;
+      const im = PhotonImage.new_from_byteslice(new Uint8Array(await r.arrayBuffer()));
+      const W = im.get_width(), H = im.get_height(), px = im.get_raw_pixels();
+      try { im.free(); } catch {}
+      let x1 = W, y1 = H, x2 = -1, y2 = -1;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const o = (y * W + x) * 4;
+        if (px[o] < 235 || px[o + 1] < 235 || px[o + 2] < 235) { if (x < x1) x1 = x; if (x > x2) x2 = x; if (y < y1) y1 = y; if (y > y2) y2 = y; }
+      }
+      if (x2 < 0) return null;
+      const pad = Math.round(Math.max(W, H) * 0.01);
+      x1 = Math.max(0, x1 - pad); y1 = Math.max(0, y1 - pad); x2 = Math.min(W - 1, x2 + pad); y2 = Math.min(H - 1, y2 + pad);
+      const iw = x2 - x1 + 1, ih = y2 - y1 + 1;
+      const _pt = Math.min(9.98, 7.48 * ih / iw), _ls = Math.min(7.48, 9.98 * ih / iw);
+      _boxes[url] = { fx: x1 / W, fy: y1 / H, fw: iw / W, fh: ih / H, tall: Math.max(_pt, _ls), wide: Math.max(_pt, _ls) * iw / ih, land: _ls > _pt + 0.01 };
+      return _boxes[url];
+    } catch (e) { try { console.log("[ARTIST-PDF] could not find the ink of " + id + ": " + String(e?.message ?? e).slice(0, 120)); } catch {} return null; }
+  };
+  const _byAddress = async (url, mirror) => {
+    _boxTried++;
+    const B = await _inkBox(url);
+    if (!B) return { html: '<div class="art" style="height:10in"><img style="' + (mirror ? "transform:scaleX(-1);" : "") + 'max-height:10in;max-width:7.5in;width:auto;height:auto" src="' + esc(url) + '"></div>', land: false };
+    _boxed++;
+    const iw = B.wide / B.fw, ih = B.tall / B.fh;
+    return { land: B.land, html: '<div class="art' + (B.land ? " L" : "") + '" style="height:' + (B.land ? 7.5 : 10) + 'in"><div style="position:relative;overflow:hidden;width:' + B.wide.toFixed(3) +
+      "in;height:" + B.tall.toFixed(3) + "in;" + (mirror ? "transform:scaleX(-1);" : "") + '"><img style="position:absolute;max-width:none;max-height:none;left:-' + (B.fx * iw).toFixed(3) +
+      "in;top:-" + (B.fy * ih).toFixed(3) + "in;width:" + iw.toFixed(3) + "in;height:" + ih.toFixed(3) + 'in" src="' + esc(url) + '"></div></div>' };
+  };
   let _vMaxA = 0; try { _vMaxA = Number(String((await env.AURA_KV.get("config:print:vector_max")) || "").trim()) || 0; } catch {}
   const guide = [], perPanel = [];
   for (const pn of (o.panels || [])) {
@@ -61247,6 +61289,8 @@ async function artistPdf(env, o) {
     for (const s of (pn.stencils || [])) if (s && s.url) items.push({ label: s.label, url: s.url, trace: !!s.trace });
     for (const s of (pn.stencils || [])) if (s && s.url) items.push({ label: s.label + " - MIRRORED", url: s.url, mirror: true, trace: !!s.trace });
     const laid = {};
+    // (v9.920) the ink of every picture page is found first, before the linework is traced and held
+    for (const it of items) if (!it.trace) await _inkBox(it.url);
     for (const it of items) {
       // ══ THE PICTURES GO BY ADDRESS, NOT INSIDE THE PAGE (v9.718, 2026-10-22, Aaron: "the artist files are getting hung up still") ══
       // MEASURED 12:54 (pta_8c4f4cd6f9f7f3db): with only the linework traced (1,110,954 chars at 12:54:17), the job was still killed
@@ -61255,11 +61299,11 @@ async function artistPdf(env, o) {
       // realism map now go in as their own address: the browser fetches them itself and nothing of them is held here. One page each,
       // fitted to the paper, the mirrored one flipped by the page. Only the traced linework is laid out here.
       if (!it.trace) {
-        const start = page, flip = it.mirror ? "transform:scaleX(-1);" : "";
-        body += '<div class="art" style="height:10in"><img style="' + flip + 'max-height:10in;max-width:7.5in;width:auto;height:auto" src="' + esc(it.url) + '"></div>';
+        const start = page, _bx = await _byAddress(it.url, !!it.mirror);
+        body += _bx.html;
         page++;
         if (!it.colour && _tall == null) _tall = Number(pn.inches) || null;
-        guide.push([(pn.name ? pn.name + " - " : "") + it.label, "page " + start +
+        guide.push([(pn.name ? pn.name + " - " : "") + it.label, "page " + start + (_bx.land ? ", landscape" : "") +
           (it.colour ? " - for reference" : (Number(pn.inches) ? " - planned at about " + Number(pn.inches).toFixed(0) + " in" + (pn.long ? " on its longest side" : " tall") : ""))]);
         continue;
       }
@@ -61279,12 +61323,12 @@ async function artistPdf(env, o) {
       // address, exactly as the shading guide and the colour design do (v9.718): the browser fetches it, nothing of it is held here.
       if (it.trace && L && !L.pVec && !it.colour) {
         L.pSlices = [];   // its pixel pages are not used - let them go
-        const start = page, flip = it.mirror ? "transform:scaleX(-1);" : "";
-        body += '<div class="art" style="height:10in"><img style="' + flip + 'max-height:10in;max-width:7.5in;width:auto;height:auto" src="' + esc(it.url) + '"></div>';
+        const start = page, _bx = await _byAddress(it.url, !!it.mirror);
+        body += _bx.html;
         page++;
         if (!first) first = L;
         if (_tall == null) _tall = Number(pn.inches) || null;
-        guide.push([(pn.name ? pn.name + " - " : "") + it.label, "page " + start +
+        guide.push([(pn.name ? pn.name + " - " : "") + it.label, "page " + start + (_bx.land ? ", landscape" : "") +
           (Number(pn.inches) ? " - planned at about " + Number(pn.inches).toFixed(0) + " in" + (pn.long ? " on its longest side" : " tall") : "")]);
         continue;
       }
@@ -61309,6 +61353,7 @@ async function artistPdf(env, o) {
     perPanel.push({ inches: _tall, sheets: page - _p0 });
   }
   if (page === 3) return { ok: false, error: "NOTHING_TO_PRINT" };
+  try { console.log("[ARTIST-PDF] picture pages cut to their ink and fitted to the paper: " + _boxed + " of " + _boxTried + (_boxed < _boxTried ? " (the rest as whole pictures, as before)" : "")); } catch {}
   const row = (k, v) => v ? "<tr><td>" + esc(k) + "</td><td>" + esc(v) + "</td></tr>" : "";
   const html = "<!doctype html><html><head><meta charset=utf-8><style>" +
     "@page { size: 8.5in 11in; margin: 0.5in; } @page land { size: 11in 8.5in; margin: 0.5in; }" +

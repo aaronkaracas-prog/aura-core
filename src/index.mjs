@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.914.0-2026-11-09-the-world-is-only-the-world";
+const BUILD = "aura-core-v9.915.0-2026-11-09-real-tattoos-on-skin-and-designs";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -58926,7 +58926,8 @@ async function braveImages(env, query, count, world) {
 // Scout said no to four, Mistral Small to all five ("No. The picture shows a Harley-Davidson..."): asked to prove what it is, a model doubts.
 // Asked to turn down only what is plainly something else, everything else stands.
 const INSPIRE_CHECK_WORLD = "This picture came from a search for \"____\". Answer no only if it is mainly something else: a close-up of one part, a logo, a sign, text, a toy or model, or a different subject. Otherwise answer yes.";
-const INSPIRE_CHECK_TATTOOS = "This picture came from a search for \"____\" tattoos. Answer no only if it is not a real tattoo on someone, or it is a tattoo of something other than ____. Otherwise answer yes.";
+// (v9.915) a design is a tattoo too - "not a real tattoo on someone" would turn every design away.
+const INSPIRE_CHECK_TATTOOS = "This picture came from a search for \"____\" tattoos. Answer with one word, yes or no. Say no only if it is not a tattoo or a tattoo design, or it is of something other than ____. Otherwise say yes.";
 async function inspireCheck(env, items, words, world, model, budgetMs, askOver) {
   let ask = world ? INSPIRE_CHECK_WORLD : INSPIRE_CHECK_TATTOOS;
   try { const k = String((await env.AURA_KV.get(world ? "config:frame:inspire:check:world" : "config:frame:inspire:check:tattoos")) || "").trim(); if (k.includes("____")) ask = k; } catch {}
@@ -75047,6 +75048,15 @@ export class PublicEntry extends WorkerEntrypoint {
             sources = [{ site: "", provider: "brave", variants: 1, only: "", name: "Brave" }];
             try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:world_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && (x.site || x.provider === "brave")).slice(0, 6); } catch {}
           }
+          // ══ ON SKIN AND DESIGNS (v9.915, 2026-11-09, Aaron: "that is the combination ... every other tile real skin, stencil"). MEASURED 11:28 on
+          // search.brave.com: "dragon tattoo isolated", "koi fish tattoo isolated", "rose tattoo isolated", "tribal tattoos isolated" - clean
+          // whole tattoo designs on white. Real Tattoos adds that one search; its pictures are marked "design", the rest "skin", and they are
+          // shown one of each in turn. Its words are a setting: `config:inspire:design_words` ("____" is their words; default "____ tattoo isolated").
+          let _dwf = "____ tattoo isolated";
+          if (!_world) {
+            try { const k = String((await env.AURA_KV.get("config:inspire:design_words")) || "").trim(); if (k.includes("____")) _dwf = k; } catch {}
+            sources.push({ site: "", provider: "brave", variants: 1, only: "", name: "Brave designs", design: true });
+          }
           // KEYWORDS (v9.749): MEASURED 15:46 - "Show me cat tattoos" found articles, "cat tattoo" found tattoos. Their talk words come out.
           const _TALK = new Set(["show","me","some","any","few","i","im","i'm","want","wanna","to","see","can","could","you","please","find","look",
             "looking","give","get","fun","cool","awesome","nice","great","really","ideas","idea","inspiration","designs","design","tattoos","tattoo",
@@ -75064,8 +75074,9 @@ export class PublicEntry extends WorkerEntrypoint {
             const qs = (_world ? [words] : (src.provider || "ceramic") === "exa" ? [_exaWords.replace("____", words)] : [words + " tattoo", words + " tattoo design", words + " tattoos"])
               .slice(0, Math.max(1, Math.min(3, Number(src.variants) || 1)));
             if (src.provider === "brave") { _spend += _COST.brave;
-              const bq = _world ? words : words + " tattoo";
-              return Promise.all([braveImages(env, bq, _world ? 100 : 50, _world).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
+              const bq = _world ? words : src.design ? _dwf.replace("____", words).replace(/\s+/g, " ").trim() : words + " tattoo";
+              // (v9.915) a design is found where the world's pictures are - stock and art sites stay; shops and AI generators do not
+              return Promise.all([braveImages(env, bq, (_world || src.design) ? 100 : 50, _world || !!src.design).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
             return Promise.all(qs.map((qq) => { _spend += _COST[src.provider] || 0;
               return cfWebSearch(env, qq + " site:" + src.site, src.provider || "ceramic", 10).then((r) => ({ ...r, q: qq }))
                 .catch((e) => ({ ok: false, error: String((e && e.message) || e), q: qq })); }));
@@ -75154,16 +75165,29 @@ export class PublicEntry extends WorkerEntrypoint {
               return _pics(more.flatMap((r) => _gather(src, r))); }));
             withPics = withPics.map((list, k) => list.concat(_wide[k] || []));
           }
-          // In turn, one from each source.
+          // In turn, one from each source. (v9.915) The designs are held apart and put in after, one of each in turn.
           const items = []; const _seenImg = new Set();
-          for (let r = 0; items.length < 150 && withPics.some((l) => l.length > r); r++) {
-            for (const list of withPics) { const x = list[r]; if (!x || _seenImg.has(x.img) || items.length >= 150) continue; _seenImg.add(x.img);
+          const _dIdx = sources.findIndex((sr) => sr && sr.design);
+          const _designPics = _dIdx >= 0 ? (withPics[_dIdx] || []) : [];
+          const _skinPics = _dIdx >= 0 ? withPics.filter((l, k) => k !== _dIdx) : withPics;
+          for (let r = 0; items.length < 150 && _skinPics.some((l) => l.length > r); r++) {
+            for (const list of _skinPics) { const x = list[r]; if (!x || _seenImg.has(x.img) || items.length >= 150) continue; _seenImg.add(x.img);
               const clean = (t) => String(t || "").split(/\s+\|\s+/)[0].replace(/\s*[•|-]\s*(Tattoodo|InkedMag|Inked Magazine|Pinterest)\s*$/i, "").trim();
               const ab = String(x.about || "");
               items.push({ image: x.img, title: clean(x.it.title || x.title2) || null, feel: null, artist: null,
                 about: (ab && !/cookies|similar technologies|autocomplete|^find your next tattoo\.?$/i.test(ab.trim())) ? ab.slice(0, 160) : null,
                 from: (x.it.src.provider === "brave" && x.it.host) ? _siteName(x.it.host) : x.it.src.name, page: x.it.url,
+                ...(_world ? {} : { look: "skin" }),
                 ...(x.it.thumb ? { thumb: x.it.thumb } : {}) }); }
+          }
+          if (_designPics.length) {
+            const _ds = [];
+            for (const x of _designPics) { if (_seenImg.has(x.img)) continue; _seenImg.add(x.img);
+              _ds.push({ image: x.img, title: String(x.it.title || x.title2 || "").split(/\s+\|\s+/)[0].trim() || null, feel: null, artist: null, about: null,
+                from: x.it.host ? _siteName(x.it.host) : "Brave", page: x.it.url, look: "design", ...(x.it.thumb ? { thumb: x.it.thumb } : {}) }); }
+            const _sk = items.splice(0, items.length);
+            for (let r = 0; items.length < 150 && (r < _sk.length || r < _ds.length); r++) {
+              if (r < _sk.length) items.push(_sk[r]); if (r < _ds.length && items.length < 150) items.push(_ds[r]); }
           }
           const _k = "inspirefind:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
           // (v9.910) every picture as it came, for the side-by-side test of eyes (action inspire_check_test)

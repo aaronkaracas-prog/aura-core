@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.937.0-2026-11-10-offer-never-claims-drawing";
+const BUILD = "aura-core-v9.938.0-2026-11-10-same-picture-imported-once";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -20236,6 +20236,21 @@ async function successionGate(env) {
         // was a screenshot, twice over. The original is the first image and it is never rewritten:
         // the bytes we hold are copied exactly, with their own type.
         const _ownId = (String(ref).match(/\/image\/(img_[a-z0-9]+)/i) || [])[1] || null;
+        // ══ THE SAME PICTURE IS IMPORTED ONCE PER PERSON (v9.938, 2026-11-10, Aaron: go) ═════════════════════════
+        // MEASURED 15:18, 15:19, 15:30: every typed turn after a catalogue pick imported the same 1.5 MB picture again
+        // under a new id (img_i6895..., img_i7ffd..., img_if7bb...) - a fresh copy, a fresh entity, and her brain had to
+        // fetch it again each time. A picture already in our own store, imported by the same person, is the import
+        // they already have: the same id, the same entity, nothing copied.
+        const _impKey = (_ownId && iBy) ? "importof:" + iBy + ":" + _ownId : "";
+        if (_impKey) {
+          try {
+            const _was = await env.AURA_KV.get(_impKey, "json").catch(() => null);
+            if (_was && _was.id && await env.AURA_KV.get("imagemeta:" + _was.id).catch(() => null)) {
+              console.log("[IMPORT] " + _ownId + " was imported by them before - the same picture, " + _was.id + ", nothing copied");
+              return { cmd: "IMAGE", payload: { ..._was, ok: true, reused: true } };
+            }
+          } catch {}
+        }
         if (_ownId) {
           try {
             if (env.AURA_IMAGES) {
@@ -20350,12 +20365,14 @@ async function successionGate(env) {
             creator: iBy, parent: null, context: ip.context || null, access: "controlled" }),
         ]);
 
-        return { cmd: "IMAGE", payload: { ok: true, id: iId, entity: (iReg && iReg.entity_id) || null,
+        const _impOut = { ok: true, id: iId, entity: (iReg && iReg.entity_id) || null,
           image_url: iUrl, imported_from: ref, bytes: iBytes.length, content_type: iType,
           fetched_by: _fetchedBy,
           saw: iSaw, owner: iBy, access: "controlled",
           note: "It is theirs now, on our own domain, and it does not expire. Evolve it, look at " +
-            "it, or trace its life - it behaves like any other image from here." } };
+            "it, or trace its life - it behaves like any other image from here." };
+        if (_impKey) { try { await env.AURA_KV.put(_impKey, JSON.stringify(_impOut), { expirationTtl: 30 * 24 * 3600 }); } catch {} }
+        return { cmd: "IMAGE", payload: _impOut };
       }
 
       const ent = await resolveSmartFile(db, ref);

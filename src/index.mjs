@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.929.0-2026-11-09-real-tattoos-from-the-chosen-sources";
+const BUILD = "aura-core-v9.930.0-2026-11-09-designs-without-watermarks";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -58910,7 +58910,7 @@ async function braveImages(env, query, count, world) {
   let _skip = ["amazon.", "etsy.com", "ebay.", "stock.adobe.com", "shutterstock.com", "istockphoto.com", "dreamstime.com", "alamy.com",
                "freepik.com", "vecteezy.com", "123rf.com", "depositphotos.com", "gettyimages.",
                // (v9.914, Aaron: go) AI tattoo generators - their pictures are made, not found. MEASURED 11:21: in almost every search.
-               "blackink.ai", "tattoosai.com"];
+               "blackink.ai", "tattoosai.com", "stablecog.com"];   // (v9.930) stablecog - an AI picture maker, 4 in "rose tattoos" at 19:20
   try { const k = String((await env.AURA_KV.get("config:inspire:skip_sites")) || "").trim(); if (k) _skip = k.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean); } catch {}
   // THE WORLD KEEPS STOCK AND ART SITES (v9.908, 2026-11-09, Aaron: go). MEASURED 09:38 on search.brave.com - "dragon": the best pictures
   // were Vecteezy, Dreamstime, Canva and Pixabay, the very sites the tattoo list drops. Only shops are left out of the world:
@@ -58918,6 +58918,11 @@ async function braveImages(env, query, count, world) {
   if (world) {
     _skip = ["amazon.", "etsy.com", "ebay.", "redbubble.com", "blackink.ai", "tattoosai.com"];   // (v9.914) Redbubble sells prints; the two AI generators
     try { const k = String((await env.AURA_KV.get("config:inspire:world_skip_sites")) || "").trim(); if (k) _skip = k.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean); } catch {}
+    // REAL TATTOOS' DESIGNS - NO WATERMARKS (v9.930, 2026-11-09, Aaron: go). MEASURED 19:19-19:20: the designs search kept the world's stock sites,
+    // and "Design ideas" filled with watermarked previews - Dreamstime 36 of "rose tattoos", iStock 28 of "biomechanical", Dreamstime 27 + iStock 15
+    // + Shutterstock 10 of "Japanese traditional". A design someone builds a tattoo from cannot carry a watermark. The World is as it was.
+    if (world === "design") _skip = _skip.concat(["istockphoto.com", "shutterstock.com", "dreamstime.com", "stock.adobe.com", "gettyimages.",
+      "123rf.com", "depositphotos.com", "alamy.com", "stablecog.com"]);
   }
   // HIJACKED ADDRESSES (v9.928, 2026-11-09, Aaron: go). MEASURED 17:28-17:36: "cyber realism tattoos" pictures came from tattoo.zawd.gov.ph, and
   // the web searches for tattoo styles from smc-aws-pub.stanford.edu, devmousedatabase.ucsf.edu, smi.engin.umich.edu, cuentame.coe.arizona.edu -
@@ -75249,7 +75254,7 @@ export class PublicEntry extends WorkerEntrypoint {
               const bq = _world ? words : src.design ? _dwf.replace("____", words).replace(/\s+/g, " ").trim()
                 : (words + " tattoo" + (src.site ? " site:" + src.site : ""));   // (v9.929) one of the chosen sites, searched inside itself
               // (v9.915) a design is found where the world's pictures are - stock and art sites stay; shops and AI generators do not
-              return Promise.all([braveImages(env, bq, (_world || src.design) ? 100 : 50, _world || !!src.design).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
+              return Promise.all([braveImages(env, bq, (_world || src.design) ? 100 : 50, _world ? true : src.design ? "design" : false).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
             return Promise.all(qs.map((qq) => { _spend += _COST[src.provider] || 0;
               return cfWebSearch(env, qq + " site:" + src.site, src.provider || "ceramic", 10).then((r) => ({ ...r, q: qq }))
                 .catch((e) => ({ ok: false, error: String((e && e.message) || e), q: qq })); }));

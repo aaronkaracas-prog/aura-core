@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.932.0-2026-11-10-isolated-only-for-objects";
+const BUILD = "aura-core-v9.933.0-2026-11-10-object-check-examples";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -75327,28 +75327,35 @@ export class PublicEntry extends WorkerEntrypoint {
             // ══ "ISOLATED" ONLY FOR AN OBJECT (v9.932, 2026-11-10, Aaron: "yes for isolated on objects and then I guess just keep it open
             // for everything else"). MEASURED 01:18: "Superman isolated" gave stock businessmen in red capes - "isolated" cuts a thing out
             // of its background, so it works for a dog, a car, a flower, and turns a character, a place or a scene into a stock photo. One
-            // short question decides - an object or anything else - and anything else is searched as typed. The answer is kept per words
+            // short question decides - an object or anything else - and anything else is searched as typed.
+            // (v9.933, 2026-11-10) MEASURED on v9.932: "superman" got no answer in 3s (searched isolated) and "sunset" came back "object".
+            // Now: 5s, room for a full reply, examples in the question, the reason for a miss in the log, and saved answers under
+            // inspire:objkind2: so the wrong "sunset" kept by v9.932 is never read again. The answer is kept per words
             // (30 days), so the same search never asks twice. No answer in time: "isolated", as before. A tattoo word keeps "tattoos
             // isolated" (v9.928) and a style alone stays plain (v9.913) - neither is asked.
             let _obj = true;
             if (!_tw && !_isStyle) {
-              const _ok = "inspire:objkind:" + _kw.toLowerCase().slice(0, 120);
+              const _ok = "inspire:objkind2:" + _kw.toLowerCase().slice(0, 120);
               let _ans = ""; try { _ans = String((await env.AURA_KV.get(_ok)) || ""); } catch {}
               const _cached = !!_ans;
+              let _why = "";
               if (!_ans) {
                 let _om = null; try { _om = String((await env.AURA_KV.get("config:source:inspire_object:model")) || "").trim() || String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
-                let _oms = 3000; try { const v = parseInt(String((await env.AURA_KV.get("config:inspire:object_ms")) || ""), 10); if (Number.isFinite(v) && v > 0) _oms = v; } catch {}
+                let _oms = 5000; try { const v = parseInt(String((await env.AURA_KV.get("config:inspire:object_ms")) || ""), 10); if (Number.isFinite(v) && v > 0) _oms = v; } catch {}
                 const _r = await Promise.race([new Promise((r) => setTimeout(() => r(null), _oms)),
                   callBrain({ system: "Someone is searching for a picture. Answer with one word: object or other. object means one physical thing or " +
                     "living creature that can be photographed on its own - an animal, a car, a flower, a skull, a guitar. other means anything else - " +
-                    "a character, a famous person, a logo or brand, a place, a landscape, a sky, a scene, an event, an idea, a style.",
-                    user: _kw, max_tokens: 5, ...(_om ? { model: _om } : {}) }, env).catch(() => null)]);
+                    "a character, a famous person, a logo or brand, a place, a landscape, a sky, a sunset, a scene, an event, an idea, a style.\n" +
+                    "Examples: dog -> object. 1967 mustang -> object. rose -> object. superman -> other. sunset -> other. paris -> other. " +
+                    "nike logo -> other. ocean waves -> other.",
+                    user: _kw, max_tokens: 300, ...(_om ? { model: _om } : {}) }, env).catch((e) => ({ ok: false, text: "", _err: String((e && e.message) || e).slice(0, 120) }))]);
                 const _t = String((_r && _r.ok && _r.text) || "").toLowerCase();
+                _why = !_r ? "no reply in " + _oms + "ms" : !_r.ok ? "failed " + String(_r._err || _r.error || "").slice(0, 120) : "said \"" + _t.slice(0, 60) + "\"";
                 _ans = /\bother\b/.test(_t) ? "other" : /\bobject\b/.test(_t) ? "object" : "";
                 if (_ans) { try { await env.AURA_KV.put(_ok, _ans, { expirationTtl: 30 * 86400 }); } catch {} }
               }
               _obj = _ans !== "other";
-              try { console.log("[INSPIRE:WORLD] \"" + _kw + "\" - " + (_ans || "no answer") + (_cached ? " (kept)" : "") + " -> " + (_obj ? "searched with \"isolated\"" : "searched as typed")); } catch {}
+              try { console.log("[INSPIRE:WORLD] \"" + _kw + "\" - " + (_ans || "no answer") + (_cached ? " (kept)" : "") + (_why && !_ans ? " [" + _why + "]" : "") + " -> " + (_obj ? "searched with \"isolated\"" : "searched as typed")); } catch {}
             }
             const _base = _tw ? (_kw + " " + _tw).trim() : _kw;
             _wPlain = _base;

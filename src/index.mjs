@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.927.0-2026-11-09-the-eyes-read-the-inspiration";
+const BUILD = "aura-core-v9.928.0-2026-11-09-a-tattoo-word-in-the-world";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -58919,9 +58919,15 @@ async function braveImages(env, query, count, world) {
     _skip = ["amazon.", "etsy.com", "ebay.", "redbubble.com", "blackink.ai", "tattoosai.com"];   // (v9.914) Redbubble sells prints; the two AI generators
     try { const k = String((await env.AURA_KV.get("config:inspire:world_skip_sites")) || "").trim(); if (k) _skip = k.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean); } catch {}
   }
+  // HIJACKED ADDRESSES (v9.928, 2026-11-09, Aaron: go). MEASURED 17:28-17:36: "cyber realism tattoos" pictures came from tattoo.zawd.gov.ph, and
+  // the web searches for tattoo styles from smc-aws-pub.stanford.edu, devmousedatabase.ucsf.edu, smi.engin.umich.edu, cuentame.coe.arizona.edu -
+  // government and university addresses taken over to repost Pinterest pins. A .gov or .edu address with "tattoo" in its address or title is one
+  // of those; a real one (NASA, a museum) is kept.
+  const _hijack = (x) => { const h = String((x.meta_url && x.meta_url.hostname) || x.source || "").toLowerCase();
+    return /(^|\.)(gov|edu|mil)(\.[a-z]{2})?$/.test(h) && /tattoo/i.test(h + " " + String(x.url || "") + " " + String(x.title || "")); };
   const _shop = (x) => { const h = String((x.meta_url && x.meta_url.hostname) || x.source || "").toLowerCase().replace(/^www\./, "");
     return _skip.some((d) => h === d || h.startsWith(d) || h.endsWith("." + d) || (d.endsWith(".") && h.includes(d))); };
-  return { ok: true, items: (Array.isArray(j.results) ? j.results : []).filter((x) => !_cover(x) && !_shop(x)).map((x) => ({
+  return { ok: true, items: (Array.isArray(j.results) ? j.results : []).filter((x) => !_cover(x) && !_shop(x) && !_hijack(x)).map((x) => ({
     url: x.url || null, title: x.title || null, description: x.source || null,
     image: (x.properties && x.properties.url) || (x.thumbnail && x.thumbnail.src) || null,
     thumb: (x.thumbnail && x.thumbnail.src) || null,
@@ -61776,6 +61782,42 @@ function letterFrame(sentence, letter) {
 // exactly as there. MEASURED 15:56 ("ignorant style" -> "Ignorant", its look never sent) and 16:34 ("red ink tattoos" - no style at all): she was
 // guessing names freehand. Her hearing step is given these names; their own words are checked against them too. The list also lives on the
 // page - keep the two the same until the page reads it from here.
+// ══ A TATTOO WORD IN THE WORLD (v9.928, 2026-11-09, Aaron: "cyber realism tattoos it's beautiful, when I just say cyber realism it's a
+// problem ... I don't think it's ending it with tattoos on every search ... golden retriever proves that"; "look in the real world, determine
+// all this terminology and just blanket it in"). MEASURED 17:36-17:38, 26 World searches: cyber realism gave cybersecurity stock, trash polka
+// polka dots, blackwork Tudor embroidery, ignorant style "iceberg of ignorance", sticker sleeve sticker albums, patchwork quilts, blackout
+// power-outage icons, red ink fountain-pen ink, dark ornamental picture frames, embroidered hoodies, metalwork clamps, bio organic food labels.
+// Golden retriever gives real dogs - that is what The World is for. So "tattoos" is put on only for a tattoo word:
+//   ANYWHERE - words that mean nothing (or something else) outside tattooing: "cyber realism wolf" is searched "cyber realism wolf tattoos".
+//   ALONE - our style names that are also real-world words, only when the search is the style by itself: "stained glass" is the style,
+//           "stained glass window" stays the world. Every one of STYLE_41 is in it as well.
+// From our own styles and the glossaries (tattooed.co, inkedmag.com tattoo lingo, psychotats, 2026 trend pieces). Our subjects (animals, cars,
+// family) are not on it - "cars" in The World is real cars. The lists are a setting: `config:inspire:world_tattoo_words`,
+// {"anywhere":[...],"alone":[...]} - each one given replaces that list. Written as plain words; "-", "/" and "&" are read as space and "and".
+const WORLD_TATTOO_ANYWHERE = ["cyber realism", "cyberrealism", "cyber realistic", "cybersigilism", "cyber sigilism", "sigilism", "cyber tribal",
+  "neo tribal", "neotribal", "neo traditional", "neotraditional", "neotrad", "neo trad", "american traditional", "trash polka", "blackwork",
+  "black work", "blastover", "blast over", "fine line", "fineline", "single needle", "micro realism", "microrealism", "micro realistic",
+  "color realism", "colour realism", "black and grey realism", "black and gray realism", "grey wash", "gray wash", "greywash", "whip shading",
+  "whipshading", "stipple shading", "stick and poke", "stick n poke", "handpoke", "hand poke", "hand poked", "tebori", "irezumi", "horimono",
+  "ta moko", "sailor jerry", "ignorant style", "ignorant doodle", "sticker sleeve", "patchwork sleeve", "gap filler", "gap fillers",
+  "half sleeve", "full sleeve", "back piece", "backpiece", "bodysuit", "body suit", "flash sheet", "flash sheets", "liquid chrome",
+  "bio organic", "biomech", "neo japanese", "japanese fusion", "dark ornamental", "organic body flow"];
+const WORLD_TATTOO_ALONE = ["traditional", "old school", "japanese", "tribal", "illustrative", "sketch", "etching", "woodcut", "watercolour",
+  "watercolor", "geometric", "ornamental", "renaissance", "medieval", "medieval marginalia", "realism", "hyperrealism", "minimalist",
+  "minimalism", "pastel", "negative space", "brutalism", "brutalist", "dark romantic", "dark surrealism", "horror surrealism", "surrealism",
+  "metalwork", "cyberpunk", "3d", "optical", "3d optical", "abstract", "abstract art", "glass effect", "stained glass", "mixed media",
+  "embroidered", "embroidery", "patchwork", "blackout", "red ink", "white ink", "uv ink", "dotwork", "dot work", "sacred geometry", "mandala",
+  "y2k", "y2k nostalgia", "1970s horror poster", "1980s airbrush", "airbrush", "1990s nostalgia", "dark fantasy", "biomechanical",
+  "polynesian", "maori", "samoan", "haida", "new school", "chicano", "ambigram", "euro trash", "sticker", "stickers", "pop of colour",
+  "pop of color", "black and grey", "black and gray", "micro", "heavy blackwork"];
+// The tattoo word in their words, or "" - both sides read the same way: lower case, "&" as "and", anything else not a letter or number a space.
+const _ttNorm = (s) => " " + String(s || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim() + " ";
+function worldTattooWord(kw, lists) {
+  const k = _ttNorm(kw), alone = _ttNorm(String(kw || "").replace(/\bstyles?\b/gi, " "));
+  for (const t of (lists.anywhere || [])) { const n = _ttNorm(t); if (n.trim() && k.includes(n)) return n.trim(); }
+  for (const t of (lists.alone || []).concat(STYLE_41)) { const n = _ttNorm(t); if (n.trim() && alone === n) return n.trim(); }
+  return "";
+}
 const STYLE_41 = ["American Traditional", "Neo-Traditional", "Japanese", "Black & Grey Realism", "Color Realism", "Micro Tattoos", "Fine Line",
   "Minimalist", "Blackwork", "Blackout", "Illustrative", "Chicano", "Geometric", "Dotwork", "Ornamental", "Watercolor", "New School", "Tribal",
   "Sketch", "Etching", "Surrealism", "Biomechanical", "Dark Fantasy", "Medieval", "Renaissance", "Stained Glass", "Liquid Chrome", "Cybersigilism",
@@ -75245,7 +75287,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // isolated" gave only whole bikes. Rose, butterfly, dragon, 1958 corvette and golden retriever "isolated": every one the whole thing
           // ("reference photo" gave close-ups, "artwork" paintings for sale). One word after theirs, the same for everything - no subject named,
           // no model. A setting: `config:inspire:world_words` ("____" is their words; default "____ isolated").
-          let _wq = _kw;
+          let _wq = _kw, _wPlain = _kw, _wTat = "";
           if (_world) {
             // A STYLE ON ITS OWN SEARCHES PLAIN (v9.913). MEASURED 11:04-11:11: "tribal isolated" gave "isolated tribes" and ancient tools,
             // "renaissance isolated" stock models eating hot dogs; plain "renaissance" gave the masterpieces, plain "tribal" tribal designs,
@@ -75257,9 +75299,20 @@ export class PublicEntry extends WorkerEntrypoint {
             try { const k = String((await env.AURA_KV.get("config:inspire:world_words")) || "").trim(); if (k.includes("____")) _wf = k; } catch {}
             // THEIR "TATTOO" STAYS IN THE WORLD (v9.914). The word is taken out for Real Tattoos, which puts it back itself; in the world it
             // was simply lost - "tribal tattoos" searched as "tribal isolated". Typed, it is searched: "tribal tattoos isolated".
-            const _tw = (String(q).toLowerCase().match(/\btattoo(s)?\b/) || [""])[0];
+            let _tw = (String(q).toLowerCase().match(/\btattoo(s)?\b/) || [""])[0];
+            // (v9.928) A TATTOO WORD - "tattoos" is put on for them, the same as when they typed it: "cyber realism" is searched as
+            // "cyber realism tattoos isolated", the search Aaron called beautiful.
+            if (!_tw) {
+              let _tl = { anywhere: WORLD_TATTOO_ANYWHERE, alone: WORLD_TATTOO_ALONE };
+              try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:world_tattoo_words")) || "null");
+                    if (j && typeof j === "object") _tl = { anywhere: Array.isArray(j.anywhere) ? j.anywhere : _tl.anywhere, alone: Array.isArray(j.alone) ? j.alone : _tl.alone }; } catch {}
+              const _hit = worldTattooWord(_kw, _tl);
+              if (_hit) { _tw = "tattoos"; _wTat = _hit; }
+            }
             const _base = _tw ? (_kw + " " + _tw).trim() : _kw;
+            _wPlain = _base;
             _wq = (_isStyle && !_tw) ? _kw : _wf.replace("____", _base).replace(/\s+/g, " ").trim();
+            if (_wTat) try { console.log("[INSPIRE:WORLD] \"" + _kw + "\" is a tattoo word (\"" + _wTat + "\") - searched as \"" + _wq + "\""); } catch {}
           }
           // Each source on its own words, all at once.
           let perSource = await Promise.all(sources.map(async (src) => _gather(src, await _search(src, _world ? _wq : _kw))));
@@ -75274,8 +75327,10 @@ export class PublicEntry extends WorkerEntrypoint {
             return img ? { it, img, about, title2 } : null; })).then((a) => a.filter(Boolean));
           let withPics = await Promise.all(perSource.map(_pics));
           // (v9.909) Thin - fewer than 12 - with the added word: their own words are searched too, after.
-          if (_world && _wq !== _kw && withPics.reduce((a, b) => a + b.length, 0) < 12) {
-            const _more = await Promise.all(sources.slice(0, 1).map(async (src) => _pics(_gather(src, await _search(src, _kw)))));
+          // (v9.928) the plain words keep "tattoos" when it was typed or put on - a thin "cyber realism tattoos isolated" is not followed
+          // by plain "cyber realism", which is cybersecurity.
+          if (_world && _wq !== _wPlain && withPics.reduce((a, b) => a + b.length, 0) < 12) {
+            const _more = await Promise.all(sources.slice(0, 1).map(async (src) => _pics(_gather(src, await _search(src, _wPlain)))));
             withPics = withPics.map((list, k) => list.concat(_more[k] || []));
             try { console.log("[INSPIRE] the world - the search was thin, their own words searched too"); } catch {}
           }

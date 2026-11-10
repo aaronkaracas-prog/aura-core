@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.931.0-2026-11-09-tattoonow-out";
+const BUILD = "aura-core-v9.932.0-2026-11-10-isolated-only-for-objects";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -75324,9 +75324,35 @@ export class PublicEntry extends WorkerEntrypoint {
               const _hit = worldTattooWord(_kw, _tl);
               if (_hit) { _tw = "tattoos"; _wTat = _hit; }
             }
+            // ══ "ISOLATED" ONLY FOR AN OBJECT (v9.932, 2026-11-10, Aaron: "yes for isolated on objects and then I guess just keep it open
+            // for everything else"). MEASURED 01:18: "Superman isolated" gave stock businessmen in red capes - "isolated" cuts a thing out
+            // of its background, so it works for a dog, a car, a flower, and turns a character, a place or a scene into a stock photo. One
+            // short question decides - an object or anything else - and anything else is searched as typed. The answer is kept per words
+            // (30 days), so the same search never asks twice. No answer in time: "isolated", as before. A tattoo word keeps "tattoos
+            // isolated" (v9.928) and a style alone stays plain (v9.913) - neither is asked.
+            let _obj = true;
+            if (!_tw && !_isStyle) {
+              const _ok = "inspire:objkind:" + _kw.toLowerCase().slice(0, 120);
+              let _ans = ""; try { _ans = String((await env.AURA_KV.get(_ok)) || ""); } catch {}
+              const _cached = !!_ans;
+              if (!_ans) {
+                let _om = null; try { _om = String((await env.AURA_KV.get("config:source:inspire_object:model")) || "").trim() || String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+                let _oms = 3000; try { const v = parseInt(String((await env.AURA_KV.get("config:inspire:object_ms")) || ""), 10); if (Number.isFinite(v) && v > 0) _oms = v; } catch {}
+                const _r = await Promise.race([new Promise((r) => setTimeout(() => r(null), _oms)),
+                  callBrain({ system: "Someone is searching for a picture. Answer with one word: object or other. object means one physical thing or " +
+                    "living creature that can be photographed on its own - an animal, a car, a flower, a skull, a guitar. other means anything else - " +
+                    "a character, a famous person, a logo or brand, a place, a landscape, a sky, a scene, an event, an idea, a style.",
+                    user: _kw, max_tokens: 5, ...(_om ? { model: _om } : {}) }, env).catch(() => null)]);
+                const _t = String((_r && _r.ok && _r.text) || "").toLowerCase();
+                _ans = /\bother\b/.test(_t) ? "other" : /\bobject\b/.test(_t) ? "object" : "";
+                if (_ans) { try { await env.AURA_KV.put(_ok, _ans, { expirationTtl: 30 * 86400 }); } catch {} }
+              }
+              _obj = _ans !== "other";
+              try { console.log("[INSPIRE:WORLD] \"" + _kw + "\" - " + (_ans || "no answer") + (_cached ? " (kept)" : "") + " -> " + (_obj ? "searched with \"isolated\"" : "searched as typed")); } catch {}
+            }
             const _base = _tw ? (_kw + " " + _tw).trim() : _kw;
             _wPlain = _base;
-            _wq = (_isStyle && !_tw) ? _kw : _wf.replace("____", _base).replace(/\s+/g, " ").trim();
+            _wq = ((_isStyle && !_tw) || !_obj) ? _kw : _wf.replace("____", _base).replace(/\s+/g, " ").trim();
             if (_wTat) try { console.log("[INSPIRE:WORLD] \"" + _kw + "\" is a tattoo word (\"" + _wTat + "\") - searched as \"" + _wq + "\""); } catch {}
           }
           // Each source on its own words, all at once.

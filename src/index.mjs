@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.936.0-2026-11-10-every-column-same-cards";
+const BUILD = "aura-core-v9.937.0-2026-11-10-offer-never-claims-drawing";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -66803,7 +66803,9 @@ async function talkStatePut(env, me, name, raw) {
 // "Here it is", "Coming right up". Her say-back stays; if nothing would be left, her words stand as they were.
 function dropDrawClaim(text) {
   const t = String(text || "").trim(); if (!t) return t;
-  const claim = /\b(?:(?:i'?m |i am )?(?:drawing|imagining|sketching|creating|putting|making|working on) (?:it|that|this|them|one|it up)?\s*(?:on you|on your arm|up)?\s*(?:now|right now)\b|here it is|here you go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|coming (?:right )?up|on (?:its|the) way)/i;
+  // (v9.937, 2026-11-10 phone walk, Aaron: go) MEASURED: "Let me draw it on your arm." (cover-up) and "Let me draw that up." (a catalogue
+  // pick) stood over Imagine it / Yes, show me with nothing drawing. "Let me / I'll draw it" says the same thing as "drawing it now".
+  const claim = /\b(?:(?:i'?m |i am )?(?:drawing|imagining|sketching|creating|putting|making|working on) (?:it|that|this|them|one|it up)?\s*(?:on you|on your arm|up)?\s*(?:now|right now)\b|(?:let me|i'?ll|i will|i'?m going to) (?:draw|sketch|paint) (?:it|that|this|them|one)(?: up| out| on you| on your [a-z]+| for you)?\s*[.!]|here it is|here you go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|coming (?:right )?up|on (?:its|the) way)/i;
   const kept = t.split(/(?<=[.!?])\s+/).filter((x) => !claim.test(x) && !/^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i.test(x));   // (v9.888) a done-word alone
   const out = kept.join(" ").trim();
   return out.length >= 12 ? out : t;
@@ -73977,6 +73979,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           _said = _now;
         }
       }
+      // ══ HER OFFER NEVER SAYS IT IS ALREADY DRAWING (v9.937, 2026-11-10 phone walk, Aaron: go) ═══ MEASURED: on a catalogue pick she said
+      // "Oh, a draugr - ... Let me draw that up." with Yes, show me / Talk to me under it - nothing was drawing until the tap. Whenever her reply
+      // offers to show them or waits on Imagine it and nothing was drawn this turn, the sentence claiming it is being drawn comes out (the same
+      // cleaner the add-on's held Imagine it uses, dropDrawClaim). Whether she offered is read from her words as she said them.
+      const _saidAsSaid = _said;
+      if (!_fixedWhy && !(drew && drew.image) && (_isOfferLine(_said) || _heardOut)) {
+        const _cl9 = dropDrawClaim(_said);
+        if (_cl9 !== _said) { try { console.log("[TURN:OFFER] nothing drawn yet - her claim that it is drawing taken out: \"" + _said.slice(0, 200) + "\" -> \"" + _cl9.slice(0, 200) + "\"" + (me ? " · who=" + me : "")); } catch {} _said = _cl9; }
+      }
       // (The note about artist sheets being redone is no longer said to them - the files are made
       // quietly at the end and are not part of the conversation. It stays in `drew.she_checked`.)
       // WHAT ACTUALLY HAPPENED GOES ON THEIR RECORD (2026-09-21). Her timeline line becomes what the
@@ -74193,7 +74204,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
             ideas: null,   // NO IDEA CARDS (v9.684, 2026-10-19, Aaron): her reply and the chat box are the whole screen
             choose: (acted && acted.choose && !_fixedWhy && !(drew && drew.image)) ? acted.choose : null,
-            offer: (!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_said)) || undefined,
+            offer: (!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid)) || undefined,
             heard: (_heardOut && !(drew && drew.image)) ? _heardOut : undefined,
             directions: (Array.isArray(acted.directions) && acted.directions.length) ? acted.directions : null,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
@@ -74237,7 +74248,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                ...(acted && acted.choose && !_fixedWhy && !(drew && drew.image) ? { choose: acted.choose } : {}),
                // HER OFFER, ONE TAP (v9.691, 2026-10-21, Aaron: "there's never a reason to type unless you're changing what the moment
                // is"): when she offers to show ideas and there is no card, the page puts "Show me some ideas" / "Talk to me" under it.
-               ...(!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_said) ? { offer: true } : {}),
+               ...(!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid) ? { offer: true } : {}),
                // SHE SAID IT BACK (v9.783): Imagine it, or her two directions - the page puts them under her words.
                ...(_heardOut && !(drew && drew.image) ? { heard: _heardOut } : {}),
                // WHERE SHE TAKES THEM (v9.664): the page goes there - the same as tapping that place.

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.925.0-2026-11-09-make-it-my-own-is-inspiration";
+const BUILD = "aura-core-v9.926.0-2026-11-09-the-read-leaves-out-the-body";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -72811,7 +72811,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   const q = await proxyToAgent(env, _ikw
                     ? "[FOR YOU, NOT THEM. They found this picture while looking for ideas and want tattoo designs made from it. In one short sentence, say what is in it and what makes it stand out.]"
                     : "[FOR YOU, NOT THEM. They found this picture while looking for tattoo ideas and want tattoo designs made from it." +
-                    " In one short sentence, say what the tattoo in it is and what makes it stand out - the tattoo itself, not the person, their clothes or the room." +
+                    // (v9.926, 2026-11-09, Aaron: go) MEASURED 16:29:29: "a big traditional wolf head snarling across the chest" - where it sat on
+                    // somebody else's body went to the image model. Where on the body it is, is left out too.
+                    " In one short sentence, say what the tattoo in it is and what makes it stand out - the tattoo itself, not the person, their clothes, the room or where on the body it is." +
                     " If there is more than one tattoo, the one that stands out most.]", false, me + "_side", refUrl, world);
                   let _sayTxt = ""; try { const _j = JSON.parse(String((q && q.reply) || "")); if (_j && typeof _j.say === "string") _sayTxt = _j.say; } catch {}
                   if (!_sayTxt) { const _m = String((q && q.reply) || "").match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (_m) { try { _sayTxt = JSON.parse('"' + _m[1] + '"'); } catch {} } }

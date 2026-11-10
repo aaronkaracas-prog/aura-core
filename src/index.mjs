@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.935.0-2026-11-10-log-says-images";
+const BUILD = "aura-core-v9.936.0-2026-11-10-every-column-same-cards";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -60899,7 +60899,7 @@ async function cutAllCards(env, url, copts) {
   for (let x = 0; x < W; x++) { let t = 0, b = 0; for (let y = 0; y < H; y += 2) { t++; if (lum(x, y) < 40) b++; } sepCol[x] = b / t > 0.97; }
   const cols = runs(sepCol.map((v) => !v), Math.round(W * 0.15), 2);
   if (!cols.length) return { ok: false, error: "no columns of cards found (" + W + "x" + H + ")" };
-  const boxes = [];
+  const boxes = [], _perCol = [];
   for (const [x0, x1] of cols) {
     // A CARD STARTS AFTER A BLACK GAP, AT A PANEL (v9.676, 2026-10-18). MEASURED 17:12 on img_mvee4cwb50an (the Japanese card,
     // art edge to edge): v9.675 found panels by rows that were mostly white, the koi's dark waves broke the panel in two, and
@@ -60923,22 +60923,38 @@ async function cutAllCards(env, url, copts) {
     // collarbone, shot against a dark wall): "no cards found" - every card begins with the photo's dark top, so no card ever began "mostly not
     // black" after a gap, and the four came back as one sheet. When a column has no card start at all, its cards are what lies between the
     // black gaps (3+ rows black across the column), each at least 15% of the page tall. Sheets that found their cards before are untouched.
-    if (!starts.length) {
-      const _segs = []; let _st = 0, _y = 0;
+    // The black gaps are measured for every column now (v9.936) - see "EVERY COLUMN HOLDS THE SAME NUMBER OF CARDS" below.
+    const _segs = []; { let _st = 0, _y = 0;
       while (_y < H) { if (blackRow[_y]) { let _e = _y; while (_e < H && blackRow[_e]) _e++; if (_e - _y >= 3) { if (_y > _st) _segs.push([_st, _y]); _st = _e; } _y = _e; } else _y++; }
-      if (H > _st) _segs.push([_st, H]);
-      for (const [a, b] of _segs) if (b - a >= H * 0.15) boxes.push({ x0, x1, top: a, bot: b });
-      continue;
-    }
+      if (H > _st) _segs.push([_st, H]); }
+    const _gapCards = _segs.filter(([a, b]) => b - a >= H * 0.15).map(([a, b]) => ({ x0, x1, top: a, bot: b }));
+    if (!starts.length) { _perCol.push({ x0, x1, cards: _gapCards, gaps: _gapCards, by: "gaps" }); continue; }
+    const _cb = [];
     for (let i = 0; i < starts.length; i++) {
       const st = starts[i], next = i + 1 < starts.length ? starts[i + 1] : H;
       let y = next - 1; while (y > st && blackRow[y]) y--;
       // NO BLACK STRIP UNDER A CARD (v9.730, 2026-10-23, Aaron: "the black border on the bottom of that white image"). MEASURED on
       // img_ca1081e14eab553273c3e (Rainbow Legacy, 482x472): the last rows were sheet black. The rows added here were black by
       // definition (blackRow), so they only ever added black; a title strip has words in it and is never a black row.
-      boxes.push({ x0, x1, top: st, bot: Math.min(next, y + 1) });
+      _cb.push({ x0, x1, top: st, bot: Math.min(next, y + 1) });
+    }
+    _perCol.push({ x0, x1, cards: _cb, gaps: _gapCards, by: "starts" });
+  }
+  // ══ EVERY COLUMN HOLDS THE SAME NUMBER OF CARDS (v9.936, 2026-11-10, Aaron: "it's literally a function of the system - why would that not
+  // function") ═══ MEASURED on img_mwb4c1yp9vzd (the panther add-on sheet, a clean 2x2 with black lines between): it came back as 3 cards, one
+  // of them two pictures stacked. The bottom-left photo begins with the man's black shirt - its first rows were 48% black - so it never read as
+  // a card start; the left column had found one start (the top photo) and so never fell back to the black gaps (v9.885 only did that for a
+  // column with NO start). The right column found no start, fell back, and gave 2. 1 + 2 = 3. A grid has the same number of cards in every
+  // column: a column with fewer than the others is cut at its black gaps instead, and only when that gives the same number. Proven on today's
+  // sheets before shipping - that one sheet goes from 1+2 to 2+2; the other add-on sheet and five sheets of 8 come out exactly as before.
+  const _most = Math.max(0, ..._perCol.map((c) => c.cards.length));
+  for (const c of _perCol) {
+    if (c.cards.length < _most && c.gaps.length === _most) {
+      console.log("[CUT8] a column at x " + c.x0 + "-" + c.x1 + " found " + c.cards.length + " card(s), the others " + _most + " - cut at its black gaps instead: " + c.gaps.length + " (" + id + ")");
+      c.cards = c.gaps;
     }
   }
+  for (const c of _perCol) for (const b of c.cards) boxes.push(b);
   if (!boxes.length) return { ok: false, error: "no cards found (" + W + "x" + H + ")" };
   // Reading order: row by row, left to right.
   boxes.sort((a, b) => a.top - b.top);

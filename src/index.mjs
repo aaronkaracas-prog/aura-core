@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.923.0-2026-11-09-roman-numbers-and-logo-above-the-words";
+const BUILD = "aura-core-v9.925.0-2026-11-09-make-it-my-own-is-inspiration";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69075,6 +69075,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // not called. Scope: NEW TATTOO ONLY - add to existing, cover-up and rework never reach these lines (their
       // openers and picks are different, and the change/pick steps need the new-tattoo grid in state).
       let _heardIdea = null;
+      let _inspWords = "";   // (v9.925) Make it my own: their words, drawn with their inspiration
       let _drawSayP = null;   // (v9.826) her line as the drawing starts - shown when it comes, never waited for
       let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _addonGoWords = null, _addonLetter = null, _addonLetterHeld = false, _onAddonSheet = false;
       if (me && !_tapKeep) {
@@ -69129,10 +69130,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // ══ IMAGINE FROM THIS (v9.745, 2026-10-24, Aaron: "if someone clicks on it there's no asking questions - that goes right
             // into inspiration of 8 tiles"). The real tattoo they chose on Get Inspired, our one sentence, the eight. She is not called.
             _fixedWhy = "inspire8"; _fixedSay = await _fx("inspire_coming8", "Imagining tattoos from your inspiration now.");
+            // ══ MAKE IT MY OWN IS INSPIRATION TOO (v9.925, 2026-11-09, Aaron: "it's literally just inspiration ... all we're literally doing is
+            // taking the idea off the skin and passing that to the image model"; "the first card should absolutely be almost identical but made
+            // over"; "Make it my own should just draw"). MEASURED 15:49 (Divine Direction): Make it my own went to her - she called the search
+            // photo "the whole arm", marked the job an add-on, and the change sentence drew 8 near-copies. It now comes here with their words:
+            // the same eight from their inspiration, she is not called, and their words go in as what they want.
+            if (opts.inspire_own) _inspWords = String(said || "").replace(/\s+/g, " ").trim().slice(0, 400);
             _newFlow = false; _lastDesignChange = "";
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "new_flow", "");
                   await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "await_idea", ""); } catch {}
-            console.log("[TURN:INSPIRE] Imagine from this - eight from their inspiration, she is not called" + (me ? " · who=" + me : ""));
+            console.log("[TURN:INSPIRE] " + (_inspWords ? "Make it my own - eight from their inspiration with their words: \"" + _inspWords.slice(0, 200) + "\"" : "Imagine from this - eight from their inspiration") + ", she is not called" + (me ? " · who=" + me : ""));
           } else if (opts && opts.placed && refUrl && _dzP && _dzP.image && _dzP.design && _dzP.design !== refDesign) {
             // ══ THEY PLACED IT THEMSELVES (v9.613, 2026-10-15, Aaron) ═══════════════════════════════════════
             // "Let the user do whatever they want with it - size it, rotate it... once they say here's where I want it the image
@@ -70921,6 +70928,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           jobNow = "new";
           if (intent && typeof intent === "object") intent.job = "new";
           console.log("[TURN:JOB] the brief said add, but they never started Add to Existing and sent no photo of their body - a new design" + (me ? " · who=" + me : ""));
+          // ══ AND THE BRIEF SAYS SO TOO (v9.924, 2026-11-09, Aaron: go) ═══ MEASURED 15:48-15:50 (Divine Direction, the lion from Get Inspired):
+          // she wrote job "add" on the first turn; this turned it to "new" on every turn after, but the kept brief still said "add", and at
+          // lock-in the project was stored as an add-on - My Tattoos showed "Your new tattoo" beside "Your tattoo before", the before being
+          // somebody else's arm from the search. The kept brief is corrected once, here, so the project is stored as the new design it is.
+          if (me && carriedObj && typeof carriedObj === "object" && String(carriedObj.job || "").toLowerCase() === "add") {
+            carriedObj.job = "new";
+            try { await talkStatePut(env, me, "brief", JSON.stringify(carriedObj)); console.log("[TURN:JOB] the kept brief corrected to a new design" + " · who=" + me); } catch {}
+          }
         }
       }
       // (v9.861) THIS IS AN ADD-ON ON THEIR PHOTO - so their next turn may run straight away while nothing is drawn on it yet (the
@@ -72774,15 +72789,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // a tattoo design". The first sheet from a photo has its own sentence (`config:frame:inkit:grid`, "____" is their
             // words); every change after it - a design is on screen by then - keeps the change sentence above, untouched.
             const _inkFirst = (typeof _fromPic !== "undefined" && _fromPic) && !_drewNow() && _designWords !== "__poss__" && _designWords !== "__inspire__";
-            // ══ MAKE IT MY OWN IS A CHANGE (v9.917, 2026-11-09, Aaron: go). MEASURED 12:19: a jester skull from Get Inspired and "love the jester
-            // hat but make it a cat skull instead" went out as the photo sentence - "This is my photo ... Make number 1 the closest to the photo" -
-            // and 6 of 8 kept the human skull. A picture they chose to make their own is a design they are changing: the change sentence
-            // above, as it is. The mark is kept 30 minutes and used once.
-            let _ownPic = false;
-            if (_inkFirst && me) { try { const _ot = Number((await talkStateGet(env, me, ["inspire_own"])).inspire_own || 0);
-              _ownPic = _ot > 0 && Date.now() - _ot < 1800000; if (_ot) await talkStatePut(env, me, "inspire_own", ""); } catch {} }
-            if (_ownPic) { try { console.log("[TURN:DESIGN] their own picture to change (Make it my own) - the change sentence, not the photo sentence" + (me ? " · who=" + me : "")); } catch {} }
-            if (_inkFirst && !_ownPic) {
+            if (_inkFirst) {
               _dg = "This is my photo. I want to turn it into a tattoo: ____. Show me 8 different tattoo designs made from it. Make number 1 the closest to the photo. For the others, be bold and imaginative. Make one tall page with a solid black background, divided into a grid of 8 equal pictures, 2 across and 4 down";
               try { const _k = String((await env.AURA_KV.get("config:frame:inkit:grid")) || "").trim(); if (_k.includes("____")) _dg = _k; } catch {}
               _inkFirstTurn = true;
@@ -72817,6 +72824,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 } catch {}
                 if (_read && /^This is my inspiration\./.test(_dg)) _dg = _dg.replace(/^This is my inspiration\./, "This is my inspiration: " + _read.replace(/[\s.]+$/, "") + ".");
                 try { console.log("[INSPIRE] Aura read the photo (" + (Date.now() - _rt0) + "ms): " + (_read ? "\"" + _read + "\"" : "nothing - sent as before") + " · who=" + me); } catch {}
+              }
+              // (v9.925) Make it my own: what they want goes straight after their inspiration, and the first card is the closest one with it
+              if (_inspWords) {
+                const _w = _inspWords.replace(/[\s.]+$/, ""), _d0 = _dg;
+                if (/^This is my inspiration(?::[^.]*)?\./.test(_dg)) _dg = _dg.replace(/^(This is my inspiration(?::[^.]*)?\.)/, "$1 This is what I want: " + _w + ".");
+                else _dg = "This is what I want: " + _w + ". " + _dg;
+                _dg = _dg.replace(/(Make the first one the closest to my inspiration)\./, "$1, with what I want.");
+                try { console.log("[INSPIRE] their words go in: \"" + _w.slice(0, 200) + "\"" + (_dg === _d0 ? " (unchanged?)" : "") + " · who=" + me); } catch {}
               }
             }
             if (_designWords === "__poss__") {
@@ -73366,14 +73381,6 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // (img_mvjxwna6nu2m, $0.065, 31.3s): 8 cards from the picture, titled and lined. Same loop, same ending, the picture as the
             // reference. With no words of theirs yet the middle sentence goes. Setting: config:frame:new:picture (needs ____ ).
             const _picNow = !!(_likedPic && refUrl && !_bodyPhoto);
-            // ══ MAKE IT MY OWN DRAWS AS A CHANGE (v9.919, 2026-11-09, Aaron: go) ═══ MEASURED 13:33:47 (img_mw9s2k35a3uu): the jester skull from
-            // Make it my own and "love the jester hat but make it a cat skull instead" went out as the new-idea sentence - "This is my tattoo idea:
-            // cat skull wearing a jester hat ..." - with the jester skull attached and never named, and 8 of 8 came back human skulls. The picture
-            // they chose to make their own is their design: the change sentence, their words in it, the picture with it. The mark (inspire_take,
-            // kept 30 minutes) is used once.
-            let _ownNow = false;
-            if (refUrl && !_bodyPhoto && _words && me) { try { const _ot = Number((await talkStateGet(env, me, ["inspire_own"])).inspire_own || 0);
-              _ownNow = _ot > 0 && Date.now() - _ot < 1800000; if (_ot) await talkStatePut(env, me, "inspire_own", ""); } catch {} }
             if (_words || _picNow) {
               let _ng = "This is my tattoo idea: ____. Show me 4 different designs of it{style}. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep each subject as itself. Make them in color. Make one tall page with a black background, divided into a 2 by 2 grid of 4 equal cards, each the shape of a phone screen, with a black gap between the cards. Each card has two parts: the top three-quarters is a plain white panel with the tattoo artwork as large as it fits - not on skin, nothing written on it; the bottom quarter is solid black, with a short title in large bold white capital letters and under it two short lines about the design in white. No numbers anywhere.";
               let _st = ", all in the {name} style";
@@ -73384,11 +73391,6 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 if (!_words) _ng = _ng.replace(/\s*This is what I want to do with it: ____\./, "");
                 console.log("[TURN:NEW] a picture they like goes with their words: " + refUrl + (me ? " · who=" + me : ""));
               }
-              if (_ownNow) {
-                _ng = DESIGN_CHANGE_SENTENCE;
-                try { const _k = String((await env.AURA_KV.get("config:frame:design:grid")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
-                console.log("[TURN:NEW] their own picture to change (Make it my own) - the change sentence, with the picture: " + refUrl + (me ? " \u00b7 who=" + me : ""));
-              }
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}
               // ══ NO STYLE PICKED: EACH ONE A DIFFERENT STYLE (v9.818, 2026-11-03, Aaron: "when there's no style requested we're gonna have to tell
               // it give me eight versions each one a different style") ═══ MEASURED 13:02 (img_mw167fbfl6be, the lineman's hard hat): with no style
@@ -73396,10 +73398,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // a picked style is sent exactly as tested (all 41). Setting: config:frame:new:grid:nostyle (empty value = say nothing).
               let _ns = ", each in a different tattoo style";
               try { const _k = await env.AURA_KV.get("config:frame:new:grid:nostyle"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim().replace(/^,\s*/, ""); _ns = _t ? ", " + _t : ""; } } catch {}
-              if (!_newStyle && _ns && !_ownNow) { try { console.log("[TURN:NEW] no style picked - asked for" + _ns.slice(1) + (me ? " · who=" + me : "")); } catch {} }
+              if (!_newStyle && _ns) { try { console.log("[TURN:NEW] no style picked - asked for" + _ns.slice(1) + (me ? " · who=" + me : "")); } catch {} }
               askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : _ns);
-              // (v9.919) on their own picture, number 1 is their change with the rest of it kept - as on every change (v9.846)
-              if (_ownNow) askLine = askLine.replace(/(Make (?:number 1|the first one) the closest to what I described)\./, "$1, with everything else in my design kept as it is.");
               // ══ ALL OF HER IDEAS AT ONCE (v9.627, 2026-10-16, Aaron: "let me see all 4 absolutely") ══════════════════════
               // "Show me all of them" under her idea cards: one sheet, each card one of her ideas, in her order - instead of four
               // versions of one. Their own words stay the idea; only the "4 different designs of it" clause changes.
@@ -75450,8 +75450,9 @@ export class PublicEntry extends WorkerEntrypoint {
           if (fv) { listed = true; _tk = fv.world ? "world" : ""; } } catch {} }
         // (v9.907) her read before the eight is told whether it is a tattoo or a picture from the world.
         if (listed && me) { try { await talkStatePut(env, me, "inspire_kind", _tk); } catch {} }
-        // (v9.917) "Make it my own" - the picture is a design they want changed; the time is kept so their next words are drawn as a change.
-        if (listed && me) { try { await talkStatePut(env, me, "inspire_own", String(b.mode || "") === "own" ? String(Date.now()) : ""); } catch {} }
+        // (v9.925) Make it my own no longer leaves a mark here - the page sends the picture with their words as inspiration (inspire_go +
+        // inspire_own); a mark left by an earlier build is cleared so it can never touch a later turn.
+        if (listed && me) { try { await talkStatePut(env, me, "inspire_own", ""); } catch {} }
         if (!listed || !/^https:\/\//i.test(url)) return { ok: false, error: "NOT_FROM_THE_SEARCH" };
         try {
           const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" }, redirect: "follow" });

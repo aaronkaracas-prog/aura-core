@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.926.0-2026-11-09-the-read-leaves-out-the-body";
+const BUILD = "aura-core-v9.927.0-2026-11-09-the-eyes-read-the-inspiration";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -72808,16 +72808,18 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 try {
                   // (v9.907) A picture from the world has no tattoo in it - she says what is in it instead.
                   let _ikw = false; try { _ikw = String((await talkStateGet(env, me, ["inspire_kind"])).inspire_kind || "") === "world"; } catch {}
-                  const q = await proxyToAgent(env, _ikw
-                    ? "[FOR YOU, NOT THEM. They found this picture while looking for ideas and want tattoo designs made from it. In one short sentence, say what is in it and what makes it stand out.]"
-                    : "[FOR YOU, NOT THEM. They found this picture while looking for tattoo ideas and want tattoo designs made from it." +
-                    // (v9.926, 2026-11-09, Aaron: go) MEASURED 16:29:29: "a big traditional wolf head snarling across the chest" - where it sat on
-                    // somebody else's body went to the image model. Where on the body it is, is left out too.
-                    " In one short sentence, say what the tattoo in it is and what makes it stand out - the tattoo itself, not the person, their clothes, the room or where on the body it is." +
-                    " If there is more than one tattoo, the one that stands out most.]", false, me + "_side", refUrl, world);
-                  let _sayTxt = ""; try { const _j = JSON.parse(String((q && q.reply) || "")); if (_j && typeof _j.say === "string") _sayTxt = _j.say; } catch {}
-                  if (!_sayTxt) { const _m = String((q && q.reply) || "").match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/); if (_m) { try { _sayTxt = JSON.parse('"' + _m[1] + '"'); } catch {} } }
-                  _read = String(_sayTxt || ((q && !q.failed) ? q.reply : "") || "").replace(/\s+/g, " ").trim();
+                  // ══ THE EYES READ IT, NOT HER (v9.927, 2026-11-09, Aaron: go) ═══ MEASURED 16:29:29 and 16:48:31: asked through her whole agent, the
+                  // sentence took 18-22s and still said where it sat on somebody's body ("across the chest") though the question said not to. One
+                  // question to the eyes model instead - literal, about 2s. The questions are settings: `config:frame:inspire:read` (a real tattoo) and
+                  // `config:frame:inspire:read:world`; the model is `config:source:inspire_read:model`, else the More like this model, else the eyes
+                  // default. No answer in 9s: the eight go without the sentence, as before.
+                  let _rq = _ikw ? "In one short sentence, say what is in this picture and what makes it stand out."
+                    : "This photo shows a tattoo on a person. In one short sentence, say what the tattoo is and what makes it stand out - the tattoo itself only, not the person, their clothes, the room or where on the body it is. If there is more than one tattoo, describe the one that stands out most.";
+                  try { const _k = String((await env.AURA_KV.get(_ikw ? "config:frame:inspire:read:world" : "config:frame:inspire:read")) || "").trim(); if (_k) _rq = _k; } catch {}
+                  let _rm = ""; try { _rm = String((await env.AURA_KV.get("config:source:inspire_read:model")) || "").trim() || String((await env.AURA_KV.get("config:source:inspire_like:model")) || "").trim(); } catch {}
+                  const _rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), 9000)),
+                    seeMedia({ url: refUrl, prompt: _rq, max_tokens: 120, ...(_rm ? { model: _rm } : {}) }, env)]).catch(() => null);
+                  _read = String((_rd && _rd.ok && _rd.saw) || "").replace(/[*_`]+/g, "").replace(/\s+/g, " ").trim();
                   // ONE SENTENCE (v9.917, 2026-11-09, Aaron: go). MEASURED 09:30 and 12:21: she was asked for one short sentence and gave two or three -
                   // "That's a stunning shot ... translates beautifully into a tattoo", "Lighthouses like this tend to stand for guidance ..." - and all of
                   // it went to the image model. Only her first sentence goes.
@@ -72825,7 +72827,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   if (/^\s*[{\[]/.test(_read) || _read.length > 300) _read = "";
                 } catch {}
                 if (_read && /^This is my inspiration\./.test(_dg)) _dg = _dg.replace(/^This is my inspiration\./, "This is my inspiration: " + _read.replace(/[\s.]+$/, "") + ".");
-                try { console.log("[INSPIRE] Aura read the photo (" + (Date.now() - _rt0) + "ms): " + (_read ? "\"" + _read + "\"" : "nothing - sent as before") + " · who=" + me); } catch {}
+                try { console.log("[INSPIRE] the eyes read the photo (" + (Date.now() - _rt0) + "ms): " + (_read ? "\"" + _read + "\"" : "nothing - sent as before") + " · who=" + me); } catch {}
               }
               // (v9.925) Make it my own: what they want goes straight after their inspiration, and the first card is the closest one with it
               if (_inspWords) {

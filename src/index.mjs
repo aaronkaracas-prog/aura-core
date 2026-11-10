@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.928.0-2026-11-09-a-tattoo-word-in-the-world";
+const BUILD = "aura-core-v9.929.0-2026-11-09-real-tattoos-from-the-chosen-sources";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -75196,16 +75196,20 @@ export class PublicEntry extends WorkerEntrypoint {
           // whose picture is a cover, 3 of 10 only the Inked logo. A picture that is a logo or a site's blank share image is left out -
           // that is how a good one is told from a bad one, no model. Taken in turn, one from each, up to 8.
           // The dial: `config:inspire:cf_sources` - [{"site","provider","variants","only"}]; "only" is a pattern a page address must have.
+          // ══ THE CHOSEN SOURCES (v9.929, 2026-11-09, Aaron: "let's take off the broad search for tattoos, focus on the ones we've listed ... I
+          // don't want to take out Pinterest because so many people use that"). Five tattoo sites, each searched inside itself on Brave's image
+          // search ("____ tattoo site:<site>"), and Pinterest's pins as before. MEASURED 19:12 on search.brave.com: "cyber realism tattoo
+          // site:inkppl.com" 50 of 50 from inkppl.com, "site:tattoodo.com" 50 of 50 from Tattoodo, most titled with the artist ("MICRO-REALISM
+          // TATTOO BY YOUYEON"). Out: Brave across the whole web, Tattoodo through Cloudflare's search (0 for "cyber realism" at 17:52), DeviantArt
+          // and Tumblr. The designs search stays (added below) - it is where the clean designs for "Design ideas" come from.
+          // Shown one from each source in turn, so no one site fills the screen.
           let sources = [
-            // (v9.754) Brave's image search - pictures from across the web, the "Images tab"; each one says the site it came from.
-            { site: "", provider: "brave", variants: 1, only: "", name: "Brave" },
-            { site: "tattoodo.com", provider: "ceramic", variants: 3, only: "/tattoos/\\d+", name: "Tattoodo" },
-            { site: "pinterest.com/pin", provider: "exa", variants: 1, only: "/pin/", name: "Pinterest" },
-            { site: "inkedmag.com", provider: "exa", variants: 1, only: "", name: "Inked Magazine", widen: false },
-            // (v9.757, MEASURED 21:27 - "dragon": DeviantArt 10 of 10 tattoo pieces with pictures; Tumblr real artists' posts, 10 of 10 with
-            // pictures. Behance left out - mostly general art: a 3D model, a photoshoot, a profile banner.) Single posts only.
-            { site: "deviantart.com", provider: "exa", variants: 1, only: "/art/", name: "DeviantArt" },
-            { site: "tumblr.com", provider: "exa", variants: 1, only: "tumblr\\.com/[^/?#]+/\\d+|/post/\\d+", name: "Tumblr" }];
+            { site: "tattoodo.com", provider: "brave", variants: 1, only: "", name: "Tattoodo" },
+            { site: "inkppl.com", provider: "brave", variants: 1, only: "", name: "iNKPPL" },
+            { site: "tattoo.guide", provider: "brave", variants: 1, only: "", name: "Global Tattoo Guide" },
+            { site: "inkedmag.com", provider: "brave", variants: 1, only: "", name: "Inked Magazine" },
+            { site: "tattoonow.com", provider: "brave", variants: 1, only: "", name: "TattooNOW" },
+            { site: "pinterest.com/pin", provider: "exa", variants: 1, only: "/pin/", name: "Pinterest" }];
           try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && (x.site || x.provider === "brave")).slice(0, 6); } catch {}
           if (_world) {
             // BRAVE ALONE, IN ITS OWN ORDER (v9.908, 2026-11-09, Aaron: go). MEASURED 09:32 - "1958 Corvette" and "dragons": the paint-chip
@@ -75242,7 +75246,8 @@ export class PublicEntry extends WorkerEntrypoint {
             const qs = (_world ? [words] : (src.provider || "ceramic") === "exa" ? [_exaWords.replace("____", words)] : [words + " tattoo", words + " tattoo design", words + " tattoos"])
               .slice(0, Math.max(1, Math.min(3, Number(src.variants) || 1)));
             if (src.provider === "brave") { _spend += _COST.brave;
-              const bq = _world ? words : src.design ? _dwf.replace("____", words).replace(/\s+/g, " ").trim() : words + " tattoo";
+              const bq = _world ? words : src.design ? _dwf.replace("____", words).replace(/\s+/g, " ").trim()
+                : (words + " tattoo" + (src.site ? " site:" + src.site : ""));   // (v9.929) one of the chosen sites, searched inside itself
               // (v9.915) a design is found where the world's pictures are - stock and art sites stay; shops and AI generators do not
               return Promise.all([braveImages(env, bq, (_world || src.design) ? 100 : 50, _world || !!src.design).then((r) => ({ ...r, q: bq })).catch((e) => ({ ok: false, error: String((e && e.message) || e), q: bq }))]); }
             return Promise.all(qs.map((qq) => { _spend += _COST[src.provider] || 0;
@@ -75267,10 +75272,14 @@ export class PublicEntry extends WorkerEntrypoint {
           const _gather = (src, res) => { const out = [];
             res.forEach((x) => {
               if (!x.ok) { _bad.push(src.name + ": " + x.error); return; }
-              let n = 0; const _why = { repeat: 0, wrong_page: 0, not_tattoo: 0, off_subject: 0, no_link: 0 };
+              let n = 0; const _why = { repeat: 0, wrong_page: 0, not_tattoo: 0, off_subject: 0, no_link: 0, ai_made: 0 };
               x.items.forEach((it) => { const u = String(it.url || ""); const _key = it.image ? "img:" + it.image : u;
                 if (!u) { _why.no_link++; return; } if (_seen.has(_key)) { _why.repeat++; return; }
                 if (src.only && !new RegExp(src.only).test(u)) { _why.wrong_page++; return; }
+                // AI-MADE IS NOT A REAL TATTOO (v9.929, 2026-11-09, Aaron: go). MEASURED 18:50: "Scary Clown ... Generative AI" (Adobe Stock), and on
+                // Get Inspired "AI generated February Birth Month Flowers". A picture that says it was made by AI is left out of Real Tattoos; The
+                // World is as it was.
+                if (!_world && /generative ai|\bai[- ]generated\b|\bgenerated (by|with) ai\b|\bai art\b|midjourney|stable diffusion|dall[- ]?e/i.test((it.title || "") + " " + String(it.description || "").slice(0, 400) + " " + u)) { _why.ai_made++; return; }
                 // ONLY TATTOOS (v9.751, Aaron: "we're only interested in tattoo images"): the page has to say it is a tattoo - its address,
                 // its title or its own words. A page about something else is left out before its picture is ever fetched.
                 if (!_world && !/tattoo|\bink(ed)?\b/i.test(u + " " + (it.title || "") + " " + String(it.description || "").slice(0, 400))) { _why.not_tattoo++; return; }

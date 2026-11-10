@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.930.0-2026-11-09-designs-without-watermarks";
+const BUILD = "aura-core-v9.931.0-2026-11-09-tattoonow-out";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -75213,7 +75213,8 @@ export class PublicEntry extends WorkerEntrypoint {
             { site: "inkppl.com", provider: "brave", variants: 1, only: "", name: "iNKPPL" },
             { site: "tattoo.guide", provider: "brave", variants: 1, only: "", name: "Global Tattoo Guide" },
             { site: "inkedmag.com", provider: "brave", variants: 1, only: "", name: "Inked Magazine" },
-            { site: "tattoonow.com", provider: "brave", variants: 1, only: "", name: "TattooNOW" },
+            // (v9.931, 2026-11-09, Aaron: "take it out") TattooNOW out - MEASURED 19:36: its pictures live on tattoos.gallery, and 7 of the first 8
+            // in "lion" never loaded - a blank tile each; none of them had a title.
             { site: "pinterest.com/pin", provider: "exa", variants: 1, only: "/pin/", name: "Pinterest" }];
           try { const j = JSON.parse((await env.AURA_KV.get("config:inspire:cf_sources")) || "null"); if (Array.isArray(j) && j.length) sources = j.filter((x) => x && (x.site || x.provider === "brave")).slice(0, 6); } catch {}
           if (_world) {

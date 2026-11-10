@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.933.0-2026-11-10-object-check-examples";
+const BUILD = "aura-core-v9.934.0-2026-11-10-anything-says-images";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -75357,9 +75357,14 @@ export class PublicEntry extends WorkerEntrypoint {
               _obj = _ans !== "other";
               try { console.log("[INSPIRE:WORLD] \"" + _kw + "\" - " + (_ans || "no answer") + (_cached ? " (kept)" : "") + (_why && !_ans ? " [" + _why + "]" : "") + " -> " + (_obj ? "searched with \"isolated\"" : "searched as typed")); } catch {}
             }
-            const _base = _tw ? (_kw + " " + _tw).trim() : _kw;
+            // (v9.934, 2026-11-10, Aaron: "adding images to the end ... I'm not seeing a failure, I'm seeing a better result") MEASURED 09:48:
+            // "santa clause" brought back the Tim Allen movie (Disney pages, Disney+, Wikipedia); "santa clause images" brought back Santa.
+            // jaws / frozen / the rock / santa claus / dragons / superman came back the same or a little better - never worse. So every
+            // Anything search says "images" after their words, unless they already said it. A tattoo word keeps "tattoos" instead (v9.928).
+            const _img = (!_tw && !/\bimages?\b/i.test(_kw)) ? " images" : "";
+            const _base = _tw ? (_kw + " " + _tw).trim() : (_kw + _img);
             _wPlain = _base;
-            _wq = ((_isStyle && !_tw) || !_obj) ? _kw : _wf.replace("____", _base).replace(/\s+/g, " ").trim();
+            _wq = ((_isStyle && !_tw) || !_obj) ? (_kw + _img) : _wf.replace("____", _base).replace(/\s+/g, " ").trim();
             if (_wTat) try { console.log("[INSPIRE:WORLD] \"" + _kw + "\" is a tattoo word (\"" + _wTat + "\") - searched as \"" + _wq + "\""); } catch {}
           }
           // Each source on its own words, all at once.

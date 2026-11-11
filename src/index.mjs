@@ -108,7 +108,198 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.959.0-2026-11-11-create-my-own-subject-asks-their-idea";
+const BUILD = "aura-core-v9.960.0-2026-11-11-every-subject-card-its-own-question";
+// ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
+// about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
+// good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
+// own_topic) gets that card's question - fixed, no model, no wait. Any line can be changed without a deploy: config:say:own:<name>, the
+// card's name in lower case with every run of other characters as "_" (config:say:own:animals, config:say:own:where_i_m_from). A card
+// not listed here gets config:say:create_own_topic with the card's name.
+// ══ EVERY STYLE HAS ITS OWN FIRST QUESTION TOO (v9.960, 2026-11-11, Aaron: "it's literally every category when someone says I'll tell
+// you my idea") ═══ Create My Own on a style ("Let's create my own in the <style> style") asks what they'd like in that style, with the
+// things that style is known for. Setting: config:say:own_style:<name> (same naming as own:). A style not listed keeps config:say:create_own.
+const OWN_STYLE_ASK = {
+  "american traditional": "American Traditional it is. What would you like in it - an eagle, a rose, a dagger, a swallow, a panther? Tell me your idea.",
+  "neo-traditional": "Neo-Traditional it is. What would you like in it - an animal, a portrait, flowers, something framed in jewels? Tell me your idea.",
+  "neo-traditional bold illustrated": "Bold Neo-Traditional it is. What would you like in it - an animal, a woman's face, flowers, a skull? Tell me your idea.",
+  "japanese": "Japanese it is. What would you like in it - a koi, a dragon, a tiger, a snake, waves, cherry blossoms? Tell me your idea.",
+  "japanese fusion": "Japanese Fusion it is. What would you like to mix - a koi, a dragon, an oni mask, with something of your own? Tell me your idea.",
+  "chicano": "Chicano it is. What would you like in it - a portrait, roses, praying hands, a lowrider, lettering, family? Tell me your idea.",
+  "tribal": "Tribal it is. What would you like it to follow or shape - an armband, a shoulder piece, an animal, a sun? Tell me your idea.",
+  "neo-tribal": "Neo-Tribal it is. What would you like - sharp flowing lines on their own, or shaped into something like wings, a spine or an animal? Tell me your idea.",
+  "new school": "New School it is. What would you like in it - a cartoon animal, a character, a skull, something fun and loud? Tell me your idea.",
+  "illustrative": "Illustrative it is. What would you like in it - an animal, a scene, a character, something from a story? Tell me your idea.",
+  "sketch": "Sketch it is. What would you like drawn - an animal, a face, a flower, something with meaning to you? Tell me your idea.",
+  "etching": "Etching it is. What would you like in it - an animal, a ship, a skull, a botanical, a scene from an old book? Tell me your idea.",
+  "woodcut": "Woodcut it is. What would you like in it - an animal, a forest, a skull, a symbol? Tell me your idea.",
+  "watercolour": "Watercolor it is. What would you like in it - flowers, a bird, an animal, a butterfly, something soft and dreamy? Tell me your idea.",
+  "watercolor": "Watercolor it is. What would you like in it - flowers, a bird, an animal, a butterfly, something soft and dreamy? Tell me your idea.",
+  "dotwork": "Dotwork it is. What would you like in it - a mandala, the moon, an animal, sacred geometry? Tell me your idea.",
+  "geometric": "Geometric it is. What would you like in it - an animal made of shapes, a mandala, a mountain, a pattern? Tell me your idea.",
+  "ornamental": "Ornamental it is. What would you like - a mandala, lace, filigree, jewelry-like patterns? And where are you thinking of it? Tell me your idea.",
+  "renaissance": "Renaissance it is. What would you like in it - a statue, a famous painting, an angel, a face? Tell me your idea.",
+  "medieval": "Medieval it is. What would you like in it - a knight, a dragon, a castle, heraldry, a coat of arms? Tell me your idea.",
+  "black & grey realism": "Black & Grey Realism it is. What would you like in it - a portrait, an animal, a pet, a scene? Tell me your idea.",
+  "colour realism": "Color Realism it is. What would you like in it - a pet, a portrait, flowers, an animal? Tell me your idea.",
+  "color realism": "Color Realism it is. What would you like in it - a pet, a portrait, flowers, an animal? Tell me your idea.",
+  "realism": "Realism it is. What would you like in it - a portrait, a pet, an animal, a place? Tell me your idea.",
+  "hyperrealism": "Hyperrealism it is. What would you like so real it jumps off the skin - a face, an eye, an animal, an object? Tell me your idea.",
+  "micro realism": "Micro Realism it is. What tiny, lifelike thing would you like - a pet, a face, a flower, a place? Tell me your idea.",
+  "pop of colour": "Pop of Color it is. What would you like in it - and which part should get the color? Tell me your idea.",
+  "pop of color": "Pop of Color it is. What would you like in it - and which part should get the color? Tell me your idea.",
+  "fine line": "Fine Line it is. What would you like in it - flowers, a name, a small symbol, a delicate animal? Tell me your idea.",
+  "micro tattoos": "Micro it is. What tiny tattoo are you thinking of - a symbol, an initial, a heart, a little animal? Tell me your idea.",
+  "minimalist": "Minimalist it is. What would you like - a simple line, a symbol, a shape, a word? Tell me your idea.",
+  "red ink": "Red Ink it is. What would you like in it - a rose, a snake, a dragon, lettering, something delicate? Tell me your idea.",
+  "pastel": "Pastel it is. What would you like in it - flowers, a cute animal, a heart, something soft? Tell me your idea.",
+  "negative space": "Negative Space it is. What would you like the bare skin to shape - an animal, a face, a moon, a flower? Tell me your idea.",
+  "blackwork": "Blackwork it is. What would you like in it - an animal, a pattern, a skull, flowers, a symbol? Tell me your idea.",
+  "heavy blackwork": "Heavy Blackwork it is. What would you like in it - bold patterns, a sleeve, a skull, an animal? Tell me your idea.",
+  "blackout": "Blackout it is. Is this to cover something, or a solid black piece of its own - and where on the body? Tell me your idea.",
+  "abstract blackwork": "Abstract Blackwork it is. What would you like it to feel like - bold strokes, splashes, shapes that flow with the body? Tell me your idea.",
+  "dark ornamental": "Dark Ornamental it is. What would you like in it - dark lace, chains, thorns, a gothic pattern? Tell me your idea.",
+  "brutalism": "Brutalism it is. What would you like in it - heavy black shapes, raw strokes, something harsh and graphic? Tell me your idea.",
+  "dark romantic": "Dark Romantic it is. What would you like in it - roses and skulls, a heart, a woman, lovers? Tell me your idea.",
+  "dark surrealism": "Dark Surrealism it is. What would you like twisted into a dream - a face, a skull, a body, a landscape? Tell me your idea.",
+  "horror surrealism": "Horror Surrealism it is. What nightmare would you like - a melting face, a monster, eyes everywhere? Tell me your idea.",
+  "surrealism": "Surrealism it is. What would you like to blend in impossible ways - a face, a clock, a landscape, an animal? Tell me your idea.",
+  "metalwork": "Metalwork it is. What would you like made of metal - armor, a skull, an animal, a blade? Tell me your idea.",
+  "cybersigilism": "Cybersigilism it is. Where would you like it to wrap - your spine, arm, neck, ribs? Or should it shape something? Tell me your idea.",
+  "cyberpunk": "Cyberpunk it is. What would you like in it - a cyborg, a neon city, a robot face, circuits? Tell me your idea.",
+  "cyber-realism": "Cyber-Realism it is. What would you like in it - a face that opens to machinery, a cyborg animal, a robotic hand? Tell me your idea.",
+  "3d / optical": "3D Optical it is. What would you like to pop out or sink in - a hole in the skin, a cube, a pattern, an eye? Tell me your idea.",
+  "abstract art": "Abstract it is. What feeling would you like it to carry - calm, chaos, movement, strength? Tell me your idea.",
+  "abstract": "Abstract it is. What feeling would you like it to carry - calm, chaos, movement, strength? Tell me your idea.",
+  "glass effect": "Glass Effect it is. What would you like made of glass - a heart, a skull, a butterfly, a rose? Tell me your idea.",
+  "stained glass": "Stained Glass it is. What would you like in it - a window, flowers, a saint, an animal, a heart? Tell me your idea.",
+  "mixed media": "Mixed Media it is. What would you like in it, and which styles should come together? Tell me your idea.",
+  "organic body flow": "Organic Body Flow it is. Where on the body would you like it to flow, and what should it become - vines, waves, smoke? Tell me your idea.",
+  "bio-organic": "Bio-Organic it is. What would you like to grow out of the skin - bones, roots, alien forms? Tell me your idea.",
+  "biomechanical": "Biomechanical it is. What would you like under the skin - gears, pistons, cables, a machine heart? And where on the body? Tell me your idea.",
+  "embroidered tattoos": "Embroidered it is. What would you like stitched - a patch, a flower, an animal, a name? Tell me your idea.",
+  "embroidered": "Embroidered it is. What would you like stitched - a patch, a flower, an animal, a name? Tell me your idea.",
+  "sticker tattoos": "Sticker it is. What would you like as your sticker - a cute animal, a snack, a character, a funny word? Tell me your idea.",
+  "sticker": "Sticker it is. What would you like as your sticker - a cute animal, a snack, a character, a funny word? Tell me your idea.",
+  "patchwork": "Patchwork it is. Which little pieces would you like - things you love, small symbols, memories? Tell me your idea.",
+  "ignorant doodle": "Ignorant Doodle it is. What goofy little thing would you like - an animal doing something dumb, a funny word, a doodle? Tell me your idea.",
+  "medieval marginalia": "Medieval Marginalia it is. What strange little creature would you like - a knight on a snail, a rabbit with a sword? Tell me your idea.",
+  "1970s horror poster": "1970s Horror Poster it is. Which monster or scene would you like - a creature, a scream, a haunted house? Tell me your idea.",
+  "1980s airbrush": "1980s Airbrush it is. What would you like in it - a sunset, a wolf, a car, a dolphin, a neon scene? Tell me your idea.",
+  "1990s nostalgia": "1990s Nostalgia it is. What from the 90s would you like - a toy, a cartoon, a game, a TV show? Tell me your idea.",
+  "y2k nostalgia": "Y2K it is. What would you like in it - butterflies, sparkles, a flip phone, a heart, chrome? Tell me your idea.",
+  "dark fantasy": "Dark Fantasy it is. What would you like in it - a demon, a knight in armor, a dragon, a skull throne? Tell me your idea.",
+  "liquid chrome": "Liquid Chrome it is. What would you like in flowing silver - a heart, a snake, a butterfly, lettering? Tell me your idea."
+};
+const OWN_TOPIC_ASK = {
+  "family": "Who is it for - your kids, your parents, a partner, the whole family? Tell me about them.",
+  "pets": "Is it a pet you have now, one you've lost, or an animal you just love? Tell me about them.",
+  "portraits": "Who would you like a portrait of? Tell me about them - and if you have a photo, add it with the +.",
+  "memorials": "Who would you like to remember? Tell me about them - a name, a date, something they loved.",
+  "matching tattoos": "Who are you matching with - a partner, a sibling, a best friend, your mom? Tell me what connects you.",
+  "personal story": "What's the story you want to carry with you? Tell me as much or as little as you like.",
+  "kids art": "Is there a drawing from your kid you'd love to wear? Add a photo of it with the +, or tell me about it.",
+  "kids drawings": "Is there a drawing from your kid you'd love to wear? Add a photo of it with the +, or tell me about it.",
+  "lettering & quotes": "What words do you want - a name, a date, a quote, a word that means something to you?",
+  "things i love": "What do you love? Tell me - a hobby, a place, a food, a song, anything at all.",
+  "where i'm from": "Where are you from? Tell me the place - a city, a country, a neighborhood, a coastline - and what you love about it.",
+  "service & sacrifice": "Who is it for - your own service, or someone you're honoring? Tell me the branch or the service: military, police, fire, medical.",
+  "roots & nations": "Which roots do you want to carry - a country, a culture, a heritage? Tell me where your family comes from.",
+  "faith & spirituality": "What does your faith look like to you - a symbol, a verse, a saint, a feeling? Tell me about it.",
+  "lgbtq+ identity & pride": "What would you like it to say about who you are - a symbol, colors, words, a moment? Tell me.",
+  "goddesses and muses": "Which goddess or muse speaks to you - Athena, Aphrodite, Kali, a muse of your own? Tell me what she means to you.",
+  "pin-up girls": "What kind of pin-up are you imagining - classic 1950s, a sailor girl, a cowgirl, someone you know? Tell me about her.",
+  "something completely original": "Tell me what you're imagining - anything at all. The more you tell me, the more yours it will be.",
+  "locket portrait": "Whose face would you like in the locket? Tell me about them - and if you have a photo, add it with the +.",
+  "personal artifacts": "What's the object - something you own, or something that belonged to someone? Tell me its story.",
+  "memory / story tattoos": "What's the moment you'd like to keep with you? Tell me about it.",
+  "personal symbols": "What's the symbol, and what does it mean to you?",
+  "animals": "What animal are you thinking of - a pet you have now, one you've lost, or an animal you just love? Tell me about it.",
+  "insects and butterflies": "Which one are you drawn to - a butterfly, a moth, a bee, a dragonfly, a beetle? Tell me what it means to you.",
+  "skulls & skeletons": "What kind of skull are you imagining - a human skull, an animal skull, a sugar skull, a whole skeleton? Tell me about it.",
+  "fine-line florals": "Which flowers are you thinking of - roses, peonies, wildflowers, a birth flower? Tell me what you'd like.",
+  "birth month flowers": "Whose birth month is it - yours, or someone you love? Tell me the month, or months.",
+  "flowers": "Which flowers are you thinking of - roses, lilies, sunflowers, a lotus? Do they mean something to you?",
+  "roses": "What kind of rose are you imagining - a single rose, a bouquet, with thorns, with a name or a date? Tell me about it.",
+  "snakes": "What kind of snake are you imagining - coiled, striking, wrapped around something? Tell me what it means to you.",
+  "dragons": "What kind of dragon - Japanese, Chinese, European, one of your own? Tell me about it.",
+  "ocean & sea life": "What from the ocean are you drawn to - a wave, a whale, a turtle, an octopus, a shark? Tell me about it.",
+  "butterflies & moths": "A butterfly or a moth? Is it a certain kind, or does it stand for something or someone? Tell me.",
+  "birds": "Which bird are you thinking of - a swallow, an eagle, a hummingbird, an owl, a raven? Tell me what it means to you.",
+  "big cats": "Which big cat - a lion, a tiger, a panther, a leopard? Tell me what draws you to it.",
+  "wolves": "What kind of wolf are you imagining - a lone wolf, a pack, one howling at the moon? Tell me what it means to you.",
+  "moon & sun": "The moon, the sun, or both together? Tell me what they mean to you.",
+  "stars & space": "What from space are you drawn to - stars, a planet, a constellation, a galaxy, an astronaut? Tell me about it.",
+  "angels": "What kind of angel are you imagining - a guardian angel, an archangel, just the wings, someone you've lost? Tell me about it.",
+  "demons & devils": "What kind of demon are you imagining - a classic devil, a Japanese oni, a dark fantasy beast? Tell me about it.",
+  "hearts": "What kind of heart - a sacred heart, a traditional heart with a banner, an anatomical heart? Who or what is it for?",
+  "daggers & swords": "What kind of blade - a dagger, a sword, a katana? Is it going through something, like a heart or a rose? Tell me about it.",
+  "fire & flames": "What are you imagining with fire - flames on their own, a phoenix, something burning or rising from it? Tell me about it.",
+  "mountains & forests": "Is there a place you're thinking of - a mountain, a forest you love, somewhere you've been? Tell me about it.",
+  "beasts": "What kind of beast are you imagining - a bear, a bull, a gorilla, a mythical creature? Tell me about it.",
+  "zodiac": "Is it your sign, or someone else's? Tell me which sign and how you'd like it to feel.",
+  "astrology and birth charts": "Whose chart is it - yours, or someone you love? Tell me the sign, or the birthday.",
+  "symbols and talismans": "Which symbol are you thinking of - an evil eye, a hamsa, a rune, one of your own? Tell me what it means to you.",
+  "witchy and occult": "What are you drawn to - moons and crystals, tarot cards, a spell book, a witch herself? Tell me about it.",
+  "birthstones": "Whose birthstone is it - yours, or someone you love? Tell me the month.",
+  "charms and keepsakes": "Which charm or keepsake - something you own, something that belonged to someone, a lucky charm? Tell me about it.",
+  "lockets": "Whose locket is it, and what would you like inside - a face, a name, a date, a flower? Tell me about it.",
+  "bows & ribbons": "What are you imagining - a single bow, a pair, ribbons wrapped around something? Tell me about it.",
+  "body jewelry tattoos": "What kind of jewelry are you imagining - a necklace, a bracelet, a chain, rings? Tell me about it.",
+  "geometric and patterns": "What are you imagining - a mandala, sacred geometry, an animal made of shapes, a pattern that wraps around? Tell me about it.",
+  "cars": "Is it your car, a dream car, or one with a story? Tell me the make, the model and the year.",
+  "motorcycles": "Is it your bike, a dream bike, or one with a story? Tell me the make and model.",
+  "bikers": "What does riding mean to you - your bike, your club, the open road? Tell me about it.",
+  "cowgirls": "What kind of cowgirl are you imagining - rodeo, desert, old West, someone you know? Tell me about her.",
+  "sports": "Which sport - and is it your team, your number, your own game? Tell me about it.",
+  "gaming": "Which game or character is it - or gaming itself, like a controller or a level? Tell me about it.",
+  "music": "Is it an instrument, a band, a song, a lyric? Tell me what music means to you.",
+  "movies and tv": "Which movie or show is it? Tell me the moment or the character you love.",
+  "food and drink": "What do you love - a dish, a coffee, a cocktail, something from home? Tell me about it.",
+  "cannabis culture": "What are you imagining - a leaf, a plant, something fun or psychedelic? Tell me about it.",
+  "science": "Which part of science do you love - space, biology, chemistry, physics, the human body? Tell me about it.",
+  "holidays": "Which holiday - Halloween, Christmas, Día de los Muertos, another one? Tell me what it means to you.",
+  "fun": "What makes you laugh or feel like a kid again? Tell me - anything goes.",
+  "western": "What are you imagining - a cowboy, a horse, the desert, boots and a hat, an old saloon? Tell me about it.",
+  "warriors": "What kind of warrior - a samurai, a Viking, a knight, a Spartan? Tell me about them.",
+  "horror": "Is it a horror movie, a monster, a character, or just something creepy? Tell me about it.",
+  "bad bitch": "Who is she? Tell me - what she's carrying, how she looks, what makes her untouchable.",
+  "dark women": "Who is she - a witch, a queen, a vampire, a woman you know? Tell me about her.",
+  "warrior women": "What kind of warrior woman - a Valkyrie, a samurai, an Amazon, you as a warrior? Tell me about her.",
+  "chicana": "What would you like in it - a woman, roses, a rosary, lettering, family? Tell me about it.",
+  "on her": "What feeling do you want - soft, bold, dark? Tell me your idea and where you're thinking of putting it.",
+  "dark jewelry": "What kind of dark jewelry - chains, thorns, daggers, a choker, a cross? Tell me about it.",
+  "badass": "What's badass to you - an animal, a warrior, a machine, a skull? Tell me.",
+  "samurai": "What kind of samurai are you imagining - in armor, with a katana, in battle, a fallen samurai? Tell me about him.",
+  "vikings": "What are you imagining - a Viking warrior, a longship, runes, Odin, a Valkyrie? Tell me about it.",
+  "knights": "What kind of knight - in armor, on horseback, with a sword, a fallen knight? Tell me about it.",
+  "gladiators and spartans": "What are you imagining - a Spartan helmet, a gladiator in the arena, a shield and spear? Tell me about it.",
+  "dark warriors": "What kind of dark warrior - a death knight, a reaper, a demon soldier? Tell me about him.",
+  "outlaws": "What kind of outlaw - a gunslinger, a bandit, a biker, a mobster? Tell me about it.",
+  "on him": "What feeling do you want - bold, dark, clean? Tell me your idea and where you're thinking of putting it.",
+  "meme tattoos": "Which meme? Tell me the one you're thinking of.",
+  "freedom & rebellion": "What does freedom look like to you - the open road, broken chains, a bird, a raised fist? Tell me about it.",
+  "satire & dark humor": "What's the joke? Tell me what you'd like to poke fun at.",
+  "optical illusions": "What would you like to play tricks with - a face, an animal, a shape, your skin itself? Tell me about it.",
+  "material illusions": "What material are you imagining - glass, metal, wood, stone, fabric - and what would be made of it?",
+  "universe within": "What would you like the universe to live inside - a silhouette, an animal, a skull, a heart? Tell me about it.",
+  "impossible fusion": "Which two things would you like fused together? Tell me - the stranger the better.",
+  "hidden within": "What's the main picture, and what would you like hidden inside it? Tell me about it.",
+  "elemental fusion": "Which elements - fire, water, earth, air - and what would they shape? Tell me about it.",
+  "mythical evolution": "Which creature would you like to evolve - a dragon, a phoenix, a wolf, one of your own? Tell me about it.",
+  "reality glitch": "What would you like glitching - a face, a skull, a landscape, a symbol? Tell me about it.",
+  "good vs evil": "What does good vs evil look like to you - an angel and a devil, light and dark, two wolves? Tell me about it.",
+  "opposites attract": "Which opposites - the sun and the moon, life and death, fire and ice? Tell me about them.",
+  "sick and twisted": "How twisted are we going? Tell me what you're imagining.",
+  "what the fuck": "Go on - what's the craziest idea you've got? Tell me.",
+  "why so serious": "What are you imagining - a creepy smile, a sinister clown, a twisted grin? Tell me about it.",
+  "stupid shit": "What's the dumbest, funniest thing you'd put on your body? Tell me.",
+  "cute but cursed": "What cute thing are we cursing - a bunny, a teddy bear, a kitten? Tell me about it.",
+  "psychedelic dream worlds": "What's in your dream world - mushrooms, eyes, melting shapes, a trip through space? Tell me about it.",
+  "surreal mind-bending art": "What would you like to bend - a face, a clock, a landscape, a body? Tell me about it.",
+  "grotesque dark fantasy": "What kind of creature or scene - a monster, a rotting king, a nightmare? Tell me about it.",
+  "cyberpunk and alien symbols": "What are you imagining - alien glyphs, a cyborg, circuits, a symbol from another world? Tell me about it."
+};
+
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69507,7 +69698,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // your fine line piece". When they have already told her, the line says so; the page shows Imagine some designs / I'll tell you more.
             _fixedSay = _told
               ? (await _fx("create_own_more", "Love it - ____ it is. Tell me anything else you'd like in it, or I can imagine some designs now.")).replace("____", _newStyle)
-              : (await _fx("create_own", "Love it - tell me what you want in your ____ piece.")).replace("____", _newStyle);
+              : (Object.prototype.hasOwnProperty.call(OWN_STYLE_ASK, _newStyle.trim().toLowerCase())
+                  ? await _fx("own_style:" + _newStyle.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""), OWN_STYLE_ASK[_newStyle.trim().toLowerCase()])
+                  : (await _fx("create_own", "Love it - tell me what you want in your ____ piece.")).replace("____", _newStyle));
             console.log("[TURN:STYLE] work on this style: " + _newStyle + (_told ? " - they had already told her, she does not ask again" : "") + (me ? " · who=" + me : ""));
           } else if (/^let'?s create my own in the (.+) style\.?$/i.test(_s) && ["add", "cover"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase())) {
             // ══ A STYLE ON A COVER-UP OR ADD-ON IS A CONVERSATION (v9.723, 2026-10-22, Aaron: "I chose something I'd like to work on,
@@ -69528,9 +69721,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // after a style's Create My Own. Their words "I want a ... tattoo" stay in the drawing words, so the subject goes with them.
             // Setting: config:say:create_own_topic.
             _fixedWhy = "create_own_topic";
-            _fixedSay = await _fx("create_own_topic", "Tell me what you're imagining - an idea, a feeling, a person, a memory, anything.");
+            const _tName = (typeof opts.own_topic === "string" && opts.own_topic !== "1") ? opts.own_topic.trim() : "";
+            const _tKey = _tName.toLowerCase();
+            const _tSlug = _tKey.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+            _fixedSay = (_tSlug && Object.prototype.hasOwnProperty.call(OWN_TOPIC_ASK, _tKey))
+              ? await _fx("own:" + _tSlug, OWN_TOPIC_ASK[_tKey])
+              : _tName
+                ? (await _fx("create_own_topic_named", "Tell me what you're imagining for your ____ tattoo - an idea, a feeling, a person, a memory, anything.")).replace("____", _tName)
+                : await _fx("create_own_topic", "Tell me what you're imagining - an idea, a feeling, a person, a memory, anything.");
             try { await talkStatePut(env, me, "await_idea", "1"); } catch {}
-            console.log("[TURN:TOPIC] create my own on a subject card: " + JSON.stringify(String(_s).slice(0, 80)) + " - she asks for their idea, fixed" + (me ? " · who=" + me : ""));
+            console.log("[TURN:TOPIC] create my own on the " + JSON.stringify(_tName || "?") + " card (" + JSON.stringify(String(_s).slice(0, 80)) + ") - " + (Object.prototype.hasOwnProperty.call(OWN_TOPIC_ASK, _tKey) ? "its own question" : "the general question") + ", fixed" + (me ? " · who=" + me : ""));
           } else if (_newFlow && /^let'?s create my own\.?$/i.test(_s)) {
             // ══ CREATE YOUR OWN IS A FIXED STEP (v9.699, 2026-10-21, Aaron) ═══════════════════════════════════════════════
             // MEASURED 14:16 (pta_4896a4c8a1890536): this was the one tap of the new-tattoo steps that went to her - 17.8s, and she
@@ -76190,7 +76390,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { try { console.log("[ONME] reopen failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (!b.stream) {
-          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, inspire_own: !!b.inspire_own, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null, pick_new: !!b.pick_new, own_topic: !!b.own_topic, styles_shown: (typeof b.styles_shown === "boolean") ? b.styles_shown : null, style_on: (typeof b.style_on === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.style_on.trim())) ? b.style_on.trim() : null,
+          const _o = await auraTalk(env, me, stage, _said, _hist, { tid: b.tid ? String(b.tid).slice(0, 40) : null, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, from: b.from || null, world, lang, ref: _ref, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, inspire_own: !!b.inspire_own, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null, pick_new: !!b.pick_new, own_topic: (typeof b.own_topic === "string" && /^[^<>{}]{1,60}$/.test(b.own_topic.trim())) ? b.own_topic.trim() : (b.own_topic === true ? "1" : null), styles_shown: (typeof b.styles_shown === "boolean") ? b.styles_shown : null, style_on: (typeof b.style_on === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.style_on.trim())) ? b.style_on.trim() : null,
             tile: b.tile || null, fresh: !!b.fresh,
             waitUntil: (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} } });
           // SAYS WHAT IT DID: the reply names the photo it was handed, so a turn that silently
@@ -76219,7 +76419,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // THE TURN RUNS AS A JOB, THIS CONNECTION ONLY RELAYS IT (v9.681). Same options as the turn below, as plain data.
         const _tOpts = {
           tid: b.tid ? String(b.tid).slice(0, 40) : null,
-          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, inspire_own: !!b.inspire_own, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null, pick_new: !!b.pick_new, own_topic: !!b.own_topic, styles_shown: (typeof b.styles_shown === "boolean") ? b.styles_shown : null, style_on: (typeof b.style_on === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.style_on.trim())) ? b.style_on.trim() : null };
+          from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, inspire_own: !!b.inspire_own, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null, pick_new: !!b.pick_new, own_topic: (typeof b.own_topic === "string" && /^[^<>{}]{1,60}$/.test(b.own_topic.trim())) ? b.own_topic.trim() : (b.own_topic === true ? "1" : null), styles_shown: (typeof b.styles_shown === "boolean") ? b.styles_shown : null, style_on: (typeof b.style_on === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.style_on.trim())) ? b.style_on.trim() : null };
         // ══ A START THAT CANNOT DRAW RUNS STRAIGHT AWAY (v9.792, 2026-11-01, Aaron: go) ═══ MEASURED 17:20:08 -> 17:20:10.6: the job took
         // 2.2s just to begin (1.5-4.1s across today) for a fixed line that then took 1.3s. The job exists so a 30-90s drawing survives a
         // dropped connection; a start never draws. ONLY these run directly: a new-tattoo / add / cover opener on its own, or a fresh "Let's
@@ -76416,7 +76616,7 @@ export class PublicEntry extends WorkerEntrypoint {
             // the failure this file records more often than any other.
             out = await auraTalk(env, me, stage, _said, _hist, {
               tid: b.tid ? String(b.tid).slice(0, 40) : null,
-              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, inspire_own: !!b.inspire_own, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null, pick_new: !!b.pick_new, own_topic: !!b.own_topic, styles_shown: (typeof b.styles_shown === "boolean") ? b.styles_shown : null, style_on: (typeof b.style_on === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.style_on.trim())) ? b.style_on.trim() : null,
+              from: b.from || null, world, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, inspire_own: !!b.inspire_own, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null, pick_new: !!b.pick_new, own_topic: (typeof b.own_topic === "string" && /^[^<>{}]{1,60}$/.test(b.own_topic.trim())) ? b.own_topic.trim() : (b.own_topic === true ? "1" : null), styles_shown: (typeof b.styles_shown === "boolean") ? b.styles_shown : null, style_on: (typeof b.style_on === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.style_on.trim())) ? b.style_on.trim() : null,
               direct_no_draw: !!_tOpts.direct_no_draw, direct_addon: !!_tOpts.direct_addon, addon_box: _tOpts.addon_box || null,
               // (v9.879) MEASURED 15:42:21: an add-on favorite opened from Favorites ran this direct pick ("a pick off img_mw71jzetxmpg") and
               // its sheet never reached the turn - no [TURN:FAV], and she said "there's nothing numbered on your screen". The favorite rides here too.

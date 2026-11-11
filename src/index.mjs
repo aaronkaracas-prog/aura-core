@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.939.0-2026-11-10-turn-clock-from-the-tap";
+const BUILD = "aura-core-v9.940.0-2026-11-10-heard-second-ask";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69518,7 +69518,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   if (!_hTheirs.some((th) => th.startsWith(acc + c))) { open = false; break; } acc += c; end = i + 1; }
                 if (acc && _hTheirs.some((th) => th === acc)) open = false;
                 return { end, len: acc.length, open: open && acc.length > 0, copy: acc.length >= _hThr }; };
-              const _hFeed = (() => { let raw = "", label = null, sent = 0;
+              const _mkHFeed = () => (() => { let raw = "", label = null, sent = 0;
                 return async (t) => {
                   raw += String(t || "");
                   const body = raw.replace(/^\s*```[a-z]*\s*/i, "");
@@ -69549,7 +69549,33 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 }; })();
               const _hLate = new Promise((r) => setTimeout(function tick() { if (!_hStarted) r({ late: true }); else setTimeout(() => r({ late: true }), 45000); }, _hMs));
               const _hArgs = { system: _hSys, user: (_told ? "What they told you before, in order:\n" + _told + "\n\n" : "") + (_herLast ? "What you last said back to them:\n" + _herLast + "\n\n" : "") + (_told || _herLast ? "What they just said:\n" : "") + _s.slice(0, 1200), max_tokens: 2000, ...(_hEff ? { reasoning: _hEff } : {}), ...(_hModel ? { model: _hModel } : (talkModel ? { model: talkModel } : {})) };
-              const _hq = await Promise.race([_hLate, onDelta ? callBrainStream(_hArgs, env, _hFeed) : callBrain(_hArgs, env)]);
+              // ══ A SECOND ASK WHEN THE FIRST GOES QUIET (v9.940, 2026-11-10, Aaron: go) ═══════════════════════════════════════════════
+              // MEASURED 16:19:12, 16:19:49, 16:26:00: three new-tattoo first words ("i want something for my grandpa who was a sailor. he passed
+              // last year" and two more) - no answer in 15s, and "Tell me a little more - what are you picturing?" went up every time, nothing they
+              // said heard. HEARD_TEST at 16:33 on the same model: 5 of 6 answered in 3.4-8.8s, one gave nothing in 45s - a single ask that stalls
+              // stalls the whole turn. Now, when the first ask has sent no words by config:talk:heard_hedge_ms (default 6000, 0 = off) or comes back
+              // empty, the same ask goes again alongside it and whichever answers first is used. Only one of them ever streams to the page.
+              let _hHedgeMs = 6000; try { const _hv2 = parseInt(String((await env.AURA_KV.get("config:talk:heard_hedge_ms")) || ""), 10); if (Number.isFinite(_hv2) && _hv2 >= 0) _hHedgeMs = _hv2; } catch {}
+              let _hOwner = null;
+              const _hGate = (id) => { const f = _mkHFeed(); return async (t) => { if (_hOwner && _hOwner !== id) return; if (!_hOwner && String(t || "").trim()) _hOwner = id; return f(t); }; };
+              const _hAsk = (id) => (onDelta ? callBrainStream(_hArgs, env, _hGate(id)) : callBrain(_hArgs, env)).catch((e) => ({ ok: false, error: String(e?.message ?? e).slice(0, 160) }));
+              const _hGood = (q) => !!(q && String(q.text || "").trim());
+              const _hBoth = (async () => {
+                const _pA = _hAsk("first");
+                if (!_hHedgeMs) return await _pA;
+                const _a = await Promise.race([_pA.then((q) => ({ q })), new Promise((r) => setTimeout(() => r(null), _hHedgeMs))]);
+                if (_a && _hGood(_a.q)) return _a.q;
+                if (!_a && _hStarted) return await _pA;   // her words are already reaching the page - no second ask
+                try { console.log("[TURN:HEARD] " + (_a ? "the first ask came back empty in " : "no words from the first ask in ") + ((Date.now() - _hT0) / 1000).toFixed(1) + "s - a second ask goes alongside it" + (me ? " · who=" + me : "")); } catch {}
+                const _pB = _hAsk("second");
+                return await new Promise((res) => {
+                  let _n = 0;
+                  const _one = (who) => (q) => { if (_hGood(q)) { try { console.log("[TURN:HEARD] the " + who + " ask answered first, " + ((Date.now() - _hT0) / 1000).toFixed(1) + "s" + (me ? " · who=" + me : "")); } catch {} res(q); } else if (++_n === 2) res(q); };
+                  (_a ? Promise.resolve(_a.q) : _pA).then(_one("first"), () => _one("first")(null));
+                  _pB.then(_one("second"), () => _one("second")(null));
+                });
+              })();
+              const _hq = await Promise.race([_hLate, _hBoth]);
               const _hRaw = String((_hq && _hq.text) || "").trim();
               const _hClean = _hRaw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim();
               const _hm = _hClean.match(/^\W*(READY|CHOOSE|TALK|DRAW)\b\W*\s*([\s\S]*)$/i) || _hClean.match(/^\W*(GO)[ \t:.!*\-]*(?:\n([\s\S]*))?$/);

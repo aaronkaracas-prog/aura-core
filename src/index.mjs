@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.938.0-2026-11-10-same-picture-imported-once";
+const BUILD = "aura-core-v9.939.0-2026-11-10-turn-clock-from-the-tap";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67362,8 +67362,20 @@ async function startTalkJob(env, data) {
     return null;
   }
 }
+// ══ THE TURN'S CLOCK STARTS WHEN THEY TAP SEND (v9.939, 2026-11-10, Aaron: go) ═══════════════════════════════════════════
+// The page's turn id is "t" + its own Date.now() in base 36, so every step can say how long after the tap it happened:
+// the job made, the job begun, her first words in core, the turn done. MEASURED 15:49 by hand from the id: tap 18.98,
+// job made 20.83, the turn's own clock began ~23.5 - 4.5s before any of the turn's work, which nothing logged.
+function talkSentAt(tid) {
+  const m = String(tid || "").match(/^t([0-9a-z]{8})/);
+  const v = m ? parseInt(m[1], 36) : 0;
+  return (v > 1.7e12 && v < 2.2e12) ? v : 0;
+}
+function talkSince(tid) { const s = talkSentAt(tid); return s ? ((Date.now() - s) / 1000).toFixed(1) + "s after they tapped send" : "send time unknown"; }
 async function runTalkJob(env, d) {
   const me = d.me, tid = (d.opts && d.opts.tid) || null, t0 = Date.now();
+  try { console.log("[TURN:CLOCK] job began " + talkSince(tid) + (me ? " · who=" + me : "")); } catch {}
+  let _firstWords = false;
   let text = "", stg = "", what = "", lastW = 0, trail = null;
   const pend = []; let _pendN = 0;
   // ══ A PROGRESS NOTE NEVER HOLDS UP THE TURN (v9.694, 2026-10-21, Aaron) ═══════════════════════════════════════════
@@ -67393,7 +67405,9 @@ async function runTalkJob(env, d) {
       },
       // (v9.828) MEASURED 15:56:29.8: her drawing line came in 0.8s but reached the page only with the finished 8 (36s later) - it fell inside
       // the 0.7s gap between notes and nothing was written after it. Text held back by the gap is written as soon as the gap ends.
-      onDelta: async (t) => { text += String(t || ""); await live(false);
+      onDelta: async (t) => { text += String(t || "");
+        if (!_firstWords && text.trim()) { _firstWords = true; try { console.log("[TURN:CLOCK] her first words reached core " + talkSince(tid) + (me ? " · who=" + me : "")); } catch {} }
+        await live(false);
         if (!trail) trail = setTimeout(() => { trail = null; live(true).catch(() => null); }, 750); },
       onStage: async (st, w) => { stg = String(st || ""); what = String(w || ""); await live(true); } });
   } catch (e) {
@@ -67405,7 +67419,7 @@ async function runTalkJob(env, d) {
   if (trail) { clearTimeout(trail); trail = null; }
   await live(true, { done: true });
   try { await liveChain; } catch {}
-  try { console.log("[TURNJOB] turn " + tid + " finished in " + ((Date.now() - t0) / 1000).toFixed(1) + "s · ok=" + !!(out && out.ok !== false) + (me ? " · who=" + me : "")); } catch {}
+  try { console.log("[TURNJOB] turn " + tid + " finished in " + ((Date.now() - t0) / 1000).toFixed(1) + "s (" + talkSince(tid) + ") · ok=" + !!(out && out.ok !== false) + (me ? " · who=" + me : "")); } catch {}
   // Her work behind the reply (naming at This Is My Tattoo, and the like) finishes inside the job, never cut off.
   // (v9.901) the finished turn - the drawn sheet, its cards, everything in it - is let go before the wait; only whether it worked is kept
   const _okOut = !!(out && out.ok !== false); out = null;
@@ -76039,7 +76053,7 @@ export class PublicEntry extends WorkerEntrypoint {
         const _jobId = (me && _tOpts.tid && !_direct && await talkJobsOn(env))
           ? await startTalkJob(env, { me, stage, said: _said, hist: _hist, host, opts: _tOpts }) : null;
         if (_jobId) {
-          try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs as job " + _jobId + " - the page's connection only relays it · who=" + me); } catch {}
+          try { console.log("[TURNJOB] turn " + _tOpts.tid + " runs as job " + _jobId + " - the page's connection only relays it (made " + talkSince(_tOpts.tid) + ") · who=" + me); } catch {}
           const _relay = _relayJob(_jobId, _tOpts.tid, 0);
           try { this.ctx?.waitUntil?.(_relay); } catch {}
           return new Response(readable, { headers: {

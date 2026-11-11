@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.961.0-2026-11-11-a-picture-on-a-new-tattoo-is-one-they-like";
+const BUILD = "aura-core-v9.962.0-2026-11-11-a-picture-on-a-new-tattoo-from-any-page";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68398,8 +68398,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // or a style, on the Create page, not a fresh start) a picture they add is a picture they like: it goes to the image model with their
       // words (v9.717, config:frame:new:picture). A fresh start with a photo of them on the front page is still a new add-on (v9.861).
       let _newRoadPic = false;
+      // (v9.962) MEASURED 13:39 (pta_0c577382cb25a0ac): the style was picked on Discover, so the page said "discover" and v9.961's "home or
+      // job0" never matched - the truck went down the add-on road again. Any page but the ones whose photo IS their skin (Add to Existing,
+      // Cover Up, See It On You) and Ink It (its own road).
       if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && !(opts && opts.fresh) &&
-          (!opts || !opts.page || opts.page === "home" || opts.page === "job0")) {
+          !(opts && ["job1", "job2", "job3", "job6"].includes(String(opts.page || "")))) {
         try { _newRoadPic = String(((await talkStateGet(env, me, ["new_flow"])) || {}).new_flow || "") === "1"; } catch {}
         if (_newRoadPic) console.log("[TURN:PHOTO] a picture added to a new tattoo - a picture they like, not their skin" + (me ? " · who=" + me : ""));
       }

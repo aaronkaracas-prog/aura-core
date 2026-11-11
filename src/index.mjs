@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.964.0-2026-11-11-a-picture-they-like-is-not-a-design-to-change";
+const BUILD = "aura-core-v9.965.0-2026-11-11-she-knows-why-the-picture-came";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69480,6 +69480,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // MEASURED 11:15 (Trending -> Memorials): "If you're not sure yet, pick a style above" - the screen was her banner and the chat, no styles.
       // The page says whether style buttons are showing; when they are not, she is told so.
       if (opts && opts.styles_shown === false) _where = (_where ? _where + " " : "") + "There are no style buttons on their screen right now - never point them to styles above or below; if a style would help, ask them in words.";
+      // ══ WHY THEY SENT THE PICTURE IS ALREADY KNOWN (v9.965, 2026-11-11, Aaron: "she's asking a question that shouldn't even apply ... we've
+      // already arrived on Japanese, a person's already said here's an image I want to turn into a Japanese tattoo") ═══ MEASURED 14:15: after
+      // Japanese -> Create My Own -> the truck, she asked "What's pulling you to this picture - the truck itself, or the feeling of it?". She
+      // was never told why the picture came. On a new tattoo, a picture they add is the thing to make it from - she is told so, as context.
+      if (_newRoadPic && _freshPhoto) _where = (_where ? _where + " " : "") + "They are making a brand-new tattoo" + (_newStyle ? " in the " + _newStyle + " style" : "") +
+        " and just showed you this picture to make it from - that is why they sent it, so there is nothing to ask about why. Say what you see and offer to imagine it from this picture.";
       if (_where) { try { console.log("[TURN:PAGE] they are on " + opts.page + (me ? " · who=" + me : "")); } catch {} }
       const agentLine = hasLive
         ? "[A person is designing a tattoo with you on " + world + ".world. Answer as yourself, " +

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.942.0-2026-11-10-warm-catalogue-copies";
+const BUILD = "aura-core-v9.943.0-2026-11-10-search-timing-and-lanes";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -59006,8 +59006,10 @@ async function inspireCheck(env, items, words, world, model, budgetMs, askOver) 
     }
   };
   // (v9.912) twenty at a time - MEASURED 10:51: ten at a time took 8-10s for 60-88 pictures.
-  await Promise.all(Array.from({ length: Math.min(20, items.length) }, one));
-  return { yes: out, said, ask, ms: Date.now() - t0, tokens_in: tokens, errors: errs };
+  // (v9.943) how many pictures are looked at side by side: config:inspire:check_lanes (default 20, as before; 1-60)
+  let lanes = 20; try { const v = parseInt(String((await env.AURA_KV.get("config:inspire:check_lanes")) || ""), 10); if (Number.isFinite(v) && v >= 1 && v <= 60) lanes = v; } catch {}
+  await Promise.all(Array.from({ length: Math.min(lanes, items.length) }, one));
+  return { yes: out, said, ask, ms: Date.now() - t0, tokens_in: tokens, errors: errs, lanes };
 }
 // One Cloudflare web search (AI Gateway). The provider is a dial, `config:inspire:search:provider` (ceramic | exa | linkup).
 async function cfWebSearch(env, query, provider, limit) {
@@ -75584,7 +75586,10 @@ export class PublicEntry extends WorkerEntrypoint {
           let _cw = false; if (_world) { try { _cw = String((await env.AURA_KV.get("config:inspire:check:world_on")) || "").trim().toLowerCase() === "on"; } catch {} }
           if (_cm && items.length && (!_world || _cw)) {
             let _cms = 25000; try { const v = parseInt(String((await env.AURA_KV.get("config:inspire:check_ms")) || ""), 10); if (Number.isFinite(v) && v > 0) _cms = v; } catch {}
+            const _tSearch = Date.now() - _t0;
             const c = await inspireCheck(env, items, _kw, _world, _cm, _cms);
+            // (v9.943) MEASURED 17:45:43: a Real Tattoos search took 16.0s and the one log line that held the times was cut off before them.
+            try { console.log("[INSPIRE:TIME] search " + (_tSearch / 1000).toFixed(1) + "s, then her eyes on " + items.length + " pictures " + (c.ms / 1000).toFixed(1) + "s (" + c.lanes + " at a time" + (Object.keys(c.errors || {}).length ? ", errors " + JSON.stringify(c.errors).slice(0, 120) : "") + ")" + (me ? " · who=" + me : "")); } catch {}
             const kept = items.filter((x, i) => c.yes[i] !== false);
             const gone = items.filter((x, i) => c.yes[i] === false);
             const unanswered = c.yes.filter((v) => v === null).length;

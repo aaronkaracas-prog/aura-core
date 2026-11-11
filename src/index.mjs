@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.944.0-2026-11-11-logs-asked-in-pieces";
+const BUILD = "aura-core-v9.945.0-2026-11-11-change-keeps-their-words";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69956,8 +69956,22 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 if (_tp || _lt) _cUser = "What they told you before, in their words:\n" + (_tp || "(nothing)") + (_lt ? "\nThe lettering on their design: " + _lt : "") +
                   "\n\nThe change they want now:\n" + _s.slice(0, 600);
               } catch {}
-              const _cq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _cMs)),
+              let _cq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _cMs)),
                 callBrain({ system: _cSys, user: _cUser.slice(0, 2400), max_tokens: 2000, ...(_cEff ? { reasoning: _cEff } : {}), ...(_cModel ? { model: _cModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+              // ══ AN ANSWER WITH NO WORDS FOR THEM IS ASKED AGAIN (v9.945, 2026-11-11, Aaron: "pull the logs ... the name Sienna") ══════════
+              // MEASURED 06:15:01: "I would like to incorporate the name Sienna in it" - the model sent back only its CHANGE line: no words for
+              // them, no LETTERING line, so no lettering sheet went up and the fixed line went instead. An answer that has only the instruction
+              // line is not her answer; while there is time left it is asked once more, the same words.
+              try {
+                const _w0 = String((_cq && !_cq.late && _cq.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, "").replace(/(^|\n|\s)(LETTERING|CHANGE)\s*:[^\n]*/gi, " ").trim();
+                const _left = _cMs - (Date.now() - _cT0);
+                if (_cq && !_cq.late && !_w0 && _left > 3000) {
+                  console.log("[TURN:CHANGE-SAY] her answer had no words for them, only the instruction line - asked once more (" + (_left / 1000).toFixed(1) + "s left)" + (me ? " · who=" + me : ""));
+                  const _cq2 = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _left)),
+                    callBrain({ system: _cSys, user: _cUser.slice(0, 2400), max_tokens: 2000, ...(_cEff ? { reasoning: _cEff } : {}), ...(_cModel ? { model: _cModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
+                  if (_cq2 && !_cq2.late && String(_cq2.text || "").trim()) _cq = _cq2;
+                }
+              } catch {}
               let _cRaw = String((_cq && !_cq.late && _cq.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, "");
               let _cLetter = [];
               _cRaw = _cRaw.replace(/(^|\n|\s)LETTERING\s*:\s*([^\n]*?)(?=\s*(?:\n|CHANGE\s*:|$))/i, (m, a, b) => { _cLetter = letterItems(b); return a; });
@@ -69970,6 +69984,20 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               const _cSay = _finishedOnly(_wholeSentences(_cRaw.replace(/(^|\s)CHANGE\s*:[\s\S]*$/i, ""), 1200));
               const _cSec = ((Date.now() - _cT0) / 1000).toFixed(1);
               if (_changeFull) console.log("[TURN:CHANGE-SAY] the change written out: \"" + _changeFull.slice(0, 300) + "\" (their words: \"" + _s.slice(0, 160) + "\")" + (me ? " · who=" + me : ""));
+              // ══ THE WRITTEN-OUT CHANGE MAY ADD, NEVER DROP (v9.945, 2026-11-11) ═══ MEASURED 06:15:01: "incorporate the name Sienna in it" was
+              // written out as "incorporate Sienna in it." - "the name" gone, and the image model drew Sienna as a woman's face on all 8 cards
+              // ("SIENNA INTEGRATED", "SIDE BY SIDE"...). Writing it out is for filling in what they referred to before; when it leaves out a word
+              // of theirs (anything but the little words of asking), their own words go to the image model instead.
+              if (_changeFull) {
+                const _cwd = (t) => String(t || "").toLowerCase().match(/[a-z0-9]+/g) || [];
+                const _little = new Set(["the","and","but","for","with","this","that","these","those","you","your","can","could","would","should","will","please","like","love","want","wanna","just","maybe","also","too","some","kinda","kind","really","very","its","it's","our","them","they","there","here","then","now","yeah","yes","okay","think","guess","make","get","have","has","about","what","how","into","onto","from","all","one","ones","her","his","him","she","instead","thing","things","something","anything","bit","lot","lots","more","much","way","sure","cool","awesome","nice","great","thanks","thank","add","put","use","change","replace","going","gonna"]);
+                const _have = new Set(_cwd(_changeFull));
+                const _lost = [...new Set(_cwd(_s).filter((w) => w.length >= 3 && !_little.has(w) && !_have.has(w) && !_have.has(w.replace(/s$/, "")) && !_have.has(w + "s")))];
+                if (_lost.length) {
+                  console.log("[TURN:CHANGE-SAY] the written-out change left out their words (" + _lost.slice(0, 6).join(", ") + ") - their own words go to the image model: \"" + _s.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+                  _changeFull = null;
+                }
+              }
               // ══ NEW LETTERING IN A CHANGE: THE SHEET FIRST (v9.848, 2026-11-05, Aaron: go) ═══ The change waits (change_held); the sheet goes up
               // with only the new pieces; their pick draws it (the branch above).
               try {

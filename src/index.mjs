@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.969.0-2026-11-11-see-it-on-you-starts-like-create";
+const BUILD = "aura-core-v9.970.0-2026-11-11-a-bracketed-note-is-never-a-name";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -74700,7 +74700,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   return n.slice(0, 160).replace(/\s+\S*$/, "").replace(/[\s,;:.-]+$/, "") + "\u2026";
                 })(opts.name)
                 : (drew && drew.name_hint) ? String(drew.name_hint)
-                : (intent && intent.subject) ? String(intent.subject).slice(0, 70)
+                // (v9.970, 2026-11-11) MEASURED In Progress: two tattoos named "[they sent a photo, with no words]" - core's own note for a photo
+                // with no words, copied into her brief's subject. A note in brackets is never a name; the tattoo waits for its card's or hers.
+                : (intent && intent.subject && !/^\s*\[/.test(String(intent.subject))) ? String(intent.subject).slice(0, 70)
                 // A TITLE IS A NAME, NEVER WORDS SENT TO THE IMAGE MODEL (v9.666, 2026-10-18, Aaron). MEASURED twice: "This is my
                 // current tattoo. Show me 4 different ideas..." and "This is my tattoo. Add the new work from number 1 in the second
                 // pictur" - our own sentences as titles. The title waits for a name (hers at This Is My Tattoo, a card's, a pick's);

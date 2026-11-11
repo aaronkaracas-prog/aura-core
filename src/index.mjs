@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.960.0-2026-11-11-every-subject-card-its-own-question";
+const BUILD = "aura-core-v9.961.0-2026-11-11-a-picture-on-a-new-tattoo-is-one-they-like";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68391,6 +68391,18 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // the chat box; it went as an upload, so it was taken as their skin, the job was forced to add-on and the page showed the add-on
       // choices. The page marks that exact picture `inspire_own` - a design they want changed, never their body.
       const _bodyRefNow = !(opts && (opts.pick || opts.use || opts.inspire || opts.inspire_go || opts.inspire_own || opts.name || opts.tile));
+      // ══ A PICTURE ON A NEW TATTOO IS ONE THEY LIKE, NOT THEIR SKIN (v9.961, 2026-11-11, Aaron: go) ═══ MEASURED 13:18 (pta_657223bcde9d5a94):
+      // Japanese -> Create My Own -> "now tell Aura your idea below, or show her a picture" -> a photo of an old rusted truck. With no marker it
+      // was taken as their body, so the new tattoo became an add-on: she offered Japanese ideas from the truck, they said "Yes, show me", the
+      // add-on hold stopped the drawing and she still said "Here we go" - nothing came. On a new tattoo already under way (started from Create
+      // or a style, on the Create page, not a fresh start) a picture they add is a picture they like: it goes to the image model with their
+      // words (v9.717, config:frame:new:picture). A fresh start with a photo of them on the front page is still a new add-on (v9.861).
+      let _newRoadPic = false;
+      if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && !(opts && opts.fresh) &&
+          (!opts || !opts.page || opts.page === "home" || opts.page === "job0")) {
+        try { _newRoadPic = String(((await talkStateGet(env, me, ["new_flow"])) || {}).new_flow || "") === "1"; } catch {}
+        if (_newRoadPic) console.log("[TURN:PHOTO] a picture added to a new tattoo - a picture they like, not their skin" + (me ? " · who=" + me : ""));
+      }
       if (opts && opts.inspire_own) console.log("[TURN:JOB] a Get Inspired picture to change (Make it my own) - not their body, not an add-on" + (me ? " \u00b7 who=" + me : ""));
       let _bodyPhoto = false;
       // ══ A SPLIT CARD IS WORKED ON BY ITS LEFT HALF (2026-09-26, Aaron) ══════════════════════
@@ -68416,7 +68428,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             context: "a reference somebody pointed at while designing a tattoo", by: me }), env, true);
           const ip = (ir && ir.payload) ? ir.payload : ir;
           if (ip?.ok) { refSaw = ip.saw || null; refUrl = ip.image_url || wantRef;
-                        refDesign = ip.entity || null; _bodyPhoto = _bodyRefNow; _freshPhoto = true; }
+                        refDesign = ip.entity || null; _bodyPhoto = _bodyRefNow && !_newRoadPic; _freshPhoto = true; }
         } catch {}
         // ══ THE ISOLATE IS DELETED, AND IT IS NOT MOVING ANYWHERE (2026-09-13) ═════════════
         //
@@ -68480,11 +68492,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // THEIR OWN BODY, OR A PICTURE THEY POINTED AT (2026-09-29). A photo that arrives with no
               // catalogue pick, no Get Inspired card and no tile is a photo of them - the four
               // directions for this tattoo are then drawn ON them. Anything they pointed at is not.
-              body: _bodyRefNow,
+              body: _bodyRefNow && !_newRoadPic,
               // A PICTURE THEY LIKE (v9.717, 2026-10-22, Aaron): sent from Show me - it goes to the image model with their words.
-              liked: !!(opts && opts.inspire)
+              // (v9.961) a picture added to a new tattoo is one too
+              liked: !!(opts && opts.inspire) || _newRoadPic
             }));
-            _likedPic = !!(opts && opts.inspire);
+            _likedPic = !!(opts && opts.inspire) || _newRoadPic;
           } catch {}
         }
       } else if (me) {
@@ -71899,6 +71912,20 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         // What the turn says now - the fixed drawing line, the lettering line, or her own words - is what shows; her raw stream only if nothing is set.
         let _out = String((acted && acted.say) || "");
         if (!_out && !_yesDraws) { const _c = _sayFrom(_rawAcc); if (_c) _out = _c; }
+        // ══ NOTHING DRAWN, NO "HERE WE GO" (v9.961, 2026-11-11, Aaron: go) ═══ MEASURED 13:18:43: "Here we go - Japanese-style ideas built
+        // straight from that truck photo." with nothing drawn and nothing to tap. When this turn does not draw, her claim that it is drawing
+        // is taken out (the same trim as the add-on hold, v9.871); if nothing of hers is left, her offer stands as a question.
+        if (_out && !_yesDraws) {
+          const _lead = /^\s*(?:here it is|here you go|here we go|there you go|on it|coming right up)\b/i;
+          let _cl = dropDrawClaim(_out);
+          if (_lead.test(_cl)) _cl = "";
+          if (_cl !== _out) {
+            console.log("[TURN:YES] nothing drawn - her claim that it is drawing taken out: \"" + _out.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
+            let _ask = "Want me to imagine it?";
+            try { const _k = String((await env.AURA_KV.get("config:say:not_drawn_ask")) || "").trim(); if (_k) _ask = _k; } catch {}
+            _out = _cl || _ask; if (acted) acted.say = _out;
+          }
+        }
         if (_out && onDelta) { _sentSoFar = _out; try { await onDelta(_out); } catch {} }
         console.log("[TURN:YES] " + (_yesDraws ? "it draws - the fixed line shown, her streamed words not: \"" : "it does not draw - her own words shown: \"") + _out.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
       }

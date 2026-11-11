@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.952.0-2026-11-11-style-on-and-pick-new-reach-the-turn";
+const BUILD = "aura-core-v9.953.0-2026-11-11-her-line-matches-the-lettering-button";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69966,6 +69966,18 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   const _gi = _heardIdea || _goPrev;
                   if (_gi) { try { await talkStatePut(env, me, "go_idea", _gi); await talkStatePut(env, me, "go_said", "1"); } catch {} }
                   if (_hDo === "GO" || !String(_fixedSay || "").trim()) { _fixedSay = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look."); _heardStreamed = false; }
+                  else {
+                    // ══ HER WORDS MATCH THE BUTTON UNDER THEM (v9.953, 2026-11-11) ═══ MEASURED in the Mia walk: her say-back ended "...Want me to imagine
+                    // it?" and the only button under it was Choose my lettering - she offered one thing and the page another. Her say-back stays; a
+                    // question she ends on is taken off and the lettering line ends it, shown as the final line.
+                    const _sn = String(_fixedSay).match(/[^.!?]+[.!?]+["'\u201d)\]]*\s*|[^.!?]+$/g) || [String(_fixedSay)];
+                    let _keep = _sn.slice(); while (_keep.length && /\?["'\u201d)\]]*\s*$/.test(_keep[_keep.length - 1])) _keep.pop();
+                    const _la = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look.");
+                    if (_keep.length < _sn.length) {
+                      _fixedSay = (_keep.join("").trim() + " " + _la).trim(); _heardStreamed = false;
+                      console.log("[TURN:LETTER] her question at the end was an offer the page does not show - it ends with the lettering line: \"" + _fixedSay.slice(0, 220) + "\"" + (me ? " · who=" + me : ""));
+                    }
+                  }
                   // (v9.846) lettering already styled comes up with its style chosen - only the new pieces need a tap
                   const _chosen = (_hLetter || []).slice(0, 4).map((t) => { const k = letterKey(t); const o = _lOld.items.find((x) => x && x.font && (letterKey(x.text) === k || letterKey(x.from) === k));
                     return o ? { said: t, text: String(o.text), font: String(o.font) } : null; }).filter(Boolean);

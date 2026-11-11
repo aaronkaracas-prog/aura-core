@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.945.0-2026-11-11-change-keeps-their-words";
+const BUILD = "aura-core-v9.946.0-2026-11-11-yes-draws-all-they-asked";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67592,7 +67592,13 @@ async function recordArtistFiles(env, d, drew) {
         await talkDo(env, me, "talkPut", [{
           "talk-state:timeline": "[]", "talk-state:brief": "", "talk-state:last": "", "talk-state:ref": "",
           "talk-state:design": "", "talk-state:onme": "", "talk-state:bad": "", "talk-state:split": "",
-          "talk-state:added": "", "talk-state:project": "" }]);
+          "talk-state:added": "", "talk-state:project": "",
+          // (v9.946) MEASURED 06:52: "Mia" in Handwritten, locked in at 06:12, was kept as the lettering of the next tattoo (a Samurai pick) -
+          // the tattoo's own markers end with it too.
+          "talk-state:letter": "", "talk-state:change_held": "", "talk-state:await_change": "", "talk-state:design_change": "",
+          "talk-state:design_change_parent": "", "talk-state:await_idea": "", "talk-state:go_idea": "", "talk-state:go_picks": "",
+          "talk-state:go_said": "", "talk-state:new_style": "", "talk-state:new_drawn": "", "talk-state:new_flow": "",
+          "talk-state:addon_go": "", "talk-state:addon_drawn": "", "talk-state:addon_talk": "" }]);
         try { console.log("[FILES] locked in - " + d.project + " is finished; the next turn starts clean"); } catch {}
       }
     } catch (e) {
@@ -71603,11 +71609,19 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             if (_bareYes) { try {
               const _tl = Array.isArray(tnow) ? tnow : [], _cur = String(said || "").trim();
               let _seenCur = false;
-              for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (!e || e.role !== "them") continue;
+              // ══ EVERYTHING THEY ASKED SINCE THE DESIGN, NOT ONLY THE LAST LINE (v9.946, 2026-11-11) ═══ MEASURED 06:51-06:52: "I would like
+              // to incorporate the name Sienna in it", she asked where, "under the samurai at the bottom", then Yes - only the last line was
+              // drawn ("I want to change it: under the samurai at the bottom") and no card had the name. Their lines back to the last
+              // picture or tap are their change, in order (at most four).
+              const _asks = [];
+              for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (!e) continue;
+                if (e.role === "picture") break;
+                if (e.role !== "them") continue;
                 const t = String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim(); if (!t) continue;
                 if (!_seenCur && t === _cur) { _seenCur = true; continue; }
-                if (!_yesRe.test(t) && !/^\s*(i want number [1-8]|i choose\b|this is my tattoo|imagine\b|let'?s create my own|i want to (create|add|cover)|i want to change something|fine-?\s?tune it|keep it)/i.test(t)) _prevAsk = t.slice(0, 600);
-                break; }
+                if (_yesRe.test(t) || /^\s*(i want number [1-8]|i choose\b|this is my tattoo|imagine\b|let'?s create my own|i want to (create|add|cover)|i want to change something|fine-?\s?tune it|keep it|i want to work on this one)/i.test(t)) break;
+                _asks.unshift(t); if (_asks.length >= 4) break; }
+              if (_asks.length) _prevAsk = _asks.join(". ").replace(/\.\s*\./g, ".").slice(0, 600);
             } catch {} }
             if (_bareYes && _prevAsk && hasParent && act !== "artist" && act !== "use") {
               act = "change"; _designGrid = true; _designWords = _prevAsk;

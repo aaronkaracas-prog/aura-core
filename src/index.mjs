@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.966.0-2026-11-11-nothing-drawn-in-this-tattoo-yet";
+const BUILD = "aura-core-v9.967.0-2026-11-11-a-picture-they-like-is-never-the-piece";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -74444,7 +74444,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // AND ONLY IF NOTHING WAS DRAWN. A draw already wrote above with the fuller row; running both
       // would overwrite the new piece with the photograph it came from, which is the same class of
       // damage as the artist sheet replacing the design.
-      if (me && refDesign && !refHeld && !(drew && drew.image && !drew.failed)) {
+      // (v9.967, 2026-11-11, Aaron: go) MEASURED 14:43:24-14:43:57 (pta_0c577382cb25a0ac): the truck, a picture they like on a new tattoo, was
+      // written here as the piece on screen AND marked "something drawn in this tattoo" (new_drawn) - so their "Yes, show me" found a design to
+      // change, a bare yes is not a change, and nothing was drawn. A picture they like is what the 8 are made FROM, never the piece itself:
+      // it stays in `ref` (liked), and the first thing drawn from it becomes the piece. Their skin and catalogue picks are unchanged.
+      if (me && refDesign && !refHeld && !(drew && drew.image && !drew.failed) && !_newRoadPic) {
         try {
           await talkStatePut(env, me, "last",
             JSON.stringify({ design: refDesign, image: refUrl || null,

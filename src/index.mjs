@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.947.0-2026-11-11-typed-change-yes-goes-change-road";
+const BUILD = "aura-core-v9.949.0-2026-11-11-yes-walk-passes-the-picked-card";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -62171,6 +62171,18 @@ async function toEight(env, sentence, kind) {
 // count is off, the cards come back with no words rather than the wrong ones. The sheet is marked so a pick is that card.
 // HER OFFER TO SHOW THEM (v9.691, 2026-10-21): one test for "she offered to show them ideas" - the go guard reads it on her earlier
 // lines, and the page's yes card ("Show me some ideas" / "Talk to me") appears under a reply that passes it.
+// ══ A PICTURE OF THE DESIGN THEY ARE ALREADY ON (v9.948, 2026-11-11) ═══ MEASURED 07:55:53: after a catalogue pick the picked card is
+// recorded as a picture again with their turns, so a walk back "to the last picture" stopped between "I would like to incorporate the
+// name Sienna in it" and "along the bottom under the rocks" - only the second reached the change. The card they are working on is the
+// same design, not a new picture; any other picture (a sheet she drew) still ends the walk.
+function _picOfWork(e, urls, design) {
+  if (!e || e.role !== "picture") return false;
+  if (e.pick) return true;   // (v9.949) recorded as their catalogue pick
+  const id = (u) => (String(u || "").match(/img_[A-Za-z0-9_-]+/) || [])[0] || "";
+  const mine = id(e.image);
+  if (design && e.design && String(e.design) === String(design)) return true;
+  return !!mine && (urls || []).some((u) => id(u) === mine);
+}
 function _isOfferLine(t) {
   const s = String(t || "");
   return /\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(s) ||
@@ -67898,7 +67910,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       }
       const tnow = _workPj
         ? [...(_workPj.lines || []).map((l) => ({ ts: l.ts, role: l.role === "them" ? "them" : "aura", said: l.said })),
-           ...(_workPj.pictures || []).map((x) => ({ ts: x.ts, role: "picture", image: x.image, design: x.design || null, words: x.words || "" }))]
+           ...(_workPj.pictures || []).map((x) => ({ ts: x.ts, role: "picture", image: x.image, design: x.design || null, words: x.words || "", ...(x.pick ? { pick: true } : {}) }))]
             .sort((a, c) => String(a.ts || "").localeCompare(String(c.ts || "")))
         : ((opts && opts.fresh) ? [] : tline);
       if (me) {
@@ -69170,7 +69182,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // "Sienna" on the lettering sheet and 3 of the 8 cards said "Mia" - the lettering of an earlier tattoo was still kept, because the
           // first turn after a catalogue pick is fresh with the pick riding on it, and no new start cleared anything. The last tattoo's
           // lettering and change markers go; the new-tattoo flow marker is left as it is.
-          if (!_opener && !!(opts && opts.fresh) && !!(opts && opts.pick) && !_bodyPhoto) {
+          if (!_opener && !!(opts && (opts.pick_new || (opts.fresh && opts.pick))) && !_bodyPhoto) {
             try { await talkStatePut(env, me, "letter", ""); await talkStatePut(env, me, "change_held", ""); await talkStatePut(env, me, "await_change", "");
                   await talkStatePut(env, me, "design_change", ""); await talkStatePut(env, me, "design_change_parent", ""); } catch {}
             console.log("[TURN:NEWSTART] a design picked from the catalogue - the last tattoo's lettering and change markers cleared" + (me ? " · who=" + me : ""));
@@ -69311,7 +69323,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               const _tl = (typeof tnow !== "undefined" && Array.isArray(tnow)) ? tnow : [];
               const _asks = []; let _seenCur = false, _onDesign = false;
               for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (!e) continue;
-                if (e.role === "picture") { _onDesign = true; break; }
+                if (e.role === "picture") { _onDesign = true; if (_picOfWork(e, [refUrl, opts && opts.ref, wantRef], refDesign)) continue;
+                  try { const _i = (u) => (String(u || "").match(/img_[A-Za-z0-9_-]+/) || [""])[0];
+                    console.log("[TURN:YES-CHANGE] the walk back stopped at a picture: " + (_i(e.image) || "(none)") + " design " + (e.design || "-") + (e.grid ? " (a sheet)" : "") +
+                      " \"" + String(e.words || "").slice(0, 80) + "\" · on screen: " + [_i(refUrl), _i(opts && opts.ref), _i(wantRef)].join("/") + " design " + (refDesign || "-") +
+                      " · " + _tl.length + " entries" + (_workPj ? " (the tattoo's own record)" : " (their timeline)") + (me ? " · who=" + me : "")); } catch {}
+                  break; }
                 if (e.role !== "them") continue;
                 const t = String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim(); if (!t) continue;
                 if (!_seenCur && t === _s) { _seenCur = true; continue; }
@@ -70057,7 +70074,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 const _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again.");
                 _fixedSay = _cSay + (_tail ? " " + _tail : "");
                 console.log("[TURN:CHANGE-SAY] " + _cSec + "s - her words: \"" + _cSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
-              } else console.log("[TURN:CHANGE-SAY] " + _cSec + "s - no answer in " + _cMs + "ms - the fixed line goes" + (me ? " · who=" + me : ""));
+              } else console.log("[TURN:CHANGE-SAY] " + _cSec + "s - " + (_letterHold ? "new lettering - the lettering sheet line goes, her words wait for the drawing" : "no answer in " + _cMs + "ms - the fixed line goes") + (me ? " · who=" + me : ""));
             } catch (e) { try { console.log("[TURN:CHANGE-SAY] failed - the fixed line goes: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
           } else if (_bodyPhoto && /^\s*imagine\s+(?:4|four|8|eight)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s) && await (async () => {
                        // FOUR POSSIBILITIES OF A CHOSEN ADD-ON (v9.661, 2026-10-18, Aaron): "the same way we do tattoos ... a version
@@ -71652,7 +71669,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // picture or tap are their change, in order (at most four).
               const _asks = [];
               for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (!e) continue;
-                if (e.role === "picture") break;
+                if (e.role === "picture") { if (!hasParent && _picOfWork(e, [refUrl, opts && opts.ref, wantRef], refDesign)) continue; break; }
                 if (e.role !== "them") continue;
                 const t = String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim(); if (!t) continue;
                 if (!_seenCur && t === _cur) { _seenCur = true; continue; }
@@ -74253,7 +74270,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 ...((opts && (opts.use || opts.pick) && wantRef && refUrl)
                   // The address they picked, not the copy imported this turn - it is the same on every turn,
                   // so the picture is recorded once.
-                  ? [{ ts: _atP, image: wantRef, design: refDesign || null,
+                  ? [{ ts: _atP, image: wantRef, design: refDesign || null, pick: true,   // (v9.949) marked: the design they chose, not one she drew
                        words: String((opts && opts.name) || "their catalogue pick").slice(0, 300) }] : []),
                 ...((drew && drew.image && !drew.failed && !drew.for_the_artist)
                   ? [{ ts: _atP, image: drew.image, design: drew.design || null,

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.940.0-2026-11-10-heard-second-ask";
+const BUILD = "aura-core-v9.941.0-2026-11-10-first-words-to-the-page-sooner";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -67406,8 +67406,9 @@ async function runTalkJob(env, d) {
       // (v9.828) MEASURED 15:56:29.8: her drawing line came in 0.8s but reached the page only with the finished 8 (36s later) - it fell inside
       // the 0.7s gap between notes and nothing was written after it. Text held back by the gap is written as soon as the gap ends.
       onDelta: async (t) => { text += String(t || "");
-        if (!_firstWords && text.trim()) { _firstWords = true; try { console.log("[TURN:CLOCK] her first words reached core " + talkSince(tid) + (me ? " · who=" + me : "")); } catch {} }
-        await live(false);
+        // (v9.941) her first words are written at once, never held for the 0.7s gap between notes
+        if (!_firstWords && text.trim()) { _firstWords = true; try { console.log("[TURN:CLOCK] her first words reached core " + talkSince(tid) + (me ? " · who=" + me : "")); } catch {} await live(true); }
+        else await live(false);
         if (!trail) trail = setTimeout(() => { trail = null; live(true).catch(() => null); }, 750); },
       onStage: async (st, w) => { stg = String(st || ""); what = String(w || ""); await live(true); } });
   } catch (e) {
@@ -76037,6 +76038,12 @@ export class PublicEntry extends WorkerEntrypoint {
             // (v9.900) MEASURED 17:25:27, 17:28:27, 17:34:33: "jsrpc ERROR" 0.3s after every "runs as job" - the first status ask came before
             // the job could answer. The first ask now waits the same 10s as every one after it.
             let _jobEnded = 0, _lastJobCheck = Date.now(), _orphanMs = 120000;
+            // ══ THE PAGE GETS HER FIRST WORDS SOONER (v9.941, 2026-11-10, Aaron: go) ═══════════════════════════════════════════
+            // MEASURED 16:55: her first words reached core 15.4s after the tap and the page showed them at 18.3s - this loop read the
+            // turn's live note every 0.8s. Until her first words have gone to the page it reads every config:talk:relay_first_ms
+            // (default 250); after that every 0.8s as before. The moment it passes her first words on is logged on the turn's clock.
+            let _relayFirstMs = 250; try { const _rv = parseInt(String((await env.AURA_KV.get("config:talk:relay_first_ms")) || ""), 10); if (Number.isFinite(_rv) && _rv >= 100) _relayFirstMs = _rv; } catch {}
+            let _sentFirst = false;
             try { const _ov = parseInt(String((await env.AURA_KV.get("config:talk:orphan_ms")) || ""), 10); if (Number.isFinite(_ov) && _ov >= 10000) _orphanMs = _ov; } catch {}
             while (!_gone && Date.now() - t0 < 14 * 60000) {
               if (!_jobEnded && Date.now() - _lastJobCheck > 10000) {
@@ -76057,7 +76064,8 @@ export class PublicEntry extends WorkerEntrypoint {
               let st = null; try { st = talkParse((await talkStateGet(env, me, ["turnlive"])).turnlive); } catch {}
               if (st && st.tid === _rtid) {
                 const txt = String(st.text || "");
-                if (txt.length > sentLen) { await _sendR("data: " + JSON.stringify({ delta: txt.slice(sentLen) }) + "\n\n"); sentLen = txt.length; }
+                if (txt.length > sentLen) { await _sendR("data: " + JSON.stringify({ delta: txt.slice(sentLen) }) + "\n\n"); sentLen = txt.length;
+                  if (!_sentFirst && txt.trim()) { _sentFirst = true; try { console.log("[TURN:CLOCK] her first words went to the page " + talkSince(_rtid) + " · who=" + me); } catch {} } }
                 const sk = String(st.stage || "") + "|" + String(st.what || "");
                 if (st.stage && sk !== lastStage) { lastStage = sk; await _sendR("event: stage\ndata: " + JSON.stringify({ stage: st.stage, ...(st.what ? { what: st.what } : {}) }) + "\n\n"); }
                 if (st.done) {
@@ -76065,7 +76073,7 @@ export class PublicEntry extends WorkerEntrypoint {
                   break;
                 }
               }
-              await new Promise((r) => setTimeout(r, 800));
+              await new Promise((r) => setTimeout(r, _sentFirst ? 800 : _relayFirstMs));
             }
             // (v9.825) the turn said GO: Imagine it now, relayed on this same connection - once
             if (fin && !_gone && !_hop) { const _g = await _goJob(fin); if (_g) return _relayJob(_g.id, _g.tid, 1); }

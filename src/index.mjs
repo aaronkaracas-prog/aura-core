@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.946.0-2026-11-11-yes-draws-all-they-asked";
+const BUILD = "aura-core-v9.947.0-2026-11-11-typed-change-yes-goes-change-road";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69165,6 +69165,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", ""); await talkStatePut(env, me, "letter", "");
                   await talkStatePut(env, me, "addon_talk", ""); } catch {}
             console.log("[TURN:NEWSTART] a fresh start with a photo of them - a new add-on; the last tattoo's add-on markers cleared" + (me ? " · who=" + me : ""));
+          }
+          // ══ A DESIGN PICKED FROM THE CATALOGUE IS A NEW TATTOO (v9.948, 2026-11-11) ═══ MEASURED 07:56 (Tiny lone samurai): they picked
+          // "Sienna" on the lettering sheet and 3 of the 8 cards said "Mia" - the lettering of an earlier tattoo was still kept, because the
+          // first turn after a catalogue pick is fresh with the pick riding on it, and no new start cleared anything. The last tattoo's
+          // lettering and change markers go; the new-tattoo flow marker is left as it is.
+          if (!_opener && !!(opts && opts.fresh) && !!(opts && opts.pick) && !_bodyPhoto) {
+            try { await talkStatePut(env, me, "letter", ""); await talkStatePut(env, me, "change_held", ""); await talkStatePut(env, me, "await_change", "");
+                  await talkStatePut(env, me, "design_change", ""); await talkStatePut(env, me, "design_change_parent", ""); } catch {}
+            console.log("[TURN:NEWSTART] a design picked from the catalogue - the last tattoo's lettering and change markers cleared" + (me ? " · who=" + me : ""));
           }
           _newFlow = (_opener ? /^i want to create a new tattoo\.?$/i.test(_op) : _styleStart ? true : String(_nf.new_flow || "") === "1") &&
                      !_bodyPhoto && !(opts && opts.inspire);

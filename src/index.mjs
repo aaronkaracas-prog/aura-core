@@ -69287,6 +69287,33 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
           let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held", "addon_go", "addon_drawn", "addon_ideas"]); } catch {}
+          // ══ THEIR YES TO A CHANGE THEY TYPED GOES THE CHANGE ROAD (v9.947, 2026-11-11) ═══ MEASURED 07:13-07:14 (Samurai, Tiny lone samurai):
+          // "I would like to incorporate the name Sienna in it", she asked "want me to show it with the name added?", they tapped Yes, show me -
+          // "I'm imagining amazing designs" was shown and nothing was drawn ("a bare yes is not a change": the design was a picked card, not
+          // one she drew), and no lettering sheet went up. A change typed straight in and then their yes is the same as a change after
+          // "I want to change something": what they asked since the design is written out, and new lettering goes to the sheet first.
+          // Only when the lines walk back to a design on screen (a picture or their pick of one) - never across a new start.
+          let _yesAsk = "";
+          try {
+            const _yRe = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see(?: it)?|please|absolutely|definitely|perfect)[\s,.!]*)+$/i;
+            const _jobY = String((carriedObj && carriedObj.job) || "").toLowerCase();
+            if (_yRe.test(_s) && String(_ds.await_change || "") !== "1" && !(opts && (opts.inspire || opts.use || opts.change_now)) &&
+                !["add", "cover", "rework"].includes(_jobY) && ((lastDrawn && lastDrawn.design) || refDesign)) {
+              const _tl = (typeof tnow !== "undefined" && Array.isArray(tnow)) ? tnow : [];
+              const _asks = []; let _seenCur = false, _onDesign = false;
+              for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i]; if (!e) continue;
+                if (e.role === "picture") { _onDesign = true; break; }
+                if (e.role !== "them") continue;
+                const t = String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim(); if (!t) continue;
+                if (!_seenCur && t === _s) { _seenCur = true; continue; }
+                if (/^\s*(i want number [1-8]|i choose\b|this is my tattoo|fine-?\s?tune it|keep it|i want to work on this one)/i.test(t)) { _onDesign = true; break; }
+                if (_yRe.test(t) || /^\s*(imagine\b|let'?s create my own|i want to (create|add|cover)|i want to change something|lettering:)/i.test(t)) break;
+                if (_asks.length < 4) _asks.unshift(t); }
+              if (_onDesign && _asks.length) _yesAsk = _asks.join(". ").replace(/\.\s*\./g, ".").slice(0, 600);
+              console.log("[TURN:YES-CHANGE] " + (_yesAsk ? "their yes to the change they typed - it goes the change road: \"" + _yesAsk.slice(0, 200) + "\""
+                : (_asks.length ? "their lines did not walk back to a design on screen - not a change" : "nothing asked since the design - not a change")) + (me ? " · who=" + me : ""));
+            }
+          } catch {}
           let _stm = null;
           // A NEW START CLEARS THE LAST TATTOO'S MARKERS (v9.603): MEASURED 10:14 - the add-on pick got the new-tattoo pick line
           // because "design_change" from the 9:50 test was still set.
@@ -69926,7 +69953,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                        return false; })()) {
             _fixedWhy = "addon_change"; _addonChangeWords = _s;
             _fixedSay = await _fx("addon_change8", "On it - imagining that change on you now.");
-          } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && _s && !(opts && opts.inspire) && (!_bodyPhoto || String((carriedObj && carriedObj.job) || "").toLowerCase() === "from")) {
+          } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now) || !!_yesAsk) && _s && !(opts && opts.inspire) && (!_bodyPhoto || String((carriedObj && carriedObj.job) || "").toLowerCase() === "from")) {
+            const _sC = _yesAsk || _s;   // (v9.947) on their yes, the change is what they asked before it
             _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining that change for you now.");
             // ══ SHE SAYS WHAT SHE IS CHANGING (v9.780, 2026-11-01, Aaron: "when I evolve this into two dragon heads she's just coming back
             // with that standard 100% line ... she could have said here's your two dragon heads, this will look awesome. Aura should always
@@ -69955,12 +69983,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 // (v9.848) new words for the tattoo in a change go to the lettering sheet before it is drawn
                 "If the change adds new words to be written in the tattoo (a name, date, number, word or quote), add a line just before the CHANGE line: " +
                 "LETTERING: each new piece exactly as it will be written, each in double quotes, separated by |. Never ask them about fonts or lettering styles.";
-              let _cUser = _s.slice(0, 600);
+              let _cUser = _sC.slice(0, 600);
               try {
                 const _tp = (typeof _told === "string" && _told) ? _told : "";
                 const _lt = letterParse(_ds && _ds.letter).items.map((x) => '"' + x.text + '"' + (x.font ? " in " + x.font + " lettering" : "")).join(", ");
                 if (_tp || _lt) _cUser = "What they told you before, in their words:\n" + (_tp || "(nothing)") + (_lt ? "\nThe lettering on their design: " + _lt : "") +
-                  "\n\nThe change they want now:\n" + _s.slice(0, 600);
+                  "\n\nThe change they want now:\n" + _sC.slice(0, 600);
               } catch {}
               let _cq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _cMs)),
                 callBrain({ system: _cSys, user: _cUser.slice(0, 2400), max_tokens: 2000, ...(_cEff ? { reasoning: _cEff } : {}), ...(_cModel ? { model: _cModel } : (talkModel ? { model: talkModel } : {})) }, env)]);
@@ -69989,18 +70017,18 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   _cRaw = _cRaw.slice(0, _cm.index); } }
               const _cSay = _finishedOnly(_wholeSentences(_cRaw.replace(/(^|\s)CHANGE\s*:[\s\S]*$/i, ""), 1200));
               const _cSec = ((Date.now() - _cT0) / 1000).toFixed(1);
-              if (_changeFull) console.log("[TURN:CHANGE-SAY] the change written out: \"" + _changeFull.slice(0, 300) + "\" (their words: \"" + _s.slice(0, 160) + "\")" + (me ? " · who=" + me : ""));
+              if (_changeFull) console.log("[TURN:CHANGE-SAY] the change written out: \"" + _changeFull.slice(0, 300) + "\" (their words: \"" + _sC.slice(0, 160) + "\")" + (me ? " · who=" + me : ""));
               // ══ THE WRITTEN-OUT CHANGE MAY ADD, NEVER DROP (v9.945, 2026-11-11) ═══ MEASURED 06:15:01: "incorporate the name Sienna in it" was
               // written out as "incorporate Sienna in it." - "the name" gone, and the image model drew Sienna as a woman's face on all 8 cards
               // ("SIENNA INTEGRATED", "SIDE BY SIDE"...). Writing it out is for filling in what they referred to before; when it leaves out a word
               // of theirs (anything but the little words of asking), their own words go to the image model instead.
               if (_changeFull) {
                 const _cwd = (t) => String(t || "").toLowerCase().match(/[a-z0-9]+/g) || [];
-                const _little = new Set(["the","and","but","for","with","this","that","these","those","you","your","can","could","would","should","will","please","like","love","want","wanna","just","maybe","also","too","some","kinda","kind","really","very","its","it's","our","them","they","there","here","then","now","yeah","yes","okay","think","guess","make","get","have","has","about","what","how","into","onto","from","all","one","ones","her","his","him","she","instead","thing","things","something","anything","bit","lot","lots","more","much","way","sure","cool","awesome","nice","great","thanks","thank","add","put","use","change","replace","going","gonna"]);
+                const _little = new Set(["the","and","but","for","with","this","that","these","those","you","your","can","could","would","should","will","please","like","love","want","wanna","just","maybe","also","too","some","kinda","kind","really","very","its","it's","our","them","they","there","here","then","now","yeah","yes","okay","think","guess","make","get","have","has","about","what","how","into","onto","from","all","one","ones","her","his","him","she","instead","thing","things","something","anything","bit","lot","lots","more","much","way","sure","cool","awesome","nice","great","thanks","thank","add","put","use","change","replace","going","gonna","incorporate","include","including","place","write","written","added","show","see"]);
                 const _have = new Set(_cwd(_changeFull));
-                const _lost = [...new Set(_cwd(_s).filter((w) => w.length >= 3 && !_little.has(w) && !_have.has(w) && !_have.has(w.replace(/s$/, "")) && !_have.has(w + "s")))];
+                const _lost = [...new Set(_cwd(_sC).filter((w) => w.length >= 3 && !_little.has(w) && !_have.has(w) && !_have.has(w.replace(/s$/, "")) && !_have.has(w + "s")))];
                 if (_lost.length) {
-                  console.log("[TURN:CHANGE-SAY] the written-out change left out their words (" + _lost.slice(0, 6).join(", ") + ") - their own words go to the image model: \"" + _s.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+                  console.log("[TURN:CHANGE-SAY] the written-out change left out their words (" + _lost.slice(0, 6).join(", ") + ") - their own words go to the image model: \"" + _sC.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
                   _changeFull = null;
                 }
               }
@@ -70009,7 +70037,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               try {
                 const _lOld = letterParse(_ds.letter), _lNew = _cLetter.filter((t) => !letterHas(_lOld, t));
                 if (_lNew.length && !(_cq && _cq.late)) {
-                  await talkStatePut(env, me, "change_held", JSON.stringify({ words: String(_changeFull || _s).slice(0, 600) }));
+                  await talkStatePut(env, me, "change_held", JSON.stringify({ words: String(_changeFull || _sC).slice(0, 600) }));
                   _letterHold = true; _fixedWhy = "letter_hold";
                   _fixedSay = await _fx("letter_ask_change", "Love it - first, pick how you'd like your new lettering to look.");
                   _heardOut = { letter: { items: _lNew.slice(0, 4), chosen: [], styles: LETTER_STYLES.map((x) => x.id) } };
@@ -71623,8 +71651,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 _asks.unshift(t); if (_asks.length >= 4) break; }
               if (_asks.length) _prevAsk = _asks.join(". ").replace(/\.\s*\./g, ".").slice(0, 600);
             } catch {} }
-            if (_bareYes && _prevAsk && hasParent && act !== "artist" && act !== "use") {
-              act = "change"; _designGrid = true; _designWords = _prevAsk;
+            // (v9.947) MEASURED 07:14:04 - a picked card is the design too (refDesign), not only one she drew; and when the change step wrote
+            // their change out in full (names and dates in it), that is what is drawn.
+            if (_bareYes && _prevAsk && (hasParent || refDesign) && act !== "artist" && act !== "use") {
+              act = "change"; _designGrid = true; _designWords = String(_changeFull || _prevAsk).slice(0, 600);
               console.log("[TURN:DESIGN] a yes after their change - their change is drawn, not the yes: \"" + _prevAsk.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
             } else if (_bareYes) { if (act === "change" || act === "draw") { console.log("[TURN:DESIGN] a bare yes is not a change - nothing drawn"); act = "none"; } }
             else {

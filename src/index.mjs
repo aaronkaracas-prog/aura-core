@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.967.0-2026-11-11-a-picture-they-like-is-never-the-piece";
+const BUILD = "aura-core-v9.968.0-2026-11-11-her-picture-read-is-her-say-back";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -74601,6 +74601,22 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // "Oh, a draugr - ... Let me draw that up." with Yes, show me / Talk to me under it - nothing was drawing until the tap. Whenever her reply
       // offers to show them or waits on Imagine it and nothing was drawn this turn, the sentence claiming it is being drawn comes out (the same
       // cleaner the add-on's held Imagine it uses, dropDrawClaim). Whether she offered is read from her words as she said them.
+      // ══ HER READ OF THEIR PICTURE IS HER SAY-BACK (v9.968, 2026-11-11, Aaron: go) ═══ MEASURED 14:53 (pta_0c577382cb25a0ac): she read the truck
+      // and offered "Want me to imagine some ideas from this picture?" with Yes, show me - the tap went to her hearing step, which is never shown
+      // the picture and had nothing said back to draw from, so she asked "What would you like your tattoo to be of?". The hearing step's yes draws
+      // what was said back (go_idea, go_said - v9.825). Her read of a picture they brought to a new tattoo now leaves that behind: their own
+      // words for it if they typed any, else "a tattoo made from this picture" (config:say:picture_idea). The 8 go out with the picture
+      // (v9.717, config:frame:new:picture). Her words and the offer card are unchanged.
+      if (me && _newRoadPic && _freshPhoto && !_fixedWhy && !(drew && drew.image)) {
+        try {
+          const _pw = (Array.isArray(tnow) ? tnow : []).filter((e) => e && e.role === "them").map((e) => String(e.said || "").trim())
+            .filter((t) => t && !/^\s*(let'?s create my own\b|i chose\b|i want to create a new tattoo|i like the .+ style)/i.test(t)).join(". ").slice(0, 600);
+          let _pIdea = "a tattoo made from this picture";
+          try { const _k = String((await env.AURA_KV.get("config:say:picture_idea")) || "").trim(); if (_k) _pIdea = _k; } catch {}
+          await talkStatePut(env, me, "go_idea", (_pw || _pIdea).slice(0, 1200)); await talkStatePut(env, me, "go_said", "1"); await talkStatePut(env, me, "go_picks", "");
+          console.log("[TURN:PHOTO] her read of their picture is her say-back - a yes draws the 8 from it: \"" + (_pw || _pIdea).slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+        } catch {}
+      }
       const _saidAsSaid = _said;
       if (!_fixedWhy && !(drew && drew.image) && (_isOfferLine(_said) || _heardOut)) {
         const _cl9 = dropDrawClaim(_said);

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.954.0-2026-11-11-fresh-clears-lettering-and-first-designs-ask-it";
+const BUILD = "aura-core-v9.955.0-2026-11-11-fresh-start-clears-last-style-too";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69164,7 +69164,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // ══ A STYLE CAN START THE NEW TATTOO ITSELF (v9.791, 2026-11-01, Aaron: go) ═══ MEASURED 17:01: Imagine My Tattoo from a style sent
       // two turns one after the other - "I want to create a new tattoo" (its greeting never shown) and then the style - 7.4s on the
       // server before her line. A fresh "Let's create my own in the <style> style" now does what the new-tattoo start does, then the style.
-      let _styleStart = false;
+      let _styleStart = false, _styleKept = false;
       if (me) {
         try {
           const _nf = await talkStateGet(env, me, ["new_flow", "new_style", "new_drawn", "new_start", "go_idea"]);
@@ -69190,7 +69190,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           if (_styleStart && !/^let'?s create my own in the .+ style\.?$/i.test(_op) && opts && opts.style_on &&
               String(opts.style_on).trim().toLowerCase() === String(_nf.new_style || "").trim().toLowerCase() && String(_nf.new_flow || "") === "1" &&
               String(_nf.new_style || "").trim() && !String(_nf.new_drawn || "") && !String(_nf.new_start || "").trim() && !String(_nf.go_idea || "").trim()) {
-            _styleStart = false;
+            _styleStart = false; _styleKept = true;
             console.log("[TURN:NEWSTART] their first words after picking " + String(_nf.new_style).trim() + " - their idea for that style, not a new tattoo; the style is kept" + (me ? " · who=" + me : ""));
           }
           // ══ A FRESH START WITH A PHOTO OF THEM IS A NEW ADD-ON (v9.861, 2026-11-06) ═══ MEASURED 15:01: Start a new tattoo, then the rose
@@ -69221,8 +69221,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // wherever it comes from: the last tattoo's lettering and change markers go. (A lettering pick is never fresh-cleared.)
           if (!_opener && !_styleStart && opts && opts.fresh && !opts.letter && !(opts.pick || opts.pick_new) && !_bodyPhoto) {
             try { await talkStatePut(env, me, "letter", ""); await talkStatePut(env, me, "change_held", ""); await talkStatePut(env, me, "await_change", "");
-                  await talkStatePut(env, me, "design_change", ""); await talkStatePut(env, me, "design_change_parent", ""); } catch {}
-            console.log("[TURN:NEWSTART] a fresh start" + (opts.page ? " from " + opts.page : "") + " - the last tattoo's lettering and change markers cleared" + (me ? " · who=" + me : ""));
+                  await talkStatePut(env, me, "design_change", ""); await talkStatePut(env, me, "design_change_parent", "");
+                  // (v9.955) MEASURED 11:24 (Trending -> Family, "roses with Kocham cię babciu"): a dragon, a koi, a fan and a torii in the roses - the
+                  // Japanese Fusion style of the tattoo before was still kept. A fresh start has no style of its own, unless it was just picked (kept above).
+                  if (!_styleKept) { await talkStatePut(env, me, "new_style", ""); _nf.new_style = ""; } } catch {}
+            console.log("[TURN:NEWSTART] a fresh start" + (opts.page ? " from " + opts.page : "") + " - the last tattoo's lettering, change markers" + (_styleKept ? "" : " and style") + " cleared" + (me ? " · who=" + me : ""));
           }
           _newFlow = (_opener ? /^i want to create a new tattoo\.?$/i.test(_op) : _styleStart ? true : String(_nf.new_flow || "") === "1") &&
                      !_bodyPhoto && !(opts && opts.inspire);

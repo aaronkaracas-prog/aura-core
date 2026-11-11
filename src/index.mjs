@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.953.0-2026-11-11-her-line-matches-the-lettering-button";
+const BUILD = "aura-core-v9.954.0-2026-11-11-fresh-clears-lettering-and-first-designs-ask-it";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69214,6 +69214,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   await talkStatePut(env, me, "design_change", ""); await talkStatePut(env, me, "design_change_parent", ""); } catch {}
             console.log("[TURN:NEWSTART] a design picked from the catalogue - the last tattoo's lettering and change markers cleared" + (me ? " · who=" + me : ""));
           }
+          // ══ EVERY FRESH START LEAVES THE LAST TATTOO'S LETTERING BEHIND (v9.954, 2026-11-11, Aaron: "make sure that Aura is understanding what
+          // people want") ═══ MEASURED 10:58 (Trending -> Memorials, "my abuela Rosa ... Siempre en mi corazón"): 6 of the 8 sugar skulls also said
+          // "HRVATSKA" and "1991" - the lettering of the tattoo before (Service & Sacrifice, 10:55). A tile on Trending is a fresh start on its own
+          // page, and only the front page, the Create page, a style, a catalogue pick and a body photo cleared it. The page's fresh is a new tattoo
+          // wherever it comes from: the last tattoo's lettering and change markers go. (A lettering pick is never fresh-cleared.)
+          if (!_opener && !_styleStart && opts && opts.fresh && !opts.letter && !(opts.pick || opts.pick_new) && !_bodyPhoto) {
+            try { await talkStatePut(env, me, "letter", ""); await talkStatePut(env, me, "change_held", ""); await talkStatePut(env, me, "await_change", "");
+                  await talkStatePut(env, me, "design_change", ""); await talkStatePut(env, me, "design_change_parent", ""); } catch {}
+            console.log("[TURN:NEWSTART] a fresh start" + (opts.page ? " from " + opts.page : "") + " - the last tattoo's lettering and change markers cleared" + (me ? " · who=" + me : ""));
+          }
           _newFlow = (_opener ? /^i want to create a new tattoo\.?$/i.test(_op) : _styleStart ? true : String(_nf.new_flow || "") === "1") &&
                      !_bodyPhoto && !(opts && opts.inspire);
           _newStyle = (_opener || _styleStart) ? null : (String(_nf.new_style || "").trim() || null);
@@ -70165,6 +70175,28 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // image model was told "I want to change it: Show me: Chrome garden...". A tapped idea is a new four of that idea.
             _fixedWhy = "four_new"; _fixedSay = await _fx("eight_coming", "On it - imagining some designs for you now.");
             if (_lastDesignChange) { _lastDesignChange = ""; try { await talkStatePut(env, me, "design_change", ""); } catch {} }
+            // ══ LETTERING BEFORE THE FIRST DESIGNS, ON EVERY ROAD (v9.954, 2026-11-11) ═══ MEASURED 10:58 (Trending -> Memorials): "a sugar skull
+            // for her that says Siempre en mi corazón", she offered, Yes - the 8 were drawn at once with no lettering sheet: only Create's hearing
+            // step looked for lettering before the first designs. Their words since the start go to the same short lettering question; anything
+            // to be written with no style yet brings up the sheet, and their idea is kept for Imagine it (go_idea) - the Create road from there.
+            if (!_drewNow()) { try {
+              const _tw = [String(_told || "").replace(/\n+/g, ". "), (_GO_WORDS.test(_s) || /^\s*(yes|yeah|yep|sure|ok|okay)\b|^\s*show me\b/i.test(_s)) ? "" : _s]
+                .filter(Boolean).join(". ").replace(/\.\s*\./g, ".").slice(0, 1200);
+              if (_tw) {
+                const _lf = await letterFind(env, _tw, String(_prevAuraLine || ""), talkModel);
+                const _lsv = letterParse(_ds.letter);
+                const _lnw = _lf.filter((t) => !letterHas(_lsv, t));
+                if (_lnw.length) {
+                  try { await talkStatePut(env, me, "go_idea", _tw); await talkStatePut(env, me, "go_picks", ""); await talkStatePut(env, me, "go_said", "1"); } catch {}
+                  const _chs = _lf.slice(0, 4).map((t) => { const k = letterKey(t); const o = _lsv.items.find((x) => x && x.font && (letterKey(x.text) === k || letterKey(x.from) === k));
+                    return o ? { said: t, text: String(o.text), font: String(o.font) } : null; }).filter(Boolean);
+                  _heardOut = { letter: { items: _lf.slice(0, 4), chosen: _chs, styles: LETTER_STYLES.map((x) => x.id) } };
+                  _fixedWhy = "letter_hold_new"; _fixedSay = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look.");
+                  console.log("[TURN:LETTER] first designs of a new tattoo - lettering with no style yet: " + _lnw.map((t) => '"' + t + '"').join(", ") +
+                    " - the sheet goes up first; kept for Imagine it: \"" + _tw.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+                }
+              }
+            } catch (e) { try { console.log("[TURN:LETTER] the first-designs lettering check failed - drawn as it was: " + String(e?.message ?? e).slice(0, 160)); } catch {} } }
           } else if (_bodyPhoto && (/^\s*(?:give|show) me some ideas\.?\s*$/i.test(_s) || /^\s*imagine\s+(?:another\s+(?:4|four|8|eight)|(?:4|four|8|eight)\s+more)\.?\s*$/i.test(_s)) && (() => {
                        // ADD-ON IDEAS DRAW AT ONCE (v9.660, 2026-10-18, Aaron: "take her off the drawing ... she can read it when it
                        // comes back"). MEASURED 07:15 (pta_eb938501011c73f8): 103.5s - she took 45.8s, her words were replaced by the

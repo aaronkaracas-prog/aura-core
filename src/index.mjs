@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.963.0-2026-11-11-a-new-picture-goes-to-her-who-sees-it";
+const BUILD = "aura-core-v9.964.0-2026-11-11-a-picture-they-like-is-not-a-design-to-change";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -71964,7 +71964,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           console.log("[TURN:DESIGN] the change that waited for their lettering is drawn: \"" + _heldChange.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
         } else if (_fixedWhy === "inspire8" && refDesign) {
           act = "change"; _designGrid = true; _designWords = "__inspire__"; _designParent = refDesign;
-        } else if (_newJob && (hasParent || refDesign) && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo) {
+        // ══ A PICTURE THEY LIKE IS NOT A DESIGN TO CHANGE (v9.964, 2026-11-11, Aaron: go) ═══ MEASURED 14:03:31 (pta_0c577382cb25a0ac): the
+        // truck photo, held as a picture they like (v9.961), counted as "the design" here because it has an id - so their "yeah do it" to
+        // her offer was read as a change with nothing to change, nothing was drawn, and the fixed line said "I'm imagining amazing designs".
+        // Until something of ours is drawn, a picture they brought to a new tattoo is what the 8 are made FROM, not a design being changed.
+        } else if (_newJob && (hasParent || (refDesign && !(_likedPic && !_bodyPhoto))) && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo) {
           if (_fixedWhy === "poss") {
             // FOUR POSSIBILITIES OF THE CHOSEN DESIGN (v9.628): the first time, the design on screen; "4 more" keeps the same
             // design they chose, not the sheet of possibilities.

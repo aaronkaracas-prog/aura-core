@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.962.0-2026-11-11-a-picture-on-a-new-tattoo-from-any-page";
+const BUILD = "aura-core-v9.963.0-2026-11-11-a-new-picture-goes-to-her-who-sees-it";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69874,7 +69874,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                     await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
               console.log("[TURN:GO] " + (_gk ? "they chose " + _gk : "Imagine it") + " - drawn from the idea she said back: \"" + _heardIdea.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
             }
-          } else if (_newFlow && (String(_ds.await_idea || "") === "1" || String(_ds.new_drawn || "") !== "1") && _s && !_bodyPhoto &&
+          // (v9.963, 2026-11-11, Aaron: go) MEASURED 13:51:44 (pta_0c577382cb25a0ac): the truck photo, now a picture they like, went to this
+          // hearing step - it is given their words only, never the picture - and she said "What a beautiful image! What would you like this
+          // tattoo to be of?". The same photo on her full turn at 13:39 got "a rusted old Studebaker pickup sitting in tall grass under a moody
+          // sky...". A turn that brings a new picture goes to her, who sees it; their next words come back here as before.
+          } else if (_newFlow && (String(_ds.await_idea || "") === "1" || String(_ds.new_drawn || "") !== "1") && _s && !_bodyPhoto && !_freshPhoto &&
                      !(opts && (opts.inspire || opts.pick || opts.use || opts.tile || opts.name || opts.choose_go || opts.new_now)) &&
                      !/^i want to (create|add|cover)/i.test(_s) && !/^i like the .+ style\.?$/i.test(_s) && !/^i want number [1-8]\.?$/i.test(_s) &&
                      !/^i like this one\b/i.test(_s)) {

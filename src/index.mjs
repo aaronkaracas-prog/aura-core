@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.949.0-2026-11-11-yes-walk-passes-the-picked-card";
+const BUILD = "aura-core-v9.950.0-2026-11-11-change-on-design-all-asked-and-lettering";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -62183,6 +62183,23 @@ function _picOfWork(e, urls, design) {
   if (design && e.design && String(e.design) === String(design)) return true;
   return !!mine && (urls || []).some((u) => id(u) === mine);
 }
+// ══ EVERYTHING THEY ASKED SINCE THE DESIGN (v9.950, 2026-11-11) ═══ Their lines back to the design on screen (a picture that is not the
+// card they picked, or their pick of one), most recent four, in order - not their taps, not a yes, never across a new start. `cur` (this
+// turn's line) is left out; the caller adds it when it is a change and not a yes.
+function asksSinceDesign(tl, cur, urls, design) {
+  const yRe = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|show me|let'?s see(?: it)?|please|absolutely|definitely|perfect)[\s,.!]*)+$/i;
+  const asks = []; let seenCur = false, onDesign = false, stopPic = null;
+  const list = Array.isArray(tl) ? tl : [];
+  for (let i = list.length - 1; i >= 0; i--) { const e = list[i]; if (!e) continue;
+    if (e.role === "picture") { onDesign = true; if (_picOfWork(e, urls, design)) continue; stopPic = e; break; }
+    if (e.role !== "them") continue;
+    const t = String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim(); if (!t) continue;
+    if (!seenCur && cur && t === cur) { seenCur = true; continue; }
+    if (/^\s*(i want number [1-8]|i choose\b|this is my tattoo|fine-?\s?tune it|keep it|i want to work on this one)/i.test(t)) { onDesign = true; break; }
+    if (yRe.test(t) || /^\s*(imagine\b|let'?s create my own|i want to (create|add|cover)|i want to change something|lettering:)/i.test(t)) break;
+    if (asks.length < 4) asks.unshift(t); }
+  return { asks, onDesign, stopPic, isYes: yRe.test(String(cur || "")) };
+}
 function _isOfferLine(t) {
   const s = String(t || "");
   return /\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(s) ||
@@ -71691,6 +71708,38 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (_designGrid && opts && opts.change_now && opts.change_of) _designParent = opts.change_of;
             }
           }
+        }
+        // ══ A CHANGE ON A DESIGN: ALL THEY ASKED FOR, AND NEW LETTERING ON THE SHEET FIRST (v9.950, 2026-11-11) ═══ MEASURED 08:48-08:49
+        // (Tiny lone samurai): "can we put my daughter's name Sienna on it", she asked where, "on the samurai's back maybe" - a typed change
+        // on a design draws at once (v9.605), and only that last line was drawn: kanji, crests and dragons on his back, no "Sienna" on any of
+        // the 8, and no lettering sheet - the lettering check only ran on the change step after "I want to change something". Whenever a
+        // change is about to be drawn on a design and the change step has not already read it: what they asked since the design goes with
+        // this turn's words, and words to be written in it with no lettering picked yet bring up the sheet first (letterFind, the same
+        // short question the add-on uses). The change waits (change_held) and their pick draws it.
+        if (_designGrid && me && typeof _designWords === "string" && !/^__/.test(_designWords) && !_heldChange && !_letterHold && _fixedWhy !== "four" && !_ideasLine) {
+          try {
+            const _curL = String(said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+            const _sw = asksSinceDesign(tnow, _curL, [refUrl, opts && opts.ref, wantRef], refDesign);
+            if (!_sw.isYes && _sw.onDesign && _sw.asks.length && !_changeFull) {
+              _designWords = _sw.asks.concat(_curL ? [_curL] : []).join(". ").replace(/\.\s*\./g, ".").slice(0, 600);
+              console.log("[TURN:DESIGN] their change was asked over " + (_sw.asks.length + 1) + " turns - all of it is drawn: \"" + _designWords.slice(0, 240) + "\"" + (me ? " · who=" + me : ""));
+            } else if (_sw.stopPic) {
+              const _i = (u) => (String(u || "").match(/img_[A-Za-z0-9_-]+/) || [""])[0];
+              console.log("[TURN:DESIGN] their lines since the last picture: " + _sw.asks.length + " · it was " + (_i(_sw.stopPic.image) || "(none)") + (_sw.stopPic.grid ? " (a sheet)" : "") + " \"" + String(_sw.stopPic.words || "").slice(0, 60) + "\"" + (me ? " · who=" + me : ""));
+            }
+            const _lf = await letterFind(env, _designWords, String((acted && acted.say) || ""), talkModel);
+            let _lsv = { items: [] }; try { _lsv = letterParse((await talkStateGet(env, me, ["letter"])).letter); } catch {}
+            const _lnew = _lf.filter((t) => !letterHas(_lsv, t));
+            if (_lnew.length) {
+              await talkStatePut(env, me, "change_held", JSON.stringify({ words: String(_designWords).slice(0, 600) }));
+              act = "none"; _designGrid = false; _designWords = null;
+              _heardOut = { letter: { items: _lnew.slice(0, 4), chosen: [], styles: LETTER_STYLES.map((x) => x.id) } };
+              let _lln = "Love it - first, pick how you'd like your new lettering to look.";
+              try { const _k = String((await env.AURA_KV.get("config:say:letter_ask_change")) || "").trim(); if (_k) _lln = _k; } catch {}
+              if (acted) { acted.say = _lln; acted.choose = null; }
+              console.log("[TURN:LETTER] new lettering in their change: " + _lnew.map((t) => '"' + t + '"').join(", ") + " - the sheet goes up, the change waits for their pick" + (me ? " · who=" + me : ""));
+            }
+          } catch (e) { try { console.log("[TURN:DESIGN] the all-they-asked / lettering check failed - drawn as it was: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         }
         if (_designGrid && _designWords === "__inspire__") console.log("[TURN:DESIGN] eight from their inspiration (Imagine from this), image model only");
         else if (_designGrid) console.log(_designWords === "__poss__" ? "[TURN:DESIGN] four possibilities of the chosen design, through the chat model" + (_designParent ? " (4 more, same design " + _designParent + ")" : "")

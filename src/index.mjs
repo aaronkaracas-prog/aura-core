@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.965.0-2026-11-11-she-knows-why-the-picture-came";
+const BUILD = "aura-core-v9.966.0-2026-11-11-nothing-drawn-in-this-tattoo-yet";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -71974,7 +71974,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         // truck photo, held as a picture they like (v9.961), counted as "the design" here because it has an id - so their "yeah do it" to
         // her offer was read as a change with nothing to change, nothing was drawn, and the fixed line said "I'm imagining amazing designs".
         // Until something of ours is drawn, a picture they brought to a new tattoo is what the 8 are made FROM, not a design being changed.
-        } else if (_newJob && (hasParent || (refDesign && !(_likedPic && !_bodyPhoto))) && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo) {
+        // (v9.966) MEASURED 14:31:24 (pta_0c577382cb25a0ac): v9.964 still let it through - `hasParent` is the last drawing of ANY tattoo of theirs
+        // (the 13:52 truck sheet), not of this one. What says nothing is drawn in THIS tattoo is new_drawn (cleared at every new start).
+        } else if (_newJob && (hasParent || refDesign) && !(opts && opts.inspire) && !(opts && opts.use) && !_pickGo &&
+                   !(me && _likedPic && !_bodyPhoto && refDesign && await (async () => { try { const _nd = String(((await talkStateGet(env, me, ["new_flow", "new_drawn"])) || {}).new_drawn || "");
+                       const _first = _nd !== "1"; if (_first) console.log("[TURN:DESIGN] nothing drawn in this tattoo yet - their picture is what the 8 are made from, not a design to change" + (me ? " · who=" + me : "")); return _first; } catch { return false; } })())) {
           if (_fixedWhy === "poss") {
             // FOUR POSSIBILITIES OF THE CHOSEN DESIGN (v9.628): the first time, the design on screen; "4 more" keeps the same
             // design they chose, not the sheet of possibilities.

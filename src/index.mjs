@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.968.0-2026-11-11-her-picture-read-is-her-say-back";
+const BUILD = "aura-core-v9.969.0-2026-11-11-see-it-on-you-starts-like-create";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69386,7 +69386,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // (v9.837, 2026-11-03, Aaron: go) MEASURED 18:02:27: a real tap on the Create card only opens the Create page (since 2026-10-23) - no
           // "I want to create a new tattoo" reaches core - so the first words typed there were read as the drawn tiger's tattoo still going, ran
           // as a job, and "look like" drew 8 at once with nothing said back. The Create page is a new start too.
-          _styleStart = _styleStart || (!_opener && !!(opts && opts.fresh) && (!opts.page || opts.page === "home" || opts.page === "job0") && !refUrl && !_bodyPhoto &&
+          // (v9.969, 2026-11-11, Aaron: "every section does the same thing") MEASURED 15:16 (See It On You -> I have an idea -> "a little mountain
+          // range with the sun coming up behind it, I hike a lot"): the See It On You card sends nothing to core either, so the first words on it
+          // were not a new tattoo - she answered in her own turn with a "What feel do you want for it?" card, where Create says it back with
+          // Imagine it. Its page (job3) is a new start too: the same road as Create, until the design is seen on them.
+          _styleStart = _styleStart || (!_opener && !!(opts && opts.fresh) && (!opts.page || opts.page === "home" || opts.page === "job0" || opts.page === "job3") && !refUrl && !_bodyPhoto &&
             !(opts.pick || opts.use || opts.own || opts.name || opts.tile || opts.inspire || opts.inspire_go || opts.choose_go || opts.heard_go ||
               opts.heard_pick || opts.placed || opts.recolor || opts.touch || opts.change_now || opts.new_now || opts.pick_sheet || opts.change_of ||
               (Array.isArray(opts.all_ideas) && opts.all_ideas.length)));

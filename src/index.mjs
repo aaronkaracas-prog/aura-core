@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.950.0-2026-11-11-change-on-design-all-asked-and-lettering";
+const BUILD = "aura-core-v9.951.0-2026-11-11-first-words-after-style-keep-it";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -69167,7 +69167,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       let _styleStart = false;
       if (me) {
         try {
-          const _nf = await talkStateGet(env, me, ["new_flow", "new_style"]);
+          const _nf = await talkStateGet(env, me, ["new_flow", "new_style", "new_drawn", "new_start", "go_idea"]);
           const _op = String(said || "").trim();
           const _opener = /^i want to (create a new tattoo|add to a tattoo|cover up a tattoo)/i.test(_op);
           _styleStart = !_opener && !!(opts && opts.fresh) && /^let'?s create my own in the .+ style\.?$/i.test(_op);
@@ -69183,6 +69183,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             !(opts.pick || opts.use || opts.own || opts.name || opts.tile || opts.inspire || opts.inspire_go || opts.choose_go || opts.heard_go ||
               opts.heard_pick || opts.placed || opts.recolor || opts.touch || opts.change_now || opts.new_now || opts.pick_sheet || opts.change_of ||
               (Array.isArray(opts.all_ideas) && opts.all_ideas.length)));
+          // ══ THEIR FIRST WORDS AFTER A STYLE ARE THEIR IDEA FOR IT (v9.951, 2026-11-11) ═══ MEASURED 09:23 (Ignorant Doodle, Imagine My
+          // Tattoo): the style started the tattoo, then "a little frog riding a skateboard with a cigarette lol" came fresh from the Create page
+          // and was taken for a new tattoo with no style - the style was cleared and she asked "What kind of style are you imagining?". Still
+          // on the Create page, with a style on the tattoo and nothing said or drawn in it since, a typed line is their idea for that style.
+          if (_styleStart && !/^let'?s create my own in the .+ style\.?$/i.test(_op) && opts && opts.style_on &&
+              String(opts.style_on).trim().toLowerCase() === String(_nf.new_style || "").trim().toLowerCase() && String(_nf.new_flow || "") === "1" &&
+              String(_nf.new_style || "").trim() && !String(_nf.new_drawn || "") && !String(_nf.new_start || "").trim() && !String(_nf.go_idea || "").trim()) {
+            _styleStart = false;
+            console.log("[TURN:NEWSTART] their first words after picking " + String(_nf.new_style).trim() + " - their idea for that style, not a new tattoo; the style is kept" + (me ? " · who=" + me : ""));
+          }
           // ══ A FRESH START WITH A PHOTO OF THEM IS A NEW ADD-ON (v9.861, 2026-11-06) ═══ MEASURED 15:01: Start a new tattoo, then the rose
           // photo - no marker was cleared, so the add-on markers from the koi test (drawn 14:10) were still set: a yes would have been read
           // as a change to a picture this tattoo never had, and the lettering of the last tattoo was still kept. Only on the front page, only

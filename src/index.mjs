@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.941.0-2026-11-10-first-words-to-the-page-sooner";
+const BUILD = "aura-core-v9.942.0-2026-11-10-warm-catalogue-copies";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -14364,6 +14364,24 @@ async function successionGate(env) {
         median_s: htSecs[Math.floor(htSecs.length / 2)], slowest_s: htSecs[htSecs.length - 1] };
       try { console.log("[HEARD_TEST] " + htModel + " (thinking " + (htEff || "off") + ") - passed " + htSummary.passed + ", in time " + htSummary.in_time + ", median " + htSummary.median_s + "s, slowest " + htSummary.slowest_s + "s"); } catch {}
       return { cmd: "HEARD_TEST", payload: { ok: true, ...htSummary, results: htRes } };
+    }
+    // ══ WARM_COPIES - EVERY CATALOGUE PICTURE GETS ITS PHONE COPY BEFORE ANYONE OPENS IT (v9.942, 2026-11-10, Aaron: go) ═══════════
+    // MEASURED 17:31 (Samurai, never opened before): the phone waited up to 11.5s for its 16 pictures - each phone-size copy (?w=720)
+    // is made the first time anybody asks for it, two at a time (PIC_GATE_MAX), and the rest queue. Opened once, the same pictures came
+    // back in 0.1-0.3s. A sample of 24 of the 14,631 catalogue pictures: 18 had no copy yet (0.5-4.9s each, one at a time). This makes
+    // every copy once, in the background, as its own job: RUN "WARM_COPIES" (4 jobs side by side), or RUN "WARM_COPIES 2" for 2.
+    // A copy already kept is skipped, so it can be run again any time; each job logs [WARM] as it goes. Nothing is drawn.
+    case "WARM_COPIES": {
+      if (!isOp) return { cmd: "WARM_COPIES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const wcParts = Math.min(8, Math.max(1, parseInt(String(args[0] || "4"), 10) || 4));
+      if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return { cmd: "WARM_COPIES", payload: { ok: false, error: "NO_WORKFLOW" } };
+      const wcIds = [];
+      for (let k = 0; k < wcParts; k++) {
+        try { const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: "warm_copies", data: { part: k, parts: wcParts, w: 720 } } }); wcIds.push(inst && inst.id); }
+        catch (e) { wcIds.push("not started: " + String(e?.message ?? e).slice(0, 120)); }
+      }
+      return { cmd: "WARM_COPIES", payload: { ok: true, jobs: wcIds, parts: wcParts,
+        note: "Each job lists the catalogue pictures (card:tree -> each design's face), takes its share, and makes the 720-wide copy of any that has none. Watch [WARM] in the core log." } };
     }
     case "GETKV": {
       const key = args[0] || "";
@@ -65552,6 +65570,53 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
           catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 300) }; }
         });
       } catch (e) { try { console.log("[NAME] its job stopped: " + String(e?.message ?? e).slice(0, 200)); } catch {} return { ok: false }; }
+    }
+    // (v9.942) WARM_COPIES: the catalogue's phone copies, made in the background, a share per job
+    if (String(event.payload?.mode || "") === "warm_copies") {
+      const d = event.payload?.data || {};
+      const part = Number(d.part) || 0, parts = Math.max(1, Number(d.parts) || 1), wW = Number(d.w) || 720;
+      const total = await step.do("list", { retries: { limit: 2, delay: "5 seconds" }, timeout: "5 minutes" }, async () => {
+        const tree = await this.env.AURA_KV.get("card:tree", "json").catch(() => null);
+        const spec = (tree && tree.specific) || {}, subj = (tree && tree.subjects) || {};
+        const names = new Set();
+        for (const lv of Object.values(spec)) for (const n of (Array.isArray(lv) ? lv : [])) names.add(String(n));
+        for (const ks of Object.values(subj)) for (const k of (Array.isArray(ks) ? ks : [])) names.add(String(k));
+        const all = [...names].sort();
+        const mine = all.filter((_, i) => i % parts === part);
+        const ids = [];
+        for (let i = 0; i < mine.length; i += 50) {
+          const got = await Promise.all(mine.slice(i, i + 50).map(async (n) => {
+            const r = await this.env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
+            const u = r ? tatFaceUrl(r) : null;
+            return (String(u || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1] || null;
+          }));
+          for (const id of got) if (id) ids.push(id);
+        }
+        const uniq = [...new Set(ids)];
+        await this.env.AURA_KV.put("warm:copies:" + part + "of" + parts, JSON.stringify(uniq), { expirationTtl: 3 * 24 * 3600 });
+        console.log("[WARM] job " + (part + 1) + " of " + parts + " - " + uniq.length + " pictures to check (" + names.size + " designs in the catalogue)");
+        return uniq.length;
+      });
+      let at = 0, made = 0, kept = 0, failed = 0, n = 0;
+      while (at < total && n < 900) {
+        n++;
+        const r = await step.do("warm " + at, { retries: { limit: 2, delay: "10 seconds" }, timeout: "5 minutes" }, async () => {
+          const ids = JSON.parse((await this.env.AURA_KV.get("warm:copies:" + part + "of" + parts)) || "[]");
+          const t0 = Date.now(); let i = at, m = 0, k = 0, f = 0;
+          while (i < ids.length && Date.now() - t0 < 20000) {
+            const id = ids[i++];
+            try {
+              if (await this.env.AURA_KV.get("small:" + id + "_w" + wW + ".jpg", { type: "arrayBuffer" })) { k++; continue; }
+              const out = await picGated(() => picSmallCopy(this.env, id, wW, false));
+              if (out) m++; else f++;
+            } catch { f++; }
+          }
+          return { next: i, m, k, f };
+        });
+        made += r.m; kept += r.k; failed += r.f; at = r.next;
+        if (n % 10 === 0 || at >= total) console.log("[WARM] job " + (part + 1) + " of " + parts + " - " + at + " of " + total + " checked · " + made + " made, " + kept + " already kept, " + failed + " not made");
+      }
+      return { ok: true, total, made, kept, failed };
     }
     // A TURN AS ITS OWN JOB (v9.681): no retries - a second go would draw and charge twice.
     if (String(event.payload?.mode || "") === "talk_turn") {

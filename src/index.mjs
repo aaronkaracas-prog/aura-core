@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.943.0-2026-11-10-search-timing-and-lanes";
+const BUILD = "aura-core-v9.944.0-2026-11-11-logs-asked-in-pieces";
 // ══ THE INKIT.WORLD LOGO ON WHAT PEOPLE SEE (v9.767, 2026-10-29, Aaron: "every image that's generated except for the one the person
 // eventually keeps ... I want them to be stamped - as long as we're stamping everything that shows up on a screen") ══════════════════
 // The original picture is never touched: `/image/<id>?mark=1` (with or without `w=`) hands back a copy with the logo bottom-left, made
@@ -6682,10 +6682,32 @@ async function processCommand(line, env, isOp) {
             say: st === 403 || st === 401 ? "The Cloudflare token cannot read logs - it needs the Workers Observability read permission added." : "Cloudflare refused the query - errors above." };
           continue;
         }
-        const ev = lgFindEvents(j.result || j) || [];
+        let ev = lgFindEvents(j.result || j) || [];
         if (lgRaw) { lgOut[short] = { ok: true, events: ev.length, sample: JSON.stringify(ev[0] || j.result || j).slice(0, 3000) }; continue; }
-        lgOut[short] = { ok: true, events: ev.length, ...(lgTurns ? { turn_filter: lgNoFilter ? "here (Cloudflare refused it)" : "at Cloudflare" } : {}),
-          ...(ev.length >= 1000 ? { capped: true, say: "Cloudflare returned its 1,000-entry limit for " + short + " - only the newest part of the window came back. Use a shorter window." } : {}) };
+        // ══ A FULL WINDOW IS ASKED AGAIN IN PIECES (v9.944, 2026-11-11, Aaron: "pull the logs") ═══════════════════════════════════
+        // MEASURED 06:15: Aaron's change turn (the name Sienna) ran 06:14:56-06:15:41 and the minute came back capped - 1,000 events, the
+        // newest part only, and every line of the turn itself was gone (06:08, 06:12, 06:13 the same). A capped window is asked again in
+        // halves, each half split again while it is still full (down to 4 seconds, at most 40 asks), and the pieces are put together.
+        let lgStill = ev.length >= 1000, lgPieces = 0;
+        if (ev.length >= 1000) {
+          const lgAll = [];
+          const lgWalk = async (a, b) => {
+            lgPieces++;
+            const bb = { ...body, queryId: "aura-logs-" + Date.now() + "-" + lgPieces, timeframe: { from: a, to: b } };
+            let r2 = null;
+            try { const rr = await fetch("https://api.cloudflare.com/client/v4/accounts/" + lgAcct + "/workers/observability/telemetry/query",
+              { method: "POST", headers: { "Authorization": "Bearer " + lgTok, "Content-Type": "application/json" }, body: JSON.stringify(bb) }); r2 = await rr.json().catch(() => null); } catch {}
+            const e2 = (r2 && lgFindEvents(r2.result || r2)) || [];
+            if (e2.length >= 1000 && b - a > 4000 && lgPieces < 40) { const m = Math.floor((a + b) / 2); await lgWalk(a, m); await lgWalk(m + 1, b); }
+            else { if (e2.length >= 1000) lgStill = true; lgAll.push(...e2); }
+          };
+          lgStill = false;
+          const lgMid = Math.floor((lgFrom + lgTo) / 2);
+          await lgWalk(lgFrom, lgMid); await lgWalk(lgMid + 1, lgTo);
+          if (lgAll.length > ev.length) ev = lgAll; else lgStill = true;
+        }
+        lgOut[short] = { ok: true, events: ev.length, ...(lgPieces ? { asked_in_pieces: lgPieces } : {}), ...(lgTurns ? { turn_filter: lgNoFilter ? "here (Cloudflare refused it)" : "at Cloudflare" } : {}),
+          ...(lgStill ? { capped: true, say: "Cloudflare returned its 1,000-entry limit for " + short + " even in pieces - only the newest part of some pieces came back." } : {}) };
         for (const e of ev) {
           const md = e.$metadata || {}, wk = e.$workers || {}, src = e.source;
           const ts = Number(e.timestamp || md.timestamp || 0);

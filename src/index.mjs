@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.981.0-2026-11-11-refusals-kept-she-looks-it-up";
+const BUILD = "aura-core-v9.982.0-2026-11-11-facts-are-looked-up";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62223,7 +62223,7 @@ function heardSystem(style, canGo, can) {
                 "Never put a number in your words. " + TALK_SCOPE + "\n\n" + (can ? can + "\n\n" : "") +
                 // (v9.975) MEASURED 17:08-17:09: a tattoo they already have ("add to it or cover the whole thing up", "can I just show you a pic")
                 // was answered here, as a new tattoo, four turns running - no photo asked for, no add-on. That conversation is hers, with all she knows.
-                "If they are talking about a tattoo they already have - adding to it, covering it, changing it - or ask what you can do or how the app works, or ask to see real tattoos or pictures of something, or ask a tattoo question you can't answer well from what you know - something current, a name, a date, where a style comes from - answer TALK with nothing after it: that conversation is not for this step.\n\n" +
+                "If they are talking about a tattoo they already have - adding to it, covering it, changing it - or ask what you can do or how the app works, or ask to see real tattoos or pictures of something, or ask a question about tattoos, answer TALK with nothing after it: that conversation is not for this step.\n\n" +
                 "Answer in exactly this shape. First line: READY or TALK" + (canGo ? " or GO" : "") + ".\n\n" +
                 // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
                 // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
@@ -62296,7 +62296,7 @@ function heardSystem(style, canGo, can) {
                   // Cybersigilism): "What are the most popular things people are getting these days" came back "What kind of vibe are you drawn
                   // to..." - these words told her to answer any question with no idea in it by asking what the tattoo should be of. She knows
                   // tattoos; a question about tattoos is answered first, then the ask. Anything outside tattoos stays with her guidance.
-                  : "TALK when there is nothing to imagine from yet - a hello, a question with no idea in it, or only a style. If they asked you something about tattoos, answer it plainly and briefly from what you know, then ask what they would like their tattoo to be of. Otherwise your words are your reply to them: ask what they would like the tattoo to be of. No offer to imagine anything yet.");
+                  : "TALK when there is nothing to imagine from yet - a hello, a question with no idea in it, or only a style. If they asked you a question about tattoos, answer TALK with nothing after it. Otherwise your words are your reply to them: ask what they would like the tattoo to be of. No offer to imagine anything yet.");
 }
 async function drawStartSay(env, idea, style, talkModel) {
   try {
@@ -68690,7 +68690,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         // so the floor and her live agent cannot disagree.
         // (v9.981) a tattoo question she can't answer from what she knows - core looks it up and she answers from what came back. First,
         // so the words she streams after it are held until the answer is in.
-        '  "look_up": "only when they ask about the tattoo world - styles, where they come from and what they mean, artists, trends, aftercare, how tattooing works - and you can\'t answer it well from what you know: a few words to search the web for. Then say is only: Let me look that up. Never for anything outside tattoos. Otherwise leave it out",\n' +
+        '  "look_up": "when they ask for facts about the tattoo world - where a style comes from, who someone is, dates, what is popular right now, aftercare, how tattooing works: a few words to search the web for, so your answer is right. Then say is only: Let me look that up. Not for advice or ideas about their own tattoo, and never for anything outside tattoos. Otherwise leave it out",\n' +
         '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. Say what you actually see - the part of the body, where on it the tattoo sits, and whether the photo shows bare skin around it to grow into; if the tattoo fills the photo, say so plainly and ask where they want it to grow. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give design ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, offer to show them 8 in one picture - don\'t list directions in your words. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each

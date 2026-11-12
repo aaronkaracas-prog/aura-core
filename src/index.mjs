@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.990.0-2026-11-12-sign-off-fixes-4";
+const BUILD = "aura-core-v9.991.0-2026-11-12-sign-off-fixes-5";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -76300,7 +76300,9 @@ export class PublicEntry extends WorkerEntrypoint {
           // Canada, "100 Year History of Tattoos". When they named a subject (mermaid, sticker, tribal), the title or address must name it too.
           // Words that are not a subject ("popular", "most", "best") do not count - a vague search is left as it is.
           const _VAGUE = new Set(["most","popular","best","top","trending","new","latest","unique","beautiful","cute","small","big","simple","good","famous","amazing"]);
-          const _subj = _kw.split(" ").filter((w) => w.length > 2 && !_VAGUE.has(w) && !["and","with","for","of"].includes(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
+          // (v9.991, 2026-11-12, sign-off) MEASURED 13:14:00: See real tattoos on Neo-Tribal - "neo-tribal" was one word here, so every page that
+          // wrote "neo tribal" or "tribal" was dropped as off subject (271 of 271). A hyphen splits words like a space.
+          const _subj = _kw.split(/[\s\-\u2010-\u2014]+/).filter((w) => w.length > 2 && !_VAGUE.has(w) && !["and","with","for","of"].includes(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
           const _onSubject = (t) => !_subj.length || _subj.some((w) => w.length > 2 && String(t).toLowerCase().includes(w));
           // ONE NAME PER SITE (v9.756, MEASURED 21:14 - a Pinterest pin found by Brave said "From pinterest.com", the others "From Pinterest").
           const _siteName = (h) => { h = String(h || "").toLowerCase().replace(/^www\./, "");

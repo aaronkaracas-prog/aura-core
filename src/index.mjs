@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.977.0-2026-11-11-discovery-left-as-it-was";
+const BUILD = "aura-core-v9.978.0-2026-11-11-ink-on-skin-and-a-photo-to-tap";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -67286,6 +67286,7 @@ function talkReadAct(txt) {
              where_to: (typeof o.where_to === "string") ? o.where_to.trim().slice(0, 160) : "",
              // WHERE SHE TAKES THEM (v9.664): one of the places her world's purpose names - a short name, nothing else.
              photo_is: (typeof o.photo_is === "string" && /^\s*their[_ ]tattoo\s*$/i.test(o.photo_is)) ? "their_tattoo" : "",
+             ask_photo: o.ask_photo === true || (typeof o.ask_photo === "string" && /^\s*(true|yes)\s*$/i.test(o.ask_photo)),
              go: (typeof o.go === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.go.trim())) ? o.go.trim().toLowerCase()
                : (typeof o.where === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.where.trim())) ? o.where.trim().toLowerCase() : "",
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
@@ -68657,6 +68658,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         '  "go": "only when they want to go somewhere else - one of the places named in WHY YOU ARE HERE, by its name; the app takes them there. If you can\'t tell where they want to go, ask them and leave it out",\n' +
         // (v9.976) WHAT THEIR PHOTO IS, IN HER READ - see THEIR OWN TATTOO, THEIR CHOICE below
         '  "photo_is": "only on a turn where they just sent a photo: their_tattoo when it is a tattoo already on their body; otherwise leave it out",\n' +
+        // (v9.978) she asks for a photo - the page puts Add a photo under her words
+        '  "ask_photo": "true when your words ask them to send a photo; otherwise leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:
@@ -73540,7 +73543,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   // `config:frame:inspire:read:world`; the model is `config:source:inspire_read:model`, else the More like this model, else the eyes
                   // default. No answer in 9s: the eight go without the sentence, as before.
                   let _rq = _ikw ? "In one short sentence, say what is in this picture and what makes it stand out."
-                    : "This photo shows a tattoo on a person. In one short sentence, say what the tattoo is and what makes it stand out - the tattoo itself only, not the person, their clothes, the room or where on the body it is. If there is more than one tattoo, describe the one that stands out most.";
+                    : "This photo shows a tattoo on a person. In one short sentence, say what the tattoo is and what makes it stand out - the tattoo itself only, not the person, their clothes, the room or where on the body it is. Only ink on skin is a tattoo - a phone case, sticker, print or anything else in the picture is not. If there is more than one tattoo, describe the one that stands out most.";
                   try { const _k = String((await env.AURA_KV.get(_ikw ? "config:frame:inspire:read:world" : "config:frame:inspire:read")) || "").trim(); if (_k) _rq = _k; } catch {}
                   let _rm = ""; try { _rm = String((await env.AURA_KV.get("config:source:inspire_read:model")) || "").trim() || String((await env.AURA_KV.get("config:source:inspire_like:model")) || "").trim(); } catch {}
                   const _rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), 9000)),
@@ -74915,6 +74918,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             choose: (acted && acted.choose && !_fixedWhy && !(drew && drew.image)) ? acted.choose : null,
             offer: (!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid)) || undefined,
             job_pick: _jobPick || undefined,
+            ask_photo: (acted && acted.ask_photo && !_jobPick && !_fixedWhy && !(drew && drew.image)) || undefined,
             heard: (_heardOut && !(drew && drew.image)) ? _heardOut : undefined,
             directions: (Array.isArray(acted.directions) && acted.directions.length) ? acted.directions : null,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
@@ -74961,6 +74965,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                ...(!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid) ? { offer: true } : {}),
                // (v9.976) her read: their own tattoo - the page puts Build around it / Cover it up / Make a new tattoo from it under her words
                ...(_jobPick ? { job_pick: true } : {}),
+               // ══ SHE ASKS FOR A PHOTO, THEY TAP TO SEND ONE (v9.978, 2026-11-11, Aaron: go) ═══ MEASURED 18:03 (My Tattoos): "Once I see it I'll
+               // tell you straight which way I'd lean" - asking for a photo with nothing to tap but the + in the chat box. Her ask_photo puts
+               // Add a photo under her words.
+               ...(acted && acted.ask_photo && !_jobPick && !_fixedWhy && !(drew && drew.image) ? { ask_photo: true } : {}),
                // SHE SAID IT BACK (v9.783): Imagine it, or her two directions - the page puts them under her words.
                ...(_heardOut && !(drew && drew.image) ? { heard: _heardOut } : {}),
                // WHERE SHE TAKES THEM (v9.664): the page goes there - the same as tapping that place.

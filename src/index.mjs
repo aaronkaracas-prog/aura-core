@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.991.0-2026-11-12-sign-off-fixes-5";
+const BUILD = "aura-core-v9.992.0-2026-11-12-sign-off-fixes-6";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69704,7 +69704,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held", "addon_go", "addon_drawn", "addon_ideas"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held", "addon_go", "addon_drawn", "addon_ideas", "letter_go"]); } catch {}
           // ══ THEIR YES TO A CHANGE THEY TYPED GOES THE CHANGE ROAD (v9.947, 2026-11-11) ═══ MEASURED 07:13-07:14 (Samurai, Tiny lone samurai):
           // "I would like to incorporate the name Sienna in it", she asked "want me to show it with the name added?", they tapped Yes, show me -
           // "I'm imagining amazing designs" was shown and nothing was drawn ("a bare yes is not a change": the design was a picked card, not
@@ -69994,6 +69994,17 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             const _list = _and(_groups.map((g) => _and(g.texts.map((t) => "\u201c" + t + "\u201d")) + (g.font ? " in " + g.font.replace(/\b\w/g, (c) => c.toUpperCase()) : "")));
             _fixedWhy = "heard_ready"; _fixedSay = (await _fx("letter_picked", "{list} - beautiful. Want me to imagine it?")).replace("{list}", _list);
             _heardOut = { go: true };
+            // ══ THEIR LETTERING ON A YES IS DRAWN AT ONCE (v9.992, 2026-11-12, sign-off, Aaron: "Imagine it twice - that's a problem") ═══ MEASURED
+            // 09:01-09:03 (Grandma Rose): Imagine it, then the lettering sheet, then "'Rose' in Script and '1941-2019' in Fine Line - beautiful. Want
+            // me to imagine it?" and Imagine it again. When the sheet came up because they had already said go, their pick is that go: the 8 are
+            // drawn now. When the sheet came up in place of Imagine it (before any go), it still asks, as before.
+            if (String(_ds.letter_go || "") === "1") {
+              try { await talkStatePut(env, me, "letter_go", ""); } catch {}
+              _fixedWhy = "four_new"; _heardOut = null;
+              if (String(_ds.go_idea || "").trim()) _heardIdea = String(_ds.go_idea).slice(0, 1200);   // what was said back is what is drawn, as on the tap
+              _fixedSay = await _fx("eight_coming", "On it - imagining some designs for you now.");
+              console.log("[TURN:LETTER] the sheet came up after their go - their pick draws now, no second Imagine it" + (me ? " · who=" + me : ""));
+            }
             console.log("[TURN:LETTER] they picked their lettering: " + _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") + " - kept for the whole tattoo, Imagine it shown" + (me ? " · who=" + me : ""));
           } else if (_newFlow && opts && (opts.heard_go || opts.heard_pick) && (String(_ds.go_idea || "") || String(_ds.go_picks || ""))) {
             let _gi = String(_ds.go_idea || ""), _gk = "";
@@ -70391,6 +70402,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 if (_lNew.length && (_hDo === "READY" || _hDo === "GO") && _heardOut && _heardOut.go) {
                   const _gi = _heardIdea || _goPrev;
                   if (_gi) { try { await talkStatePut(env, me, "go_idea", _gi); await talkStatePut(env, me, "go_said", "1"); } catch {} }
+                  // (v9.992) a yes that brought up the sheet is still their yes - their pick draws (see THEIR LETTERING ON A YES)
+                  try { await talkStatePut(env, me, "letter_go", _hDo === "GO" ? "1" : ""); } catch {}
                   if (_hDo === "GO" || !String(_fixedSay || "").trim()) { _fixedSay = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look."); _heardStreamed = false; }
                   else {
                     // ══ HER WORDS MATCH THE BUTTON UNDER THEM (v9.953, 2026-11-11) ═══ MEASURED in the Mia walk: her say-back ended "...Want me to imagine
@@ -70702,6 +70715,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                     return o ? { said: t, text: String(o.text), font: String(o.font) } : null; }).filter(Boolean);
                   _heardOut = { letter: { items: _lf.slice(0, 4), chosen: _chs, styles: LETTER_STYLES.map((x) => x.id) } };
                   _fixedWhy = "letter_hold_new"; _fixedSay = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look.");
+                  try { await talkStatePut(env, me, "letter_go", "1"); } catch {}   // (v9.992) they tapped Imagine it - their pick draws
                   console.log("[TURN:LETTER] first designs of a new tattoo - lettering with no style yet: " + _lnw.map((t) => '"' + t + '"').join(", ") +
                     " - the sheet goes up first; kept for Imagine it: \"" + _tw.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
                 }

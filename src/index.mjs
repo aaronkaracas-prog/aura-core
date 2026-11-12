@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.982.0-2026-11-11-facts-are-looked-up";
+const BUILD = "aura-core-v9.983.0-2026-11-11-what-her-reply-had";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -67322,8 +67322,16 @@ function talkReadAct(txt) {
              // (v9.981) a tattoo question she needs facts for - a few words to search the web
              look_up: (typeof o.look_up === "string" && o.look_up.trim() && !/^(false|no|none|null)$/i.test(o.look_up.trim())) ? o.look_up.replace(/[<>{}]/g, "").replace(/\s+/g, " ").trim().slice(0, 120) : "",
              // (v9.980) a search they asked for in the chat: what to look for, and real tattoos or the real thing
-             search: (o.search && typeof o.search === "object" && typeof o.search.for === "string" && o.search.for.trim())
-               ? { q: o.search.for.replace(/[<>{}]/g, "").replace(/\s+/g, " ").trim().slice(0, 100), kind: /^\s*world\s*$/i.test(String(o.search.kind || "")) ? "world" : "tattoos" } : null,
+             // (v9.983) MEASURED 20:10 (home page, "show me some pikachu tattoos"): her words were "Pikachu ink, coming right up." and the
+             // turn's record had no search - written in another shape, it was thrown away. Plain words are a search of real tattoos.
+             search: (() => { const sv = o.search; let q = "", kind = "tattoos";
+               if (typeof sv === "string") q = sv;
+               else if (sv && typeof sv === "object") { q = [sv.for, sv.q, sv.query].find((v) => typeof v === "string" && v.trim()) || "";
+                 kind = /^\s*world\s*$/i.test(String(sv.kind || "")) ? "world" : "tattoos"; }
+               q = String(q).replace(/[<>{}]/g, "").replace(/\s+/g, " ").trim().slice(0, 100);
+               return (q && !/^(false|no|none|null|true)$/i.test(q)) ? { q, kind } : null; })(),
+             // (v9.983) the names of the fields she wrote, so a turn that did nothing shows what her reply held
+             fields: Object.keys(o).slice(0, 40),
              go: (typeof o.go === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.go.trim())) ? o.go.trim().toLowerCase()
                : (typeof o.where === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.where.trim())) ? o.where.trim().toLowerCase() : "",
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
@@ -71133,6 +71141,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       let drew = null;
       const hasParent = !!(me && lastDrawn && lastDrawn.design);
       let act = acted.act;
+      // (v9.983, 2026-11-11, Aaron: go) WHAT HER REPLY HAD, every turn - her words alone were logged, so a reply that promised a search and
+      // carried none could not be told apart from one written in a shape that was thrown away.
+      if (me && acted && Array.isArray(acted.fields)) { try { console.log("[TURN:REPLY] her reply had: " + acted.fields.join(", ") +
+        (acted.search ? " · search \"" + acted.search.q + "\" (" + acted.search.kind + ")" : "") + (acted.look_up ? " · look_up \"" + acted.look_up + "\"" : "") + " · who=" + me); } catch {} }
       // (v9.980) a search she asked for goes to the page's own search (Get Inspired) - the older in-chat find does not run beside it
       if (acted && acted.search && act === "find") { act = "none"; try { console.log("[TURN:SEARCH] her search goes to the page - the old find is not run"); } catch {} }
       // ══ SHE LOOKS IT UP (v9.981, 2026-11-11, Aaron: "let's just incorporate it as long as the search is around the tattoo world. Everything's

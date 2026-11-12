@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.974.0-2026-11-11-a-question-gets-an-answer";
+const BUILD = "aura-core-v9.975.0-2026-11-11-what-she-can-do-one-place";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -14544,7 +14544,7 @@ async function successionGate(env) {
         const user = (c.told.length ? "What they told you before, in order:\n" + c.told.join("\n") + "\n\nWhat they just said:\n" : "") + c.said;
         const t0 = Date.now();
         const q = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), 45000)),
-          callBrainStream({ system: heardSystem(c.style), user, max_tokens: 2000, ...(htEff ? { reasoning: htEff } : {}), model: htModel }, env, () => {})]).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+          callBrainStream({ system: heardSystem(c.style, false, await canSection(env)), user, max_tokens: 2000, ...(htEff ? { reasoning: htEff } : {}), model: htModel }, env, () => {})]).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
         const ms = Date.now() - t0, raw = String((q && q.text) || "").trim();
         const m = raw.replace(/^```[a-z]*\s*|```\s*$/gi, "").trim().match(/^\W*(READY|CHOOSE|TALK|DRAW)\W*\s*([\s\S]*)$/i);
         const label = m ? m[1].toUpperCase().replace("DRAW", "READY") : null, sp = heardSplit(m ? m[2] : "");
@@ -62171,11 +62171,27 @@ function styleFromWords(text) {
 // blob"). Told to answer "the way a real tattoo artist would", she took on the artist's whole job. One sentence, in her hearing step and her chat.
 const TALK_SCOPE = "Your job is designing the tattoo with them. How a tattoo heals, ages, fades, hurts or is cared for is for their tattoo artist, " +
   "not you - never bring it up, and if they ask, say their artist is the one to ask and come back to the design.";
-function heardSystem(style, canGo) {
+// ══ WHAT SHE CAN DO, ONE PLACE (v9.975, 2026-11-11, Aaron: "does my agent know what she is, what her capabilities are ... we've just connected
+// all the dots") ═══ MEASURED 17:09:59: asked "can I just show you a pic of it", the hearing step said "I can't see images here ... send it to
+// your tattoo artist" - it had been told only that someone is designing a new tattoo. Her guidance (cognition:prompts -> tattoo_talk) now holds
+// one section, WHAT YOU CAN DO HERE; the hearing step is given that same section, read from there, so one edit reaches both.
+async function canSection(env) {
+  try {
+    const t = String(await loadPrompt(env, "tattoo_talk", "") || "");
+    const i = t.indexOf("WHAT YOU CAN DO HERE.");
+    if (i < 0) return "";
+    const j = t.indexOf("\n\n", i);
+    return (j > i ? t.slice(i, j) : t.slice(i)).trim().slice(0, 3000);
+  } catch { return ""; }
+}
+function heardSystem(style, canGo, can) {
   return "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
                 (style ? " (in the " + style + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
                 "tattoo artist would: brief, in your own words. If they shared something personal or hard, your words start there, simply. " +
-                "Never put a number in your words. " + TALK_SCOPE + "\n\n" +
+                "Never put a number in your words. " + TALK_SCOPE + "\n\n" + (can ? can + "\n\n" : "") +
+                // (v9.975) MEASURED 17:08-17:09: a tattoo they already have ("add to it or cover the whole thing up", "can I just show you a pic")
+                // was answered here, as a new tattoo, four turns running - no photo asked for, no add-on. That conversation is hers, with all she knows.
+                "If they are talking about a tattoo they already have - adding to it, covering it, changing it - or ask what you can do or how the app works, answer TALK with nothing after it: that conversation is not for this step.\n\n" +
                 "Answer in exactly this shape. First line: READY or TALK" + (canGo ? " or GO" : "") + ".\n\n" +
                 // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
                 // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
@@ -69930,7 +69946,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               const _goPrev = String(_ds.go_idea || ""), _canGo = !!_goPrev && String(_ds.go_said || "") === "1";
               let _herLast = ""; if (_canGo) { try { const _tl0 = (typeof tnow !== "undefined" && Array.isArray(tnow)) ? tnow : [];
                 for (let i = _tl0.length - 1; i >= 0; i--) { const e = _tl0[i]; if (e && e.role === "aura" && String(e.said || "").trim()) { _herLast = String(e.said).trim().slice(0, 900); break; } } } catch {} }
-              const _hSys = heardSystem(_newStyle, _canGo);
+              const _hSys = heardSystem(_newStyle, _canGo, await canSection(env));
               // ══ HER SAID-BACK STREAMS (v9.787) ═══ Her answer starts with its label line (and the IDEA / A / B lines) - those never
               // reach the page; from her first line of words on, each piece goes out as she writes it. A TALK answer is not streamed
               // (that turn goes to her as a conversation). Once her words have started, the time limit no longer cuts her off.

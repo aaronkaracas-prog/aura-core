@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.976.0-2026-11-11-their-own-tattoo-their-choice";
+const BUILD = "aura-core-v9.977.0-2026-11-11-discovery-left-as-it-was";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -74671,8 +74671,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // the page puts three answers under her words - Build around it, Cover it up, Make a new tattoo from it - each the existing start for that
       // job, with this photo.
       let _jobPick = false;
+      // (v9.977, Aaron: "make sure the rules we just implemented don't affect discovery - when someone's looking at real tattoos and it's on their
+      // body, it just gets pulled off their body anyways") Get Inspired and every picture picked from it are left exactly as they were: a real
+      // tattoo found there is on somebody's body by nature, and is never read as theirs.
       if (me && _freshPhoto && acted && acted.photo_is === "their_tattoo" && !_fixedWhy && !(drew && drew.image) &&
-          !(opts && ["job1", "job2", "job3", "job6"].includes(String(opts.page || "")))) {
+          !(opts && (opts.inspire || opts.inspire_go || opts.inspire_own || ["job1", "job2", "job3", "job4", "job6"].includes(String(opts.page || ""))))) {
         _jobPick = true;
         try { await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_said", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
         console.log("[TURN:PHOTO] her read: a tattoo already on their body - nothing waits to be drawn from it; they choose: build around it, cover it up, or a new tattoo from it" + (me ? " · who=" + me : ""));

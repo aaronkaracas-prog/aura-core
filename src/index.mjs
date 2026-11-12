@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.988.0-2026-11-12-sign-off-fixes-2";
+const BUILD = "aura-core-v9.989.0-2026-11-12-sign-off-fixes-3";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -71678,7 +71678,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // drawn onto his face. A drawing only continues from a picture she DREW (the record of her
       // design). A photo is a canvas only for add / cover / rework (below) and for put-it-on-me.
       let _herDesign = null; try { _herDesign = _pre ? await _pre.design : null; } catch {}
-      if (!_herDesign && _backDesign) _herDesign = _backDesign;   // v9.798: a reopened tattoo (CONTINUE GIVES THE TATTOO BACK)
+      // v9.798: a reopened tattoo (CONTINUE GIVES THE TATTOO BACK). (v9.989) MEASURED 10:18:47: the paper plane was put back, but her design on record
+      // was still the rose's (another tattoo), so the pick was not "her drawing" and drew a new 8 again. A tattoo put back this turn is hers.
+      if (_backDesign) _herDesign = _backDesign;
       const _isHerDrawing = !!(lastDrawn && lastDrawn.design && _herDesign && _herDesign.design === lastDrawn.design);
       // IMAGINE 4 MORE IS A FRESH FOUR, NOT A CHANGE (v9.608). MEASURED 20:03: the fixed "more" turn drew, then this rule
       // turned it into a change of the four on screen - the grid was EDITED with the words "Imagine 4 more" (numbered 5-8,
@@ -74886,11 +74888,17 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // "turn it into a tattoo" drew 8 from the photo (09:08:39). When the photo's own read has no tattoo in it and no job page or search started
       // it, the page puts Turn it into a tattoo / I have my own idea under her words.
       let _photoNew = false;
-      if (me && _freshPhoto && refSaw && !/tattoo|\bink(ed)?\b|linework|blackwork/i.test(String(refSaw)) && !_jobPick && !_newRoadPic && !_fixedWhy &&
+      // (v9.989) MEASURED 10:20-10:21 (v9.988 live): no buttons under the puppy or a lighthouse - the photo's own read (refSaw) is empty for an
+      // upload (IMAGE IMPORT no longer looks), so this never fired. Her read decides: a photo she did not call their own tattoo.
+      if (me && _freshPhoto && acted && acted.photo_is !== "their_tattoo" && !_jobPick && !_newRoadPic && !_fixedWhy && !_isOfferLine(String(_said || "")) &&
           !(drew && drew.image) && !(acted && acted.choose) && !(opts && (opts.inspire || opts.inspire_go || opts.inspire_own || /^job/.test(String(opts.page || ""))))) {
         _photoNew = true;
-        try { console.log("[TURN:PHOTO] not a tattoo, no job chosen - Turn it into a tattoo / I have my own idea under her words: \"" + String(refSaw).slice(0, 160) + "\"" + (me ? " · who=" + me : "")); } catch {}
+        try { console.log("[TURN:PHOTO] not their tattoo, no job chosen - Turn it into a tattoo / I have my own idea under her words" + (me ? " · who=" + me : "")); } catch {}
       }
+      // (v9.989, 2026-11-12, sign-off) MEASURED 10:25:36 (Create > I have a picture, a skull tattoo): "Great bones to build a new tattoo from - I'd love to
+      // imagine some ideas made from this picture." - not a question, so no offer card and nothing to tap. Her read of a picture they brought to
+      // a new tattoo is always her say-back with a yes waiting (below), so the offer card always comes with it, however she words it.
+      const _picOffer = !!(me && _newRoadPic && _freshPhoto && !_fixedWhy && !(drew && drew.image) && !_jobPick && !(acted && acted.choose));
       if (me && _newRoadPic && _freshPhoto && !_fixedWhy && !(drew && drew.image) && !_jobPick) {
         try {
           const _pw = (Array.isArray(tnow) ? tnow : []).filter((e) => e && e.role === "them").map((e) => String(e.said || "").trim())
@@ -75130,7 +75138,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
             ideas: null,   // NO IDEA CARDS (v9.684, 2026-10-19, Aaron): her reply and the chat box are the whole screen
             choose: (acted && acted.choose && !_fixedWhy && !(drew && drew.image)) ? acted.choose : null,
-            offer: (!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid)) || undefined,
+            offer: (!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer)) || undefined,
             job_pick: _jobPick || undefined,
             see_on_me: _seeOnMe || undefined,
             photo_new: _photoNew || undefined,
@@ -75179,7 +75187,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                ...(acted && acted.choose && !_fixedWhy && !(drew && drew.image) ? { choose: acted.choose } : {}),
                // HER OFFER, ONE TAP (v9.691, 2026-10-21, Aaron: "there's never a reason to type unless you're changing what the moment
                // is"): when she offers to show ideas and there is no card, the page puts "Show me some ideas" / "Talk to me" under it.
-               ...(!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid) ? { offer: true } : {}),
+               ...(!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer) ? { offer: true } : {}),
                // (v9.976) her read: their own tattoo - the page puts Build around it / Cover it up / Make a new tattoo from it under her words
                ...(_jobPick ? { job_pick: true } : {}),
                ...(_seeOnMe ? { see_on_me: true } : {}),

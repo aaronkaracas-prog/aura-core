@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.979.0-2026-11-11-a-photo-is-not-a-yes";
+const BUILD = "aura-core-v9.980.0-2026-11-11-she-looks-it-up";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62191,7 +62191,7 @@ function heardSystem(style, canGo, can) {
                 "Never put a number in your words. " + TALK_SCOPE + "\n\n" + (can ? can + "\n\n" : "") +
                 // (v9.975) MEASURED 17:08-17:09: a tattoo they already have ("add to it or cover the whole thing up", "can I just show you a pic")
                 // was answered here, as a new tattoo, four turns running - no photo asked for, no add-on. That conversation is hers, with all she knows.
-                "If they are talking about a tattoo they already have - adding to it, covering it, changing it - or ask what you can do or how the app works, answer TALK with nothing after it: that conversation is not for this step.\n\n" +
+                "If they are talking about a tattoo they already have - adding to it, covering it, changing it - or ask what you can do or how the app works, or ask to see real tattoos or pictures of something, answer TALK with nothing after it: that conversation is not for this step.\n\n" +
                 "Answer in exactly this shape. First line: READY or TALK" + (canGo ? " or GO" : "") + ".\n\n" +
                 // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
                 // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
@@ -67287,6 +67287,9 @@ function talkReadAct(txt) {
              // WHERE SHE TAKES THEM (v9.664): one of the places her world's purpose names - a short name, nothing else.
              photo_is: (typeof o.photo_is === "string" && /^\s*their[_ ]tattoo\s*$/i.test(o.photo_is)) ? "their_tattoo" : "",
              ask_photo: o.ask_photo === true || (typeof o.ask_photo === "string" && /^\s*(true|yes)\s*$/i.test(o.ask_photo)),
+             // (v9.980) a search they asked for in the chat: what to look for, and real tattoos or the real thing
+             search: (o.search && typeof o.search === "object" && typeof o.search.for === "string" && o.search.for.trim())
+               ? { q: o.search.for.replace(/[<>{}]/g, "").replace(/\s+/g, " ").trim().slice(0, 100), kind: /^\s*world\s*$/i.test(String(o.search.kind || "")) ? "world" : "tattoos" } : null,
              go: (typeof o.go === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.go.trim())) ? o.go.trim().toLowerCase()
                : (typeof o.where === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.where.trim())) ? o.where.trim().toLowerCase() : "",
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
@@ -68660,6 +68663,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         '  "photo_is": "only on a turn where they just sent a photo: their_tattoo when it is a tattoo already on their body; otherwise leave it out",\n' +
         // (v9.978) she asks for a photo - the page puts Add a photo under her words
         '  "ask_photo": "true when your words ask them to send a photo; otherwise leave it out",\n' +
+        // (v9.980) they ask to see real tattoos or pictures of something - the app searches and shows them
+        '  "search": {"for": "a few words - what they want to see", "kind": "tattoos | world"} - only when they ask to see real tattoos (tattoos) or real pictures of something (world); the app searches and shows them. Otherwise leave it out,\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:
@@ -71088,6 +71093,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       let drew = null;
       const hasParent = !!(me && lastDrawn && lastDrawn.design);
       let act = acted.act;
+      // (v9.980) a search she asked for goes to the page's own search (Get Inspired) - the older in-chat find does not run beside it
+      if (acted && acted.search && act === "find") { act = "none"; try { console.log("[TURN:SEARCH] her search goes to the page - the old find is not run"); } catch {} }
       // TOUCH TO CHANGE (2026-09-24): they drew on a picture and said what to change there.
       if (opts && opts.touch && refUrl && me) act = "touch";
       // THEIR OWN COLOURWAY (2026-09-24): they dragged the colour slider and kept it. The picture is
@@ -74925,6 +74932,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             offer: (!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid)) || undefined,
             job_pick: _jobPick || undefined,
             ask_photo: (acted && acted.ask_photo && !_jobPick && !_fixedWhy && !(drew && drew.image)) || undefined,
+            search: (acted && acted.search && !_fixedWhy && !(drew && drew.image)) ? acted.search : undefined,
             heard: (_heardOut && !(drew && drew.image)) ? _heardOut : undefined,
             directions: (Array.isArray(acted.directions) && acted.directions.length) ? acted.directions : null,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
@@ -74975,6 +74983,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                // tell you straight which way I'd lean" - asking for a photo with nothing to tap but the + in the chat box. Her ask_photo puts
                // Add a photo under her words.
                ...(acted && acted.ask_photo && !_jobPick && !_fixedWhy && !(drew && drew.image) ? { ask_photo: true } : {}),
+               // ══ THEY ASK TO SEE, SHE LOOKS IT UP (v9.980, 2026-11-11, Aaron: "if somebody asks anywhere in the chat show me tattoos about
+               // dolphins ... she should understand and find them for them") ═══ Her search goes to the page, which runs Get Inspired's own
+               // search - real tattoos, or the real thing - and shows the results there, the same as typing it on Get Inspired.
+               ...(acted && acted.search && !_fixedWhy && !(drew && drew.image) ? { search: acted.search } : {}),
                // SHE SAID IT BACK (v9.783): Imagine it, or her two directions - the page puts them under her words.
                ...(_heardOut && !(drew && drew.image) ? { heard: _heardOut } : {}),
                // WHERE SHE TAKES THEM (v9.664): the page goes there - the same as tapping that place.

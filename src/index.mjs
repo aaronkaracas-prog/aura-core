@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.971.0-2026-11-11-the-question-waits-for-the-turn";
+const BUILD = "aura-core-v9.972.0-2026-11-11-an-ink-it-yes-waits-too";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70584,6 +70584,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               console.log("[TURN:YES] add-on with a picture on their photo - her words wait until this turn knows whether it changes it" + (me ? " · who=" + me : ""));
             }
           }
+          // ══ A YES ON INK IT WAITS TOO (v9.971, 2026-11-11, Aaron: "on ink it we can go with your advice") ═══ MEASURED 16:21 (Ink It, a red
+          // barn photo, "Yes, show me"): her streamed "Here it is - your photo turned into a tattoo design, keeping that quiet, weathered feel of
+          // the barn and the wheat." stood for the 40s before anything was drawn. The hold above is for a photo of their body and leaves out
+          // `from`; Ink It's photo is what the tattoo is made from. A yes there, before anything is drawn from the photo, waits the same way.
+          if (!_holdWords && onDelta && me && refDesign && !_drewNow() &&
+              (String((opts && opts.page) || "") === "job6" || String((carriedObj && carriedObj.job) || "").toLowerCase() === "from") &&
+              /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(String(said || "").replace(/\[[^\]]*\]/g, " "))) {
+            _holdWords = true;
+            console.log("[TURN:YES] Ink It, nothing drawn from their photo yet - her words wait until this turn knows whether it draws" + (me ? " · who=" + me : ""));
+          }
           let proxied = await proxyToAgent(env, agentLine,
             false, me, ((seeing && !refHeld) || _photoStill) ? refUrl : (_ownLook || null), world, _fwdDelta);
           // ══ HER BRAIN DROPPED THE TURN - ASK HER AGAIN, ONCE (2026-09-28) ══════════════════════
@@ -73535,6 +73545,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               try { const _k = String((await env.AURA_KV.get("config:frame:design:possibilities")) || "").trim(); if (_k) _dg = _k; } catch {}
               _sentNow = _dg;
             } else _sentNow = _dg.replace("____", String(_designWords || "").replace(/[\s.]+$/, ""));
+            // ══ THE PAGE'S OWN LINE IS NOT WHAT THEY WANT (v9.971, 2026-11-11) ═══ MEASURED 16:22:48 (Ink It, a red barn): the image model was
+            // sent "This is my photo. I want to turn it into a tattoo: Here's a photo I want to turn into a tattoo." - the line the page writes
+            // for them when they send a photo with no words went in as what they want. With nothing of their own, the sentence stops after
+            // "I want to turn it into a tattoo." and the rest is unchanged.
+            if (_inkFirstTurn && /^\s*here[\u2019']?s a photo i want to turn into a tattoo[\s.]*$/i.test(String(_designWords || ""))) {
+              const _s0 = _sentNow;
+              _sentNow = _dg.replace(/\s*[:\u2013\u2014-]\s*____\s*\.?/, ".").replace("____", "a tattoo made from this photo");
+              try { console.log("[TURN:DESIGN] no words of their own with the photo - the page's line left out: \"" + _sentNow.slice(0, 120) + "\"" + (_s0 === _sentNow ? " (unchanged?)" : "")); } catch {}
+            }
             // ══ NUMBER 1 KEEPS THE REST OF THEIR DESIGN (v9.846, 2026-11-04, Aaron: go) ═══ MEASURED 06:18:57: "make the bike black and render the
             // initials on the tank in gold" went out with "Make number 1 the closest to what I described" - what they described was only the change,
             // and number 1 came back without the sunset their chosen design had. Number 1 is their change on their design, the rest of it as it is;

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.986.0-2026-11-12-no-questions-they-cant-answer";
+const BUILD = "aura-core-v9.987.0-2026-11-12-sign-off-fixes";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62266,6 +62266,9 @@ function heardSystem(style, canGo, can) {
                 // futuristic"): "What elements or symbols are you drawn to ..., and what kind of futuristic details are you imagining?" - under Imagine it.
                 "want to add anything. Never ask them to come up with details they wouldn't know as a customer - which elements, what kind of details, " +
                 "how it's laid out: that's your craft. If something is still open, tell them you'll work it out in the designs, so they only need to say yes. " +
+                // (v9.987, 2026-11-12, sign-off, Aaron 2026-11-08: "the person knows if they want that stuff") MEASURED 08:09 and 08:15: "a hint of
+                // old-world lettering framing the image", "Do you want any lettering...?" - words nobody asked for.
+                "Never offer or suggest lettering, names, dates or any words in the tattoo - they bring those themselves. " +
                 "Then, last, on its own line: IDEA: what they want in the tattoo now, where the conversation has ended up - " +
                 "everything they still want in it, however much there is, including who it is for and why, with every change they made applied: " +
                 "anything they took back is left out, and nothing is added that they did not ask for. Copy exactly any name, date, number or words " +
@@ -68457,6 +68460,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
 let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto = false, _likedPic = false;
+let _seeOnMe = false;   // (v9.987) they asked to see the chosen design on them - the page opens its photo-and-place screen
 let _refusedNow = [];   // (v9.981) each refusal on this turn: what was sent, why, what was tried after
 let _refHer = null;   // (v9.878) her own first sentence about their photo, kept with it when core's look gave nothing
       // ══ A PHOTOGRAPH THAT ARRIVED IS NOT A DRAWING (2026-09-16, v9.270) ══════════════════
@@ -68484,6 +68488,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // (v9.962) MEASURED 13:39 (pta_0c577382cb25a0ac): the style was picked on Discover, so the page said "discover" and v9.961's "home or
       // job0" never matched - the truck went down the add-on road again. Any page but the ones whose photo IS their skin (Add to Existing,
       // Cover Up, See It On You) and Ink It (its own road).
+      // ══ THE CREATE PAGE'S PICTURE IS ONE THEY LIKE (v9.987, 2026-11-12, sign-off, Aaron: go) ═══ MEASURED 07:21 (Create -> I have a
+      // picture -> a puppy): it came fresh, so the rule below never ran - the puppy was taken as their skin, the job became an add-on and
+      // her style card was thrown away ("add-on - her style card left out"); her question had nothing to tap. On the Create page (job0) a
+      // picture is always one they like. A photo of a tattoo already on them is still found by her read (photo_is) and gets its three choices.
+      if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && String((opts && opts.page) || "") === "job0") {
+        _newRoadPic = true; console.log("[TURN:PHOTO] a picture sent from the Create page - a picture they like, not their skin" + (me ? " · who=" + me : ""));
+      } else
       if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && !(opts && opts.fresh) &&
           !(opts && ["job1", "job2", "job3", "job6"].includes(String(opts.page || "")))) {
         try { _newRoadPic = String(((await talkStateGet(env, me, ["new_flow"])) || {}).new_flow || "") === "1"; } catch {}
@@ -70144,6 +70155,19 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 _hIdea = ((_told ? _told.replace(/\n+/g, ". ") + ". " : "") + _s).replace(/\.\s*\./g, ".").slice(0, 1200);
                 try { console.log("[TURN:HEARD] her answer stopped at the IDEA label - their own words are the idea: \"" + _hIdea.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } catch {}
               }
+              // ══ A LABEL IS NEVER HER WORDS (v9.987, 2026-11-12, sign-off) ═══ MEASURED 08:08:42 ("actually scratch the wolf, make it a fox"): her
+              // words on screen were "TALK". A line that is only a label is no words - the fixed line asks instead.
+              if (/^\s*(READY|TALK|GO|CHOOSE|DRAW|IDEA)\s*[.:!]?\s*$/i.test(String(_hRest || ""))) {
+                try { console.log("[TURN:HEARD] her words were only the label \"" + String(_hRest).trim() + "\" - not shown" + (me ? " · who=" + me : "")); } catch {}
+                _hRest = ""; }
+              // ══ READY WITH NO IDEA LINE: THEIR OWN WORDS ARE THE IDEA (v9.987, 2026-11-12, sign-off, Aaron: go) ═══ MEASURED 08:07:42 (memorial,
+              // "Robert James Walsh, born march 3 1958 died june 19 2025 ... a fishing hook"), 08:08:34, 08:10:18: READY came back with her words and
+              // no IDEA line - 3 of 13 answers. Nothing was kept for Imagine it, so there was nothing to tap and the lettering sheet never came.
+              // She did say it back; what they said, in their order, is what Imagine it draws (as when her answer stops at the IDEA label).
+              if (_hDo === "READY" && !String(_hIdea || "").trim() && String(_hRest || "").trim()) {
+                _hIdea = ((_told ? _told.replace(/\n+/g, ". ") + ". " : "") + _s).replace(/\.\s*\./g, ".").slice(0, 1200);
+                try { console.log("[TURN:HEARD] READY with no IDEA line - their own words are the idea: \"" + _hIdea.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } catch {}
+              }
               // her two directions: "A: button words = the whole idea"
               const _hPicks = {};
               for (const _k of ["A", "B"]) {
@@ -70312,6 +70336,17 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 // back. Until her own words have said the idea back, a time-out asks them to go on instead (config:say:heard_more), with no button.
                 if (!_canGo) { _fixedSay = await _fx("heard_more", "Tell me a little more - what are you picturing?"); _heardOut = null; }
               }
+              // ══ THE LETTERING CHECK AS A BACKUP (v9.987, 2026-11-12, sign-off, Aaron: go) ═══ MEASURED 08:12:18: "quiero un tatuaje de una rosa con
+              // el nombre de mi abuela Carmen" - her IDEA said "Rosa con el nombre Carmen" and no LETTERING line came, so the sheet never went up. When
+              // her answer brought no lettering and their words speak of names, dates, numbers or words, the same short check used on add-ons
+              // (letterFind) reads what they said; what it finds goes up as the sheet, exactly as her own LETTERING line would.
+              try {
+                if (!(_hLetter && _hLetter.length) && (_hDo === "READY" || _hDo === "GO") && _heardOut && _heardOut.go &&
+                    /["\u201c\u201d]|\d|\b(name|names|named|initials?|dates?|words?|quote|saying|says|say|written|write|lettering|letters|nombre|fecha|palabras?|frase)\b/i.test(String(_theirs || ""))) {
+                  const _lb = await letterFind(env, _theirs, String(_hRest || ""), talkModel);
+                  if (_lb.length) { _hLetter = _lb; console.log("[TURN:LETTER] her answer had no LETTERING line - the lettering check found: " + _lb.map((x) => '"' + x + '"').join(", ") + (me ? " · who=" + me : "")); }
+                }
+              } catch (e) { try { console.log("[TURN:LETTER] the backup check failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
               // ══ LETTERING NOT YET STYLED: THE SHEET COMES UP (v9.844, 2026-11-04, Aaron: go) ═══ Before the first drawing. Each piece she wrote
               // that has no style chosen yet goes to the page as a lettering sheet, in place of Imagine it - and a yes waits for it too. The idea she
               // said back is kept, so their pick goes straight back to Imagine it.
@@ -70403,7 +70438,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 "capitals; only what they asked to change, nothing added. Numbers are fine on this line.\n\n" +
                 // (v9.848) new words for the tattoo in a change go to the lettering sheet before it is drawn
                 "If the change adds new words to be written in the tattoo (a name, date, number, word or quote), add a line just before the CHANGE line: " +
-                "LETTERING: each new piece exactly as it will be written, each in double quotes, separated by |. Never ask them about fonts or lettering styles.";
+                "LETTERING: each new piece exactly as it will be written, each in double quotes, separated by |. Never ask them about fonts or lettering styles.\n\n" +
+                // (v9.987, 2026-11-12, sign-off, Aaron: go) MEASURED 07:53:11: "love this one, can i see how it looks on me" was written out as a change
+                // ("Show the design on a wrist mockup") and 8 versions of "can i see how it looks on me" were drawn. Seeing it on them is not a change.
+                "If they are not asking to change the design at all but to see it on themselves - how it looks on them or on their body - reply with only: ONME";
               let _cUser = _sC.slice(0, 600);
               try {
                 const _tp = (typeof _told === "string" && _told) ? _told : "";
@@ -70428,6 +70466,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 }
               } catch {}
               let _cRaw = String((_cq && !_cq.late && _cq.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, "");
+              // (v9.987) they want to see it on them: nothing is drawn - the page opens its photo-and-place screen with this design
+              if (/^\s*ONME\s*$/m.test(_cRaw) && !/(^|\n)\s*CHANGE\s*:/i.test(_cRaw)) {
+                _seeOnMe = true; _fixedWhy = "see_on_me"; _changeFull = "";
+                _fixedSay = await _fx("see_on_me", "Let's see it on you! Add a photo of where you'd like it - you can move it, size it and turn it to see how it looks.");
+                console.log("[TURN:ONME] they asked to see the design on them - nothing drawn; the page opens the photo-and-place screen" + (me ? " · who=" + me : ""));
+                _cRaw = "";
+              }
               let _cLetter = [];
               _cRaw = _cRaw.replace(/(^|\n|\s)LETTERING\s*:\s*([^\n]*?)(?=\s*(?:\n|CHANGE\s*:|$))/i, (m, a, b) => { _cLetter = letterItems(b); return a; });
               { const _cm = _cRaw.match(/(^|\n|\s)CHANGE\s*:\s*([^\n]+)\s*$/i);
@@ -74808,7 +74853,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // (v9.977, Aaron: "make sure the rules we just implemented don't affect discovery - when someone's looking at real tattoos and it's on their
       // body, it just gets pulled off their body anyways") Get Inspired and every picture picked from it are left exactly as they were: a real
       // tattoo found there is on somebody's body by nature, and is never read as theirs.
-      if (me && _freshPhoto && acted && acted.photo_is === "their_tattoo" && !_fixedWhy && !(drew && drew.image) &&
+      // (v9.987, 2026-11-12, sign-off) MEASURED 08:14 (home, a golden retriever puppy): she wrote photo_is their_tattoo and her own words said
+      // "a gorgeous golden retriever puppy" - the three tattoo choices came up under a puppy. The photo's own read (refSaw, from IMAGE IMPORT)
+      // must see ink too.
+      const _sawInk = !refSaw || /tattoo|\bink(ed)?\b|linework|blackwork/i.test(String(refSaw));
+      if (!_sawInk && acted && acted.photo_is === "their_tattoo") { try { console.log("[TURN:PHOTO] she said their tattoo, but the photo's read has no tattoo in it - no tattoo choices: \"" + String(refSaw).slice(0, 160) + "\"" + (me ? " · who=" + me : "")); } catch {} }
+      if (me && _freshPhoto && _sawInk && acted && acted.photo_is === "their_tattoo" && !_fixedWhy && !(drew && drew.image) &&
           !(opts && (opts.inspire || opts.inspire_go || opts.inspire_own || ["job1", "job2", "job3", "job4", "job6"].includes(String(opts.page || ""))))) {
         _jobPick = true;
         try { await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_said", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
@@ -75055,6 +75105,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             choose: (acted && acted.choose && !_fixedWhy && !(drew && drew.image)) ? acted.choose : null,
             offer: (!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid)) || undefined,
             job_pick: _jobPick || undefined,
+            see_on_me: _seeOnMe || undefined,
             ask_photo: (acted && acted.ask_photo && !_jobPick && !_fixedWhy && !(drew && drew.image)) || undefined,
             search: (acted && acted.search && !_fixedWhy && !(drew && drew.image)) ? acted.search : undefined,
             heard: (_heardOut && !(drew && drew.image)) ? _heardOut : undefined,
@@ -75103,6 +75154,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                ...(!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid) ? { offer: true } : {}),
                // (v9.976) her read: their own tattoo - the page puts Build around it / Cover it up / Make a new tattoo from it under her words
                ...(_jobPick ? { job_pick: true } : {}),
+               ...(_seeOnMe ? { see_on_me: true } : {}),
                // ══ SHE ASKS FOR A PHOTO, THEY TAP TO SEND ONE (v9.978, 2026-11-11, Aaron: go) ═══ MEASURED 18:03 (My Tattoos): "Once I see it I'll
                // tell you straight which way I'd lean" - asking for a photo with nothing to tap but the + in the chat box. Her ask_photo puts
                // Add a photo under her words.

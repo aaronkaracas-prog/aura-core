@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.984.0-2026-11-12-wild-lettering";
+const BUILD = "aura-core-v9.985.0-2026-11-12-lettering-most-used-first";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62031,18 +62031,21 @@ async function letterFind(env, theirWords, herWords, talkModel) {
 }
 // The lettering styles. The page shows the same list (LETTER_STYLES in mt-shell.html) - keep the two the same. Each is a free Google font for the
 // sheet; the id is the word the image model is given ("in Old English lettering").
+// ══ MOST-USED FIRST (v9.985, 2026-11-12, Aaron: "Reorganize what people are going to use - old English is up there too ... some of these for a
+// tattoo aren't too realistic ... it can stay it just needs to be moved") ══ The everyday tattoo lettering first, the wild ones after.
+// Chicano Script and Signature previews changed (Meddon, Herr Von Muellerhoff): MEASURED 06:41 on "Isabella", the old ones were too thin to read.
 const LETTER_STYLES = [
-  { id: "old english", family: "UnifrakturMaguntia" }, { id: "blackletter", family: "Pirata One" }, { id: "chicano script", family: "Monsieur La Doulaise" },
-  { id: "script", family: "Great Vibes" }, { id: "fine-line script", family: "Allura" }, { id: "brush script", family: "Yellowtail" },
-  { id: "handwritten", family: "Caveat" }, { id: "signature", family: "Mrs Saint Delafield" }, { id: "calligraphy", family: "Tangerine" },
-  { id: "fine line", family: "Cormorant Garamond" }, { id: "traditional", family: "Alfa Slab One" }, { id: "western", family: "Rye" },
-  { id: "typewriter", family: "Special Elite" }, { id: "serif", family: "Playfair Display" }, { id: "minimal", family: "Josefin Sans" },
-  { id: "art deco", family: "Poiret One" }, { id: "gothic", family: "Metal Mania" }, { id: "graffiti", family: "Rubik Puddles" },
-  { id: "stencil", family: "Stardos Stencil" }, { id: "celtic", family: "Uncial Antiqua" }, { id: "horror", family: "Nosifer" },
-  // THE WILD ONES (v9.984, 2026-11-12, Aaron: "I want to add like the more Wilder fonts") - after the classics, in the same list
-  { id: "dripping", family: "Rubik Wet Paint" }, { id: "creepy", family: "Eater" }, { id: "3d block", family: "Bungee Shade" }, { id: "chrome", family: "Bungee Inline" },
-  { id: "neon", family: "Monoton" }, { id: "bubble", family: "Rubik Bubbles" }, { id: "graffiti tag", family: "Sedgwick Ave Display" }, { id: "spray paint", family: "Rubik Spray Paint" },
-  { id: "marker", family: "Permanent Marker" }, { id: "cyber sigilism", family: "New Rocker" }, { id: "glitch", family: "Rubik Glitch" }];
+  { id: "old english", family: "UnifrakturMaguntia" }, { id: "script", family: "Great Vibes" }, { id: "chicano script", family: "Meddon" },
+  { id: "fine-line script", family: "Allura" }, { id: "blackletter", family: "Pirata One" }, { id: "traditional", family: "Alfa Slab One" },
+  { id: "calligraphy", family: "Tangerine" }, { id: "handwritten", family: "Caveat" }, { id: "signature", family: "Herr Von Muellerhoff" },
+  { id: "typewriter", family: "Special Elite" }, { id: "fine line", family: "Cormorant Garamond" }, { id: "serif", family: "Playfair Display" },
+  { id: "minimal", family: "Josefin Sans" }, { id: "brush script", family: "Yellowtail" }, { id: "gothic", family: "Metal Mania" },
+  { id: "celtic", family: "Uncial Antiqua" }, { id: "western", family: "Rye" }, { id: "art deco", family: "Poiret One" },
+  { id: "stencil", family: "Stardos Stencil" }, { id: "cyber sigilism", family: "New Rocker" }, { id: "graffiti tag", family: "Sedgwick Ave Display" },
+  { id: "marker", family: "Permanent Marker" }, { id: "3d block", family: "Bungee Shade" }, { id: "chrome", family: "Bungee Inline" },
+  { id: "dripping", family: "Rubik Wet Paint" }, { id: "neon", family: "Monoton" }, { id: "bubble", family: "Rubik Bubbles" },
+  { id: "spray paint", family: "Rubik Spray Paint" }, { id: "horror", family: "Nosifer" }, { id: "creepy", family: "Eater" },
+  { id: "glitch", family: "Rubik Glitch" }, { id: "graffiti", family: "Rubik Puddles" }];
 // The eight placements, one per card when lettering is drawn the first time (the WHERE list of "design words").
 const LETTER_PLACES = ["above the artwork", "below the artwork", "arced around the artwork", "on a ribbon banner across it",
   "woven behind and in front of parts of the artwork", "inside the artwork's negative space", "forming part of the artwork itself", "wrapped around the composition"];

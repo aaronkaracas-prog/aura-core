@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.973.0-2026-11-11-nothing-of-a-claim-goes-early";
+const BUILD = "aura-core-v9.974.0-2026-11-11-a-question-gets-an-answer";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62243,7 +62243,12 @@ function heardSystem(style, canGo) {
                 // the turn went to her chat (9.5s), which also cleared the idea she had said back - so the "yes please" after it had nothing to say yes to.
                 (canGo ? "TALK when they ask you something or are still deciding, without changing what they want - then your words answer them, briefly. " +
                   "If you offer them something, ask whether to imagine it that way."
-                  : "TALK when there is nothing to imagine from yet - a hello, a question with no idea in it, or only a style - then your words are your reply to them: ask what they would like the tattoo to be of, with no offer to imagine anything yet.");
+                  // ══ A QUESTION GETS AN ANSWER (v9.974, 2026-11-11, Aaron: "my agent in general should be able to know just like you do without
+                  // looking it up ... as long as we keep it in the realm of what she's supposed to do here") ═══ MEASURED 16:57:06 (Trending,
+                  // Cybersigilism): "What are the most popular things people are getting these days" came back "What kind of vibe are you drawn
+                  // to..." - these words told her to answer any question with no idea in it by asking what the tattoo should be of. She knows
+                  // tattoos; a question about tattoos is answered first, then the ask. Anything outside tattoos stays with her guidance.
+                  : "TALK when there is nothing to imagine from yet - a hello, a question with no idea in it, or only a style. If they asked you something about tattoos, answer it plainly and briefly from what you know, then ask what they would like their tattoo to be of. Otherwise your words are your reply to them: ask what they would like the tattoo to be of. No offer to imagine anything yet.");
 }
 async function drawStartSay(env, idea, style, talkModel) {
   try {

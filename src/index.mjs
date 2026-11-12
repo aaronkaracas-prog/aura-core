@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.985.0-2026-11-12-lettering-most-used-first";
+const BUILD = "aura-core-v9.986.0-2026-11-12-no-questions-they-cant-answer";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62261,7 +62261,12 @@ function heardSystem(style, canGo, can) {
                 (canGo ? "you already said their idea back to them, so react only to what they just said - what is new or changed - in your own voice, " +
                   "without repeating the rest, and ask if you should imagine it or if they " :
                 "then say back everything they want, and the style when they picked one, in your own voice, and ask if you should imagine it or if they ") +
-                "want to add anything. Then, last, on its own line: IDEA: what they want in the tattoo now, where the conversation has ended up - " +
+                // ══ NO QUESTIONS THEY CAN'T ANSWER (v9.986, 2026-11-12, Aaron: "she's asking questions that I would not even know the answer to ...
+                // just inform the person of what's going on") ═══ MEASURED 06:47:18 ("japanese fusion ... old japanese art mixed with something
+                // futuristic"): "What elements or symbols are you drawn to ..., and what kind of futuristic details are you imagining?" - under Imagine it.
+                "want to add anything. Never ask them to come up with details they wouldn't know as a customer - which elements, what kind of details, " +
+                "how it's laid out: that's your craft. If something is still open, tell them you'll work it out in the designs, so they only need to say yes. " +
+                "Then, last, on its own line: IDEA: what they want in the tattoo now, where the conversation has ended up - " +
                 "everything they still want in it, however much there is, including who it is for and why, with every change they made applied: " +
                 "anything they took back is left out, and nothing is added that they did not ask for. Copy exactly any name, date, number or words " +
                 "they want written in the tattoo. No questions and no chat in the IDEA line. " + (canGo ? "Your words name nothing that isn't in it.\n\n" : "Your words name everything in it, and nothing that isn't in it.\n\n") +

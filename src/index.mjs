@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.975.0-2026-11-11-what-she-can-do-one-place";
+const BUILD = "aura-core-v9.976.0-2026-11-11-their-own-tattoo-their-choice";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -67285,6 +67285,7 @@ function talkReadAct(txt) {
                return s; }),
              where_to: (typeof o.where_to === "string") ? o.where_to.trim().slice(0, 160) : "",
              // WHERE SHE TAKES THEM (v9.664): one of the places her world's purpose names - a short name, nothing else.
+             photo_is: (typeof o.photo_is === "string" && /^\s*their[_ ]tattoo\s*$/i.test(o.photo_is)) ? "their_tattoo" : "",
              go: (typeof o.go === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.go.trim())) ? o.go.trim().toLowerCase()
                : (typeof o.where === "string" && /^[a-z][a-z_-]{1,23}$/i.test(o.where.trim())) ? o.where.trim().toLowerCase() : "",
              // `lines`, not `use`: `use` already means "which pictures this job starts from" - the
@@ -68654,6 +68655,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go, in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
         '  "directions": ["when it\'s their own tattoo on a photo and they have not said where the new work goes: 2 or 3 places it can grow, read from the part of the body you see and how much of it the photo shows - past the edge of the photo too when the tattoo fills it - each in their words, finishing \'I want it to go ___\', and each naming where the new work ends - the place it reaches, not only a way it heads - e.g. \'down over my wrist and onto the back of my hand\', \'up past my elbow to the top of my bicep\', \'all the way up to my shoulder\'"] - otherwise leave it out,\n' +
         '  "go": "only when they want to go somewhere else - one of the places named in WHY YOU ARE HERE, by its name; the app takes them there. If you can\'t tell where they want to go, ask them and leave it out",\n' +
+        // (v9.976) WHAT THEIR PHOTO IS, IN HER READ - see THEIR OWN TATTOO, THEIR CHOICE below
+        '  "photo_is": "only on a turn where they just sent a photo: their_tattoo when it is a tattoo already on their body; otherwise leave it out",\n' +
         '  "prompt": "the image description, when do is draw or change",\n' +
         // ══ SHE PICKS THE PICTURES (2026-09-10) ═════════════════════════════════════════════
         // Aaron, after a day of the same sentence giving two different answers inside and out:
@@ -74660,7 +74663,21 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // what was said back (go_idea, go_said - v9.825). Her read of a picture they brought to a new tattoo now leaves that behind: their own
       // words for it if they typed any, else "a tattoo made from this picture" (config:say:picture_idea). The 8 go out with the picture
       // (v9.717, config:frame:new:picture). Her words and the offer card are unchanged.
-      if (me && _newRoadPic && _freshPhoto && !_fixedWhy && !(drew && drew.image)) {
+      // ══ THEIR OWN TATTOO, THEIR CHOICE (v9.976, 2026-11-11, Aaron: "yes on your recommendations") ═══ MEASURED 17:26:55 (My Tattoos, "I have
+      // this old tattoo on my forearm ... add to it or just cover the whole thing up", then a photo of a tribal band): she read it and asked
+      // "Which way are you leaning - build around it or go over it?", but the photo was taken as a picture they like for a new tattoo (v9.961)
+      // and the buttons under her were Yes, show me / I have my own idea - a yes would have drawn 8 new tattoos from a photo of his arm. When her
+      // read says the photo is a tattoo already on their body and they are not on Add to Existing or Cover Up, nothing waits to be drawn from it:
+      // the page puts three answers under her words - Build around it, Cover it up, Make a new tattoo from it - each the existing start for that
+      // job, with this photo.
+      let _jobPick = false;
+      if (me && _freshPhoto && acted && acted.photo_is === "their_tattoo" && !_fixedWhy && !(drew && drew.image) &&
+          !(opts && ["job1", "job2", "job3", "job6"].includes(String(opts.page || "")))) {
+        _jobPick = true;
+        try { await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_said", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
+        console.log("[TURN:PHOTO] her read: a tattoo already on their body - nothing waits to be drawn from it; they choose: build around it, cover it up, or a new tattoo from it" + (me ? " · who=" + me : ""));
+      }
+      if (me && _newRoadPic && _freshPhoto && !_fixedWhy && !(drew && drew.image) && !_jobPick) {
         try {
           const _pw = (Array.isArray(tnow) ? tnow : []).filter((e) => e && e.role === "them").map((e) => String(e.said || "").trim())
             .filter((t) => t && !/^\s*(let'?s create my own\b|i chose\b|i want to create a new tattoo|i like the .+ style)/i.test(t)).join(". ").slice(0, 600);
@@ -74893,7 +74910,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
             ideas: null,   // NO IDEA CARDS (v9.684, 2026-10-19, Aaron): her reply and the chat box are the whole screen
             choose: (acted && acted.choose && !_fixedWhy && !(drew && drew.image)) ? acted.choose : null,
-            offer: (!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid)) || undefined,
+            offer: (!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid)) || undefined,
+            job_pick: _jobPick || undefined,
             heard: (_heardOut && !(drew && drew.image)) ? _heardOut : undefined,
             directions: (Array.isArray(acted.directions) && acted.directions.length) ? acted.directions : null,
             brief: (brief && brief.subject) ? { subject: brief.subject } : null,
@@ -74937,7 +74955,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                ...(acted && acted.choose && !_fixedWhy && !(drew && drew.image) ? { choose: acted.choose } : {}),
                // HER OFFER, ONE TAP (v9.691, 2026-10-21, Aaron: "there's never a reason to type unless you're changing what the moment
                // is"): when she offers to show ideas and there is no card, the page puts "Show me some ideas" / "Talk to me" under it.
-               ...(!(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid) ? { offer: true } : {}),
+               ...(!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid) ? { offer: true } : {}),
+               // (v9.976) her read: their own tattoo - the page puts Build around it / Cover it up / Make a new tattoo from it under her words
+               ...(_jobPick ? { job_pick: true } : {}),
                // SHE SAID IT BACK (v9.783): Imagine it, or her two directions - the page puts them under her words.
                ...(_heardOut && !(drew && drew.image) ? { heard: _heardOut } : {}),
                // WHERE SHE TAKES THEM (v9.664): the page goes there - the same as tapping that place.

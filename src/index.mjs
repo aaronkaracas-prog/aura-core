@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.978.0-2026-11-11-ink-on-skin-and-a-photo-to-tap";
+const BUILD = "aura-core-v9.979.0-2026-11-11-a-photo-is-not-a-yes";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68931,7 +68931,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // goes to her; her guidance asks for the photo of the tattoo.
       const _namesJob = /\b(cover(ing|ed)?[\s-]*(it|this|that|them|the old one|my tattoo)?[\s-]*up|cover-?ups?|add(ing)?\s+(on\s+)?to\s+(my|a|an|the|this|that)\s+(\w+\s+)?tattoo|(an?|my)\s+(old|existing|current|faded)\s+tattoo|rework(ing)?\s+(my|a|an|the|this|that)\s+(\w+\s+)?tattoo|fix\s+(my|an?)\s+(\w+\s+)?tattoo)\b/i.test(String(said || ""));
       if (_namesJob && _offeredShow) { try { console.log("[TURN:GO] they named a job (cover-up / add-on / rework) - not a yes to her offer"); } catch {} }
-      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo && !_askedQ && !_namesJob) || !!(opts && opts.choose_go);
+      // ══ A PHOTO IS NOT A YES (v9.979, 2026-11-11, Aaron: go) ═══ MEASURED 18:38 (My Tattoos): "I've got a rose on my forearm ... any ideas?" ->
+      // "Send me a photo of it and I'll show you some ideas drawn right on your picture" (an offer line) -> they sent the photo with no words,
+      // and that empty turn counted as a yes to her offer: eight new tattoos were drawn from her own question ("What would you like to add or
+      // incorporate with your rose?") without her ever seeing the photo. A turn that brings a new photo is not a yes to an earlier offer - she
+      // reads the photo first.
+      const _goSaid = _GO_WORDS.test(String(said || "")) || (_offeredShow && !_saidNo && !_askedQ && !_namesJob && !_freshPhoto) || !!(opts && opts.choose_go);
+      if (_offeredShow && _freshPhoto && !_GO_WORDS.test(String(said || ""))) { try { console.log("[TURN:GO] a new photo after her offer - not a yes; she reads the photo first" + (me ? " · who=" + me : "")); } catch {} }
       // DRAWING NOTES ONLY WHEN THEY SAID GO (2026-10-02, v9.514, Aaron): on a talking turn these sat
       // where her ideas should be - "every picture starts from their photo", "one picture, never four" -
       // while nothing was being drawn. The draw guard already uses these words; so do the notes.

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.983.0-2026-11-11-what-her-reply-had";
+const BUILD = "aura-core-v9.984.0-2026-11-12-wild-lettering";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62038,7 +62038,11 @@ const LETTER_STYLES = [
   { id: "fine line", family: "Cormorant Garamond" }, { id: "traditional", family: "Alfa Slab One" }, { id: "western", family: "Rye" },
   { id: "typewriter", family: "Special Elite" }, { id: "serif", family: "Playfair Display" }, { id: "minimal", family: "Josefin Sans" },
   { id: "art deco", family: "Poiret One" }, { id: "gothic", family: "Metal Mania" }, { id: "graffiti", family: "Rubik Puddles" },
-  { id: "stencil", family: "Stardos Stencil" }, { id: "celtic", family: "Uncial Antiqua" }, { id: "horror", family: "Nosifer" }];
+  { id: "stencil", family: "Stardos Stencil" }, { id: "celtic", family: "Uncial Antiqua" }, { id: "horror", family: "Nosifer" },
+  // THE WILD ONES (v9.984, 2026-11-12, Aaron: "I want to add like the more Wilder fonts") - after the classics, in the same list
+  { id: "dripping", family: "Rubik Wet Paint" }, { id: "creepy", family: "Eater" }, { id: "3d block", family: "Bungee Shade" }, { id: "chrome", family: "Bungee Inline" },
+  { id: "neon", family: "Monoton" }, { id: "bubble", family: "Rubik Bubbles" }, { id: "graffiti tag", family: "Sedgwick Ave Display" }, { id: "spray paint", family: "Rubik Spray Paint" },
+  { id: "marker", family: "Permanent Marker" }, { id: "cyber sigilism", family: "New Rocker" }, { id: "glitch", family: "Rubik Glitch" }];
 // The eight placements, one per card when lettering is drawn the first time (the WHERE list of "design words").
 const LETTER_PLACES = ["above the artwork", "below the artwork", "arced around the artwork", "on a ribbon banner across it",
   "woven behind and in front of parts of the artwork", "inside the artwork's negative space", "forming part of the artwork itself", "wrapped around the composition"];
@@ -62062,7 +62066,7 @@ function letterParse(v) { try { const o = JSON.parse(String(v || "")); if (o && 
 function letterClause(letter, forChange, one) {
   const items = (letter && Array.isArray(letter.items) ? letter.items : []).filter((x) => x && x.text);
   if (!items.length) return "";
-  const each = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? " in " + String(x.font).replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()) + " lettering" : "")).join(", ");
+  const each = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? " in " + String(x.font).replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()).replace(/\b3d\b/gi, "3D") + " lettering" : "")).join(", ");
   if (one) return " Write the lettering exactly as written here - " + each + ".";
   if (forChange) return " The lettering, spelled exactly as written here, each in its own lettering: " + each + ". Keep the lettering already on my design as it is.";
   return " Write the lettering exactly as written here - " + each + ". On number 1, put the lettering where I described, or where it suits the design best; on the others, place it differently on each one: " +

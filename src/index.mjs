@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.987.0-2026-11-12-sign-off-fixes";
+const BUILD = "aura-core-v9.988.0-2026-11-12-sign-off-fixes-2";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68404,9 +68404,17 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // tattoo was already found above (_workPj) - but only her words were taken from it. Now, when nothing is on screen here and a tattoo
       // is named, its newest picture is the last drawing again, its pictures (sheets marked) go back on the timeline, and it is the one
       // they are on. Everything after - a pick, a change, Finalize - works as it did before the clear.
-      if (me && !lastDrawn && _workPj && _workPid && opts && String(opts.from || "").trim()) {
+      // (v9.988, 2026-11-12, sign-off, Aaron: "in progress designs ... it goes through the motions but the file is never created") MEASURED 09:35:05:
+      // In Progress > The Classic Rose > Work on this > Finalize - the paper plane made earlier in the same session was still the last drawing,
+      // so the rose was never put back: "I want number 1" drew a NEW sheet of 8 ("This is a picture I like ... Rose in Script", $0.06, 80s) instead
+      // of cutting card 1, the page said "That one didn't go through" and nothing was locked or made into files. A tattoo they reopened is put back
+      // whenever the last drawing is not one of its own pictures - not only when the session was empty.
+      const _wpAll = (me && _workPj && _workPid && opts && String(opts.from || "").trim()) ? (_workPj.pictures || []).filter((x) => x && x.image && !x.on_me) : [];
+      const _otherOnScreen = !!(lastDrawn && _wpAll.length && !(_workPj.pictures || []).some((x) => x && (x.image === lastDrawn.image || (lastDrawn.design && x.design === lastDrawn.design))));
+      if (_otherOnScreen) { try { console.log("[TURN:BACK] the last drawing (" + String(lastDrawn.image || "").slice(-16) + ") is another tattoo's - " + _workPid + " is put back" + " · who=" + me); } catch {} }
+      if (me && (!lastDrawn || _otherOnScreen) && _workPj && _workPid && opts && String(opts.from || "").trim()) {
         try {
-          const _wp = (_workPj.pictures || []).filter((x) => x && x.image && !x.on_me);
+          const _wp = _wpAll;
           const _lp = _wp[_wp.length - 1];
           if (_lp) {
             lastDrawn = { design: _lp.design || null, image: _lp.image, subject: null, at: _lp.ts || new Date().toISOString() };
@@ -70514,7 +70522,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 const _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again.");
                 _fixedSay = _cSay + (_tail ? " " + _tail : "");
                 console.log("[TURN:CHANGE-SAY] " + _cSec + "s - her words: \"" + _cSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
-              } else console.log("[TURN:CHANGE-SAY] " + _cSec + "s - " + (_letterHold ? "new lettering - the lettering sheet line goes, her words wait for the drawing" : "no answer in " + _cMs + "ms - the fixed line goes") + (me ? " · who=" + me : ""));
+              } else console.log("[TURN:CHANGE-SAY] " + _cSec + "s - " + (_seeOnMe ? "they want to see it on them - the see-it-on-you line goes" : _letterHold ? "new lettering - the lettering sheet line goes, her words wait for the drawing" : "no answer in " + _cMs + "ms - the fixed line goes") + (me ? " · who=" + me : ""));
             } catch (e) { try { console.log("[TURN:CHANGE-SAY] failed - the fixed line goes: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
           } else if (_bodyPhoto && /^\s*imagine\s+(?:4|four|8|eight)\s+(?:more\s+)?possibilities\.?\s*$/i.test(_s) && await (async () => {
                        // FOUR POSSIBILITIES OF A CHOSEN ADD-ON (v9.661, 2026-10-18, Aaron): "the same way we do tattoos ... a version
@@ -72070,7 +72078,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // show you one on your wrist?", nothing was held because this was add-on only, and on "yes show me" she answered "Here it is..." with
       // nothing drawn. A cover-up on their photo is held the same way as an add-on.
       if (me && (jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && act === "none" && !_heardOut && !_fixedWhy && acted && !_ideasGrid &&
-          !(opts && (opts.ref || opts.inspire || opts.pick || opts.use || opts.own || opts.tile)) && !_askIdeas && _isOfferLine(acted.say)) {
+          !(opts && (opts.ref || opts.inspire || opts.pick || opts.use || opts.own || opts.tile)) && !_askIdeas && _isOfferLine(acted.say) &&
+          // (v9.988, 2026-11-12, sign-off, Aaron: "we can't let people select fine lines and florals" over a big tattoo; their typed idea that won't
+          // hide it - she explains and offers what works). When her cover-up answer asks in `choose` with the styles that will hide it, nothing is
+          // held for Imagine it - the page shows those styles and Imagine cover-ups.
+          !(jobNow === "cover" && acted.choose && Array.isArray(acted.choose.styles) && acted.choose.styles.length)) {
         try {
           let _dy = false; try { _dy = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || "") === "1"; } catch {}
           const _w = _dy ? "" : _addTyped();
@@ -72164,7 +72176,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         if (me && _await && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
           try { await talkStatePut(env, me, "await_change", ""); } catch {}
         }
-        if (_letterHold) {
+        if (_seeOnMe) {
+          // (v9.988, 2026-11-12, sign-off) MEASURED 09:14:53: "love this one, can i see how it looks on me" - the change step answered ONME and
+          // See it on you opened, but a change was waiting (await_change), so 8 versions were drawn first ($0.06, 54s). Seeing it on them draws nothing.
+          act = "none";
+          console.log("[TURN:DESIGN] they want to see it on them - nothing drawn" + (me ? " · who=" + me : ""));
+        } else if (_letterHold) {
           // (v9.848) the change waits for their lettering pick - nothing drawn this turn, and the next turn is still their change
           act = "none"; try { await talkStatePut(env, me, "await_change", "1"); } catch {}
           console.log("[TURN:DESIGN] their change waits for the lettering sheet - nothing drawn" + (me ? " · who=" + me : ""));
@@ -74859,10 +74876,20 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       const _sawInk = !refSaw || /tattoo|\bink(ed)?\b|linework|blackwork/i.test(String(refSaw));
       if (!_sawInk && acted && acted.photo_is === "their_tattoo") { try { console.log("[TURN:PHOTO] she said their tattoo, but the photo's read has no tattoo in it - no tattoo choices: \"" + String(refSaw).slice(0, 160) + "\"" + (me ? " · who=" + me : "")); } catch {} }
       if (me && _freshPhoto && _sawInk && acted && acted.photo_is === "their_tattoo" && !_fixedWhy && !(drew && drew.image) &&
-          !(opts && (opts.inspire || opts.inspire_go || opts.inspire_own || ["job1", "job2", "job3", "job4", "job6"].includes(String(opts.page || ""))))) {
+          !(opts && (opts.inspire || opts.inspire_go || opts.inspire_own || ["job0", "job1", "job2", "job3", "job4", "job6"].includes(String(opts.page || ""))))) {
         _jobPick = true;
         try { await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_said", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
         console.log("[TURN:PHOTO] her read: a tattoo already on their body - nothing waits to be drawn from it; they choose: build around it, cover it up, or a new tattoo from it" + (me ? " · who=" + me : ""));
+      }
+      // ══ A PHOTO THAT IS NOT A TATTOO, WITH NO JOB CHOSEN (v9.988, 2026-11-12, sign-off) ═══ MEASURED 09:07:50 (home, a golden retriever puppy, no
+      // words): "What do you want to do with it? I can turn it into a brand-new tattoo design, or ... send a photo of it" - nothing to tap. Typed
+      // "turn it into a tattoo" drew 8 from the photo (09:08:39). When the photo's own read has no tattoo in it and no job page or search started
+      // it, the page puts Turn it into a tattoo / I have my own idea under her words.
+      let _photoNew = false;
+      if (me && _freshPhoto && refSaw && !/tattoo|\bink(ed)?\b|linework|blackwork/i.test(String(refSaw)) && !_jobPick && !_newRoadPic && !_fixedWhy &&
+          !(drew && drew.image) && !(acted && acted.choose) && !(opts && (opts.inspire || opts.inspire_go || opts.inspire_own || /^job/.test(String(opts.page || ""))))) {
+        _photoNew = true;
+        try { console.log("[TURN:PHOTO] not a tattoo, no job chosen - Turn it into a tattoo / I have my own idea under her words: \"" + String(refSaw).slice(0, 160) + "\"" + (me ? " · who=" + me : "")); } catch {}
       }
       if (me && _newRoadPic && _freshPhoto && !_fixedWhy && !(drew && drew.image) && !_jobPick) {
         try {
@@ -75106,6 +75133,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             offer: (!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_saidAsSaid)) || undefined,
             job_pick: _jobPick || undefined,
             see_on_me: _seeOnMe || undefined,
+            photo_new: _photoNew || undefined,
             ask_photo: (acted && acted.ask_photo && !_jobPick && !_fixedWhy && !(drew && drew.image)) || undefined,
             search: (acted && acted.search && !_fixedWhy && !(drew && drew.image)) ? acted.search : undefined,
             heard: (_heardOut && !(drew && drew.image)) ? _heardOut : undefined,
@@ -75155,6 +75183,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                // (v9.976) her read: their own tattoo - the page puts Build around it / Cover it up / Make a new tattoo from it under her words
                ...(_jobPick ? { job_pick: true } : {}),
                ...(_seeOnMe ? { see_on_me: true } : {}),
+               ...(_photoNew ? { photo_new: true } : {}),
                // ══ SHE ASKS FOR A PHOTO, THEY TAP TO SEND ONE (v9.978, 2026-11-11, Aaron: go) ═══ MEASURED 18:03 (My Tattoos): "Once I see it I'll
                // tell you straight which way I'd lean" - asking for a photo with nothing to tap but the + in the chat box. Her ask_photo puts
                // Add a photo under her words.

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.992.0-2026-11-12-sign-off-fixes-6";
+const BUILD = "aura-core-v9.993.0-2026-11-12-sign-off-fixes-7";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70000,10 +70000,19 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // drawn now. When the sheet came up in place of Imagine it (before any go), it still asks, as before.
             if (String(_ds.letter_go || "") === "1") {
               try { await talkStatePut(env, me, "letter_go", ""); } catch {}
-              _fixedWhy = "four_new"; _heardOut = null;
-              if (String(_ds.go_idea || "").trim()) _heardIdea = String(_ds.go_idea).slice(0, 1200);   // what was said back is what is drawn, as on the tap
-              _fixedSay = await _fx("eight_coming", "On it - imagining some designs for you now.");
-              console.log("[TURN:LETTER] the sheet came up after their go - their pick draws now, no second Imagine it" + (me ? " · who=" + me : ""));
+              if (opts && opts.direct_no_draw && String(_ds.go_idea || "").trim()) {
+                // (v9.993) MEASURED 14:00:45 (grandma Rose): the pick ran directly - a direct turn never draws - so "[TURN:HELD]" held it and the page
+                // showed "I'm imagining amazing designs for you now" with Imagine it under it and nothing drawn. On a direct turn their pick hands off
+                // to Imagine it as its own job on the same connection, exactly as a typed yes does (heard.now, [TURN:GO]); the line below is only
+                // for when that job cannot start.
+                _fixedWhy = "heard_ready"; _heardOut = { go: true, now: true }; _heardStreamed = true;
+                console.log("[TURN:LETTER] the sheet came up after their go - their pick hands off to Imagine it now, no second Imagine it" + (me ? " · who=" + me : ""));
+              } else {
+                _fixedWhy = "four_new"; _heardOut = null;
+                if (String(_ds.go_idea || "").trim()) _heardIdea = String(_ds.go_idea).slice(0, 1200);   // what was said back is what is drawn, as on the tap
+                _fixedSay = await _fx("eight_coming", "On it - imagining some designs for you now.");
+                console.log("[TURN:LETTER] the sheet came up after their go - their pick draws now, no second Imagine it" + (me ? " · who=" + me : ""));
+              }
             }
             console.log("[TURN:LETTER] they picked their lettering: " + _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") + " - kept for the whole tattoo, Imagine it shown" + (me ? " · who=" + me : ""));
           } else if (_newFlow && opts && (opts.heard_go || opts.heard_pick) && (String(_ds.go_idea || "") || String(_ds.go_picks || ""))) {
@@ -70403,7 +70412,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   const _gi = _heardIdea || _goPrev;
                   if (_gi) { try { await talkStatePut(env, me, "go_idea", _gi); await talkStatePut(env, me, "go_said", "1"); } catch {} }
                   // (v9.992) a yes that brought up the sheet is still their yes - their pick draws (see THEIR LETTERING ON A YES)
-                  try { await talkStatePut(env, me, "letter_go", _hDo === "GO" ? "1" : ""); } catch {}
+                  // (v9.993, Aaron: "their pick draws") MEASURED 13:57:05: "draw me a compass with my son's name Eli under it, go ahead and imagine it" -
+                  // the first words of a tattoo are never GO (nothing said back yet), so the pick asked "Want me to imagine it?" after they had typed
+                  // go ahead. A go in their own words counts the same as GO here.
+                  const _typedGo = /\b(go ahead|go for it|imagine it|imagine (some|a few|them)|draw it|draw them|do it|let'?s see it|show me (it|what you|some designs|the designs))\b/i.test(String(_s || ""));
+                  try { await talkStatePut(env, me, "letter_go", (_hDo === "GO" || _typedGo) ? "1" : ""); } catch {}
+                  if (_typedGo && _hDo !== "GO") console.log("[TURN:LETTER] their words were a go (\"" + String(_s).slice(0, 120) + "\") - their lettering pick will draw at once" + (me ? " · who=" + me : ""));
                   if (_hDo === "GO" || !String(_fixedSay || "").trim()) { _fixedSay = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look."); _heardStreamed = false; }
                   else {
                     // ══ HER WORDS MATCH THE BUTTON UNDER THEM (v9.953, 2026-11-11) ═══ MEASURED in the Mia walk: her say-back ended "...Want me to imagine
@@ -74390,6 +74404,18 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   const _at = askLine.search(/\s(?:Use colou?r wherever it works|Use the colou?rs|Keep the colou?rs|Make one tall page|Make one page)\b/);
                   askLine = letterFrame(_at > 0 ? askLine.slice(0, _at) + _cl + askLine.slice(_at) : askLine + _cl, _lc);
                   console.log("[TURN:NEW] their lettering goes in:" + _cl + (me ? " · who=" + me : ""));
+                } else {
+                  // ══ NO LETTERING ASKED FOR, NONE DRAWN (v9.993, 2026-11-12, sign-off, Aaron: "Leave words out") ═══ MEASURED 13:51:25 (Marcus):
+                  // "his name was Marcus and he loved fishing on the ocean" - nothing to write (the lettering check said none), but the image model
+                  // painted MARCUS on the boat in a font they never chose. Names are written only when they ask, through the lettering sheet.
+                  // Setting: config:frame:new:noletter (empty value = say nothing).
+                  let _nl = " Put no words, names or lettering in the tattoo designs.";
+                  try { const _k = await env.AURA_KV.get("config:frame:new:noletter"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim(); _nl = _t ? " " + _t : ""; } } catch {}
+                  if (_nl) {
+                    const _at = askLine.search(/\s(?:Use colou?r wherever it works|Use the colou?rs|Keep the colou?rs|Make one tall page|Make one page)\b/);
+                    askLine = _at > 0 ? askLine.slice(0, _at) + _nl + askLine.slice(_at) : askLine + _nl;
+                    console.log("[TURN:NEW] no lettering asked for - the drawing is told:" + _nl + (me ? " · who=" + me : ""));
+                  }
                 }
               } catch {}
               _newSentence = true;
@@ -76992,7 +77018,7 @@ export class PublicEntry extends WorkerEntrypoint {
         const _goJob = async (o) => {
           if (!(o && o.heard && o.heard.now && me && _tOpts.tid)) return null;
           const _gtid = (String(_tOpts.tid).slice(0, 36) + "-go");
-          const _gOpts = { ..._tOpts, tid: _gtid, heard_go: true, heard_pick: null, direct_no_draw: false, fresh: false };
+          const _gOpts = { ..._tOpts, tid: _gtid, heard_go: true, heard_pick: null, direct_no_draw: false, fresh: false, letter: null };   // (v9.993) a lettering pick that handed off is already kept - the job draws, it does not pick again
           const _gid = await startTalkJob(env, { me, stage, said: "Imagine it", hist: _hist, host, opts: _gOpts });
           try { console.log("[TURN:GO] their own words were a yes - Imagine it " + (_gid ? "runs now as job " + _gid + " on the same connection" : "could not start - the Imagine it button goes") + " · who=" + me); } catch {}
           return _gid ? { id: _gid, tid: _gtid } : null;

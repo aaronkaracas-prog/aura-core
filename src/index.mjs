@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.980.0-2026-11-11-she-looks-it-up";
+const BUILD = "aura-core-v9.981.0-2026-11-11-refusals-kept-she-looks-it-up";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -14511,6 +14511,20 @@ async function successionGate(env) {
       } catch (e) {
         return { cmd: "WEBSEARCH", payload: { ok: false, error: String((e && e.message) || e).slice(0, 400), ms: Date.now() - _t0, gateway: gatewayId } };
       }
+    }
+    // ══ REFUSALS - WHAT THE IMAGE MODEL REFUSED, AND WHY (v9.981, 2026-11-11, Aaron) ════════════════════════════════════════════════
+    //   RUN "REFUSALS"              today (Pacific)
+    //   RUN "REFUSALS 2026-11-11"   that day
+    case "REFUSALS": {
+      if (!isOp) return { cmd: "REFUSALS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const _day = (String(args || "").match(/\d{4}-\d{2}-\d{2}/) || [])[0] || refusalDay();
+      let list = []; try { list = JSON.parse((await env.AURA_KV.get("refusals:" + _day)) || "[]"); } catch { list = []; }
+      const lines = (Array.isArray(list) ? list : []).map((r) => r.at + " · " + (r.where || "?") + " · refused as: " + (r.why || "?") +
+        " · sent: \"" + String(r.sent || "").slice(0, 220) + "\"" +
+        " · same words again: " + (r.again || "not tried") +
+        (r.rewrote ? " · her words: \"" + String(r.rewrote).slice(0, 220) + "\" -> " + (r.rewrote_used === false ? "not used" : r.rewrote_drew ? "drew" : "refused") : "") +
+        " · ended: " + (r.ended || "?") + (r.told ? " · told: \"" + r.told + "\"" : "") + (r.who ? " · who=" + r.who : ""));
+      return { cmd: "REFUSALS", payload: { ok: true, day: _day, count: lines.length, lines } };
     }
     // ══ HEARD_TEST - EVERY MODEL ON THE SAME REAL CONVERSATIONS (v9.820, 2026-11-03, Aaron: "test every option to resolve") ════════════
     // Her hearing step (the said-back and the IDEA line) gave no answer on about one turn in four today - gpt-oss-120b spent the whole limit
@@ -59225,6 +59239,24 @@ async function inspireCheck(env, items, words, world, model, budgetMs, askOver) 
   return { yes: out, said, ask, ms: Date.now() - t0, tokens_in: tokens, errors: errs, lanes };
 }
 // One Cloudflare web search (AI Gateway). The provider is a dial, `config:inspire:search:provider` (ceramic | exa | linkup).
+// ══ EVERY REFUSAL IS KEPT (v9.981, 2026-11-11, Aaron: "In most cases I am not aware of what was blocked and why or even just what was
+// blocked") ══ MEASURED 18:31 (Get Inspired, a Pikachu phone case): refused, sent again and refused, her reworded words refused too - and
+// the only trace was three log lines. One record per refusal, a list per day (Pacific), read with RUN "REFUSALS".
+function refusalDay(d) { return new Date(d || Date.now()).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }); }
+const REFUSED_RE = /safety system|safety_violations|content policy|moderation|rejected/i;
+async function noteRefusals(env, recs) {
+  if (!env || !env.AURA_KV || !Array.isArray(recs) || !recs.length) return;
+  const key = "refusals:" + refusalDay();
+  try {
+    let list = []; try { list = JSON.parse((await env.AURA_KV.get(key)) || "[]"); } catch { list = []; }
+    if (!Array.isArray(list)) list = [];
+    const at = new Date().toLocaleTimeString("en-US", { timeZone: "America/Los_Angeles", hour12: false });
+    for (const r of recs) list.push({ at, ...r });
+    await env.AURA_KV.put(key, JSON.stringify(list.slice(-300)), { expirationTtl: 60 * 60 * 24 * 90 });
+    console.log("[REFUSED] kept " + recs.length + " refusal" + (recs.length > 1 ? "s" : "") + " in " + key);
+  } catch (e) { try { console.log("[REFUSED] could not keep it: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+}
+
 async function cfWebSearch(env, query, provider, limit) {
   const gatewayId = String((await env.AURA_KV.get("config:gateway:name").catch(() => null)) || "default").trim();
   if (!env.AI || typeof env.AI.websearch !== "function") return { ok: false, error: "NO_WEBSEARCH_ON_THE_AI_BINDING" };
@@ -62191,7 +62223,7 @@ function heardSystem(style, canGo, can) {
                 "Never put a number in your words. " + TALK_SCOPE + "\n\n" + (can ? can + "\n\n" : "") +
                 // (v9.975) MEASURED 17:08-17:09: a tattoo they already have ("add to it or cover the whole thing up", "can I just show you a pic")
                 // was answered here, as a new tattoo, four turns running - no photo asked for, no add-on. That conversation is hers, with all she knows.
-                "If they are talking about a tattoo they already have - adding to it, covering it, changing it - or ask what you can do or how the app works, or ask to see real tattoos or pictures of something, answer TALK with nothing after it: that conversation is not for this step.\n\n" +
+                "If they are talking about a tattoo they already have - adding to it, covering it, changing it - or ask what you can do or how the app works, or ask to see real tattoos or pictures of something, or ask a tattoo question you can't answer well from what you know - something current, a name, a date, where a style comes from - answer TALK with nothing after it: that conversation is not for this step.\n\n" +
                 "Answer in exactly this shape. First line: READY or TALK" + (canGo ? " or GO" : "") + ".\n\n" +
                 // v9.786: MEASURED 13:31 - "my grandma basically raised me and she passed away" and "I want something to remember her by"
                 // were left out of the idea (the image model got "she ... her name was Rose"), and her words never mentioned the loss.
@@ -67287,6 +67319,8 @@ function talkReadAct(txt) {
              // WHERE SHE TAKES THEM (v9.664): one of the places her world's purpose names - a short name, nothing else.
              photo_is: (typeof o.photo_is === "string" && /^\s*their[_ ]tattoo\s*$/i.test(o.photo_is)) ? "their_tattoo" : "",
              ask_photo: o.ask_photo === true || (typeof o.ask_photo === "string" && /^\s*(true|yes)\s*$/i.test(o.ask_photo)),
+             // (v9.981) a tattoo question she needs facts for - a few words to search the web
+             look_up: (typeof o.look_up === "string" && o.look_up.trim() && !/^(false|no|none|null)$/i.test(o.look_up.trim())) ? o.look_up.replace(/[<>{}]/g, "").replace(/\s+/g, " ").trim().slice(0, 120) : "",
              // (v9.980) a search they asked for in the chat: what to look for, and real tattoos or the real thing
              search: (o.search && typeof o.search === "object" && typeof o.search.for === "string" && o.search.for.trim())
                ? { q: o.search.for.replace(/[<>{}]/g, "").replace(/\s+/g, " ").trim().slice(0, 100), kind: /^\s*world\s*$/i.test(String(o.search.kind || "")) ? "world" : "tattoos" } : null,
@@ -67990,6 +68024,8 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
   const _fwdDelta = onDelta ? (async (d) => {
     _rawAcc += d;
     if (_holdWords) return;
+    // (v9.981) she is looking it up - her "Let me look that up." waits; the answer replaces it at the end of the turn
+    if (/"look_up"\s*:\s*"\s*[^"\s]/.test(_rawAcc)) return;
     const cur = _sayFrom(_rawAcc);
     if (cur == null || cur.length <= _sentSoFar.length) return;
     const add = cur.slice(_sentSoFar.length);
@@ -68401,6 +68437,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
 let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto = false, _likedPic = false;
+let _refusedNow = [];   // (v9.981) each refusal on this turn: what was sent, why, what was tried after
 let _refHer = null;   // (v9.878) her own first sentence about their photo, kept with it when core's look gave nothing
       // ══ A PHOTOGRAPH THAT ARRIVED IS NOT A DRAWING (2026-09-16, v9.270) ══════════════════
       // `talk:last` is written on a REF turn with `image: refUrl` so the pixels survive the turn.
@@ -68651,6 +68688,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         "{\n" +
         // SEE, ACKNOWLEDGE, CONTRIBUTE (2026-10-12, v9.574, Aaron) - the same words as aura-think's reply format,
         // so the floor and her live agent cannot disagree.
+        // (v9.981) a tattoo question she can't answer from what she knows - core looks it up and she answers from what came back. First,
+        // so the words she streams after it are held until the answer is in.
+        '  "look_up": "only when they ask about the tattoo world - styles, where they come from and what they mean, artists, trends, aftercare, how tattooing works - and you can\'t answer it well from what you know: a few words to search the web for. Then say is only: Let me look that up. Never for anything outside tattoos. Otherwise leave it out",\n' +
         '  "say": "what you say to them - short, human, no machine words. When they give you a picture, say what you see and what you think of it in one or two natural lines. When it\'s their own tattoo, read where it can grow before you suggest anything. Say what you actually see - the part of the body, where on it the tattoo sits, and whether the photo shows bare skin around it to grow into; if the tattoo fills the photo, say so plainly and ask where they want it to grow. If you know the job - adding to it, covering it, reworking it - offer to show them some ideas, or to hear their own; don\'t give design ideas yet. If you don\'t know the job, ask what they want to do with it. When they ask for ideas, offer to show them 8 in one picture - don\'t list directions in your words. They can ignore every idea and tell you what they want - then follow them. Never invent meaning that isn\'t visible or that they didn\'t tell you. Existing ink is protected: adding means adding around, out of, beside or through it - never redrawing or changing it unless they ask. Never suggest changes to a piece you made. After a new picture or a change, ask in your own words whether this is the one or they want to change something; never say \'lock it in\'.",\n' +
         '  "do": "draw | change | artist | none",\n' +
         // ══ HER IDEAS ARE TAPPABLE (2026-10-12, v9.572, Aaron) - exact words approved by him. The page shows each
@@ -71095,6 +71135,37 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       let act = acted.act;
       // (v9.980) a search she asked for goes to the page's own search (Get Inspired) - the older in-chat find does not run beside it
       if (acted && acted.search && act === "find") { act = "none"; try { console.log("[TURN:SEARCH] her search goes to the page - the old find is not run"); } catch {} }
+      // ══ SHE LOOKS IT UP (v9.981, 2026-11-11, Aaron: "let's just incorporate it as long as the search is around the tattoo world. Everything's
+      // open in that genre") ══ A tattoo question she can't answer well from what she knows: core searches the web (the same search as
+      // WEBSEARCH, provider `config:lookup:provider`, ceramic when unset), hands her what came back, and her answer is the reply. Nothing is
+      // drawn on that turn. Nothing came back, or no words from her: one plain line (`config:say:lookup_none`).
+      if (me && acted && acted.look_up && !_fixedWhy && !(drew && drew.image)) {
+        act = "none";
+        const _lq = acted.look_up, _lt0 = Date.now();
+        let _lprov = "ceramic"; try { const _k = String((await env.AURA_KV.get("config:lookup:provider")) || "").trim(); if (_k) _lprov = _k; } catch {}
+        let _lr = null; try { _lr = await cfWebSearch(env, _lq, _lprov, 5); } catch (e) { _lr = { ok: false, error: String(e?.message ?? e).slice(0, 200) }; }
+        const _lf = (_lr && _lr.ok ? _lr.items : []).filter((x) => x && (x.title || x.description)).slice(0, 5);
+        try { console.log("[TURN:LOOKUP] \"" + _lq + "\" via " + _lprov + " - " + _lf.length + " results" + (_lr && !_lr.ok ? " (" + String(_lr.error || "").slice(0, 160) + ")" : "") + " · " + (Date.now() - _lt0) + "ms" + " · who=" + me); } catch {}
+        let _la = "";
+        if (_lf.length) {
+          const _lwords = "[FOR YOU, NOT THEM. You looked up \"" + _lq + "\" and this is what came back:\n" +
+            _lf.map((x, i) => (i + 1) + ". " + String(x.title || "").replace(/\s+/g, " ").trim().slice(0, 160) + (x.description ? " - " + String(x.description).replace(/\s+/g, " ").trim().slice(0, 400) : "")).join("\n") +
+            "\n\nAnswer their question now from this and what you already know - short, in your own words, the way you talk to them. " +
+            "Say only what this backs up; if it does not answer their question, say plainly that you couldn't find it. " +
+            "No links, and say nothing about looking it up. Reply with only your words.]";
+          try { console.log("[TURN:LOOKUP] sent to her: \"" + _lwords.replace(/\s+/g, " ").slice(0, 1500) + "\""); } catch {}
+          try {
+            const _lrw = await proxyToAgent(env, _lwords, false, me, null, world);
+            if (_lrw && _lrw.reply && !_lrw.failed) { const _la2 = readAct(_lrw.reply); _la = String((_la2 && _la2.say) || _verdict(_lrw.reply, _la2) || "").trim(); }
+          } catch (e) { try { console.log("[TURN:LOOKUP] her answer did not come: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+        }
+        if (!_la || /^\s*\{/.test(_la)) {
+          _la = "I couldn't find that one just now. Ask me another way, or tell me what you'd like your tattoo to be.";
+          try { const _k = String((await env.AURA_KV.get("config:say:lookup_none")) || "").trim(); if (_k) _la = _k; } catch {}
+        }
+        try { console.log("[TURN:LOOKUP] her answer: \"" + _la.replace(/\s+/g, " ").slice(0, 400) + "\" · " + (Date.now() - _lt0) + "ms in all"); } catch {}
+        acted.say = _la; acted.choose = null; acted.ask_photo = false; acted.search = null;
+      }
       // TOUCH TO CHANGE (2026-09-24): they drew on a picture and said what to change there.
       if (opts && opts.touch && refUrl && me) act = "touch";
       // THEIR OWN COLOURWAY (2026-09-24): they dragged the colour slider and kept it. The picture is
@@ -73848,10 +73919,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // MEASURED on the crane back piece: the identical request was refused as "sexual" and
             // drew perfectly on the very next try. So the same words go once more before anything
             // is rewritten or anyone is told.
+            let _refRec = null;
             if (!(got && got.ok && got.image_url) &&
                 /safety system|safety_violations|content policy|moderation|rejected/i.test(String(got?.error || ""))) {
+              _refRec = { sent: String(ask).slice(0, 900), why: (String(got.error).match(/safety_violations=\[([^\]]*)\]/i) || [])[1] || "safety system (no reason given)" };
+              _refusedNow.push(_refRec);
               const tAgain = await _evolve(cur, ask, "again");
               _pl("refused - the same words sent once more -> " + _pr(tAgain));
+              _refRec.again = (tAgain && tAgain.ok && tAgain.image_url) ? "drew" : "refused";
               if (tAgain && tAgain.ok && tAgain.image_url) got = tAgain;
             }
             // A REFUSAL COMES BACK TO HER (2026-09-21). MEASURED on the same back-piece conversation:
@@ -73893,9 +73968,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                     (!_closeEnough && ask2 ? " -> not used (she rewrote more than the refused words)" : ""));
                 if (!_closeEnough && ask2) _retried = { refused: _why ? _why[1] : "refused", rewrote: ask2.slice(0, 900),
                                                        ok: false, rejected: "rewrote more than the refused words" };
+                if (_refRec) { _refRec.rewrote = ask2 ? ask2.slice(0, 900) : "(nothing)";
+                  if (!(_closeEnough && ask2.length >= 20 && ask2 !== ask)) _refRec.rewrote_used = false; }
                 if (_closeEnough && ask2.length >= 20 && ask2 !== ask) {
                   const t2 = await _evolve(cur, ask2.slice(0, 900), null);
                   _pl("her changed words -> " + _pr(t2));
+                  if (_refRec) { _refRec.rewrote_used = true; _refRec.rewrote_drew = !!(t2 && t2.ok && t2.image_url); }
                   _retried = { refused: _why ? _why[1] : "refused", rewrote: ask2.slice(0, 900),
                                ok: !!(t2 && t2.ok && t2.image_url) };
                   if (t2 && t2.ok && t2.image_url) { got = t2; _asks[si] = ask2.slice(0, 900); }
@@ -74633,10 +74711,26 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         // SAY WHEN IT WAS BLOCKED (v9.612, 2026-10-15, Aaron). MEASURED 08:01: "on my right thigh" was refused by the image
         // model's safety system three times, and they were told only "it didn't come out". A refusal is not a glitch - trying
         // the same thing again will not help, so they are told plainly (`config:say:blocked`).
-        if (!(acted.act === "artist" || _usedPick) && /safety system|rejected|moderation|content polic/i.test(String(drew.error || ""))) {
-          _said = "That one got blocked by the image filter - try a different spot or a different photo.";
-          try { const _k = String((await env.AURA_KV.get("config:say:blocked")) || "").trim(); if (_k) _said = _k; } catch {}
-          try { console.log("[TURN] the picture was blocked by the image model's safety filter - told them so"); } catch {}
+        // (v9.981) MEASURED 18:31 (the Pikachu): the edit path keeps the refusal in `failed`, not `error` - this never matched there,
+        // and they read "it didn't come out". Both are read now.
+        const _blockedTxt = String(drew.error || "") + " " + (typeof drew.failed === "string" ? drew.failed : "");
+        if (!(acted.act === "artist" || _usedPick) && /safety system|rejected|moderation|content polic/i.test(_blockedTxt)) {
+          // THE PHOTO ITSELF (v9.981, Aaron: "it was rejected because of the Pikachu"): when her reworded words were refused too and a
+          // photo is in it, the words were not the problem - they are told so and asked for another photo (`config:say:blocked_photo`).
+          const _lastRef = _refusedNow.length ? _refusedNow[_refusedNow.length - 1] : null;
+          const _photoIn = !!(refDesign || _freshPhoto || (opts && (opts.inspire || opts.inspire_go || opts.inspire_own)));
+          const _photoBlocked = _photoIn && !!(_lastRef && _lastRef.rewrote_used && !_lastRef.rewrote_drew);
+          if (_photoBlocked) {
+            _said = "That picture can't be made \u2013 the image filter blocked it even with different words, so it's most likely something in the photo itself, like a known character or a logo. Try another photo.";
+            try { const _k = String((await env.AURA_KV.get("config:say:blocked_photo")) || "").trim(); if (_k) _said = _k; } catch {}
+          } else {
+            _said = "That picture can't be made \u2013 the image filter blocked it. Try different words or another photo.";
+            try { const _k = String((await env.AURA_KV.get("config:say:blocked")) || "").trim(); if (_k) _said = _k; } catch {}
+          }
+          drew.blocked = _photoBlocked ? "photo" : "words";
+          if (!_refusedNow.length) _refusedNow.push({ sent: String(drew.changed || drew.asked || acted.prompt || "").slice(0, 900),
+            why: (_blockedTxt.match(/safety_violations=\[([^\]]*)\]/i) || [])[1] || "safety system (no reason given)" });
+          try { console.log("[TURN] the picture was blocked by the image model's safety filter - told them so (" + drew.blocked + ")"); } catch {}
         }
       } else if (act === "artist" && drew && drew.for_the_artist) {
         // AURA CLOSES THE SESSION (2026-10-11, v9.565, Aaron + GPT): one handoff line, said at once.
@@ -74716,6 +74810,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // WHAT ACTUALLY HAPPENED GOES ON THEIR RECORD (2026-09-21). Her timeline line becomes what the
       // person was actually shown, and a picture - or a failed one - is recorded with the exact words
       // it was made from. This is what WHERE THIS TATTOO STANDS is read from next turn.
+      if (_refusedNow.length) {
+        const _where = String((opts && (opts.page || (opts.inspire ? "inspire" : opts.inspire_go ? "inspire_go" : opts.inspire_own ? "inspire_own" : ""))) ||
+                              (typeof jobNow !== "undefined" && jobNow) || "chat");
+        await noteRefusals(env, _refusedNow.map((r) => ({ who: me || null, where: _where, ...r,
+          ended: (drew && drew.image) ? "drawn" : "blocked", told: (drew && drew.image) ? null : String(_said || "").slice(0, 300) })));
+      }
       if (me) {
         try {
           for (let i = tline.length - 1; i >= 0; i--) {

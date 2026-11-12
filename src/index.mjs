@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.970.0-2026-11-11-a-bracketed-note-is-never-a-name";
+const BUILD = "aura-core-v9.971.0-2026-11-11-the-question-waits-for-the-turn";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -71936,11 +71936,19 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           const _lead = /^\s*(?:here it is|here you go|here we go|there you go|on it|coming right up)\b/i;
           let _cl = dropDrawClaim(_out);
           if (_lead.test(_cl)) _cl = "";
+          // ══ THE QUESTION WAITS UNTIL THE TURN KNOWS (v9.971, 2026-11-11, Aaron: "on ink it we can go with your advice") ═══ MEASURED
+          // 16:10:44 (Ink It, a lighthouse photo, "Yes, show me"): her "Here it is - your lighthouse photo turned into a tattoo design." was
+          // trimmed and "Want me to imagine it?" went to the page at once - then, three lines later, the design step drew the eight from their
+          // photo anyway, and the question sat above "I'm imagining your designs now". What draws is decided after this point, so the question
+          // is not sent here: it is her reply for the end of the turn, and a turn that draws replaces it with its own lines. Her trimmed words,
+          // if any are left, still go now.
           if (_cl !== _out) {
-            console.log("[TURN:YES] nothing drawn - her claim that it is drawing taken out: \"" + _out.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
+            console.log("[TURN:YES] nothing drawn yet - her claim that it is drawing taken out: \"" + _out.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
             let _ask = "Want me to imagine it?";
             try { const _k = String((await env.AURA_KV.get("config:say:not_drawn_ask")) || "").trim(); if (_k) _ask = _k; } catch {}
-            _out = _cl || _ask; if (acted) acted.say = _out;
+            if (acted) acted.say = _cl || _ask;
+            _out = _cl;
+            if (!_cl) console.log("[TURN:YES] the question waits for the end of the turn - shown only if nothing is drawn" + (me ? " · who=" + me : ""));
           }
         }
         if (_out && onDelta) { _sentSoFar = _out; try { await onDelta(_out); } catch {} }

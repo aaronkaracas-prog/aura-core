@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.993.0-2026-11-12-sign-off-fixes-7";
+const BUILD = "aura-core-v9.994.0-2026-11-12-sign-off-fixes-8";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70717,7 +70717,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // step looked for lettering before the first designs. Their words since the start go to the same short lettering question; anything
             // to be written with no style yet brings up the sheet, and their idea is kept for Imagine it (go_idea) - the Create road from there.
           if (_fixedWhy === "four_new" && !_drewNow() && !(opts && opts.letter)) { try {
-              const _tw = [String(_told || "").replace(/\n+/g, ". "), (_GO_WORDS.test(_s) || /^\s*(yes|yeah|yep|sure|ok|okay)\b|^\s*show me\b/i.test(_s)) ? "" : _s]
+              const _tw = [String(_told || "").replace(/\n+/g, ". "), (_GO_WORDS.test(_s) || /^\s*(yes|yeah|yep|sure|ok|okay)\b|^\s*show me\b|^\s*imagine\b|^\s*let'?s create my own\b/i.test(_s)) ? "" : _s]   // (v9.994) MEASURED 14:26:12: the tap's own words "Imagine some ideas for me" reached the image model as part of their idea
                 .filter(Boolean).join(". ").replace(/\.\s*\./g, ".").slice(0, 1200);
               if (_tw) {
                 const _lf = await letterFind(env, _tw, String(_prevAuraLine || ""), talkModel);
@@ -72722,7 +72722,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // went through the "no body, no skin" conversion and the person in the design was removed.
       // A catalogue design kept as it is goes to the artist exactly as chosen. A split card was
       // already cut to its left half when it was picked (opts.name).
-      if (act === "artist" && _usedPick) _filesFlat = true;
+      // (v9.994) An add-on, cover-up or rework on their own photo is NOT flat artwork when it is kept off its card: MEASURED 14:35:51
+      // (Swallows and Palm, an add-on on their forearm photo): "This is my tattoo" on the picked card took the card as the flat sheet, so
+      // "Flat artwork - full size, on white" was their arm, and neither the whole piece off the body nor the new work alone was made -
+      // Aaron's add-on rule is both. Those jobs go through the add-on/cover files as before; every other kept pick stays as it is.
+      if (act === "artist" && _usedPick && !(["add", "cover", "rework"].includes(String(jobNow || "")) && _bodyPhoto)) _filesFlat = true;
+      if (act === "artist" && _usedPick) { try { console.log("[FILES] kept off its card - job " + String(jobNow || "new") + ", their photo " + (_bodyPhoto ? "yes" : "no") + ", their photo url " + (refUrl ? "yes" : "no") + " -> " + (_filesFlat ? "the card is the flat artwork" : "taken off the body: the whole piece and the new work") + (me ? " · who=" + me : "")); } catch {} }
       if (act === "artist" && me && !_usedPick) {
         let _dRec = null, _oRec = null;
         try { _dRec = await _pre.design; } catch {}

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.989.0-2026-11-12-sign-off-fixes-3";
+const BUILD = "aura-core-v9.990.0-2026-11-12-sign-off-fixes-4";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -67031,7 +67031,11 @@ async function makeArtistFiles(env, ctx) {
               const _dt = (_pj && _pj.details) || {};
               const _tv = (v) => (v && !/\s\|\s|only if they said|why they are getting it|who it is for/i.test(String(v))) ? String(v).replace(/_/g, " ") : null;
               const _t0 = String((_pj && _pj.title) || (intent && (intent.name || intent.subject)) || "Tattoo design");
-              _one = await artistPdf(env, {
+              // ══ NO BROWSER FREE IS A WAIT, NOT A FAILURE (v9.990, 2026-11-12, sign-off) ═══ MEASURED 11:00:37 (Tucked Crescent): "Unable to
+              // create new browser: code: 503: No browser available" - the one PDF was given up at once, the per-panel fallback then hit a 90s
+              // navigation timeout, and the tattoo was locked in with no print file at all. When the browser is only busy, it is asked again
+              // (after 15s, then 30s) before the fallback.
+              const _pdfArgs = {
                 title: (_t0.charAt(0).toUpperCase() + _t0.slice(1)).slice(0, 120),
                 rows: [["Style", _tv(_dt.style) || (intent && intent.style)], ["Colour", _tv(_dt.colour) || (intent && _tv(intent.colour))],
                        ["Size", _tv(_dt.size)], ["Placement", _tv(_dt.placement) || (intent && intent.placement) || "Finalize with your artist"],
@@ -67039,7 +67043,15 @@ async function makeArtistFiles(env, ctx) {
                 panels: _sizes.map((z) => ({ name: z.sh.panel || "", inches: z.inches, long: z.long, colour: z.sh.flat,
                   stencils: [{ label: "Linework stencil", url: z.sh.line, trace: true }, { label: "Shading-guide stencil", url: z.sh.shade },
                              { label: "Realism stencil", url: z.sh.real }] }))
-              });
+              };
+              for (let _pt = 0; _pt < 3; _pt++) {
+                try { _one = await artistPdf(env, _pdfArgs); } catch (e) { _one = { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
+                if (_one && _one.ok) break;
+                const _why = String((_one && _one.error) || "") + " " + String((_one && _one.why) || "");
+                if (!/no browser available|unable to create new browser|\b503\b|429|too many/i.test(_why) || _pt === 2) break;
+                console.log("[ARTIST] the one PDF waits - no browser free (" + _why.trim().slice(0, 120) + "), asking again in " + (_pt ? 30 : 15) + "s");
+                await new Promise((r) => setTimeout(r, _pt ? 30000 : 15000));
+              }
             } catch (e) { _one = { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
             if (_one && _one.ok) {
               _sizes.forEach((z, i) => { const pp = (_one.panels || [])[i] || {};
@@ -67839,6 +67851,13 @@ async function recordArtistFiles(env, d, drew) {
   const me = d.me;
   if (!me) return;
   const ok = !!(drew && drew.image && !drew.failed);
+  // (v9.990) Make my files again: only the tattoo's own files change - their conversation, brief and timeline are left as they are
+  if (d.rerun) {
+    if (d.project) await projectAppend(env, me, d.project, ok ? { files: artistFilesOf(drew) }
+      : { files_failed: String((drew && (drew.failed || drew.error)) || "no files came back").slice(0, 200) });
+    try { console.log("[FILES] made again for " + d.project + " - " + (ok ? "files replaced" : "failed, the files it had are kept") + " · who=" + me); } catch {}
+    return;
+  }
   try {
     let tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || [];
     if (!Array.isArray(tl)) tl = [];
@@ -70283,6 +70302,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 // to Imagine it cannot start (then it arrives with the final answer and the button); it is never streamed.
                 _heardStreamed = true;
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - GO: \"" + _s.slice(0, 120) + "\" is a yes - drawn as Imagine it, from " + (_heardIdea ? "the idea as it stands now" : "the idea she said back") + ": \"" + _gIdea.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
+              } else if (_hDo === "TALK" && _canGo && (/\?/.test(_s) || /^\s*(?:wait|so|ok|okay|hey|um+)?[\s,]*(?:what|how|why|does|do|is|are|can|will|should|would|when|where|which|who)\b/i.test(_s))) {
+                // ══ A REAL QUESTION GETS HER REAL ANSWER (v9.990, 2026-11-12, sign-off) ═══ MEASURED 10:49:11: the robot forearm was said back, then
+                // "wait does blue ink fade fast? i dont want it looking washed out in a few years" - the quick step answered it itself: "Your artist will
+                // be the best guide on how different inks hold up over time." A question goes to her full self (she can look it up); the idea she
+                // said back is kept and Imagine it stays under her answer.
+                try { await talkStatePut(env, me, "go_idea", _goPrev); await talkStatePut(env, me, "go_said", "1"); } catch {}
+                _fixedWhy = null; _fixedSay = null; _heardOut = { go: true };
+                console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK on a question with the idea already said back - the turn goes to her, the idea kept for Imagine it · the quick step's words not used: \"" + String(_hSay || "").slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "TALK" && _canGo && _hSay) {
                 // (v9.826) a question once the idea is said back: her answer here (no second call), the idea kept, Imagine it under it
                 try { await talkStatePut(env, me, "go_idea", _goPrev); await talkStatePut(env, me, "go_said", "1"); } catch {}
@@ -75173,7 +75200,17 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       let _ideasOut = null;
       if (me && _bodyPhoto && !_fixedWhy && !(drew && drew.image) && acted &&
           String((intent && intent.job) || (carriedObj && carriedObj.job) || "").toLowerCase() !== "cover") {
-        const _iz = Array.isArray(acted.ideas) ? acted.ideas.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4) : [];
+        let _iz = Array.isArray(acted.ideas) ? acted.ideas.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 4) : [];
+        // ══ NO WORDS THEY DID NOT ASK FOR (v9.990, 2026-11-12, sign-off, Aaron: "Never suggest lettering") ═══ MEASURED 11:03:33 (Add to Existing,
+        // a traditional skull): one of her four ideas was "A banner reading in classic sailor scrollwork" - lettering nobody asked for, with no
+        // words in it. Her guidance already says words are theirs to bring; an idea that would write something in the tattoo is left off unless
+        // they have asked for words themselves.
+        const _theirW = (Array.isArray(tnow) ? tnow : []).filter((e) => e && e.role === "them").map((e) => String(e.said || "")).join(" ") + " " + String(said || "");
+        if (!/["\u201c\u201d]|\b(name|names|initials?|date|dates|words?|quote|saying|lettering|letters|script|banner|text|write|written)\b/i.test(_theirW)) {
+          const _wordy = /\b(banner|lettering|script|reading|words?|quote|name|initials?|motto|text|inscription|scroll reading)\b/i;
+          const _dropped = _iz.filter((x) => _wordy.test(x));
+          if (_dropped.length) { _iz = _iz.filter((x) => !_wordy.test(x)); try { console.log("[TURN:IDEAS] left off - an idea with words they never asked for: " + _dropped.map((x) => '"' + x.slice(0, 80) + '"').join(", ") + (me ? " · who=" + me : "")); } catch {} }
+        }
         _ideasOut = _iz.length >= 2 ? _iz : null;
         try { await talkStatePut(env, me, "addon_ideas", _ideasOut ? JSON.stringify(_ideasOut) : ""); } catch {}
         if (_ideasOut) { try { console.log("[TURN:IDEAS] add-on - her ideas as buttons: " + _ideasOut.map((x) => '"' + x.slice(0, 80) + '"').join(", ") + (me ? " · who=" + me : "")); } catch {} }
@@ -76009,6 +76046,27 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!/^prj_[a-z0-9]{6,40}$/i.test(pid)) return { ok: false, error: "BAD_PROJECT_ID" };
         let r = null; try { r = await talkDo(env, me, "talkProject", [pid]); } catch {}
         return (r && r.ok && r.project) ? { ok: true, project: r.project } : { ok: false, error: "NOT_FOUND" };
+      }
+      // ══ MAKE MY FILES AGAIN (v9.990, 2026-11-12, sign-off, Aaron: "we need to include a fallback to rerun artist files for the user") ═══
+      // MEASURED 10:53 (Wrist Gauge: two stencils refused) and 11:02 (Tucked Crescent: no print file - no browser free). A finished tattoo whose
+      // files are not all there can have them made again from its own flat artwork: nothing is redrawn, the same files job runs (stencils and
+      // the one PDF), and what it makes replaces the files on the tattoo. Their conversation is left alone.
+      if (action === "refiles") {
+        const pid = String(b.id || "").trim();
+        if (!/^prj_[a-z0-9]{6,40}$/i.test(pid)) return { ok: false, error: "BAD_PROJECT_ID" };
+        let r = null; try { r = await talkDo(env, me, "talkProject", [pid]); } catch {}
+        const pj = (r && r.ok && r.project) ? r.project : null;
+        if (!pj) return { ok: false, error: "NOT_FOUND" };
+        if (!pj.locked) return { ok: false, error: "NOT_LOCKED" };
+        const _pics = (pj.pictures || []).filter((x) => x && x.image && !x.on_me);
+        const _lp = _pics[_pics.length - 1] || null;
+        const _flat = String((pj.files && pj.files.flat_artwork) || (_lp && _lp.image) || "");
+        const _des = (_lp && _lp.design) || ((_flat.match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1]) || null;
+        if (!/^https?:\/\//i.test(_flat) || !_des) return { ok: false, error: "NO_ARTWORK" };
+        const _job = await startArtistFilesJob(env, { project: pid, me, world: "mytattoo", stage: "pta", seeing: false, jobNow: "new", refUrl: null,
+          refDesign: null, lastDrawn: { design: _des, image: _flat }, useRaw: [], acted: {}, intent: pj.details || null, alreadyFlat: true, rerun: true });
+        console.log("[FILES] make my files again - " + pid + " from its flat artwork " + _flat.slice(-24) + " -> " + (_job ? "job " + _job : "did not start") + " · who=" + me);
+        return _job ? { ok: true, job: _job } : { ok: false, error: "JOB_NOT_STARTED" };
       }
 
       // ══ FAVORITES (2026-10-07, Aaron) ════════════════════════════════════════════════════════

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.997.0-2026-11-12-click-around";
+const BUILD = "aura-core-v9.998.0-2026-11-12-first-go";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70359,6 +70359,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                     console.log("[TURN:STYLE] they named the " + _sv + " style in their own words - it counts as picked" + (_was ? " (was " + _was + ")" : "") + (me ? " · who=" + me : ""));
                   }
                 } else { console.log("[TURN:STYLE] her style line \"" + _hStyleSaid.slice(0, 60) + "\" is not a style name - not used" + (me ? " · who=" + me : "")); }
+              }
+              // ══ A GO IN THEIR FIRST WORDS DRAWS AT ONCE (v9.998, 2026-11-12 click-around, Aaron: "Yes, draw at once") ═══ MEASURED 19:19 (Create):
+              // "a lighthouse on a rocky cliff with big crashing waves, go ahead and draw it" - she answered "Love it - want me to imagine it?" with
+              // Imagine it: a GO before anything was said back counted only as READY. Their own words are the go - the same typed go as the lettering
+              // pick (v9.993). With an idea heard and no new lettering waiting for its sheet, it is drawn now, from that idea.
+              if (_hDo === "READY" && !_canGo && String(_heardIdea || "").trim() && !(_hLetter && _hLetter.length) &&
+                  /\b(go ahead|go for it|imagine it|imagine (some|a few|them)|draw it|draw (this|that|one|some|them)|do it|let'?s see it|show me (it|what you|some designs|the designs))\b/i.test(String(_s || ""))) {
+                _hDo = "GO";
+                console.log("[TURN:HEARD] their first words carry a go (\"" + String(_s).slice(0, 120) + "\") - drawn now, no Imagine it" + (me ? " · who=" + me : ""));
               }
               if (_hDo === "GO") {
                 // (v9.825) their words were a yes to what she said back: the idea she said back stays on the record (the line above wrote

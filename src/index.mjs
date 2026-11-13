@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.14-2026-11-13-picture-idea-said-back";
+const BUILD = "aura-core-v9.999.15-2026-11-13-fresh-picture-start-clean-brief";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68595,7 +68595,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         // back. Like a style start, a picture on a fresh Create start is the new tattoo: their idea goes through her say-back, Imagine it draws the
         // 8 from the picture with what she said back (v9.999.8). The v9.999.13 shortcut is taken out.
         if (opts && opts.fresh) {
-          try { await talkStatePut(env, me, "new_flow", "1"); await talkStatePut(env, me, "new_drawn", ""); await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_said", ""); } catch {}
+          // (v9.999.15) MEASURED 15:45:38: Imagine it went down the rework road (job=rework) and drew one picture on the arm in the photo - the
+          // kept brief still held job "rework" from the tattoo before (14:12). A fresh start keeps nothing of the last tattoo's brief.
+          try { await talkStatePut(env, me, "new_flow", "1"); await talkStatePut(env, me, "new_drawn", ""); await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_said", "");
+                await talkStatePut(env, me, "brief", "{}"); } catch {}
+          carriedObj = {};
           console.log("[TURN:PHOTO] a fresh Create start with their picture - the new tattoo starts here; their idea is said back before anything is drawn" + (me ? " · who=" + me : ""));
         }
       } else

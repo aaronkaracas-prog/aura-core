@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.10-2026-11-13-locked-picture-last-style-cards-ask";
+const BUILD = "aura-core-v9.999.11-2026-11-13-no-note-as-a-name";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -74480,8 +74480,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // ITS NAME IS THEIRS, NEVER OUR SENTENCE (v9.623, 2026-10-16, Aaron). MEASURED 05:26: the project was titled "This
             // is my tattoo idea: I like surfing and golden retrievers I wanna m" - the first words sent to the image model.
             // The title of the idea card they tapped ("Surfing retriever"), else their own first line.
+            // (v9.999.11, 2026-11-13) MEASURED In Progress: tattoos named "[they sent a photo, with no words]" - core's own note for a photo with
+            // no words was their "first line". A note in brackets is never a name; the first line of their own words is, else none (her card's name).
+            const _mineName = _mine.find((x) => x && !/^\s*\[/.test(String(x)));
             _nameHint = _lastTap ? String(_lastTap).split(/\s+[-\u2013\u2014:]\s+/)[0].trim().slice(0, 60)
-                                 : (_mine[0] ? String(_mine[0]).replace(/[\s.]+$/, "").slice(0, 70) : null);
+                                 : (_mineName ? String(_mineName).replace(/[\s.]+$/, "").slice(0, 70) : null);
             // "what do you think?." (v9.686): a line that ends in ? or ! keeps its own mark and gets no added full stop.
             const _typed = _mine.map((x) => x.replace(/[\s.]+$/, "")).reduce((acc, x) => acc ? acc + (/[?!]$/.test(acc) ? " " : ". ") + x : x, "").slice(0, 1200);
             // ══ WHAT THEY WANT, NOT THE WHOLE CONVERSATION (v9.704, 2026-10-21, Aaron: "the conversation does not need to be passed ...

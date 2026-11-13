@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.12-2026-11-13-a-yes-to-her-offer-draws";
+const BUILD = "aura-core-v9.999.13-2026-11-13-create-test-fixes";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62281,7 +62281,7 @@ function heardSystem(style, canGo, can) {
                 "Never offer or suggest lettering, names, dates or any words in the tattoo - they bring those themselves. " +
                 "Then, last, on its own line: IDEA: what they want in the tattoo now, where the conversation has ended up - " +
                 "everything they still want in it, however much there is, including who it is for and why, with every change they made applied: " +
-                "anything they took back is left out, and nothing is added that they did not ask for. Copy exactly any name, date, number or words " +
+                "anything they took back is left out, and nothing is added that they did not ask for. Where on the body it goes is not part of the IDEA. Copy exactly any name, date, number or words " +
                 "they want written in the tattoo. No questions and no chat in the IDEA line. " + (canGo ? "Your words name nothing that isn't in it.\n\n" : "Your words name everything in it, and nothing that isn't in it.\n\n") +
     // ══ WRITTEN MEANS WRITTEN (v9.820, 2026-11-03, Aaron: go) ═══ MEASURED 14:11:25: "can her name be hidden in the thorns" - her words said
     // "Mara's name subtly hidden among the thorns", her IDEA said "Mara hidden in the thorns", and 6 of 8 cards drew a woman's face with
@@ -62468,6 +62468,31 @@ function asksSinceDesign(tl, cur, urls, design) {
     if (yRe.test(t) || /^\s*(imagine\b|let'?s create my own|i want to (create|add|cover)|i want to change something|lettering:)/i.test(t)) break;
     if (asks.length < 4) asks.unshift(t); }
   return { asks, onDesign, stopPic, isYes: yRe.test(String(cur || "")) };
+}
+// ══ WHAT GOES TO THE IMAGE MODEL IS THE CHANGE, NOT THE CHAT (v9.999.13, 2026-11-13, Aaron: go) ═══ MEASURED 13:34 and 13:51 (Create test runs):
+// "hm nothing happened. make the sunflowers bigger and brighter on this one" and "sick. can you make the dragon green instead of red" went to the
+// image model word for word. Short opening remarks that ask for nothing (a reaction, "this one!", "hm nothing happened") come off the front, and
+// so does the asking ("can you", "please"). A short opening that asks for something ("make it red.", "no moon.") stays.
+function _changeWords(t) {
+  let s = String(t || "").replace(/\s+/g, " ").trim();
+  const _keep = /^\s*(make|add|put|change|remove|take|give|turn|swap|replace|use|move|keep|draw|lose|drop|get rid|no|not|without|less|more|bigger|smaller|darker|lighter|brighter|thicker|thinner|can|could|would|will|please|i want|i'?d like|let'?s|try|show)\b/i;
+  for (let i = 0; i < 3; i++) {
+    const m = s.match(/^([^.!?]{1,40}?)[.!?]+\s+(\S[\s\S]*)$/);
+    if (!m || m[1].trim().split(/\s+/).length > 4 || _keep.test(m[1]) || m[2].trim().split(/\s+/).length < 3) break;
+    s = m[2].trim();
+  }
+  s = s.replace(/^(?:(?:ok(?:ay)?|so|hey|um+|hm+|yeah|yes|and|also|oh)[\s,]+)*/i, "")
+       .replace(/^(?:can|could|would|will) you(?: please)?\s+/i, "").replace(/^please\s+/i, "")
+       .replace(/^(?:i want you to|i'?d like you to|i would like you to)\s+/i, "").trim();
+  return s.length >= 3 ? s : String(t || "").trim();
+}
+// ══ WHERE IT GOES ON THE BODY IS NOT PART OF THE DRAWING (v9.999.13, 2026-11-13, Aaron: go) ═══ MEASURED 13:22 (fox): "...little crescent moon
+// above it, for forearm. Show me 8 different designs" - the placement went to the image model. A placement at the end of the idea comes off.
+function _dropPlace(t) {
+  const s = String(t || "");
+  // a comma before it, or words that only say where it goes ("for", "going on") - "a hand on my shoulder" is a drawing and stays
+  const out = s.replace(/(?:\s*[,.;-]\s*(?:(?:it'?s|its|it is)\s+)?(?:for|on|going on|goes on|placed on|to go on)|\s+(?:(?:it'?s|its|it is)\s+)?(?:going on|goes on|placed on|to go on)|\s+for)\s+(?:(?:my|your|the)\s+)?(?:(?:left|right|upper|lower|inner|outer|top|back of (?:my|the))\s+)?(?:forearm|arm|wrist|shoulder(?: blade)?|back|chest|leg|thigh|calf|ankle|neck|hand|ribs?|rib ?cage|hip|bicep|collar ?bone|sternum|spine|foot|feet|forearms|arms)s?\b[\s.]*$/i, "").trim();
+  return out.length >= 3 ? out : s;
 }
 function _isOfferLine(t) {
   const s = String(t || "");
@@ -71719,9 +71744,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // THE LAST SAFETY NET: nothing was drawn, so a sentence claiming a picture is not true. That
       // sentence alone comes out - nothing is added, her other words stand.
       if (_goBlocked || _askIdeas) {
-        const _claim = /(^|[.!?]\s+)[^.!?]*\b(here it is|here's (it|your|the)|here you go|take a look|check it out|have a look)\b[^.!?]*[.!?]?/gi;
+        // (v9.999.13, 2026-11-13, Aaron: go) MEASURED 13:32:43 (Brighter Blooms): "Love it - bigger, brighter sunflowers coming right up." stood
+        // over nothing - "coming right up" promises a picture too. When every sentence was a promise, the fixed line says what to do instead
+        // (config:say:not_drawn).
+        const _claim = /(^|[.!?]\s+)[^.!?]*\b(here it is|here's (it|your|the)|here you go|take a look|check it out|have a look|coming (right )?up|on (its|it's) way|give me a (sec|second|moment)|one (sec|second|moment))\b[^.!?]*[.!?]?/gi;
         const _before = String(acted.say || "");
-        const _after = _before.replace(_claim, "$1").replace(/\s{2,}/g, " ").trim();
+        let _after = _before.replace(_claim, "$1").replace(/\s{2,}/g, " ").trim();
+        if (!_after && _goBlocked && _before.trim()) {
+          _after = "I haven't drawn that yet - tap the design you want it on, then tell me again.";
+          try { const _k = String((await env.AURA_KV.get("config:say:not_drawn")) || "").trim(); if (_k) _after = _k; } catch {}
+        }
         if (_after !== _before.trim() && _after) {
           console.log("[TURN:GO] removed a claim of a picture that was not made");
           acted.say = _after;
@@ -72470,7 +72502,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             } else if (_bareYes) { if (act === "change" || act === "draw") { console.log("[TURN:DESIGN] a bare yes is not a change - nothing drawn"); act = "none"; } }
             else {
               if (_await && act !== "artist" && act !== "use") act = "change";
-              if (act === "change") { _designGrid = true; _designWords = String(_changeFull || said || "").trim().replace(/^show me:\s*/i, "").slice(0, 600); }
+              if (act === "change") { _designGrid = true; _designWords = String(_changeFull || said || "").trim().replace(/^show me:\s*/i, "").slice(0, 600);
+                if (!_changeFull) { const _cw = _changeWords(_designWords); if (_cw !== _designWords) { console.log("[TURN:DESIGN] the chat taken off their change: \"" + _designWords.slice(0, 160) + "\" -> \"" + _cw.slice(0, 160) + "\"" + (me ? " · who=" + me : "")); _designWords = _cw; } } }
               // ONE OF HER CHANGE IDEAS, TAPPED (v9.635, 2026-10-16, Aaron): it changes the one design they are working on - the
               // page names it - not the sheet that happens to be on screen.
               if (_designGrid && opts && opts.change_now && opts.change_of) _designParent = opts.change_of;
@@ -72553,6 +72586,21 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // AND SHE KNOWS WHAT IT IS. A fixed sequence is a fact she can state when somebody asks
       // what happens next. A sentence she improvises each time is not.
       // A CUT IS NOT A DRAWING (v9.652): the add-on pick does not bring up the picture-making card.
+      // ══ THEIR IDEA ON A PICTURE THEY LIKE IS THE 8 FROM IT (v9.999.13, 2026-11-13, Aaron: go) ═══ MEASURED 13:39-13:40 and 13:50 (Create >
+      // I have a picture > a koi sleeve > "i love the waves and the colors but i want a dragon instead of the koi. its going on my upper arm"):
+      // twice "it didn't come out", then one picture drawn from her own words on their photo - and those words were never logged. Imagine it on
+      // the same picture draws the 8 from it (v9.999.8). Until something is drawn in this tattoo, their idea typed on a picture they like takes
+      // that same road: the picture sentence, their idea in it, 8 cards, logged.
+      let _picIdea8 = false;
+      if ((act === "draw" || act === "change") && me && _likedPic && refUrl && !_bodyPhoto && !_fixedWhy && !_drewNow() && !_cutPick &&
+          String(said || "").replace(/\[[^\]]*\]/g, " ").trim() &&
+          !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
+        try { _picIdea8 = String(((await talkStateGet(env, me, ["new_drawn"])) || {}).new_drawn || "") !== "1"; } catch {}
+        if (_picIdea8) {
+          console.log("[TURN:DESIGN] their idea on a picture they like, nothing drawn yet - the 8 from the picture (was " + act + ")" + (me ? " · who=" + me : ""));
+          act = "draw"; _designGrid = false; _designWords = null;
+        }
+      }
       if (onStage && me && !_cutPick && (act === "draw" || act === "change" || act === "onme" || act === "artist")) {
         // WHAT IT IS GOES WITH IT (2026-10-09, v9.550, Aaron): the page's picture card says what she is
         // making - "Imagining your cat and butterfly tattoo" - from the subject in her brief.
@@ -74454,7 +74502,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // appear anymore") ═══ MEASURED: a new tattoo talked about without the Create New Tattoo tap (the opening chat, a
           // terminal TALK) drew her own 2x2 grid of four while the tap drew the 8-sheet. One way in: any new design with no
           // photo in play takes the same fixed sentence and their own words.
-          const _newAny = _newFlow || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
+          const _newAny = _newFlow || _picIdea8 || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
           if (_newAny) {
             const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|(?:just )?imagine some ideas for me|let'?s create my own in the .+ style|tell me|i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?\s*$/i;
             // A YES IN TWO PARTS IS STILL A YES (v9.684): "yeah show me" went to the image model as their idea.
@@ -74520,7 +74568,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   const _iT0 = Date.now();
                   const _iq = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), _iMs)),
                     callBrain({ system: "You read a conversation between someone designing a new tattoo and Aura, their tattoo designer. Write the " +
-                      "tattoo they want in one line, using their own words: only the things they want in the tattoo. Always keep who or what it is of - a person, an animal and what kind, an object - and any name they want on it. Leave out questions, small talk, " +
+                      "tattoo they want in one line, using their own words: only the things they want in the tattoo - not where on the body it goes. Always keep who or what it is of - a person, an animal and what kind, an object - and any name they want on it. Leave out questions, small talk, " +
                       "facts about their life that are not part of the tattoo, slips of the tongue, and anything Aura suggested that they did not take " +
                       "up (a yes to her suggestion takes it up). Add nothing - no style, no description, no colours unless they asked for them. Reply with only that one line.",
                       user: _conv + ((_now && !_tap.test(_now) && !_bare.test(_now)) ? "\nThem: " + _now.slice(0, 600)
@@ -74535,7 +74583,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 } catch (e) { try { console.log("[TURN:IDEA] the read failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
               }
             }
-            const _words = (_recIdea && _typed) ? _recIdea.replace(/[\s.]+$/, "").slice(0, 1200) : _typed;
+            let _words = (_recIdea && _typed) ? _recIdea.replace(/[\s.]+$/, "").slice(0, 1200) : _typed;
+            { const _wp = _dropPlace(_words); if (_wp !== _words) { try { console.log("[TURN:IDEA] where it goes on the body taken off the drawing: \"" + _words.slice(0, 200) + "\" -> \"" + _wp.slice(0, 200) + "\"" + (me ? " · who=" + me : "")); } catch {} _words = _wp; } }
             try { console.log("[TURN:IDEA] " + (_recIdea && _typed ? "from the record: \"" + _words.slice(0, 300) + "\"" : "no record yet - their typed lines go in") +
               " · their lines: \"" + _typed.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } catch {}
             // ══ A PICTURE THEY LIKE GOES WITH THEIR WORDS (v9.717, 2026-10-22, Aaron: "if they see something they like we need to send

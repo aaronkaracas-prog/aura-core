@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.11-2026-11-13-no-note-as-a-name";
+const BUILD = "aura-core-v9.999.12-2026-11-13-a-yes-to-her-offer-draws";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62471,8 +62471,12 @@ function asksSinceDesign(tl, cur, urls, design) {
 }
 function _isOfferLine(t) {
   const s = String(t || "");
+  // (v9.999.12, 2026-11-13, Aaron: go) MEASURED 12:42 and 12:47 (Color Realism, "I like golden retrievers flowers and I'm a surfer"): her words
+  // ended "or I can imagine some ideas for you." / "Pick a feel and I'll imagine some ideas for you." - no offer buttons, nothing to tap. An
+  // offer to imagine counts, and so do "want me to / shall I / should I". "Imagine" needs what is imagined after it, so "I can imagine how much
+  // he means to you" is not an offer.
   return /\b(show|draw|sketch|see|picture|mock|takes?)\b[^?]*\?/i.test(s) ||
-         /\b(i'?ll|i will|let me|i'?m going to|i can|i'?d love to|i would love to|happy to)\s+(show|draw|sketch|make)\b/i.test(s);
+         /\b(i'?ll|i will|let me|i'?m going to|i can|i'?d love to|i would love to|happy to|want me to|shall i|should i)\s+(?:go ahead and\s+)?(?:show|draw|sketch|make|imagine\s+(?:some|a few|a|an|it|them|this|that|your|ideas?|designs?|\d+|four|eight)\b)/i.test(s);
 }
 // ══ ONE PICTURE COPY AT A TIME, NEVER SIXTEEN (v9.813, 2026-11-03, Aaron: go) ═══════════════════════════════════════════════════
 // MEASURED 08:36-08:44 (the Japanese run): a set of 8 came back and the phone asked for 16 copies at once - a stamped copy and a catalog
@@ -70191,7 +70195,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // are you feeling" went on screen mid-question, then the drawing line was joined straight onto it ("feelingI'm picturing it..."). If
               // it is drawn, the drawing line is what they see; if not, her whole answer arrives with the final frame.
               const _firstGoRe = /\b(go ahead|go for it|imagine it|imagine (some|a few|them)|draw it|draw (this|that|one|some|them)|do it|let'?s see it|show me (it|what you|some designs|the designs))\b/i;
-              const _firstGo = !_canGo && _firstGoRe.test(String(_s || ""));
+              // ══ A YES TO HER OFFER TO IMAGINE DRAWS (v9.999.12, 2026-11-13, Aaron: go) ═══ MEASURED 12:50:38: she asked "Want me to imagine some
+              // ideas in Color Realism?", they tapped Yes, and the quick step said the idea back and asked again - "Shall I go ahead and imagine a
+              // design for you...?" with Imagine it. A plain yes right after her offer is the go, the same as "go ahead" in their words.
+              const _yesToOffer = !_canGo && _isOfferLine(_prevAuraLine) &&
+                /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|please|absolutely|definitely|sounds good|let'?s do it|show me|yes please|go)[\s,.!]*)+$/i.test(String(_s || ""));
+              const _firstGo = !_canGo && (_firstGoRe.test(String(_s || "")) || _yesToOffer);
+              if (_yesToOffer) console.log("[TURN:HEARD] a yes to her offer to imagine (\"" + String(_prevAuraLine).slice(0, 120) + "\") - the go" + (me ? " · who=" + me : ""));
               let _herLast = ""; if (_canGo) { try { const _tl0 = (typeof tnow !== "undefined" && Array.isArray(tnow)) ? tnow : [];
                 for (let i = _tl0.length - 1; i >= 0; i--) { const e = _tl0[i]; if (e && e.role === "aura" && String(e.said || "").trim()) { _herLast = String(e.said).trim().slice(0, 900); break; } } } catch {} }
               const _hSys = heardSystem(_newStyle, _canGo, await canSection(env));

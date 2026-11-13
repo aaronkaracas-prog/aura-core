@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.996.0-2026-11-12-launch-pass-2";
+const BUILD = "aura-core-v9.997.0-2026-11-12-click-around";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69691,7 +69691,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       let _heardIdea = null;
       let _inspWords = "";   // (v9.925) Make it my own: their words, drawn with their inspiration
       let _drawSayP = null;   // (v9.826) her line as the drawing starts - shown when it comes, never waited for
-      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _addonGoWords = null, _addonLetter = null, _addonLetterHeld = false, _onAddonSheet = false;
+      let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _typedLetter = null, _addonGoWords = null, _addonLetter = null, _addonLetterHeld = false, _onAddonSheet = false;
       if (me && !_tapKeep) {
         try {
           const _s = String(said || "").trim();
@@ -69717,6 +69717,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             if (String(_ds.await_change || "") === "1" && opts && opts.pick_sheet && /^\s*i want number [1-8]\.?\s*$/i.test(String(said || ""))) {
               _ds.await_change = ""; await talkStatePut(env, me, "await_change", "");
               console.log("[TURN:PICK] a card tapped after Fine-Tune - a pick, not the change; Fine-Tune's wait dropped" + (me ? " · who=" + me : ""));
+            }
+            // (v9.997, 2026-11-12 click-around) MEASURED 18:06:52: "I want number 1" off a sheet came with change_now (a Fine-Tune on another
+            // card was waiting on the page) - written out as the change "add number 1", the lettering "1" found, the sheet went up. A pick is a pick.
+            if (opts && opts.pick_sheet && (opts.change_now || opts.change_of) && /^\s*i want number [1-8]\.?\s*$/i.test(String(said || ""))) {
+              opts.change_now = false; opts.change_of = null;
+              console.log("[TURN:PICK] a card picked with a change riding on it - a pick, the change dropped" + (me ? " · who=" + me : ""));
             }
           } catch {}
           // ══ THEIR YES TO A CHANGE THEY TYPED GOES THE CHANGE ROAD (v9.947, 2026-11-11) ═══ MEASURED 07:13-07:14 (Samurai, Tiny lone samurai):
@@ -69931,6 +69937,36 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // ══ THEIR YES DRAWS WHAT SHE SAID BACK (v9.783, 2026-11-01, Aaron: "she'd come back with OK awesome, dragons, butterflies, let's
           // do that ... so it'll never be automatic draw" / "once there's a clear choice she draws right away") ═══ Imagine it (or one of her
           // two choices) is their go: the idea line she said back - the one they just read and did not correct - is drawn, in their style.
+          } else if (!(opts && (opts.letter || opts.pick_sheet || opts.heard_go || opts.choose_go || opts.heard_pick || opts.inspire)) && String(_ds.change_held || "") && _s &&
+                     (() => {
+                       // ══ THEIR LETTERING, TYPED INSTEAD OF PICKED (v9.997, 2026-11-12 click-around) ═══ MEASURED 18:15:27 (Samurai, "add the name
+                       // Kenji under it"): the lettering sheet went up, they closed it and typed "just do it in script" - drawn as the change "just do it
+                       // in script" alone, and no card had Kenji on it. A typed line that names a lettering style, capitals, or is only a go, while a
+                       // change waits for its lettering, is their pick: the change they asked for is drawn, its lettering in that style.
+                       const _t = String(_s || "").toLowerCase();
+                       const _ctx = /\b(letter(ing|s)?|font|writing|written|text|name|word|words)\b/.test(_t);
+                       const _plain = ["script", "chicano script", "fine-line script", "old english", "blackletter", "calligraphy", "handwritten", "signature", "typewriter", "brush script"];
+                       const _ids = LETTER_STYLES.map((x) => x.id).sort((a, b) => b.length - a.length);
+                       const _re = (id) => new RegExp("\\b" + id.replace(/[-\s]+/g, "[-\\s]?") + "\\b", "i");
+                       let _font = _ids.find((id) => (_plain.includes(id) || _ctx) && _re(id).test(_t)) || "";
+                       if (!_font && /\bcursive\b/.test(_t)) _font = "script";
+                       const _caps = /\b(all caps|all capitals|capital letters|capitals|upper ?case|block letters)\b/.test(_t);
+                       const _go = /^\s*(ok(ay)?|yes|yeah|yep|sure)?[\s,!.-]*(just\s+)?(go ahead|go for it|draw it|do it|imagine it|show me( it)?|let'?s see( it)?|as (it is|is)|like that)[\s!.]*$/i.test(_t);
+                       if (!_font && !_caps && !_go) return false;
+                       _typedLetter = { font: _font, caps: _caps };
+                       return true;
+                     })()) {
+            let _held = null; try { _held = JSON.parse(String(_ds.change_held || "")); } catch {}
+            const _hw = String((_held && _held.words) || "").slice(0, 600);
+            let _items = []; try { _items = (await letterFind(env, _hw, "", talkModel)) || []; } catch {}
+            const _picked = _items.slice(0, 4).map((t) => ({ text: (_typedLetter.caps ? String(t).toUpperCase() : String(t)).trim().slice(0, 80), font: _typedLetter.font })).filter((x) => x.text);
+            const _old = letterParse(_ds.letter);
+            const _merged = _old.items.filter((o) => !_picked.some((p) => letterKey(p.text) === letterKey(o.text))).concat(_picked);
+            try { if (_picked.length) await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 6) })); await talkStatePut(env, me, "change_held", ""); } catch {}
+            _heldChange = _hw || null;
+            _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining that change for you now.");
+            console.log("[TURN:LETTER] their lettering typed, not picked: \"" + _s.slice(0, 80) + "\" - " + (_picked.length ? _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") : "(no lettering found in the change)") +
+              " - the change they asked for is drawn now: \"" + _hw.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
           } else if (opts && opts.letter && Array.isArray(opts.letter.items) && opts.letter.items.length && String(_ds.change_held || "")) {
             // ══ THEIR LETTERING FOR A CHANGE, PICKED - THE CHANGE IS DRAWN NOW (v9.848, 2026-11-05, Aaron: go) ═══ MEASURED 07:35: "can our names
             // go on a little ribbon under the date, jake and ana" was drawn with no sheet and came back "Jake & Ana". The change waited for the
@@ -72348,6 +72384,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               let _lln = "Love it - first, pick how you'd like your new lettering to look.";
               try { const _k = String((await env.AURA_KV.get("config:say:letter_ask_change")) || "").trim(); if (_k) _lln = _k; } catch {}
               if (acted) { acted.say = _lln; acted.choose = null; }
+              _letterHold = true;   // (v9.997) the same hold as the change road above - nothing else goes under its line
               console.log("[TURN:LETTER] new lettering in their change: " + _lnew.map((t) => '"' + t + '"').join(", ") + " - the sheet goes up, the change waits for their pick" + (me ? " · who=" + me : ""));
             }
           } catch (e) { try { console.log("[TURN:DESIGN] the all-they-asked / lettering check failed - drawn as it was: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
@@ -74974,6 +75011,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       const _sawInk = !refSaw || /tattoo|\bink(ed)?\b|linework|blackwork/i.test(String(refSaw));
       if (!_sawInk && acted && acted.photo_is === "their_tattoo") { try { console.log("[TURN:PHOTO] she said their tattoo, but the photo's read has no tattoo in it - no tattoo choices: \"" + String(refSaw).slice(0, 160) + "\"" + (me ? " · who=" + me : "")); } catch {} }
       if (me && _freshPhoto && _sawInk && acted && acted.photo_is === "their_tattoo" && !_fixedWhy && !(drew && drew.image) &&
+          !_letterHold && !(_heardOut && _heardOut.letter) && !(opts && (opts.pick || opts.pick_new || opts.use)) &&
           !(opts && (opts.inspire || opts.inspire_go || opts.inspire_own || ["job0", "job1", "job2", "job3", "job4", "job6"].includes(String(opts.page || ""))))) {
         _jobPick = true;
         try { await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_said", ""); await talkStatePut(env, me, "go_picks", ""); } catch {}
@@ -74986,7 +75024,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       let _photoNew = false;
       // (v9.989) MEASURED 10:20-10:21 (v9.988 live): no buttons under the puppy or a lighthouse - the photo's own read (refSaw) is empty for an
       // upload (IMAGE IMPORT no longer looks), so this never fired. Her read decides: a photo she did not call their own tattoo.
+      // (v9.997, 2026-11-12 click-around) MEASURED 18:10:56 (Favorites > The Sleeping Wolf, "add the name Luna under the wolf"): the lettering
+      // sheet was waiting and these two buttons went under its line instead - the favorite rides on every turn as the picked design (opts.pick),
+      // so it read as a fresh photo. A design they picked from us, or a turn whose lettering sheet is waiting, gets no photo choices.
       if (me && _freshPhoto && acted && acted.photo_is !== "their_tattoo" && !_jobPick && !_newRoadPic && !_fixedWhy && !_isOfferLine(String(_said || "")) &&
+          !_letterHold && !(_heardOut && _heardOut.letter) && !(opts && (opts.pick || opts.pick_new || opts.use)) &&
           !(drew && drew.image) && !(acted && acted.choose) && !(opts && (opts.inspire || opts.inspire_go || opts.inspire_own || /^job/.test(String(opts.page || ""))))) {
         _photoNew = true;
         try { console.log("[TURN:PHOTO] not their tattoo, no job chosen - Turn it into a tattoo / I have my own idea under her words" + (me ? " · who=" + me : "")); } catch {}

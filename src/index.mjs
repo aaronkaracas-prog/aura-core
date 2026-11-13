@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.994.0-2026-11-12-sign-off-fixes-8";
+const BUILD = "aura-core-v9.995.0-2026-11-12-launch-pass-1";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62066,13 +62066,17 @@ function letterHas(saved, t) { const k = letterKey(t); return !!k && (saved.item
 function letterParse(v) { try { const o = JSON.parse(String(v || "")); if (o && Array.isArray(o.items)) return o; } catch {} return { items: [] }; }
 // What every sentence to the image model says about the lettering, once it is chosen. forChange: the design already has it - keep it as it is.
 // one (v9.854): one picture, not a sheet - the lettering exactly, with no "number 1 ... the others" (the add-on, one at a time).
-function letterClause(letter, forChange, one) {
+function letterClause(letter, forChange, one, offBody) {
   const items = (letter && Array.isArray(letter.items) ? letter.items : []).filter((x) => x && x.text);
   if (!items.length) return "";
   const each = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? " in " + String(x.font).replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()).replace(/\b3d\b/gi, "3D") + " lettering" : "")).join(", ");
   if (one) return " Write the lettering exactly as written here - " + each + ".";
   if (forChange) return " The lettering, spelled exactly as written here, each in its own lettering: " + each + ". Keep the lettering already on my design as it is.";
-  return " Write the lettering exactly as written here - " + each + ". On number 1, put the lettering where I described, or where it suits the design best; on the others, place it differently on each one: " +
+  // (v9.995) offBody - a new tattoo's first designs: MEASURED 15:48 (launch pass, "a quote going down my spine in a thin script"): "put the
+  // lettering where I described" drew number 1 as a woman's back with the quote on her spine, and locked in, the artist files were her back with
+  // the words too small to read. On a new tattoo where they say it goes is only its shape; the body is never drawn.
+  return " Write the lettering exactly as written here - " + each + ". On number 1, put the lettering where I described, or where it suits the design best" +
+    (offBody ? ", drawn as the tattoo on its own - never on a body" : "") + "; on the others, place it differently on each one: " +
     LETTER_PLACES.join(", ") + ".";
 }
 // "nothing written on it" and "No numbers anywhere" are about the card panel and its numbering - with lettering in the tattoo they would forbid it.
@@ -74405,7 +74409,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               try {
                 const _lc = letterParse((await talkStateGet(env, me, ["letter"])).letter);
                 if (_lc.items.length) {
-                  const _cl = letterClause(_lc, false);
+                  const _cl = letterClause(_lc, false, false, true);
                   const _at = askLine.search(/\s(?:Use colou?r wherever it works|Use the colou?rs|Keep the colou?rs|Make one tall page|Make one page)\b/);
                   askLine = letterFrame(_at > 0 ? askLine.slice(0, _at) + _cl + askLine.slice(_at) : askLine + _cl, _lc);
                   console.log("[TURN:NEW] their lettering goes in:" + _cl + (me ? " · who=" + me : ""));
@@ -74427,7 +74431,17 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               console.log("[TURN:NEW] the first four from the fixed sentence - their words: \"" + _words.slice(0, 300) + "\"" + (_newStyle ? " · style: " + _newStyle : ""));
             }
             // Her own drawing words never stand in for theirs: no idea of theirs yet, nothing is drawn.
-            if (!_newSentence) { console.log("[TURN:NEW] no idea of theirs yet - nothing drawn"); throw { __skip: true }; }
+            if (!_newSentence) {
+              // (v9.995) MEASURED 15:55:10 (launch pass, two tabs): the idea was cleared by a tattoo finished in another tab, nothing was drawn,
+              // and the page still said "I'm imagining amazing designs for you now" with nothing after it. With no idea to draw she asks for it.
+              if (_fixedWhy === "four_new" || _fixedWhy === "four") {
+                let _ni = "I lost your idea on my side - tell me again what you'd like, and I'll imagine it for you.";
+                try { const _k = String((await env.AURA_KV.get("config:say:no_idea")) || "").trim(); if (_k) _ni = _k; } catch {}
+                _fixedSay = _ni;
+              }
+              console.log("[TURN:NEW] no idea of theirs yet - nothing drawn" + (_fixedSay ? " - she asks for it: \"" + String(_fixedSay).slice(0, 120) + "\"" : ""));
+              throw { __skip: true };
+            }
           }
           // ══ THE HOUSE REGISTER, AND IT IS A DIAL ═══════════════════════════════════════
           // `tatBuildAsk` ends every prompt with TAT_FRAME_INK - "flat tattoo artwork on white

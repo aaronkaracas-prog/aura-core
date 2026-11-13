@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.995.0-2026-11-12-launch-pass-1";
+const BUILD = "aura-core-v9.996.0-2026-11-12-launch-pass-2";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69709,6 +69709,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
           let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held", "addon_go", "addon_drawn", "addon_ideas", "letter_go"]); } catch {}
+          // ══ A TAP ON A CARD IS A PICK, NEVER THE CHANGE (v9.996, 2026-11-12, Aaron: "clicking other buttons and then going back ... it aired out")
+          // ═══ MEASURED 17:31-17:33 (pta_657223bcde9d5a94, Dido): Fine-Tune It set "their next words are the change", then they tapped card 7
+          // again three times - each "I want number 7" was read as the change ("Add the number 7"), found the lettering "7" and brought up the
+          // lettering sheet ("pick how you'd like your new lettering to look") each time. A card tapped is a pick: Fine-Tune's wait is dropped.
+          try {
+            if (String(_ds.await_change || "") === "1" && opts && opts.pick_sheet && /^\s*i want number [1-8]\.?\s*$/i.test(String(said || ""))) {
+              _ds.await_change = ""; await talkStatePut(env, me, "await_change", "");
+              console.log("[TURN:PICK] a card tapped after Fine-Tune - a pick, not the change; Fine-Tune's wait dropped" + (me ? " · who=" + me : ""));
+            }
+          } catch {}
           // ══ THEIR YES TO A CHANGE THEY TYPED GOES THE CHANGE ROAD (v9.947, 2026-11-11) ═══ MEASURED 07:13-07:14 (Samurai, Tiny lone samurai):
           // "I would like to incorporate the name Sienna in it", she asked "want me to show it with the name added?", they tapped Yes, show me -
           // "I'm imagining amazing designs" was shown and nothing was drawn ("a bare yes is not a change": the design was a picked card, not

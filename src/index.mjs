@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.998.0-2026-11-12-first-go";
+const BUILD = "aura-core-v9.999.0-2026-11-12-first-go-quiet";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70129,6 +70129,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // "haha yes. can it say no thoughts..." was then GO - a yes to a line she never really said. GO is offered only once her own words
               // said the idea back (go_said, set by READY with her words; the fixed line and their raw words never set it).
               const _goPrev = String(_ds.go_idea || ""), _canGo = !!_goPrev && String(_ds.go_said || "") === "1";
+              // (v9.999) a go in their first words (v9.998): her words are not streamed while she answers - MEASURED 19:26: "...Which tattoo style
+              // are you feeling" went on screen mid-question, then the drawing line was joined straight onto it ("feelingI'm picturing it..."). If
+              // it is drawn, the drawing line is what they see; if not, her whole answer arrives with the final frame.
+              const _firstGoRe = /\b(go ahead|go for it|imagine it|imagine (some|a few|them)|draw it|draw (this|that|one|some|them)|do it|let'?s see it|show me (it|what you|some designs|the designs))\b/i;
+              const _firstGo = !_canGo && _firstGoRe.test(String(_s || ""));
               let _herLast = ""; if (_canGo) { try { const _tl0 = (typeof tnow !== "undefined" && Array.isArray(tnow)) ? tnow : [];
                 for (let i = _tl0.length - 1; i >= 0; i--) { const e = _tl0[i]; if (e && e.role === "aura" && String(e.said || "").trim()) { _herLast = String(e.said).trim().slice(0, 900); break; } } } catch {} }
               const _hSys = heardSystem(_newStyle, _canGo, await canSection(env));
@@ -70160,6 +70165,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 return { end, len: acc.length, open: open && acc.length > 0, copy: acc.length >= _hThr }; };
               const _mkHFeed = () => (() => { let raw = "", label = null, sent = 0;
                 return async (t) => {
+                  if (_firstGo) return;   // (v9.999)
                   raw += String(t || "");
                   const body = raw.replace(/^\s*```[a-z]*\s*/i, "");
                   // (v9.819) the label may share its line with what follows ("READY That trek sounds...")
@@ -70365,7 +70371,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // Imagine it: a GO before anything was said back counted only as READY. Their own words are the go - the same typed go as the lettering
               // pick (v9.993). With an idea heard and no new lettering waiting for its sheet, it is drawn now, from that idea.
               if (_hDo === "READY" && !_canGo && String(_heardIdea || "").trim() && !(_hLetter && _hLetter.length) &&
-                  /\b(go ahead|go for it|imagine it|imagine (some|a few|them)|draw it|draw (this|that|one|some|them)|do it|let'?s see it|show me (it|what you|some designs|the designs))\b/i.test(String(_s || ""))) {
+                  _firstGo) {
                 _hDo = "GO";
                 console.log("[TURN:HEARD] their first words carry a go (\"" + String(_s).slice(0, 120) + "\") - drawn now, no Imagine it" + (me ? " · who=" + me : ""));
               }

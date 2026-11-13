@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.9-2026-11-13-style-wins-over-picture";
+const BUILD = "aura-core-v9.999.10-2026-11-13-locked-picture-last-style-cards-ask";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -65389,7 +65389,15 @@ export class PtaDurableObject {
     if (Array.isArray(pt.lines)) pj.lines = pj.lines.concat(pt.lines.filter(Boolean)).slice(-120);
     if (Array.isArray(pt.pictures)) {
       for (const x of pt.pictures) {
-        if (x && x.image && !pj.pictures.some((y) => y.image === x.image)) pj.pictures.push(x);
+        if (!x || !x.image) continue;
+        const _at = pj.pictures.findIndex((y) => y.image === x.image);
+        if (_at < 0) pj.pictures.push(x);
+        // ══ THE ONE THEY LOCKED IN IS THE LAST PICTURE (v9.999.10, 2026-11-13, Aaron: go) ═══ MEASURED on the navigation walk (prj_e29cb592c01a4d0c,
+        // "The Original"): the card they locked in was already saved at an earlier Fine-Tune pick, so at lock-in it was skipped as a duplicate,
+        // the Possibilities sheet stayed the last picture, and the tattoo's page showed the whole sheet as "The one you chose" while the files
+        // were made. At lock-in a picture it already has moves to the end.
+        // The re-save that matters comes from the pick just before the lock-in (a card cut off a sheet), so a card picked again moves to the end too.
+        else if (pt.locked === true || x.cut) { const [_o] = pj.pictures.splice(_at, 1); pj.pictures.push(Object.assign({}, _o, x)); }
       }
       if (pj.pictures.length > 60) pj.pictures = pj.pictures.slice(-60);
     }
@@ -75228,6 +75236,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                        ...(drew.addon_sheet ? { addon_sheet: true } : {}),
                        // A look at it on them is not a new version of the design (2026-10-08, v9.544).
                        ...(drew.on_me ? { on_me: true } : {}),
+                       // (v9.999.10) a card cut off a sheet they picked - picked again, it becomes the newest picture
+                       ...(drew.cut ? { cut: true } : {}),
                        // AN EIGHT-CARD SHEET KEEPS ITS CARDS (v9.737, 2026-10-23, Aaron): reopening the tattoo shows the cut cards
                        // with their titles, not the uncut sheet.
                        ...(drew.four_directions ? { grid: true } : {}),
@@ -75393,6 +75403,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       if (acted && acted.choose && _newFlow && _newStyle) {
         try { console.log("[TURN:CHOOSE] her style card dropped - " + _newStyle + " is already picked" + (me ? " · who=" + me : "")); } catch {}
         acted.choose = null;
+      }
+      // ══ HER STYLE CARDS COME WITH A QUESTION (v9.999.10, 2026-11-13, Aaron: go) ═══ MEASURED 10:56:40 (Home, a samurai sleeve photo, nothing
+      // typed): she described it beautifully and the style cards came up under it, but her words asked nothing - the screen did not say what to
+      // do next. When her style cards go to the page and her words hold no question, one line says it. Setting: config:say:choose_ask.
+      if (acted && acted.choose && !_fixedWhy && typeof _said === "string" && _said.trim() && !/\?/.test(_said)) {
+        let _ca = "Pick a style for it below - or tell me what you'd like to make from it.";
+        try { const _k = String((await env.AURA_KV.get("config:say:choose_ask")) || "").trim(); if (_k) _ca = _k; } catch {}
+        _said = _said.replace(/\s+$/, "") + " " + _ca;
+        try { console.log("[TURN:CHOOSE] her style cards with no question in her words - the line added: \"" + _ca + "\"" + (me ? " · who=" + me : "")); } catch {}
       }
       // THE LAST TURN, KEPT FOR A PAGE THAT LOST THE CONNECTION (2026-10-12, v9.572). MEASURED 06:45: a 128s turn
       // drew the picture and the phone showed "I could not answer that". The page asks for this by its turn id.

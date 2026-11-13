@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.13-2026-11-13-create-test-fixes";
+const BUILD = "aura-core-v9.999.14-2026-11-13-picture-idea-said-back";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68589,6 +68589,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // picture is always one they like. A photo of a tattoo already on them is still found by her read (photo_is) and gets its three choices.
       if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && String((opts && opts.page) || "") === "job0") {
         _newRoadPic = true; console.log("[TURN:PHOTO] a picture sent from the Create page - a picture they like, not their skin" + (me ? " · who=" + me : ""));
+        // ══ A PICTURE ON CREATE STARTS THE NEW TATTOO (v9.999.14, 2026-11-13, Aaron: go) ═══ MEASURED 14:12 (Create > I have a picture > a koi
+        // sleeve > "i love the waves and the colors but i want a dragon instead of the koi"): the start never marked a new tattoo, so their idea
+        // skipped her say-back and Imagine it - v9.999.13 then drew it from a separate summary that dropped "instead of the koi", and 8 koi came
+        // back. Like a style start, a picture on a fresh Create start is the new tattoo: their idea goes through her say-back, Imagine it draws the
+        // 8 from the picture with what she said back (v9.999.8). The v9.999.13 shortcut is taken out.
+        if (opts && opts.fresh) {
+          try { await talkStatePut(env, me, "new_flow", "1"); await talkStatePut(env, me, "new_drawn", ""); await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_said", ""); } catch {}
+          console.log("[TURN:PHOTO] a fresh Create start with their picture - the new tattoo starts here; their idea is said back before anything is drawn" + (me ? " · who=" + me : ""));
+        }
       } else
       if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && !(opts && opts.fresh) &&
           !(opts && ["job1", "job2", "job3", "job6"].includes(String(opts.page || "")))) {
@@ -72586,21 +72595,6 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // AND SHE KNOWS WHAT IT IS. A fixed sequence is a fact she can state when somebody asks
       // what happens next. A sentence she improvises each time is not.
       // A CUT IS NOT A DRAWING (v9.652): the add-on pick does not bring up the picture-making card.
-      // ══ THEIR IDEA ON A PICTURE THEY LIKE IS THE 8 FROM IT (v9.999.13, 2026-11-13, Aaron: go) ═══ MEASURED 13:39-13:40 and 13:50 (Create >
-      // I have a picture > a koi sleeve > "i love the waves and the colors but i want a dragon instead of the koi. its going on my upper arm"):
-      // twice "it didn't come out", then one picture drawn from her own words on their photo - and those words were never logged. Imagine it on
-      // the same picture draws the 8 from it (v9.999.8). Until something is drawn in this tattoo, their idea typed on a picture they like takes
-      // that same road: the picture sentence, their idea in it, 8 cards, logged.
-      let _picIdea8 = false;
-      if ((act === "draw" || act === "change") && me && _likedPic && refUrl && !_bodyPhoto && !_fixedWhy && !_drewNow() && !_cutPick &&
-          String(said || "").replace(/\[[^\]]*\]/g, " ").trim() &&
-          !(opts && (opts.pick || opts.use || opts.inspire || opts.recolor || opts.touch || opts.tile || opts.name || opts.own))) {
-        try { _picIdea8 = String(((await talkStateGet(env, me, ["new_drawn"])) || {}).new_drawn || "") !== "1"; } catch {}
-        if (_picIdea8) {
-          console.log("[TURN:DESIGN] their idea on a picture they like, nothing drawn yet - the 8 from the picture (was " + act + ")" + (me ? " · who=" + me : ""));
-          act = "draw"; _designGrid = false; _designWords = null;
-        }
-      }
       if (onStage && me && !_cutPick && (act === "draw" || act === "change" || act === "onme" || act === "artist")) {
         // WHAT IT IS GOES WITH IT (2026-10-09, v9.550, Aaron): the page's picture card says what she is
         // making - "Imagining your cat and butterfly tattoo" - from the subject in her brief.
@@ -74502,7 +74496,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // appear anymore") ═══ MEASURED: a new tattoo talked about without the Create New Tattoo tap (the opening chat, a
           // terminal TALK) drew her own 2x2 grid of four while the tap drew the 8-sheet. One way in: any new design with no
           // photo in play takes the same fixed sentence and their own words.
-          const _newAny = _newFlow || _picIdea8 || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
+          const _newAny = _newFlow || (String(jobNow || "") === "new" && !_bodyPhoto && !_fromPic && !refUrl && !(opts && opts.inspire));
           if (_newAny) {
             const _tap = /^\s*(i want to create a new tattoo|i like the .+ style|let'?s create my own|show me some ideas|show me all of them|imagine (4|four|8|eight) more|imagine (4|four|8|eight) possibilities|i want number [1-8]|(?:just )?imagine some ideas for me|let'?s create my own in the .+ style|tell me|i have an idea|i want it to mean something|i have a memory|it'?s about someone)\.?\s*$/i;
             // A YES IN TWO PARTS IS STILL A YES (v9.684): "yeah show me" went to the image model as their idea.

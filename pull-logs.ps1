@@ -1,5 +1,5 @@
 param([string]$Root = $PSScriptRoot, [string]$Prof = $PROFILE)
-# pull-logs.ps1 (2026-11-06, one minute at a time, each minute twice) - saves each minute of aura-core and aura-think logs into
+# pull-logs.ps1 (2026-11-06, one minute at a time, each minute twice; 2026-11-13 an empty pull never overwrites) - saves each minute of aura-core and aura-think logs into
 # <aura-core>\logs\ so Claude can read them without asking you to run LOGS.
 # ONE MINUTE: Cloudflare hands back at most 1,000 lines per ask; a 3-minute window during a test held more (15:58).
 # TWICE: a turn runs as a job, and a job's lines only arrive when it ends, 90-140s after it starts (16:44: the first pull of
@@ -17,6 +17,12 @@ function Save-Minute([datetime]$m) {
   $day = $m.ToString('yyyy-MM-dd'); $hm = $m.ToString('HH:mm'); $stamp = $m.ToString('yyyyMMdd-HHmm')
   foreach ($w in 'core', 'think') {
     $out = RUN "LOGS $day $hm $hm $w" *>&1 | Out-String
+    # NEVER AN EMPTY PULL OVER A GOOD ONE (2026-11-13): MEASURED 13:39-13:41 - the computer slept, the later pull came back empty and wrote
+    # over the minutes that held the failed picture turns. A pull with no answer in it is noted in pull-errors.txt and the file is left alone.
+    if ($out -notmatch '"cmd"\s*:\s*"LOGS"') {
+      Add-Content -Path (Join-Path $dir 'pull-errors.txt') -Value ((Get-Date).ToString('s') + " $w-$stamp no answer - kept what was there: " + $out.Trim().Substring(0, [Math]::Min(120, $out.Trim().Length)))
+      continue
+    }
     Set-Content -Encoding utf8 -Path (Join-Path $dir "$w-$stamp.json") -Value $out
   }
 }

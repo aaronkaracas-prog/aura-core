@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.0-2026-11-12-first-go-quiet";
+const BUILD = "aura-core-v9.999.1-2026-11-12-go-words-off";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62021,7 +62021,13 @@ async function letterFind(env, theirWords, herWords, talkModel) {
       "each in double quotes, separated by |. Count only what they themselves asked to have written - never something only Aura suggested. " +
       "If nothing is to be written in the tattoo, reply with one line: LETTERING: none";
     const user = "What they said:\n" + String(theirWords || "").slice(0, 1500) + (herWords ? "\n\nWhat Aura said back to them:\n" + String(herWords).slice(0, 900) : "");
-    const r = await callBrain({ system, user, max_tokens: 2000, reasoning: "low", ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env);
+    // (v9.999.1, 2026-11-12 click-around, Aaron: go) MEASURED 19:31:20-19:31:38: this check took 18s and answered a row of "!!!!" - the 8 waited
+    // for it. It gets config:talk:letterfind_ms (default 8000, 0 = no limit); past that it counts as no lettering and says so.
+    let _lfMs = 8000; try { const _lv = parseInt(String((await env.AURA_KV.get("config:talk:letterfind_ms")) || ""), 10); if (Number.isFinite(_lv) && _lv >= 0) _lfMs = _lv; } catch {}
+    const _lfT0 = Date.now();
+    const _lfAsk = callBrain({ system, user, max_tokens: 2000, reasoning: "low", ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env);
+    const r = _lfMs ? await Promise.race([_lfAsk, new Promise((res) => setTimeout(() => res({ late: true }), _lfMs))]) : await _lfAsk;
+    if (r && r.late) { console.log("[TURN:LETTER-FIND] no answer in " + (_lfMs / 1000) + "s - counted as no lettering"); return []; }
     const t = String((r && r.text) || "");
     const m = t.match(/LETTERING\s*:\s*([^\n]+)/i);
     const items = m ? letterItems(m[1]) : [];
@@ -70373,6 +70379,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (_hDo === "READY" && !_canGo && String(_heardIdea || "").trim() && !(_hLetter && _hLetter.length) &&
                   _firstGo) {
                 _hDo = "GO";
+                // (v9.999.1) MEASURED 19:31:40: with no IDEA line of hers, their raw words went to the image model with "go ahead and draw it" in
+                // them. The go is theirs to us, not part of the tattoo - it comes off the idea that is drawn.
+                { const _gm = String(_heardIdea).match(_firstGoRe);
+                  if (_gm) { let _gt = _gm.index > 10 ? String(_heardIdea).slice(0, _gm.index) : String(_heardIdea).replace(_gm[0], " ");
+                    _gt = _gt.replace(/[\s,.;:!\-]+(?:and|so|then|please|now)?[\s,.;:!\-]*$/i, "").replace(/^[\s,.;:!\-]*(?:and|so|then|please)?\s+/i, "").replace(/\s+/g, " ").trim();
+                    if (_gt.length >= 3) { _heardIdea = _gt;
+                      try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }, _newStyle ? { style: _newStyle } : {}))); } catch {}
+                      console.log("[TURN:HEARD] the go taken off the idea that is drawn: \"" + _heardIdea.slice(0, 200) + "\"" + (me ? " · who=" + me : "")); } } }
                 console.log("[TURN:HEARD] their first words carry a go (\"" + String(_s).slice(0, 120) + "\") - drawn now, no Imagine it" + (me ? " · who=" + me : ""));
               }
               if (_hDo === "GO") {

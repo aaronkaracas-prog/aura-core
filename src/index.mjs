@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.7-2026-11-13-imagine-it-on-their-picture";
+const BUILD = "aura-core-v9.999.8-2026-11-13-picture-they-like-no-stray-search";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -71393,6 +71393,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // carried none could not be told apart from one written in a shape that was thrown away.
       if (me && acted && Array.isArray(acted.fields)) { try { console.log("[TURN:REPLY] her reply had: " + acted.fields.join(", ") +
         (acted.search ? " · search \"" + acted.search.q + "\" (" + acted.search.kind + ")" : "") + (acted.look_up ? " · look_up \"" + acted.look_up + "\"" : "") + " · who=" + me); } catch {} }
+      // ══ A PICTURE WITH NO WORDS ASKS FOR NO SEARCH (v9.999.8, 2026-11-13, Aaron: go) ═══ MEASURED 10:52:31 (Japanese > Create My Own > a
+      // picture, nothing typed): her reply had say, do and a search ("octopus and lantern tattoo ideas"); the page ran it and they were taken out
+      // of her offer ("Want me to imagine some tattoo ideas from this picture?") to Get Inspired results. Nothing was asked to be looked up - they
+      // only showed her a picture - so her search is not run on that turn. A search they ask for in words still runs.
+      if (acted && acted.search && _freshPhoto && !String(said || "").trim()) {
+        try { console.log("[TURN:SEARCH] a picture with no words - nothing was asked to be looked up; her search \"" + String(acted.search.q || "").slice(0, 120) + "\" is not run" + (me ? " · who=" + me : "")); } catch {}
+        acted.search = null; if (act === "find") act = "none";
+      }
       // (v9.980) a search she asked for goes to the page's own search (Get Inspired) - the older in-chat find does not run beside it
       if (acted && acted.search && act === "find") { act = "none"; try { console.log("[TURN:SEARCH] her search goes to the page - the old find is not run"); } catch {} }
       // ══ SHE LOOKS IT UP (v9.981, 2026-11-11, Aaron: "let's just incorporate it as long as the search is around the tattoo world. Everything's
@@ -72382,8 +72390,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         // called. Until something is drawn in this tattoo, their Imagine it on a picture they brought is the first eight FROM that picture, with
         // the idea she said back as what they want - the photo sentence Ink It's first sheet already uses (config:frame:inkit:grid).
         } else if (_fixedWhy === "four_new" && _fromPic && !_drewNow() && _heardIdea && String(_heardIdea).trim()) {
-          act = "change"; _designGrid = true; _designWords = String(_heardIdea).replace(/\s+/g, " ").trim().slice(0, 600);
-          console.log("[TURN:DESIGN] Imagine it on a picture they brought, nothing drawn yet - the first eight from it: \"" + _designWords.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+          // (v9.999.8, 2026-11-13, Aaron: go) MEASURED 10:50:35: the same tap with no job on the picture went to the new-tattoo drawing - "This is
+          // a picture I like. This is what I want to do with it: ... all in the Sticker Tattoos style" - and drew right, style and all. A picture they
+          // like goes there with the job too, so both draw the same way; the photo sentence (no style in it) stays for a photo that is not one.
+          if (_likedPic) {
+            act = "draw";
+            console.log("[TURN:DESIGN] Imagine it on a picture they like, nothing drawn yet - the new-tattoo drawing with their picture: \"" + String(_heardIdea).replace(/\s+/g, " ").slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+          } else {
+            act = "change"; _designGrid = true; _designWords = String(_heardIdea).replace(/\s+/g, " ").trim().slice(0, 600);
+            console.log("[TURN:DESIGN] Imagine it on a picture they brought, nothing drawn yet - the first eight from it: \"" + _designWords.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+          }
         // ══ A PICTURE THEY LIKE IS NOT A DESIGN TO CHANGE (v9.964, 2026-11-11, Aaron: go) ═══ MEASURED 14:03:31 (pta_0c577382cb25a0ac): the
         // truck photo, held as a picture they like (v9.961), counted as "the design" here because it has an id - so their "yeah do it" to
         // her offer was read as a change with nothing to change, nothing was drawn, and the fixed line said "I'm imagining amazing designs".

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.6-2026-11-13-typed-lettering-every-road";
+const BUILD = "aura-core-v9.999.7-2026-11-13-imagine-it-on-their-picture";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -72375,6 +72375,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           console.log("[TURN:DESIGN] the change that waited for their lettering is drawn: \"" + _heldChange.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
         } else if (_fixedWhy === "inspire8" && refDesign) {
           act = "change"; _designGrid = true; _designWords = "__inspire__"; _designParent = refDesign;
+        // ══ IMAGINE IT ON A PICTURE THEY BROUGHT DRAWS THE 8 FROM IT (v9.999.7, 2026-11-13, Aaron: go) ═══ MEASURED 10:29:13 (pta_a7f1fa222d6682a0,
+        // Sticker Tattoos > Create My Own > a picture added, nothing typed > Yes, show me): the yes became Imagine it (four_new) from the idea she
+        // said back, the picture made it a change on their photo (job `from`), and the v9.966 rule below rightly kept it from being a change to a
+        // design - but nothing else took it, so it went to draw with nothing to send and failed in 0.4s ("it didn't come out"), no image model
+        // called. Until something is drawn in this tattoo, their Imagine it on a picture they brought is the first eight FROM that picture, with
+        // the idea she said back as what they want - the photo sentence Ink It's first sheet already uses (config:frame:inkit:grid).
+        } else if (_fixedWhy === "four_new" && _fromPic && !_drewNow() && _heardIdea && String(_heardIdea).trim()) {
+          act = "change"; _designGrid = true; _designWords = String(_heardIdea).replace(/\s+/g, " ").trim().slice(0, 600);
+          console.log("[TURN:DESIGN] Imagine it on a picture they brought, nothing drawn yet - the first eight from it: \"" + _designWords.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
         // ══ A PICTURE THEY LIKE IS NOT A DESIGN TO CHANGE (v9.964, 2026-11-11, Aaron: go) ═══ MEASURED 14:03:31 (pta_0c577382cb25a0ac): the
         // truck photo, held as a picture they like (v9.961), counted as "the design" here because it has an id - so their "yeah do it" to
         // her offer was read as a change with nothing to change, nothing was drawn, and the fixed line said "I'm imagining amazing designs".
@@ -72441,7 +72450,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         // change is about to be drawn on a design and the change step has not already read it: what they asked since the design goes with
         // this turn's words, and words to be written in it with no lettering picked yet bring up the sheet first (letterFind, the same
         // short question the add-on uses). The change waits (change_held) and their pick draws it.
-        if (_designGrid && me && typeof _designWords === "string" && !/^__/.test(_designWords) && !_heldChange && !_letterHold && _fixedWhy !== "four" && !_ideasLine) {
+        if (_designGrid && me && typeof _designWords === "string" && !/^__/.test(_designWords) && !_heldChange && !_letterHold && _fixedWhy !== "four" && _fixedWhy !== "four_new" && !_ideasLine) {   // (v9.999.7) four_new: lettering was asked before the first designs
           try {
             const _curL = String(said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
             const _sw = asksSinceDesign(tnow, _curL, [refUrl, opts && opts.ref, wantRef], refDesign);

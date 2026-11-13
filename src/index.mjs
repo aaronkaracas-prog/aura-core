@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.3-2026-11-13-http-pic-typed-style";
+const BUILD = "aura-core-v9.999.4-2026-11-13-project-section";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -65395,6 +65395,10 @@ export class PtaDurableObject {
     }
     if (pt.title && !pj.title) pj.title = String(pt.title).slice(0, 170); // whole name (v9.561) - the talk turn already ends a long one at a word
     if (pt.came_from && !pj.came_from) pj.came_from = String(pt.came_from).slice(0, 60);
+    // ══ A TATTOO KNOWS WHERE IT BEGAN (v9.999.4, 2026-11-13 click-around, Aaron: "Yes, save it") ═══ MEASURED 08:14: a Get Inspired tattoo
+    // reopened from In Progress read "Create" - nothing in it said which section it began in. The section of its first saved turn is kept
+    // (job0 Create .. job6 Ink It) and never changed; the page reads it when the tattoo is reopened.
+    if (pt.section && !pj.section && /^job[0-6]$/.test(String(pt.section))) pj.section = String(pt.section);
     // HER NAME FOR IT (2026-10-10, v9.562, Aaron): at lock-in Aura names the tattoo ("California Lowrider
     // Queen"); that name replaces the title, and the description it was named from is kept as `about`
     // for the "i" on the page.
@@ -75193,6 +75197,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 // until then the page says "Your tattoo".
                 : null,
               came_from: _cameFrom ? _cameFrom.id : null,
+              // (v9.999.4) the section this tattoo began in - the page they were on, or Get Inspired for a picture taken from its search
+              section: /^job[0-6]$/.test(String((opts && opts.page) || "")) ? String(opts.page)
+                : (opts && (opts.inspire || opts.inspire_go || opts.inspire_own)) ? "job4" : null,
               ...(_herName ? { name_final: _herName } : {}),
               // THE ONE THEY PICKED NAMES THE TATTOO (v9.626): its card's title, and its two lines and what it shows as the "i".
               ...((drew && drew.card && drew.card.title) ? { card_named: true,

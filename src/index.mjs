@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.8-2026-11-13-picture-they-like-no-stray-search";
+const BUILD = "aura-core-v9.999.9-2026-11-13-style-wins-over-picture";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -74530,6 +74530,20 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 _ng = "This is a picture I like. This is what I want to do with it: ____. Show me 4 different tattoo designs from it{style}. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea. Make one tall page.";
                 try { const _k = String((await env.AURA_KV.get("config:frame:new:picture")) || "").trim(); if (_k.includes("____")) _ng = _k; } catch {}
                 if (!_words) _ng = _ng.replace(/\s*This is what I want to do with it: ____\./, "");
+                // ══ THE STYLE WINS OVER THE PICTURE (v9.999.9, 2026-11-13, Aaron: go) ═══ MEASURED 11:27:18 (pta_657223bcde9d5a94, Dotwork > a
+                // jester skull picture): "all in the Dotwork style" and "Use the colors the Dotwork style is known for" were both sent, and all 8 came
+                // back full-colour illustrations copied from the picture - the picture and her read of its colours outweighed the style. A typed idea
+                // (the golden retriever, 11:29:50) drew true dotwork. With a style picked, the picture gives the subject and the style gives the look.
+                // Setting: config:frame:new:picture:style ({name} is the style; empty value = say nothing).
+                if (_newStyle) {
+                  let _ps = "Redraw everything in the {name} style - take the subject from my picture, but not its colors or its look.";
+                  try { const _k = await env.AURA_KV.get("config:frame:new:picture:style"); if (_k !== null && _k !== undefined) _ps = String(_k).trim(); } catch {}
+                  if (_ps) {
+                    const _psn = _ps.replace(/\{name\}/g, await styleSayAs(env, _newStyle));
+                    _ng = _ng.replace(/(Show me 4 different tattoo designs from it\{style\}\.)/, "$1 " + _psn);
+                    console.log("[TURN:NEW] a style with their picture - the style gives the look: \"" + _psn + "\"" + (me ? " · who=" + me : ""));
+                  }
+                }
                 console.log("[TURN:NEW] a picture they like goes with their words: " + refUrl + (me ? " · who=" + me : ""));
               }
               try { const _k = String((await env.AURA_KV.get("config:frame:new:grid:style")) || "").trim(); if (_k.includes("{name}")) _st = _k; } catch {}

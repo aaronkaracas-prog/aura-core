@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.4-2026-11-13-project-section";
+const BUILD = "aura-core-v9.999.5-2026-11-13-typed-lettering";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69735,7 +69735,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held", "addon_go", "addon_drawn", "addon_ideas", "letter_go"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held", "addon_go", "addon_drawn", "addon_ideas", "letter_go", "letter_wait"]); } catch {}
           // ══ A TAP ON A CARD IS A PICK, NEVER THE CHANGE (v9.996, 2026-11-12, Aaron: "clicking other buttons and then going back ... it aired out")
           // ═══ MEASURED 17:31-17:33 (pta_657223bcde9d5a94, Dido): Fine-Tune It set "their next words are the change", then they tapped card 7
           // again three times - each "I want number 7" was read as the change ("Add the number 7"), found the lettering "7" and brought up the
@@ -69807,13 +69807,36 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   // v9.779: nothing drawn in this tattoo yet (set to 1 the moment anything is drawn or chosen in it - see "last" below)
                   await talkStatePut(env, me, "new_drawn", ""); await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_picks", "");
                   await talkStatePut(env, me, "letter", ""); await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", "");
-                  await talkStatePut(env, me, "addon_talk", ""); } catch {}
+                  await talkStatePut(env, me, "addon_talk", ""); await talkStatePut(env, me, "letter_wait", ""); } catch {}
             _ds = _isNew ? { new_flow: "1" } : {};
           }
           _newFlow = String(_ds.new_flow || "") === "1" && !_bodyPhoto && !(opts && opts.inspire);
           _lastDesignChange = String(_ds.design_change || "").trim();
           _newStyle = String(_ds.new_style || "").trim() || null;
           let _dzP = null;
+          // ══ THEIR LETTERING STYLE, TYPED FOR A NEW TATTOO (v9.999.5, 2026-11-13 click-around) ═══ MEASURED 08:47 (a lighthouse with "Nora"
+          // on a banner): her lettering question was up, they typed "do Nora in a pretty script" instead of opening the sheet - she said "Got it
+          // - I've added that" and asked for the lettering again. v9.997 took a typed style only for a change waiting on its lettering. While a
+          // new tattoo's lettering question waits (letter_wait: the pieces the sheet was opened with), a typed line that names a lettering style
+          // or capitals is the sheet's own pick for those pieces - the same road as the tap from here on.
+          if (_newFlow && opts && !opts.letter && !String(_ds.change_held || "") && String(_ds.letter_wait || "") && _s) {
+            let _lw = []; try { _lw = JSON.parse(String(_ds.letter_wait)); } catch {}
+            if (Array.isArray(_lw) && _lw.length) {
+              const _t = String(_s).toLowerCase();
+              const _ctx = /\b(letter(ing|s)?|font|writing|written|text|name|word|words)\b/.test(_t) || _lw.some((x) => _t.includes(String(x || "").toLowerCase()));
+              const _plain = ["script", "chicano script", "fine-line script", "old english", "blackletter", "calligraphy", "handwritten", "signature", "typewriter", "brush script"];
+              const _ids = LETTER_STYLES.map((x) => x.id).sort((a, b) => b.length - a.length);
+              const _re = (id) => new RegExp("\\b" + id.replace(/[-\s]+/g, "[-\\s]?") + "\\b", "i");
+              let _font = _ids.find((id) => (_plain.includes(id) || _ctx) && _re(id).test(_t)) || "";
+              if (!_font && /\bcursive\b/.test(_t)) _font = "script";
+              const _caps = /\b(all caps|all capitals|capital letters|capitals|upper ?case|block letters)\b/.test(_t);
+              // a short line about the lettering only - a longer one may add something else to the tattoo, and goes to her as before
+              if ((_font || _caps) && _t.trim().split(/\s+/).length <= 8) {
+                opts.letter = { items: _lw.slice(0, 4).map((x) => ({ text: _caps ? String(x).toUpperCase() : String(x), font: _font })) };
+                console.log("[TURN:LETTER] their lettering typed, not picked: \"" + String(_s).slice(0, 80) + "\" - " + opts.letter.items.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") + " - taken as their pick" + (me ? " · who=" + me : ""));
+              }
+            }
+          }
           if (opts && opts.placed && refUrl) { try { _dzP = _pre ? await _pre.design : null; } catch {} }
           if (opts && opts.inspire_go && refUrl && refDesign) {
             // ══ IMAGINE FROM THIS (v9.745, 2026-10-24, Aaron: "if someone clicks on it there's no asking questions - that goes right
@@ -70063,7 +70086,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               ...(x && x.from && letterKey(x.from) !== letterKey(x.text) ? { from: String(x.from).slice(0, 80) } : {}) }))
               .filter((x) => x.text);
             const _merged = _picked.concat(_old.items.filter((o) => !_picked.some((p) => letterKey(p.text) === letterKey(o.text) || letterKey(p.from) === letterKey(o.text))));
-            try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 4) })); await talkStatePut(env, me, "go_said", "1"); } catch {}
+            try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 4) })); await talkStatePut(env, me, "go_said", "1"); await talkStatePut(env, me, "letter_wait", ""); } catch {}
             // (v9.847) MEASURED 07:14:59: "'Mia' in Fine-Line Script and 'Leo' in Fine-Line Script" - pieces in the same style are named together,
             // the style once: "'Mia' and 'Leo' in Fine-Line Script"
             const _groups = []; for (const x of _picked) { const g = _groups.find((q) => q.font === x.font); if (g) g.texts.push(x.text); else _groups.push({ font: x.font, texts: [x.text] }); }
@@ -70517,6 +70540,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   // go ahead. A go in their own words counts the same as GO here.
                   const _typedGo = /\b(go ahead|go for it|imagine it|imagine (some|a few|them)|draw it|draw them|do it|let'?s see it|show me (it|what you|some designs|the designs))\b/i.test(String(_s || ""));
                   try { await talkStatePut(env, me, "letter_go", (_hDo === "GO" || _typedGo) ? "1" : ""); } catch {}
+                  // (v9.999.5) the pieces the sheet opens with - a style they type instead of opening it is their pick for these
+                  try { await talkStatePut(env, me, "letter_wait", JSON.stringify(_lNew.slice(0, 4).map((x) => String(x || "").slice(0, 80)))); } catch {}
                   if (_typedGo && _hDo !== "GO") console.log("[TURN:LETTER] their words were a go (\"" + String(_s).slice(0, 120) + "\") - their lettering pick will draw at once" + (me ? " · who=" + me : ""));
                   if (_hDo === "GO" || !String(_fixedSay || "").trim()) { _fixedSay = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look."); _heardStreamed = false; }
                   else {

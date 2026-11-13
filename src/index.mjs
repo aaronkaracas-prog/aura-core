@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.1-2026-11-12-go-words-off";
+const BUILD = "aura-core-v9.999.2-2026-11-13-addon-reopen";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68461,6 +68461,23 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
               await talkStatePut(env, me, "design", JSON.stringify(_backDesign)); }
             await talkStatePut(env, me, "project", _workPid);
             await talkStatePut(env, me, "timeline", JSON.stringify(tline.slice(-60)));
+            // ══ AN ADD-ON REOPENED IS BACK ON THEIR PHOTO (v9.999.2, 2026-11-13 click-around) ═══ MEASURED 07:23:05: In Progress >
+            // Floral Addition (the hibiscus added to their tribal sleeve) > Fine-Tune It > "make the flower red" - the photo of their arm was gone
+            // from the session (another tattoo had been started in between), so the change went out as a flat design ("the whole tattoo artwork
+            // ... not on skin") and came back off their body. The same path without leaving drew the change on their arm. A tattoo whose pictures
+            // include an add-on sheet gets its photo back from that sheet's mark - the same as an add-on opened from Favorites (v9.874).
+            try {
+              const _asP = [..._wp].reverse().find((x) => x && x.addon_sheet && x.image);
+              const _asId = _asP ? (String(_asP.image).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1] : null;
+              const _asM = _asId ? JSON.parse((await env.AURA_KV.get("addonsheet:" + _asId)) || "null") : null;
+              if (_asM && _asM.photo && _asM.url) {
+                const _refB = { saw: _asM.saw || null, her: _asM.her || null, url: String(_asM.url), design: String(_asM.photo), at: new Date().toISOString(), body: true, liked: false };
+                await talkStatePut(env, me, "ref", JSON.stringify(_refB));
+                try { await talkStatePut(env, me, "addon_drawn", "1"); await talkStatePut(env, me, "addon_go", ""); } catch {}
+                _pre.ref = Promise.resolve(_refB);
+                console.log("[TURN:BACK] an add-on - back on the photo it was drawn on (" + _asM.photo + ", from sheet " + _asId + ") · who=" + me);
+              }
+            } catch (e) { try { console.log("[TURN:BACK] add-on photo could not be put back: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
             console.log("[TURN:BACK] reopened " + _workPid + " - its newest picture is on screen again (" + (_lp.design ? "design " + _lp.design : "no design id") +
               (Array.isArray(_lp.cards8) && _lp.cards8.length ? ", a set of 8" : "") + ")" + " · who=" + me);
           }

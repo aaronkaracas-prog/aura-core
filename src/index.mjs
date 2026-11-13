@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.5-2026-11-13-typed-lettering";
+const BUILD = "aura-core-v9.999.6-2026-11-13-typed-lettering-every-road";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70855,6 +70855,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   _heardOut = { letter: { items: _lf.slice(0, 4), chosen: _chs, styles: LETTER_STYLES.map((x) => x.id) } };
                   _fixedWhy = "letter_hold_new"; _fixedSay = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look.");
                   try { await talkStatePut(env, me, "letter_go", "1"); } catch {}   // (v9.992) they tapped Imagine it - their pick draws
+                  // (v9.999.6, 2026-11-13 click-around) MEASURED 09:15: on this road (Show me some ideas on her style card) "put Ruth in cursive" was asked
+                  // the lettering again - only the Create hearing step kept the pieces waiting. The pieces the sheet opens with wait here too.
+                  try { await talkStatePut(env, me, "letter_wait", JSON.stringify(_lf.slice(0, 4).map((x) => String(x || "").slice(0, 80)))); } catch {}
                   console.log("[TURN:LETTER] first designs of a new tattoo - lettering with no style yet: " + _lnw.map((t) => '"' + t + '"').join(", ") +
                     " - the sheet goes up first; kept for Imagine it: \"" + _tw.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
                 }

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.2-2026-11-13-addon-reopen";
+const BUILD = "aura-core-v9.999.3-2026-11-13-http-pic-typed-style";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -73889,7 +73889,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               }
               // (v9.925) Make it my own: what they want goes straight after their inspiration, and the first card is the closest one with it
               if (_inspWords) {
-                const _w = _inspWords.replace(/[\s.]+$/, ""), _d0 = _dg;
+                let _w = _inspWords.replace(/[\s.]+$/, ""); const _d0 = _dg;
+                // ══ A STYLE IN THEIR WORDS DECIDES THE COLOURS (v9.999.3, 2026-11-13 click-around, Aaron: go) ═══ MEASURED 07:55: Make it my own,
+                // "make it fine line with the flower stem wrapping into a small heart" - all 8 bold full colour, none fine line. She is not called
+                // here, so no style was heard, and the sheet kept "Use color wherever it works" (toEight swaps it only for "in the ___ style").
+                // A style named in their own words (styleFromWords - our names only) is said the way toEight already reads it.
+                try { const _stW = /\bin the [^.]{2,80}? style\b/i.test(_w) ? null : styleFromWords(_w);
+                  if (_stW) { _w = _w + " - all in the " + _stW + " style"; console.log("[INSPIRE] a style in their words: " + _stW + " - it decides the colours · who=" + me); } } catch {}
                 if (/^This is my inspiration(?::[^.]*)?\./.test(_dg)) _dg = _dg.replace(/^(This is my inspiration(?::[^.]*)?\.)/, "$1 This is what I want: " + _w + ".");
                 else _dg = "This is what I want: " + _w + ". " + _dg;
                 _dg = _dg.replace(/(Make the first one the closest to my inspiration)\./, "$1, with what I want.");
@@ -76763,9 +76769,16 @@ export class PublicEntry extends WorkerEntrypoint {
         // (v9.925) Make it my own no longer leaves a mark here - the page sends the picture with their words as inspiration (inspire_go +
         // inspire_own); a mark left by an earlier build is cleared so it can never touch a later turn.
         if (listed && me) { try { await talkStatePut(env, me, "inspire_own", ""); } catch {} }
-        if (!listed || !/^https:\/\//i.test(url)) return { ok: false, error: "NOT_FROM_THE_SEARCH" };
+        // ══ AN http:// PICTURE GOES THROUGH BRAVE'S COPY (v9.999.3, 2026-11-13 click-around, Aaron: go) ═══ MEASURED 07:53: Make it my own on
+        // an Anna's hummingbird (hummingbirdpictures.net, http://) - "I couldn't open that picture from its website": an http address was
+        // refused before Brave's https copy of it was tried. 4 of that search's 97 were http. Only https is ever fetched: an http picture
+        // from the search is taken from its https copy, and refused only when it has none.
+        const _httpOnly = !/^https:\/\//i.test(url);
+        const _viaThumb = _httpOnly && !!(_thumb && /^https:\/\//i.test(_thumb));
+        if (!listed || (_httpOnly && !_viaThumb)) return { ok: false, error: "NOT_FROM_THE_SEARCH" };
+        if (_viaThumb) console.log("[INSPIRE] an http picture - its https copy is taken: " + url.slice(0, 120));
         try {
-          const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" }, redirect: "follow" });
+          const r = await fetch(_viaThumb ? _thumb : url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" }, redirect: "follow" });
           const type = String(r.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
           let rr = r, tt = type;
           // (v9.754) a site that refuses its full-size picture to us - Brave's own copy of it instead.

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.16-2026-11-13-style-only-from-their-words";
+const BUILD = "aura-core-v9.999.17-2026-11-13-cover-and-addon-fixes";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -61155,11 +61155,21 @@ async function cutAllCards(env, url, copts) {
   const _ck = (_art ? "cutall5:" : "cutall3:") + id;
   const was = await env.AURA_KV.get(_ck).catch(() => null);
   if (was) { try { return JSON.parse(was); } catch {} }
-  let b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
-  if (!b64) return { ok: false, error: "picture not found: " + id };
-  const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
-  // (v9.900) the sheet's text is let go once it is decoded - see "LET GO AS IT GOES" below
-  b64 = null;
+  // ══ THE SHEET AS BYTES, AND NO COPIES BESIDE IT (v9.999.17, 2026-11-13, Aaron: go) ═══ MEASURED 16:47:50 and 16:49:43 (Add to Existing,
+  // three-flow test): "Worker exceeded memory limit" after each add-on sheet of 4 - the same kill v9.900 and v9.813 cut down. The sheet was
+  // read as base64 text (about 11 MB of text, then its bytes beside it) though the same picture is kept as bytes in R2; and the phone's
+  // nine card copies could be made while the sheet's pixels (~32 MB) were held. R2's bytes are read first (the text only when R2 has none),
+  // and while the sheet is in memory the picture gate counts as full, so copies wait their turn.
+  _SHEET_AT = Date.now();
+  let _src = null;
+  try {
+    if (env.AURA_IMAGES) { const _o = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null); if (_o) _src = new Uint8Array(await _o.arrayBuffer()); }
+    if (!_src) { let b64 = await env.AURA_KV.get("image:" + id).catch(() => null); if (b64) _src = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); b64 = null; }
+  } catch { _src = null; }
+  if (!_src) { _SHEET_AT = 0; return { ok: false, error: "picture not found: " + id }; }
+  let im;
+  try { im = PhotonImage.new_from_byteslice(_src); } catch (e) { _SHEET_AT = 0; throw e; }
+  _src = null;
   const W = im.get_width(), H = im.get_height();
   let px = im.get_raw_pixels();
   try { im.free(); } catch {}
@@ -61180,7 +61190,7 @@ async function cutAllCards(env, url, copts) {
   const sepCol = new Array(W).fill(false);
   for (let x = 0; x < W; x++) { let t = 0, b = 0; for (let y = 0; y < H; y += 2) { t++; if (lum(x, y) < 40) b++; } sepCol[x] = b / t > 0.97; }
   const cols = runs(sepCol.map((v) => !v), Math.round(W * 0.15), 2);
-  if (!cols.length) return { ok: false, error: "no columns of cards found (" + W + "x" + H + ")" };
+  if (!cols.length) { _SHEET_AT = 0; return { ok: false, error: "no columns of cards found (" + W + "x" + H + ")" }; }
   const boxes = [], _perCol = [];
   for (const [x0, x1] of cols) {
     // A CARD STARTS AFTER A BLACK GAP, AT A PANEL (v9.676, 2026-10-18). MEASURED 17:12 on img_mvee4cwb50an (the Japanese card,
@@ -61237,7 +61247,7 @@ async function cutAllCards(env, url, copts) {
     }
   }
   for (const c of _perCol) for (const b of c.cards) boxes.push(b);
-  if (!boxes.length) return { ok: false, error: "no cards found (" + W + "x" + H + ")" };
+  if (!boxes.length) { _SHEET_AT = 0; return { ok: false, error: "no cards found (" + W + "x" + H + ")" }; }
   // Reading order: row by row, left to right.
   boxes.sort((a, b) => a.top - b.top);
   const rowsB = []; for (const b of boxes) { const r = rowsB.find((g) => Math.abs(g[0].top - b.top) < H * 0.05); if (r) r.push(b); else rowsB.push([b]); }
@@ -61337,7 +61347,7 @@ async function cutAllCards(env, url, copts) {
     await Promise.all(_puts);
     cards.push(card);
   }
-  px = null;
+  px = null; _SHEET_AT = 0;
   await Promise.all(_allPuts);
   const out = { ok: true, from: id, sheet: W + "x" + H, columns: cols.length, count: cards.length, cards };
   await env.AURA_KV.put(_ck, JSON.stringify(out)).catch(() => {});
@@ -62515,8 +62525,11 @@ const PIC_GATE_MAX = 2, PIC_GATE_WAIT_MS = 45000, PIC_SLOT_STALE_MS = 20000;
 // or retries it) can be torn down before it hands its slot back. Each slot now carries the time it was taken, and one held longer than
 // PIC_SLOT_STALE_MS (a copy takes 1-3s) is treated as abandoned and freed.
 const _PIC_SLOTS = new Map(); let _PIC_N = 0;
+// (v9.999.17) while a sheet is being cut (cutAllCards) the gate is full - held at most 60s, in case a cut stops without letting go
+let _SHEET_AT = 0;
 function _picBusy() { const now = Date.now(); let n = 0;
   for (const [k, t] of _PIC_SLOTS) { if (now - t > PIC_SLOT_STALE_MS) _PIC_SLOTS.delete(k); else n++; }
+  if (_SHEET_AT && now - _SHEET_AT < 60000) n += PIC_GATE_MAX;
   return n; }
 async function picGated(fn, keptKey, env) {
   // a copy that is already kept is a plain read - it never waits behind copies being made
@@ -67262,7 +67275,7 @@ function dropDrawClaim(text) {
   const t = String(text || "").trim(); if (!t) return t;
   // (v9.937, 2026-11-10 phone walk, Aaron: go) MEASURED: "Let me draw it on your arm." (cover-up) and "Let me draw that up." (a catalogue
   // pick) stood over Imagine it / Yes, show me with nothing drawing. "Let me / I'll draw it" says the same thing as "drawing it now".
-  const claim = /\b(?:(?:i'?m |i am )?(?:drawing|imagining|sketching|creating|putting|making|working on) (?:it|that|this|them|one|it up)?\s*(?:on you|on your arm|up)?\s*(?:now|right now)\b|(?:let me|i'?ll|i will|i'?m going to) (?:draw|sketch|paint) (?:it|that|this|them|one)(?: up| out| on you| on your [a-z]+| for you)?\s*[.!]|here it is|here you go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|coming (?:right )?up|on (?:its|the) way)/i;
+  const claim = /\b(?:(?:i'?m |i am )?(?:drawing|imagining|sketching|creating|putting|making|working on) (?:it|that|this|them|one|it up)?\s*(?:on you|on (?:your|the|their) [a-z]+|up)?\s*(?:now|right now)\b|(?:let me|i'?ll|i will|i'?m going to) (?:draw|sketch|paint) (?:it|that|this|them|one)(?: up| out| on you| on your [a-z]+| for you)?\s*[.!]|here it is|here you go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|coming (?:right )?up|on (?:its|the) way)/i;
   const kept = t.split(/(?<=[.!?])\s+/).filter((x) => !claim.test(x) && !/^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i.test(x));   // (v9.888) a done-word alone
   const out = kept.join(" ").trim();
   return out.length >= 12 ? out : t;
@@ -67996,6 +68009,9 @@ async function recordArtistFiles(env, d, drew) {
 
 // The cover-up style cards on the page, in its order (v9.671) - she is told these are on screen.
 const COVER_STYLE_CARDS = ["Japanese", "Black & Grey Realism", "Neo-Traditional", "American Traditional", "Chicano", "Blackwork", "Colour Realism", "Ornamental", "Polynesian Tribal", "Biomechanical", "Dense Botanical"];
+// (v9.999.17, 2026-11-13, Aaron: go) MEASURED (three-flow test, Cover Up): she said "Dense Botanical or Neo-Traditional would hide it" and the
+// row had no Dense Botanical - the page's cover-up row is made of its style cards, and that is not one. She is told the names on those cards.
+const COVER_ROW_NAMES = ["Japanese", "Black & Grey Realism", "Neo-Traditional", "American Traditional", "Chicano", "Blackwork", "Blackout", "Color Realism", "Ornamental", "Tribal", "Biomechanical"];
 async function auraTalk(env, me, stage, saidIn, history, opts) {
   return _TURN_ALS.run({ think: [], pics: [] }, () => _auraTalkInner(env, me, stage, saidIn, history, opts));
 }
@@ -69255,8 +69271,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           (_isCover && opts && opts.cover_style ? "\n\nTHEY CHOSE THE " + String(opts.cover_style).toUpperCase() + " STYLE for this cover-up - talk about covering it in that style.\n"
             // THE STYLE CARDS UNDER HER REPLY (v9.671, 2026-10-18, Aaron: "Aura will look at it and suggest styles"). Once their
             // photo is in, they see these cards under what she says; she knows they are there and which they are.
-            : _isCover ? "\n\nABOVE YOUR REPLY THEY SEE STYLE CARDS they can tap, each showing 8 designs in that style: " + COVER_STYLE_CARDS.join(", ") +
-              ". When you look at their tattoo, suggest the one or two of those that would cover it best, and why - and say they can pick a style above or just tell you their idea.\n" : "") +
+            : _isCover ? "\n\nABOVE YOUR REPLY THEY SEE STYLE CARDS they can tap to cover it in that style: " + COVER_ROW_NAMES.join(", ") +
+              ". When you look at their tattoo, suggest the one or two of those that would cover it best, and why, by those names only - and say they can pick a style above or just tell you their idea.\n" : "") +
           // MEASURED: asked to make a cover-up raven "light grey and delicate", she did it without
           // a word. That design cannot be tattooed over dark linework, and the person finds out in
           // the chair. She had the constraint in front of her, said it once, and dropped it the

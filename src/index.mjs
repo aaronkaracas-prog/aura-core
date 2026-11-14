@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.21-2026-11-13-drawing-it-right-now-is-a-claim";
+const BUILD = "aura-core-v9.999.22-2026-11-13-sheet-small-copies-at-the-cut";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -61171,6 +61171,22 @@ async function cutAllCards(env, url, copts) {
   try { im = PhotonImage.new_from_byteslice(_src); } catch (e) { _SHEET_AT = 0; throw e; }
   _src = null;
   const W = im.get_width(), H = im.get_height();
+  // ══ THE SHEET'S SMALL COPIES ARE MADE HERE, ONCE (v9.999.22, 2026-11-13, Aaron: go) ═══ MEASURED 18:49:29 and 18:51:26 (Add to Existing):
+  // "Worker exceeded memory limit" 8-10s after the job had returned, while the phone loaded the new cards - each time with the whole sheet's
+  // own small copy (?w=720) among them, made by loading the 2304x3456 sheet into memory a second time, a few seconds after this cut had loaded
+  // it. While the sheet is already loaded here, its 720 and 240 copies are made from it and kept under the keys the picture route reads
+  // (picSmallCopy), so the phone's ask is a plain read and the sheet is never loaded again for it.
+  try {
+    for (const _sw of [720, 240]) {
+      const _sk = "small:" + id + "_w" + _sw + ".jpg";
+      if (W <= _sw) continue;
+      if (await env.AURA_KV.get(_sk, { type: "arrayBuffer" }).catch(() => null)) continue;
+      const _sm = photonResize(im, _sw, Math.max(1, Math.round(H * _sw / W)), PhotonSampling.Lanczos3);
+      const _sb = _sm.get_bytes_jpeg(80); try { _sm.free(); } catch {}
+      await env.AURA_KV.put(_sk, _sb, { metadata: { ct: "image/jpeg", w: _sw, from: W + "x" + H, mark: 0, at_cut: 1 } }).catch(() => {});
+    }
+    console.log("[CUT] " + id + " - its 720 and 240 copies made from the sheet already loaded for the cut");
+  } catch (e) { try { console.log("[CUT] " + id + " - small copies not made at the cut: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
   let px = im.get_raw_pixels();
   try { im.free(); } catch {}
   const lum = (x, y) => { const o = (y * W + x) * 4; return (px[o] + px[o + 1] + px[o + 2]) / 3; };

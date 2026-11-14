@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.31-2026-11-14-the-picture-is-grabbed-when-they-open-it";
+const BUILD = "aura-core-v9.999.32-2026-11-14-see-it-on-you-is-create";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68826,8 +68826,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // Work on this on a T-rex parked it by the box with a fixed "tell me what you'd like to change"; she never looked at it, and "Harley Davidson"
       // (meant as a new search) drew 8 T-rexes with a Harley badge. Aaron: "she needs to read that and say all right, tell me what you wanna do with
       // it". Work on this now starts the new tattoo with that picture from Get Inspired (job4), the same road as Create > I have a picture.
-      if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && ["job0", "job4"].includes(String((opts && opts.page) || ""))) {
-        _newRoadPic = true; console.log("[TURN:PHOTO] a picture sent from the " + (String(opts.page) === "job4" ? "Get Inspired page (Work on this)" : "Create page") + " - a picture they like, not their skin" + (me ? " · who=" + me : ""));
+      // ══ SEE IT ON YOU IS CREATE (v9.999.32, 2026-11-14, Aaron: "see it on you is literally just create a tattoo ... there's no such thing as
+      // see it on you until you've locked in a tattoo") ═══ MEASURED 12:25-12:26 (pta_707fbdf8793f775d, See It On You > Minimalist > a golden
+      // retriever puppy, no words): job3 was left out of this rule, so the puppy was taken as their body (body_photo=true); her offer "want me
+      // to show you a few?" was not her say-back, and "Yes, show me" twice was "a bare yes is not a change - nothing drawn" -> "Want me to
+      // imagine it?", round and round. Until a tattoo is locked in, See It On You is the Create road. Their body photo comes later, through the
+      // placement screen (placed / onme_project) - never taken here.
+      const _onmeSend = !!(opts && (opts.placed || opts.onme_project));
+      if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && !_onmeSend && ["job0", "job3", "job4"].includes(String((opts && opts.page) || ""))) {
+        _newRoadPic = true; console.log("[TURN:PHOTO] a picture sent from the " + (String(opts.page) === "job4" ? "Get Inspired page (Work on this)" : String(opts.page) === "job3" ? "See It On You page (the Create road until it is locked in)" : "Create page") + " - a picture they like, not their skin" + (me ? " · who=" + me : ""));
         // ══ A PICTURE ON CREATE STARTS THE NEW TATTOO (v9.999.14, 2026-11-13, Aaron: go) ═══ MEASURED 14:12 (Create > I have a picture > a koi
         // sleeve > "i love the waves and the colors but i want a dragon instead of the koi"): the start never marked a new tattoo, so their idea
         // skipped her say-back and Imagine it - v9.999.13 then drew it from a separate summary that dropped "instead of the koi", and 8 koi came
@@ -68842,8 +68849,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           console.log("[TURN:PHOTO] a fresh Create start with their picture - the new tattoo starts here; their idea is said back before anything is drawn" + (me ? " · who=" + me : ""));
         }
       } else
-      if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && !(opts && opts.fresh) &&
-          !(opts && ["job1", "job2", "job3", "job6"].includes(String(opts.page || "")))) {
+      if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && !(opts && opts.fresh) && !_onmeSend &&
+          !(opts && ["job1", "job2", "job6"].includes(String(opts.page || "")))) {
         try { _newRoadPic = String(((await talkStateGet(env, me, ["new_flow"])) || {}).new_flow || "") === "1"; } catch {}
         if (_newRoadPic) console.log("[TURN:PHOTO] a picture added to a new tattoo - a picture they like, not their skin" + (me ? " · who=" + me : ""));
       }
@@ -69923,7 +69930,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         job0: "Create Your Own Tattoo - they came to design a brand-new tattoo. A photo from them here is something that inspires them.",
         job1: "Add to Existing - they came to add to a tattoo they already have. A photo from them here is that tattoo.",
         job2: "Cover Up - they came to cover up a tattoo they have. A photo from them here is the tattoo they want covered.",
-        job3: "See It On You - they came to design a tattoo and see it on their body. A photo of them here is where it goes.",
+        // (v9.999.32) the Create road until the tattoo is locked in - then it is seen on them, through the placement screen
+        job3: "See It On You - they came to create a new tattoo, the same as Create; once it is locked in, they will see it on their body. A picture from them while they design is one they like - something to make the tattoo from.",
         job6: "Ink It - they came to turn a photo of something (a person, a pet, a place, a moment) into a tattoo. A photo from them here is that photo.",
         job4: "Get Inspired - they are looking at real tattoos from around the world for ideas. A photo from them here is something that inspires them.",
         trend: "What's Trending - they are browsing trending tattoo ideas.",

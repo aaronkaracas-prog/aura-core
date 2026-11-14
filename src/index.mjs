@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.30-2026-11-14-a-liked-picture-is-never-rework";
+const BUILD = "aura-core-v9.999.31-2026-11-14-the-picture-is-grabbed-when-they-open-it";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -77201,35 +77201,75 @@ export class PublicEntry extends WorkerEntrypoint {
           const fv = Array.isArray(fl) ? fl.find((x) => x && x.url === url && x.kind === "inspiration") : null;
           if (fv) { listed = true; _tk = fv.world ? "world" : ""; } } catch {} }
         // (v9.907) her read before the eight is told whether it is a tattoo or a picture from the world.
-        if (listed && me) { try { await talkStatePut(env, me, "inspire_kind", _tk); } catch {} }
+        // ══ THE PICTURE IS TAKEN WHEN THEY OPEN IT (v9.999.31, 2026-11-14, Aaron: "when they click on it to see it bigger we can grab that one -
+        // that won't be too heavy") ═══ MEASURED 12:0x: a Get Inspired picture tapped, Work on this -> "I couldn't open that photo from its website",
+        // and core's log had nothing - two of the four ways this failed (not on the search's list; too big or too small) wrote no line, and a
+        // too-big picture never tried Brave's copy. Now the page asks for it as the Your Pick card opens (grab - nothing about the conversation
+        // changes), keeps it, and Work on this only marks it (mark_only - no second fetch). The order: the full picture; too big - shrunk by
+        // Cloudflare's image tool; refused, broken, too big for the tool or too small - Brave's copy, the one they were looking at. Every
+        // failure says why in the log.
+        const _grab = b.grab === true, _markOnly = b.mark_only === true;
+        const _why = (w) => { try { console.log("[INSPIRE] take failed (" + (_grab ? "grab as the card opened" : _markOnly ? "mark" : "take") + "): " + w + " · " + url.slice(0, 140) + (me ? " · who=" + me : "")); } catch {} };
+        // (v9.907) her read before the eight is told whether it is a tattoo or a picture from the world.
+        if (listed && me && !_grab) { try { await talkStatePut(env, me, "inspire_kind", _tk); } catch {} }
         // (v9.925) Make it my own no longer leaves a mark here - the page sends the picture with their words as inspiration (inspire_go +
         // inspire_own); a mark left by an earlier build is cleared so it can never touch a later turn.
-        if (listed && me) { try { await talkStatePut(env, me, "inspire_own", ""); } catch {} }
+        if (listed && me && !_grab) { try { await talkStatePut(env, me, "inspire_own", ""); } catch {} }
         // ══ AN http:// PICTURE GOES THROUGH BRAVE'S COPY (v9.999.3, 2026-11-13 click-around, Aaron: go) ═══ MEASURED 07:53: Make it my own on
         // an Anna's hummingbird (hummingbirdpictures.net, http://) - "I couldn't open that picture from its website": an http address was
         // refused before Brave's https copy of it was tried. 4 of that search's 97 were http. Only https is ever fetched: an http picture
         // from the search is taken from its https copy, and refused only when it has none.
         const _httpOnly = !/^https:\/\//i.test(url);
         const _viaThumb = _httpOnly && !!(_thumb && /^https:\/\//i.test(_thumb));
-        if (!listed || (_httpOnly && !_viaThumb)) return { ok: false, error: "NOT_FROM_THE_SEARCH" };
+        if (!listed) { _why("not on this search's list (lists last an hour) and not one of their saved pictures - q \"" + q.slice(0, 60) + "\""); return { ok: false, error: "NOT_FROM_THE_SEARCH" }; }
+        if (_httpOnly && !_viaThumb) { _why("an http picture with no https copy"); return { ok: false, error: "NOT_FROM_THE_SEARCH" }; }
+        if (_markOnly) return { ok: true };
         if (_viaThumb) console.log("[INSPIRE] an http picture - its https copy is taken: " + url.slice(0, 120));
+        const _hdr = { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" }, redirect: "follow" };
+        const _MAX = 6 * 1024 * 1024;
+        const _ok = (bytes, type, from) => {
+          let bin = ""; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+          console.log("[INSPIRE] took " + Math.round(bytes.length / 1024) + "KB (" + from + ")" + (_grab ? " as the card opened" : "") + " from " + url.slice(0, 120));
+          return { ok: true, photo: "data:" + type + ";base64," + btoa(bin) };
+        };
+        // a picture too big to send on: Cloudflare's image tool makes a 2048-wide copy outside the worker
+        const _shrink = async (body, why) => {
+          if (!env.IMAGES) { _why(why + " and no image tool"); return null; }
+          try {
+            const _o = await env.IMAGES.input(body).transform({ width: 2048, fit: "scale-down" }).output({ format: "image/jpeg", quality: 85 });
+            const _b = new Uint8Array(await _o.response().arrayBuffer());
+            if (_b.length >= 2000 && _b.length <= _MAX) return _b;
+            _why(why + " - the tool's copy was " + Math.round(_b.length / 1024) + "KB");
+          } catch (e) { _why(why + " - the image tool failed: " + String((e && e.message) || e).slice(0, 100)); }
+          return null;
+        };
+        // 1. the full picture (or the https copy of an http one)
         try {
-          const r = await fetch(_viaThumb ? _thumb : url, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" }, redirect: "follow" });
+          const r = await fetch(_viaThumb ? _thumb : url, _hdr);
           const type = String(r.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-          let rr = r, tt = type;
-          // (v9.754) a site that refuses its full-size picture to us - Brave's own copy of it instead.
-          if ((!rr.ok || !/^image\//.test(tt)) && _thumb) { rr = await fetch(_thumb, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" } });
-            tt = String(rr.headers.get("content-type") || "").split(";")[0].trim().toLowerCase(); console.log("[INSPIRE] full picture refused - Brave's copy used"); }
-          if (!rr.ok || !/^image\//.test(tt)) { console.log("[INSPIRE] take failed: http " + rr.status + " " + tt + " " + url.slice(0, 120)); return { ok: false, error: "COULD_NOT_OPEN" }; }
-          const buf = new Uint8Array(await rr.arrayBuffer());
-          if (buf.length > 6 * 1024 * 1024 || buf.length < 2000) return { ok: false, error: "COULD_NOT_OPEN" };
-          let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
-          console.log("[INSPIRE] took " + Math.round(buf.length / 1024) + "KB from " + url.slice(0, 120));
-          return { ok: true, photo: "data:" + tt + ";base64," + btoa(bin) };
-        } catch (e) {
-          console.log("[INSPIRE] take failed: " + String((e && e.message) || e).slice(0, 120));
-          return { ok: false, error: "COULD_NOT_OPEN" };
-        }
+          const len = Number(r.headers.get("content-length") || 0);
+          if (!r.ok || !/^image\//.test(type)) _why("the site answered http " + r.status + " " + (type || "no type"));
+          else if (len > _MAX) { const _s = await _shrink(r.body, "too big (" + Math.round(len / 1048576) + "MB)"); if (_s) return _ok(_s, "image/jpeg", "shrunk from " + Math.round(len / 1048576) + "MB"); }
+          else {
+            const buf = new Uint8Array(await r.arrayBuffer());
+            if (buf.length < 2000) _why("too small (" + buf.length + " bytes)");
+            else if (buf.length > _MAX) { const _s = await _shrink(new Blob([buf]).stream(), "too big (" + Math.round(buf.length / 1048576) + "MB)"); if (_s) return _ok(_s, "image/jpeg", "shrunk"); }
+            else return _ok(buf, type, _viaThumb ? "the https copy" : "the full picture");
+          }
+        } catch (e) { _why("could not reach the site: " + String((e && e.message) || e).slice(0, 100)); }
+        // 2. Brave's copy - the one they were looking at (v9.754)
+        if (_thumb && _thumb !== (_viaThumb ? _thumb : url) && /^https:\/\//i.test(_thumb)) {
+          try {
+            const rr = await fetch(_thumb, _hdr);
+            const tt = String(rr.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+            if (rr.ok && /^image\//.test(tt)) {
+              const bb = new Uint8Array(await rr.arrayBuffer());
+              if (bb.length >= 2000 && bb.length <= _MAX) { console.log("[INSPIRE] full picture not usable - Brave's copy used"); return _ok(bb, tt, "Brave's copy"); }
+              _why("Brave's copy is " + bb.length + " bytes");
+            } else _why("Brave's copy answered http " + rr.status + " " + (tt || "no type"));
+          } catch (e) { _why("could not reach Brave's copy: " + String((e && e.message) || e).slice(0, 100)); }
+        } else _why("no Brave copy to fall back on");
+        return { ok: false, error: "COULD_NOT_OPEN" };
       }
       if (action === "speak") {
         const text = String(b.text || "").replace(/[*_#`>]/g, "").replace(/\s+/g, " ").trim().slice(0, 1500);

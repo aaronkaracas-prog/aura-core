@@ -1,0 +1,371 @@
+name = "aura-core-v2"
+main = "src/index.mjs"
+# ══ THE RUNTIME PIN, EIGHTEEN MONTHS BEHIND (2026-07-26) ═══════════════════════════════════════
+# compatibility_date is NOT a project date - it pins which version of the Cloudflare Workers runtime
+# this code runs against. It sat at 2025-01-01 while the date was 2026-07-26, so eighteen months of
+# runtime fixes and corrected defaults were being declined. Cloudflare gates behaviour changes behind
+# this date precisely so a bump is deliberate, which also means never bumping is a decision nobody
+# made on purpose.
+# nodejs_compat v2 semantics activated at 2024-09-23, so that transition is already behind us and is
+# not what this bump changes. What it DOES change cannot be fully enumerated from here - which is why
+# this goes to the staging twin first. The twin exists for exactly this and has not been used once.
+compatibility_date = "2026-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ── PRODUCTION (top level = the live worker, deployed with `wrangler deploy`) ──
+
+[[kv_namespaces]]
+binding = "AURA_KV"
+id = "9c2ba111589e48c6ba5ad1b924ae8809"
+
+[[d1_databases]]
+binding = "AURA_MEMORY"
+database_name = "aura-memory"
+database_id = "5c0a0120-1a34-486a-99df-e73e4d564f7d"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "aura-vectors"
+
+[ai]
+binding = "AI"
+
+[triggers]
+# ══ EVERY MINUTE WAS COSTING MORE THAN THE CATALOGUE ═════════════════════════════════════════
+# MEASURED on the Cloudflare bill, 23 days: 670,500 neurons of image work cost $3.97, and the
+# IDLE system cost nearly as much again - $2.06 of Dynamic Workers and $1.00 of KV reads across
+# 11.2 MILLION reads. `wrangler tail` on an untouched system showed four things firing every
+# minute: this cron, two PublicEntry.ping calls two seconds after it, and a Durable Object alarm.
+# Nothing errored. Nothing was queued - AIMARGIN reports schedule:due_queue and workflow:due_queue
+# both at 0. It was draining empty queues 43,200 times a month.
+#
+# FREQUENCY, NOT EXISTENCE. drainSchedule SENDS EMAIL and drainWorkflows RUNS COMMANDS - the
+# machinery is what makes anything scheduled happen at all, so removing the trigger would mean a
+# future scheduled item silently never fires. Fifteen minutes keeps every capability and removes
+# 93% of the invocations. One line back if minute precision is ever needed.
+crons = ["*/15 * * * *"]
+
+[[services]]
+binding = "AURA_OPS"
+service = "aura-ops"
+
+[[services]]
+binding = "AURA_HOST"
+service = "aura-host"
+
+[[services]]
+binding = "AURA_COMMS"
+service = "aura-comms"
+
+# ADDED 2026-07-21. aura-core's /chat proxies conversational turns to the Think agent so there is ONE
+# brain and one conversation memory instead of two Auras. Without this binding the proxy had to reach
+# aura-think by its public workers.dev URL, and Cloudflare refused it with error 1042 - a Worker calling
+# another Worker on the same account over the public internet. A service binding keeps the call inside
+# Cloudflare: internal, faster, and free. aura-think already had the reverse binding (env.AURA_CORE);
+# this completes the pair.
+[[services]]
+binding = "AURA_THINK"
+service = "aura-think"
+
+
+# ══ TWO LIVE WORKERS NOTHING WAS CONNECTED TO (2026-08-02) ══════════════════════════════════════
+# aura-media and aura-stream both answer HTTP 200 on their workers.dev URLs - they are deployed and
+# running right now. They were named in KNOWN_WORKERS and NOWHERE ELSE: no service binding, no entry
+# in readOwnSource's repo map, and VERIFY's worker probe hardcoded four bindings so it could never
+# test them. VERIFY reported "claimed in source but never answered", which was literally true and read
+# like they might not exist. They do - two limbs the rest of the system had no way to reach.
+# Declared only AFTER both were confirmed live: a binding to a service that does not exist fails the
+# ENTIRE deploy, which is how source and running diverged for ten minutes on 2026-07-26.
+[[services]]
+binding = "AURA_MEDIA"
+service = "aura-media"
+
+[[services]]
+binding = "AURA_STREAM"
+service = "aura-stream"
+
+# ── ONE SHOP, ONE INVOCATION (2026-09-20) ─────────────────────────────────────────────────────────
+# aura-core calling itself, at the CrawlLane entrypoint. A crawl batch ran ten shops inside ONE
+# invocation, so they shared one CPU budget: one heavy site used it up and all ten were killed, the
+# innocent nine with it. Through this binding every shop runs as its own invocation with its own
+# budget - Cloudflare's own answer to "exceeded CPU time limit" is to split work across invocations.
+# A named entrypoint is not reachable from the internet; only a binding like this one can call it.
+[[services]]
+binding = "CRAWL_LANE"
+service = "aura-core-v2"
+entrypoint = "CrawlLane"
+
+[[durable_objects.bindings]]
+name = "ENTITY_DO"
+class_name = "EntityDO"
+
+[[durable_objects.bindings]]
+name = "AIS_COLLECTOR"
+class_name = "AisCollectorDO"
+
+# ADDED 2026-07-24. The meter's single authoritative writer, one instance per day.
+# The egress ledger lived in a KV key written on every provider call - and Cloudflare's own docs are
+# explicit that a KV key can be written at most once per second, with anything beyond that erroring
+# out. A council round makes 16 provider calls in one turn, so the meter was silently dropping rows
+# under exactly the load where the numbers matter.
+# Their guidance names this case: "Use Durable Objects when you need a single authoritative point of
+# consistency per key, for example a chat room, a stock counter or an exact rate limiter." A meter is
+# a stock counter. One DO per DAY rather than one for everything, per their rule against putting all
+# data in a single object - a day's writes serialise in one place, and days never contend.
+[[durable_objects.bindings]]
+name = "LEDGER_DO"
+class_name = "LedgerDO"
+
+[[durable_objects.bindings]]
+name = "PTA_DO"
+class_name = "PtaDurableObject"
+
+[[migrations]]
+tag = "v1-entitydo"
+new_sqlite_classes = ["EntityDO"]
+
+[[migrations]]
+tag = "v2-ais-collector"
+new_classes = ["AisCollectorDO"]
+
+# SQLite-backed, not the legacy KV backend - the ledger aggregates with SUM() and GROUP BY, which is
+# the whole reason it stops being O(rows) to read a day.
+[[migrations]]
+tag = "v3-ledger-do"
+new_sqlite_classes = ["LedgerDO"]
+
+[[migrations]]
+tag = "v4-pta-do"
+new_classes = ["PtaDurableObject"]
+
+# ══ THE KNOWLEDGE BUCKET (2026-07-26) ═══════════════════════════════════════════════════════════
+# Where distilled facts land on their way into AI Search. The instance `aura-feeds` in namespace
+# `aura` indexes this bucket under the `feeds/` prefix, so ONE bucket serves every future tracker -
+# --prefix scopes an instance to a key prefix, which is why twenty-five trackers do not need
+# twenty-five buckets.
+# The bucket was created and CONFIRMED present before this binding was written. A binding to a
+# resource that does not exist fails the entire deploy - that is not theory, it split source from
+# running for ten minutes today when SS_STRIPE was declared before its secret existed.
+# NOT bound on the staging twin, deliberately: staging has isolated KV/D1/Vectorize, and pointing it
+# at the live knowledge bucket would write test facts into real memory. Code must therefore treat a
+# missing binding as normal and skip, the same way _egressDO does with LEDGER_DO.
+[[r2_buckets]]
+binding = "AURA_KNOWLEDGE"
+bucket_name = "aura-knowledge"
+
+# RAW, DELIBERATELY IN ITS OWN BUCKET (2026-07-26). The AI Search instance `aura-feeds` points at
+# aura-knowledge. It points at NOTHING here - which is the entire mechanism. Raw payloads were first
+# written to a raw/ prefix inside the indexed bucket, trusting the instance's prefix setting to keep
+# them out; a measured sync indexed them anyway and they outranked the distilled facts in retrieval.
+# Separation by construction beats separation by configuration: there is no flag here to misread.
+[[r2_buckets]]
+binding = "AURA_KNOWLEDGE_RAW"
+bucket_name = "aura-knowledge-raw"
+
+# ══ AI SEARCH, NAMESPACE-LEVEL (2026-07-26) ═══════════════════════════════════════════════════
+# Binds the `aura` namespace, so env.AI_SEARCH reaches every instance in it and can create more at
+# RUNTIME - which is what makes one-instance-per-tracker a configuration change rather than a deploy.
+# This binding replaces the older env.AI.autorag() route.
+# Adding it changes no behaviour on its own; nothing calls it until the probe below is proven.
+[[ai_search_namespaces]]
+binding = "AI_SEARCH"
+namespace = "aura"
+
+# ══ EMAIL SENDING, NOT EMAIL ROUTING (2026-08-12) ═══════════════════════════════════════════════
+# `[[send_email]] name = "SEND_EMAIL"` is the OLD Email Routing binding. It only replies to inbound
+# mail and only to addresses already verified as destinations on the account - it cannot originate a
+# message to a stranger's Gmail, which is what a signup confirmation is.
+# MEASURED: sendEmail fell through to the REST API and returned "http 401 Authentication error" four
+# times, and I read that as a token problem three of them. The token was never the issue; the code
+# was calling a send API this binding does not provide.
+# Cloudflare's Email Service binding is a different shape and needs `remote = true`. Their words on
+# why it is worth having: "send transactional emails directly from Workers with a native Workers
+# binding - no API keys, no secrets management." No permission to add, nothing to rotate, ever.
+[[send_email]]
+name = "SEND_EMAIL"
+remote = true
+
+# ══ TIER-0 CREDENTIALS OUT OF PLAINTEXT (2026-07-26) ════════════════════════════════════════════
+# 49 credentials live in KV as plaintext - the bank, the token that controls every domain and DNS
+# record, the registrar, GitHub, Stripe, and the operator token itself. GETKV masks them and SETKV
+# now guards them, but both are mitigation sitting ON TOP of plaintext. Secrets Store removes the
+# plaintext: the value cannot be read back after creation, only the Worker runtime decrypts it at
+# execution, and there is no write path from this Worker at all - so GETKV cannot return it, LISTKV
+# cannot find it, and SETKV cannot destroy it, because it stops being a KV key.
+#
+# The store is `default_secrets_store` and it has existed since 2026-01-08. Beta allows exactly one
+# store per account, which is why `wrangler secrets-store store create` fails with
+# maximum_stores_exceeded - there was never a second one to make.
+#
+# STRIPE FIRST, deliberately: real tier-0, has a live check so the move is verifiable, and the
+# smallest blast radius today because no revenue flows yet. Cloudflare and Mercury follow once this
+# exact path is proven end to end.
+#
+# NOT bound on the staging twin. Staging has its own isolated KV, so it keeps the KV fallback and a
+# self-edit tested there never touches the production payment credential.
+# PARKED 2026-07-26. This binding is correct but cannot be declared until the secret exists - a
+# Worker referencing a missing Secrets Store secret fails the ENTIRE deploy with code 10182, which
+# is how source and running diverged for ten minutes today. `wrangler secrets-store secret create`
+# is an open-beta command and its interactive prompt returned "Need to pass in a value" after
+# accepting input on Windows, so `stripe` was never created in the store.
+# The code side (SECRET_BINDING.stripe = "SS_STRIPE") is already live and completely inert without
+# this block: getSecret falls through to KV when the binding is absent. Uncomment ONLY after
+# `wrangler secrets-store secret list <store-id> --remote` actually shows `stripe`.
+# [[secrets_store_secrets]]
+# binding = "SS_STRIPE"
+# store_id = "8aaeeb2dddae4cce9659c7c21c8d738d"
+# secret_name = "stripe"
+
+[browser]
+binding = "BROWSER"
+
+# ══ CLOUDFLARE'S IMAGE TOOL (2026-11-13, Aaron: go) ═══ Resizing, cropping and overlays done by Cloudflare, outside this worker's
+# memory. MEASURED all of 2026-11-13: "Worker exceeded memory limit" after add-on sheets, while the phone's picture copies were made here
+# by loading each full-size card into the worker. The copies now ask this for the small version first (core v9.999.23).
+[images]
+binding = "IMAGES"
+
+# ══ THE CRAWL THAT OUTLIVES THE REQUEST (2026-08-10) ═══════════════════════════════════════════
+# GridCrawlWorkflow tiles a region, calls Google Places per tile, paginates to the 60-result ceiling,
+# subdivides any tile that saturates, and mints a PTA lead per business. No agent and no model touch
+# it - PTA_CRAWL reports brain_used: false and costs Google requests only.
+#
+# WHY A WORKFLOW AND NOT A LOOP. Google issues next_page_token a few seconds before it is usable.
+# Inside a Worker request that wait burns wall time and the request dies, which is why four builds of
+# workarounds appeared - cells-per-run caps, giving up after 15 seconds, finer tiles. Cloudflare's
+# own words: "unlike a delay in a regular Worker (which counts against wall time and keeps resources
+# allocated), a sleeping workflow consumes nothing." step.sleep hibernates. The wait stops being a
+# design problem and becomes a line of code.
+# And step.do persists per tile: a completed tile never re-runs, and a redeploy resumes at the last
+# good one instead of re-crawling the city.
+#
+# NO MIGRATION ENTRY. Workflows are not Durable Object classes - they need no [[migrations]] tag,
+# unlike EntityDO and the rest above.
+[[workflows]]
+name = "GRID_CRAWL_WORKFLOW"
+binding = "GRID_CRAWL_WORKFLOW"
+class_name = "GridCrawlWorkflow"
+
+# ── STAGING TWIN (deployed with `wrangler deploy --env staging`) ──
+# The standard Cloudflare way: one config, an [env.staging] section that overrides ONLY what differs.
+# Isolated data (its own KV/D1/Vectorize), no cron, no email. Everything else inherits.
+
+[env.staging]
+name = "aura-core-staging"
+
+[env.staging.vars]
+WORKER_ENV = "staging"
+
+[[env.staging.kv_namespaces]]
+binding = "AURA_KV"
+id = "3f137b80965f45a48df36d90a6e89d2b"
+
+[[env.staging.d1_databases]]
+binding = "AURA_MEMORY"
+database_name = "aura-memory-staging"
+database_id = "dcffa0f0-5aa2-4dab-992b-96ce2b16984b"
+
+[[env.staging.vectorize]]
+binding = "VECTORIZE"
+index_name = "aura-vectors-staging"
+
+[env.staging.ai]
+binding = "AI"
+
+[[env.staging.services]]
+binding = "AURA_OPS"
+service = "aura-ops"
+
+[[env.staging.services]]
+binding = "AURA_HOST"
+service = "aura-host"
+
+[[env.staging.services]]
+binding = "AURA_COMMS"
+service = "aura-comms"
+
+# Staging gets the same binding so a self-edit tested on the twin exercises the real proxy path rather
+# than silently falling back to the local brain - otherwise the twin would prove something the live
+# worker does not do.
+[[env.staging.services]]
+binding = "AURA_THINK"
+service = "aura-think"
+
+
+# The twin gets these for the same reason it gets AURA_THINK: a self-edit tested on staging must
+# exercise the real binding path, not silently skip a worker the live one can reach.
+[[env.staging.services]]
+binding = "AURA_MEDIA"
+service = "aura-media"
+
+[[env.staging.services]]
+binding = "AURA_STREAM"
+service = "aura-stream"
+
+[[env.staging.durable_objects.bindings]]
+name = "ENTITY_DO"
+class_name = "EntityDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "AIS_COLLECTOR"
+class_name = "AisCollectorDO"
+
+# The twin gets the ledger too, so a meter change can be proven on staging before it touches the
+# live count. Same class, its own isolated instances.
+[[env.staging.durable_objects.bindings]]
+name = "LEDGER_DO"
+class_name = "LedgerDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "PTA_DO"
+class_name = "PtaDurableObject"
+
+[env.staging.browser]
+binding = "BROWSER"
+
+# The twin gets it for the same reason it gets AURA_THINK and the ledger: a crawl change proven on
+# staging must exercise the real workflow path. Staging has isolated KV and D1, so its ledger and its
+# minted entities stay separate from the live ones.
+[[env.staging.workflows]]
+name = "GRID_CRAWL_WORKFLOW"
+binding = "GRID_CRAWL_WORKFLOW"
+class_name = "GridCrawlWorkflow"
+
+# ══ NATIVE OBSERVABILITY ── THE PLATFORM ALREADY MEASURES THIS (2026-08-03) ═════════════════════
+# Cloudflare ships per-Worker request counts, error rates, CPU time, wall time and duration, viewable
+# per Worker or aggregated across all of them, with automatic instrumentation of binding operations
+# (KV, R2, Durable Objects) and handler invocations - no code changes required. It was never enabled.
+# Meanwhile runHealthChecks was fetching each worker to guess whether it was alive, and got it wrong
+# about three of them for as long as it has existed. Hand-rolling a worse version of a platform
+# primitive is the thing this project keeps catching itself doing.
+# head_sampling_rate 1 on logs because this is a low-traffic system and losing a log to sampling
+# costs more here than the storage does. Traces at 10% - enough to see shape, not enough to pay for.
+[observability]
+enabled = true
+
+[observability.logs]
+head_sampling_rate = 1
+
+# SAMPLING RAISED 0.1 -> 1 (2026-08-14). The note above says "traces at 10% - enough to see shape,
+# not enough to pay for." That was written before tracing was free in beta and before a day spent
+# hand-building an instrument to answer a question a trace already answers.
+# The argument the logs line makes applies here with more force: the traces worth having are the
+# RARE ones. A 45-second cold ONBOARD_CHAT, a 1101, a turn that answered wrong - at 10% we keep one
+# in ten of exactly the events we are looking for, and the nine we drop are indistinguishable from
+# never having happened. Shape is not what this is for; incidents are.
+# Free tier is 200,000 events/day and this worker is nowhere near it. CHECK THE REAL NUMBER after a
+# day - every span counts, including Worker-level spans, and the 1-minute cron produces spans with
+# nobody asking. Lower it again if the count says so, not because a default said 0.1.
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+
+# ── COMPUTING TIME PER INVOCATION (2026-09-20) ────────────────────────────────────────────────────
+# Five minutes, the most Cloudflare allows on this plan. The default is 30 seconds, and a crawl
+# batch runs ten shops inside one invocation: on 2026-09-19 two heavy shop sites used it all up and
+# Cloudflare killed the ten shops beside them each time, until the whole California batch stopped.
+[limits]
+cpu_ms = 300000
+# A workflow run may make 10,000 outside calls by default (fetch, KV, D1, R2). A 500-shop batch makes
+# far more than that, so the ceiling is raised; the documented maximum is ten million.
+subrequests = 1000000

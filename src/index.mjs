@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.24-2026-11-14-picture-store-connected";
+const BUILD = "aura-core-v9.999.25-2026-11-14-image-tool-cuts-the-sheet";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -61146,50 +61146,9 @@ function _innerFrame(lum, x0, x1, top, bot) {
 // panel is found by its two light side edges, and the card ends at the last line of its own words before the next card. So
 // 4, 6 or 8 cards come off the same way, each whole - its picture and its title strip. A test first (`CUT_ALL <sheet>`);
 // nothing calls it yet. Kept under `cutall1:<sheet>` so a second ask is instant.
-async function cutAllCards(env, url, copts) {
-  const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
-  if (!id) return { ok: false, error: "need a picture" };
-  // THE ARTWORK WITHOUT ITS WORDS (v9.708): a card whose title is drawn under it also comes off as its panel alone - what a pick
-  // works from, so the words never travel into a change or the artist files. Kept under its own key.
-  const _art = !!(copts && copts.art);
-  // (v9.849) cutall5: the art cut also keeps the card's words box on its own (words_url) - older cuts are cut again once
-  const _ck = (_art ? "cutall5:" : "cutall3:") + id;
-  const was = await env.AURA_KV.get(_ck).catch(() => null);
-  if (was) { try { return JSON.parse(was); } catch {} }
-  // ══ THE SHEET AS BYTES, AND NO COPIES BESIDE IT (v9.999.17, 2026-11-13, Aaron: go) ═══ MEASURED 16:47:50 and 16:49:43 (Add to Existing,
-  // three-flow test): "Worker exceeded memory limit" after each add-on sheet of 4 - the same kill v9.900 and v9.813 cut down. The sheet was
-  // read as base64 text (about 11 MB of text, then its bytes beside it) though the same picture is kept as bytes in R2; and the phone's
-  // nine card copies could be made while the sheet's pixels (~32 MB) were held. R2's bytes are read first (the text only when R2 has none),
-  // and while the sheet is in memory the picture gate counts as full, so copies wait their turn.
-  _SHEET_AT = Date.now();
-  let _src = null;
-  try {
-    if (env.AURA_IMAGES) { const _o = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null); if (_o) _src = new Uint8Array(await _o.arrayBuffer()); }
-    if (!_src) { let b64 = await env.AURA_KV.get("image:" + id).catch(() => null); if (b64) _src = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); b64 = null; }
-  } catch { _src = null; }
-  if (!_src) { _SHEET_AT = 0; return { ok: false, error: "picture not found: " + id }; }
-  let im;
-  try { im = PhotonImage.new_from_byteslice(_src); } catch (e) { _SHEET_AT = 0; throw e; }
-  _src = null;
-  const W = im.get_width(), H = im.get_height();
-  // ══ THE SHEET'S SMALL COPIES ARE MADE HERE, ONCE (v9.999.22, 2026-11-13, Aaron: go) ═══ MEASURED 18:49:29 and 18:51:26 (Add to Existing):
-  // "Worker exceeded memory limit" 8-10s after the job had returned, while the phone loaded the new cards - each time with the whole sheet's
-  // own small copy (?w=720) among them, made by loading the 2304x3456 sheet into memory a second time, a few seconds after this cut had loaded
-  // it. While the sheet is already loaded here, its 720 and 240 copies are made from it and kept under the keys the picture route reads
-  // (picSmallCopy), so the phone's ask is a plain read and the sheet is never loaded again for it.
-  try {
-    for (const _sw of [720, 240]) {
-      const _sk = "small:" + id + "_w" + _sw + ".jpg";
-      if (W <= _sw) continue;
-      if (await env.AURA_KV.get(_sk, { type: "arrayBuffer" }).catch(() => null)) continue;
-      const _sm = photonResize(im, _sw, Math.max(1, Math.round(H * _sw / W)), PhotonSampling.Lanczos3);
-      const _sb = _sm.get_bytes_jpeg(80); try { _sm.free(); } catch {}
-      await env.AURA_KV.put(_sk, _sb, { metadata: { ct: "image/jpeg", w: _sw, from: W + "x" + H, mark: 0, at_cut: 1 } }).catch(() => {});
-    }
-    console.log("[CUT] " + id + " - its 720 and 240 copies made from the sheet already loaded for the cut");
-  } catch (e) { try { console.log("[CUT] " + id + " - small copies not made at the cut: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
-  let px = im.get_raw_pixels();
-  try { im.free(); } catch {}
+// ══ WHERE THE CARDS ARE (v9.999.25, 2026-11-14) ═══ The finding part of cutAllCards, word for word, as its own function, so the same rules find
+// the cards on the whole sheet (the old cut) and on a half-size copy (the cut made by Cloudflare's image tool). px is RGBA, W x H.
+function _findCardBoxes(px, W, H, id) {
   const lum = (x, y) => { const o = (y * W + x) * 4; return (px[o] + px[o + 1] + px[o + 2]) / 3; };
   const runs = (flags, minLen, maxGap) => {
     const out = []; let s0 = -1, last = -1;
@@ -61207,7 +61166,7 @@ async function cutAllCards(env, url, copts) {
   const sepCol = new Array(W).fill(false);
   for (let x = 0; x < W; x++) { let t = 0, b = 0; for (let y = 0; y < H; y += 2) { t++; if (lum(x, y) < 40) b++; } sepCol[x] = b / t > 0.97; }
   const cols = runs(sepCol.map((v) => !v), Math.round(W * 0.15), 2);
-  if (!cols.length) { _SHEET_AT = 0; return { ok: false, error: "no columns of cards found (" + W + "x" + H + ")" }; }
+  if (!cols.length) return { error: "no columns of cards found (" + W + "x" + H + ")" };
   const boxes = [], _perCol = [];
   for (const [x0, x1] of cols) {
     // A CARD STARTS AFTER A BLACK GAP, AT A PANEL (v9.676, 2026-10-18). MEASURED 17:12 on img_mvee4cwb50an (the Japanese card,
@@ -61264,36 +61223,228 @@ async function cutAllCards(env, url, copts) {
     }
   }
   for (const c of _perCol) for (const b of c.cards) boxes.push(b);
-  if (!boxes.length) { _SHEET_AT = 0; return { ok: false, error: "no cards found (" + W + "x" + H + ")" }; }
+  if (!boxes.length) return { error: "no cards found (" + W + "x" + H + ")" };
   // Reading order: row by row, left to right.
   boxes.sort((a, b) => a.top - b.top);
   const rowsB = []; for (const b of boxes) { const r = rowsB.find((g) => Math.abs(g[0].top - b.top) < H * 0.05); if (r) r.push(b); else rowsB.push([b]); }
   const ordered = rowsB.flatMap((g) => g.sort((a, b) => a.x0 - b.x0));
+  return { cols, ordered };
+}
+// WHITE CORNERS ON A WHITE CARD (v9.733) - see cutAllCards for the story; shared by both cuts since v9.999.25
+function _whiteCorners(buf, w, h) {
+  const L = (x, y) => { const o = (y * w + x) * 4; return (buf[o] + buf[o + 1] + buf[o + 2]) / 3; };
+  if (w < 40 || h < 40 || L(w >> 1, 2) < 200 || L(2, h >> 1) < 200 || L(w - 3, h >> 1) < 200) return;
+  const r = Math.max(8, Math.round(Math.min(w, h) * 0.08));
+  for (const [cx, cy, dx, dy] of [[0, 0, 1, 1], [w - 1, 0, -1, 1], [0, h - 1, 1, -1], [w - 1, h - 1, -1, -1]]) {
+    if (L(cx, cy) >= 60) continue;
+    // ONLY A CORNER OF THE WHITE PANEL (v9.740, 2026-10-24, Aaron: "a little white corner" under the words). MEASURED on the
+    // Thunderbird sheet (img_mvlrdmdicprn): a card cut with its title strip has a BLACK bottom edge, and the bottom two corners
+    // were turned into white squares inside the strip. A corner is whitened only when both edges beside it are the white
+    // panel - a step of r along each edge lands on white. In a title strip that step lands on black, and it is left alone.
+    if (L(cx + dx * Math.min(r, w - 1), cy) < 200 || L(cx, cy + dy * Math.min(r, h - 1)) < 200) continue;
+    const seen = new Uint8Array(r * r), st = [[0, 0]];
+    while (st.length) {
+      const [i, j] = st.pop(); if (i < 0 || j < 0 || i >= r || j >= r || seen[j * r + i]) continue;
+      seen[j * r + i] = 1; const x = cx + dx * i, y = cy + dy * j;
+      if (L(x, y) >= 60) continue;
+      const o = (y * w + x) * 4; buf[o] = 255; buf[o + 1] = 255; buf[o + 2] = 255;
+      st.push([i + 1, j], [i, j + 1], [i - 1, j], [i, j - 1]);
+    }
+  }
+}
+// ══ THE CUT MADE BY CLOUDFLARE'S IMAGE TOOL (v9.999.25, 2026-11-14, Aaron: go) ═══════════════════════════════════════════════════════════
+// MEASURED 2026-11-14 05:43-05:47 and 06:02-06:06 (one add-on sheet + three changes, before and after the picture store was connected):
+// "Worker exceeded memory limit" after 3 of 3 changes, ~15s after everything had finished. What stayed in the worker was the image library's
+// memory from the cut: the whole 2304x3456 sheet as ~32 MB of pixels, which it never gives back. Here the whole sheet is never loaded:
+//   1. the image tool makes a half-size copy; the same rules as always (_findCardBoxes) find the cards on it - measured on three real sheets,
+//      the black between cards is 27-161 px, 13+ at half size, so nothing is lost by looking at half size;
+//   2. the image tool cuts each card out of the full sheet with a few pixels to spare (trim);
+//   3. only that card is loaded here, its edges are found at full size by the same black-row / black-column rules, and its corners, its
+//      artwork and its words box are made exactly as before.
+// Anything that does not come out right (no tool, a card that will not come off, a different count) goes back to the old cut, whole.
+async function cutAllCardsByTool(env, id, _art, _ck) {
+  if (!env.IMAGES) return null;
+  const _t0 = Date.now();
+  // the sheet, as a stream each time it is needed - the file from the picture store, else its bytes from KV held once
+  let _kvBytes = null;
+  const sheetStream = async () => {
+    if (env.AURA_IMAGES) { const o = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null); if (o) return o.body; }
+    if (!_kvBytes) { let b64 = await env.AURA_KV.get("image:" + id).catch(() => null); if (!b64) return null; _kvBytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); b64 = null; }
+    return new Blob([_kvBytes]).stream();
+  };
+  const toBytes = async (r) => new Uint8Array(await r.response().arrayBuffer());
+  let _st = await sheetStream(); if (!_st) return null;
+  const info = await env.IMAGES.info(_st);
+  const W = info && info.width, H = info && info.height;
+  if (!W || !H) return null;
+  // the sheet's own small copies - the phone asks for these (v9.999.22), made by the tool now
+  for (const _sw of [720, 240]) {
+    try {
+      const _sk = "small:" + id + "_w" + _sw + ".jpg";
+      if (W <= _sw || await env.AURA_KV.get(_sk, { type: "arrayBuffer" }).catch(() => null)) continue;
+      const _sb = await toBytes(await env.IMAGES.input(await sheetStream()).transform({ width: _sw }).output({ format: "image/jpeg", quality: 80 }));
+      await env.AURA_KV.put(_sk, _sb, { metadata: { ct: "image/jpeg", w: _sw, from: W + "x" + H, mark: 0, at_cut: 2 } }).catch(() => {});
+    } catch {}
+  }
+  // 1. half size, the same rules
+  const hw = Math.round(W / 2);
+  const hb = await toBytes(await env.IMAGES.input(await sheetStream()).transform({ width: hw }).output({ format: "image/png" }));
+  const him = PhotonImage.new_from_byteslice(hb); const HW = him.get_width(), HH = him.get_height();
+  let hpx = him.get_raw_pixels(); try { him.free(); } catch {}
+  const fb = _findCardBoxes(hpx, HW, HH, id); hpx = null;
+  if (fb.error) { console.log("[CUT] " + id + " - image tool: " + fb.error + " on the half-size copy - the old cut instead"); return null; }
+  const sx = W / HW, sy = H / HH, M = 8, BAND = 64;
+  // THE COLUMN EDGES AT FULL SIZE. Measured on 22 real sheets (148 cards): at half size a near-black margin reads less black, and two add-on
+  // sheets put a column edge up to 57 px off. Each edge is found again at full size the old way - a column is sheet black when 97%+ of its
+  // rows (every other one) are black from top to bottom - in a strip 128 px wide and the whole sheet tall, cut by the tool. With this the
+  // 148 cards and their artwork came out exactly as the old cut made them, on every edge.
+  const _runs = (flags, maxGap) => { const out = []; let s0 = -1, last = -1;
+    for (let i = 0; i < flags.length; i++) { if (flags[i]) { if (s0 < 0) s0 = i; else if (i - last > maxGap) { out.push([s0, last + 1]); s0 = i; } last = i; } }
+    if (s0 >= 0) out.push([s0, last + 1]); return out; };
+  const colEdge = async (xe, left) => {
+    const a = Math.max(0, xe - BAND), z = Math.min(W, xe + BAND);
+    const bb = await toBytes(await env.IMAGES.input(await sheetStream()).transform({ trim: { top: 0, bottom: 0, left: a, right: W - z } }).output({ format: "image/png" }));
+    const bim = PhotonImage.new_from_byteslice(bb); const bw = bim.get_width(), bh = bim.get_height();
+    let bpx = bim.get_raw_pixels(); try { bim.free(); } catch {}
+    if (bw !== z - a || bh !== H) { bpx = null; throw new Error("strip came back " + bw + "x" + bh + ", asked " + (z - a) + "x" + H); }
+    const fl = [];
+    for (let x = 0; x < bw; x++) { let t = 0, d = 0; for (let y = 0; y < bh; y += 2) { t++; const o = (y * bw + x) * 4; if ((bpx[o] + bpx[o + 1] + bpx[o + 2]) / 3 < 40) d++; } fl.push(!(d / t > 0.97)); }
+    bpx = null;
+    const rr = _runs(fl, 2); if (!rr.length) return xe;
+    if (left) { const r = rr.find((q) => q[1] === fl.length) || rr[rr.length - 1]; return a + r[0]; }
+    const r = rr.find((q) => q[0] === 0) || rr[0]; return a + r[1];
+  };
+  const exact = [];
+  for (const [cx0, cx1] of fb.cols) exact.push([await colEdge(Math.round(cx0 * sx), true), await colEdge(Math.round(cx1 * sx), false)]);
+  const host = await imageHost(env), cards = [];
+  for (let k = 0; k < fb.ordered.length; k++) {
+    const b = fb.ordered[k];
+    const ci = fb.cols.findIndex((c) => c[0] === b.x0); if (ci < 0) return null;
+    // 2. this card cut from the full sheet by the tool: its column's exact edges, and M pixels to spare above and below
+    const L = exact[ci][0], R = exact[ci][1];
+    const T = Math.max(0, Math.round(b.top * sy) - M), B = Math.min(H, Math.round(b.bot * sy) + M);
+    if (R - L < 8) return null;
+    const cb = await toBytes(await env.IMAGES.input(await sheetStream()).transform({ trim: { top: T, left: L, bottom: H - B, right: W - R } }).output({ format: "image/png" }));
+    const cim = PhotonImage.new_from_byteslice(cb); const cw0 = cim.get_width(), ch0 = cim.get_height();
+    let cpx = cim.get_raw_pixels(); try { cim.free(); } catch {}
+    if (Math.abs(cw0 - (R - L)) > 2 || Math.abs(ch0 - (B - T)) > 2) { console.log("[CUT] " + id + " - image tool: card " + (k + 1) + " came back " + cw0 + "x" + ch0 + ", asked " + (R - L) + "x" + (B - T) + " - the old cut instead"); return null; }
+    const lum = (x, y) => { const o = (y * cw0 + x) * 4; return (cpx[o] + cpx[o + 1] + cpx[o + 2]) / 3; };
+    // 3. its top and bottom at full size: black rows (98.5%+ across its column, as the gaps between cards are found) are taken off - only
+    // within the spare pixels and the half-size error, never into the card
+    const lim = 2 * M + 4;
+    const rowBlack = (y, x0, x1) => { let t = 0, d = 0; for (let x = x0; x < x1; x += 2) { t++; if (lum(x, y) < 40) d++; } return d / t > 0.985; };
+    let x0 = 0, x1 = cw0, top = 0, bot = ch0;
+    while (top < lim && top < bot - 1 && rowBlack(top, x0, x1)) top++;
+    while (ch0 - bot < lim && bot > top + 1 && rowBlack(bot - 1, x0, x1)) bot--;
+    const cw = x1 - x0, ch = bot - top, dst = new Uint8Array(cw * ch * 4);
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) { const so = ((top + y) * cw0 + (x0 + x)) * 4, to = (y * cw + x) * 4; dst[to] = cpx[so]; dst[to + 1] = cpx[so + 1]; dst[to + 2] = cpx[so + 2]; dst[to + 3] = 255; }
+    _whiteCorners(dst, cw, ch);
+    const newId = () => "img_c" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+    // stored as a file in the picture store and as text in KV, as every picture is (readers try the file first)
+    const store = async (nid, bytes) => {
+      const _p = [];
+      if (env.AURA_IMAGES) _p.push(env.AURA_IMAGES.put(nid + ".png", bytes, { httpMetadata: { contentType: "image/png" } }).catch(() => null));
+      let t = ""; for (let j = 0; j < bytes.length; j += 8192) t += String.fromCharCode.apply(null, bytes.subarray(j, j + 8192));
+      _p.push(env.AURA_KV.put("image:" + nid, btoa(t))); t = "";
+      await Promise.all(_p);
+    };
+    const enc = (buf, w, h) => { const c = new PhotonImage(buf, w, h); const out = c.get_bytes(); try { c.free(); } catch {} return out; };
+    const nid = newId(); await store(nid, enc(dst, cw, ch));
+    const card = { n: k + 1, image_url: "https://" + host + "/image/" + nid, size: cw + "x" + ch };
+    if (_art) {
+      // the same as the old cut, in this card's own pixels: a black title strip (3 rows black across, below the middle), else the outlined box
+      let artBot = -1;
+      for (let y = top + Math.round(ch * 0.5); y < bot - 3 && artBot < 0; y++) {
+        let allBlack = true;
+        for (let r = 0; r < 3 && allBlack; r++) { let bb = 0, n = 0; for (let x = x0; x < x1; x += 2) { n++; if (lum(x, y + r) < 40) bb++; } if (bb / n <= 0.97) allBlack = false; }
+        if (allBlack) artBot = y;
+      }
+      let ax0 = x0, ax1 = x1, aTop = top;
+      if (artBot < 0) {
+        const _bt = _boxTop(lum, x0, x1, top, bot);
+        if (_bt > top) { artBot = _bt; const fr = _innerFrame(lum, x0, x1, top, artBot); ax0 = fr.x0; ax1 = fr.x1; aTop = fr.top; artBot = fr.bot; }
+      }
+      if (artBot > aTop) {
+        const acw = ax1 - ax0, ah = artBot - aTop, adst = new Uint8Array(acw * ah * 4);
+        for (let y = 0; y < ah; y++) for (let x = 0; x < acw; x++) { const so = ((aTop + y) * cw0 + (ax0 + x)) * 4, to = (y * acw + x) * 4; adst[to] = cpx[so]; adst[to + 1] = cpx[so + 1]; adst[to + 2] = cpx[so + 2]; adst[to + 3] = 255; }
+        _whiteCorners(adst, acw, ah);
+        const aid = newId(); await store(aid, enc(adst, acw, ah));
+        card.art_url = "https://" + host + "/image/" + aid; card.art_size = acw + "x" + ah;
+        const wh = bot - artBot;
+        if (wh > 8) {
+          const wcw = x1 - x0, wdst = new Uint8Array(wcw * wh * 4);
+          for (let y = 0; y < wh; y++) for (let x = 0; x < wcw; x++) { const so = ((artBot + y) * cw0 + (x0 + x)) * 4, to = (y * wcw + x) * 4; wdst[to] = cpx[so]; wdst[to + 1] = cpx[so + 1]; wdst[to + 2] = cpx[so + 2]; wdst[to + 3] = 255; }
+          const wid = newId(); await store(wid, enc(wdst, wcw, wh));
+          card.words_url = "https://" + host + "/image/" + wid;
+        }
+      }
+    }
+    cpx = null;
+    cards.push(card);
+  }
+  const out = { ok: true, from: id, sheet: W + "x" + H, columns: fb.cols.length, count: cards.length, cards, by: "image tool" };
+  await env.AURA_KV.put(_ck, JSON.stringify(out)).catch(() => {});
+  console.log("[CUT] all cards of " + id + " (" + out.sheet + "): " + cards.length + " cards in " + fb.cols.length + " columns - cut by the image tool, the sheet never loaded whole · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s");
+  return out;
+}
+async function cutAllCards(env, url, copts) {
+  const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1] || (/^img_[A-Za-z0-9_-]+$/.test(String(url || "")) ? String(url) : null);
+  if (!id) return { ok: false, error: "need a picture" };
+  // THE ARTWORK WITHOUT ITS WORDS (v9.708): a card whose title is drawn under it also comes off as its panel alone - what a pick
+  // works from, so the words never travel into a change or the artist files. Kept under its own key.
+  const _art = !!(copts && copts.art);
+  // (v9.849) cutall5: the art cut also keeps the card's words box on its own (words_url) - older cuts are cut again once
+  const _ck = (_art ? "cutall5:" : "cutall3:") + id;
+  const was = await env.AURA_KV.get(_ck).catch(() => null);
+  if (was) { try { return JSON.parse(was); } catch {} }
+  // (v9.999.25) the image tool cuts it, the sheet never loaded whole here - anything that does not come out right falls through to the old cut
+  if (env.IMAGES && !(copts && copts.whole)) {
+    try { const _bt = await cutAllCardsByTool(env, id, _art, _ck); if (_bt && _bt.ok) return _bt; }
+    catch (e) { try { console.log("[CUT] " + id + " - image tool cut failed, the old cut instead: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+  }
+  // ══ THE SHEET AS BYTES, AND NO COPIES BESIDE IT (v9.999.17, 2026-11-13, Aaron: go) ═══ MEASURED 16:47:50 and 16:49:43 (Add to Existing,
+  // three-flow test): "Worker exceeded memory limit" after each add-on sheet of 4 - the same kill v9.900 and v9.813 cut down. The sheet was
+  // read as base64 text (about 11 MB of text, then its bytes beside it) though the same picture is kept as bytes in R2; and the phone's
+  // nine card copies could be made while the sheet's pixels (~32 MB) were held. R2's bytes are read first (the text only when R2 has none),
+  // and while the sheet is in memory the picture gate counts as full, so copies wait their turn.
+  _SHEET_AT = Date.now();
+  let _src = null;
+  try {
+    if (env.AURA_IMAGES) { const _o = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null); if (_o) _src = new Uint8Array(await _o.arrayBuffer()); }
+    if (!_src) { let b64 = await env.AURA_KV.get("image:" + id).catch(() => null); if (b64) _src = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); b64 = null; }
+  } catch { _src = null; }
+  if (!_src) { _SHEET_AT = 0; return { ok: false, error: "picture not found: " + id }; }
+  let im;
+  try { im = PhotonImage.new_from_byteslice(_src); } catch (e) { _SHEET_AT = 0; throw e; }
+  _src = null;
+  const W = im.get_width(), H = im.get_height();
+  // ══ THE SHEET'S SMALL COPIES ARE MADE HERE, ONCE (v9.999.22, 2026-11-13, Aaron: go) ═══ MEASURED 18:49:29 and 18:51:26 (Add to Existing):
+  // "Worker exceeded memory limit" 8-10s after the job had returned, while the phone loaded the new cards - each time with the whole sheet's
+  // own small copy (?w=720) among them, made by loading the 2304x3456 sheet into memory a second time, a few seconds after this cut had loaded
+  // it. While the sheet is already loaded here, its 720 and 240 copies are made from it and kept under the keys the picture route reads
+  // (picSmallCopy), so the phone's ask is a plain read and the sheet is never loaded again for it.
+  try {
+    for (const _sw of [720, 240]) {
+      const _sk = "small:" + id + "_w" + _sw + ".jpg";
+      if (W <= _sw) continue;
+      if (await env.AURA_KV.get(_sk, { type: "arrayBuffer" }).catch(() => null)) continue;
+      const _sm = photonResize(im, _sw, Math.max(1, Math.round(H * _sw / W)), PhotonSampling.Lanczos3);
+      const _sb = _sm.get_bytes_jpeg(80); try { _sm.free(); } catch {}
+      await env.AURA_KV.put(_sk, _sb, { metadata: { ct: "image/jpeg", w: _sw, from: W + "x" + H, mark: 0, at_cut: 1 } }).catch(() => {});
+    }
+    console.log("[CUT] " + id + " - its 720 and 240 copies made from the sheet already loaded for the cut");
+  } catch (e) { try { console.log("[CUT] " + id + " - small copies not made at the cut: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+  let px = im.get_raw_pixels();
+  try { im.free(); } catch {}
+  const lum = (x, y) => { const o = (y * W + x) * 4; return (px[o] + px[o + 1] + px[o + 2]) / 3; };
+  const _fb = _findCardBoxes(px, W, H, id);
+  if (_fb.error) { _SHEET_AT = 0; return { ok: false, error: _fb.error }; }
+  const cols = _fb.cols, ordered = _fb.ordered;
   // WHITE CORNERS ON A WHITE CARD (v9.733, 2026-10-23, Aaron): the panels are drawn with rounded corners, so a straight cut keeps four
   // black wedges of the sheet - MEASURED on Garden Swing's print file (doc_mvl8dh1p7jmq, page 3). On a card whose panel is white
   // (its edges are white midway along the top and the side), the black joined to each corner - and only that, a small box at each
   // corner - turns white. A card that is dark to its edge (art edge to edge) is left exactly as it is.
-  const _whiteCorners = (buf, w, h) => {
-    const L = (x, y) => { const o = (y * w + x) * 4; return (buf[o] + buf[o + 1] + buf[o + 2]) / 3; };
-    if (w < 40 || h < 40 || L(w >> 1, 2) < 200 || L(2, h >> 1) < 200 || L(w - 3, h >> 1) < 200) return;
-    const r = Math.max(8, Math.round(Math.min(w, h) * 0.08));
-    for (const [cx, cy, dx, dy] of [[0, 0, 1, 1], [w - 1, 0, -1, 1], [0, h - 1, 1, -1], [w - 1, h - 1, -1, -1]]) {
-      if (L(cx, cy) >= 60) continue;
-      // ONLY A CORNER OF THE WHITE PANEL (v9.740, 2026-10-24, Aaron: "a little white corner" under the words). MEASURED on the
-      // Thunderbird sheet (img_mvlrdmdicprn): a card cut with its title strip has a BLACK bottom edge, and the bottom two corners
-      // were turned into white squares inside the strip. A corner is whitened only when both edges beside it are the white
-      // panel - a step of r along each edge lands on white. In a title strip that step lands on black, and it is left alone.
-      if (L(cx + dx * Math.min(r, w - 1), cy) < 200 || L(cx, cy + dy * Math.min(r, h - 1)) < 200) continue;
-      const seen = new Uint8Array(r * r), st = [[0, 0]];
-      while (st.length) {
-        const [i, j] = st.pop(); if (i < 0 || j < 0 || i >= r || j >= r || seen[j * r + i]) continue;
-        seen[j * r + i] = 1; const x = cx + dx * i, y = cy + dy * j;
-        if (L(x, y) >= 60) continue;
-        const o = (y * w + x) * 4; buf[o] = 255; buf[o + 1] = 255; buf[o + 2] = 255;
-        st.push([i + 1, j], [i, j + 1], [i - 1, j], [i, j - 1]);
-      }
-    }
-  };
+  // (v9.999.25) _whiteCorners is now its own function, above cutAllCards - the image-tool cut uses it too
   const host = await imageHost(env), cards = [], _allPuts = [];
   for (let k = 0; k < ordered.length; k++) {
     const { x0, x1, top, bot } = ordered[k], cw = x1 - x0, ch = bot - top, dst = new Uint8Array(cw * ch * 4);

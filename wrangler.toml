@@ -219,6 +219,12 @@ remote = true
 [browser]
 binding = "BROWSER"
 
+# ══ CLOUDFLARE'S IMAGE TOOL (2026-11-13, Aaron: go) ═══ Resizing, cropping and overlays done by Cloudflare, outside this worker's
+# memory. MEASURED all of 2026-11-13: "Worker exceeded memory limit" after add-on sheets, while the phone's picture copies were made here
+# by loading each full-size card into the worker. The copies now ask this for the small version first (core v9.999.23).
+[images]
+binding = "IMAGES"
+
 # ══ THE CRAWL THAT OUTLIVES THE REQUEST (2026-08-10) ═══════════════════════════════════════════
 # GridCrawlWorkflow tiles a region, calls Google Places per tile, paginates to the 60-result ceiling,
 # subdivides any tile that saturates, and mints a PTA lead per business. No agent and no model touch

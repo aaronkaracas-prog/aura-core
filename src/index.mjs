@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.22-2026-11-13-sheet-small-copies-at-the-cut";
+const BUILD = "aura-core-v9.999.23-2026-11-13-images-tool-shrinks-the-copies";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62560,6 +62560,17 @@ async function picGated(fn, keptKey, env) {
   try { return await fn(); }
   finally { _PIC_SLOTS.delete(_slot); }
 }
+// ══ CLOUDFLARE'S IMAGE TOOL SHRINKS IT FIRST (v9.999.23, 2026-11-13, Aaron: go) ═══ MEASURED all day: "Worker exceeded memory limit" while
+// the phone's copies were made here, each by loading the whole card (about 1152x1728) into this worker. The image tool (the IMAGES binding)
+// makes the small version outside the worker; only that is loaded here. If the tool is not there or fails, the worker shrinks it as before.
+async function imagesShrink(env, src, w) {
+  if (!env.IMAGES || !src || !w) return null;
+  try {
+    const _out = await env.IMAGES.input(new Blob([src]).stream()).transform({ width: w, fit: "scale-down" }).output({ format: "image/png" });
+    const _b = new Uint8Array(await _out.response().arrayBuffer());
+    return _b.length > 512 ? _b : null;
+  } catch (e) { try { console.log("[IMAGES] shrink to " + w + " failed - the worker shrinks it: " + String(e?.message ?? e).slice(0, 140)); } catch {} return null; }
+}
 async function picCardCopy(env, id, _w, sQ, nQ) {
     const _cw = _w || 720, _ck = "small:" + id + "_w" + _cw + "_c6.jpg";
     const _chave = await env.AURA_KV.getWithMetadata(_ck, { type: "arrayBuffer" }).catch(() => null);
@@ -62579,6 +62590,7 @@ async function picCardCopy(env, id, _w, sQ, nQ) {
       if (!_BRAND_PNG) { const b = await env.AURA_KV.get("brand:inkit-logo", { type: "arrayBuffer" }).catch(() => null); if (b) _BRAND_PNG = new Uint8Array(b); }
       let _src = null;
       { const _b = await env.AURA_KV.get(`image:${id}`).catch(() => null); if (_b) _src = Uint8Array.from(atob(_b), (c) => c.charCodeAt(0)); }
+      { const _sh = await imagesShrink(env, _src, _cw); if (_sh) _src = _sh; }   // (v9.999.23) the image tool makes the 720 first
       if (_src && _BRAND_PNG) {
         const _im = PhotonImage.new_from_byteslice(_src);
         const _W = _im.get_width(), _H = _im.get_height();
@@ -62628,6 +62640,7 @@ async function picSmallCopy(env, id, _w, _mk2) {
       let _src = null;
       if (env.AURA_IMAGES) { const _o = await env.AURA_IMAGES.get(`${id}.png`).catch(() => null); if (_o) _src = new Uint8Array(await _o.arrayBuffer()); }
       if (!_src) { const _b = await env.AURA_KV.get(`image:${id}`).catch(() => null); if (_b) _src = Uint8Array.from(atob(_b), (c) => c.charCodeAt(0)); }
+      if (_src && _w) { const _sh = await imagesShrink(env, _src, _w); if (_sh) _src = _sh; }   // (v9.999.23) the image tool makes the small one first
       if (!_src) { try { console.log("[SMALL] " + id + " w" + _w + " skipped: no original found under image:" + id); } catch {} }
       else {
         const _im = PhotonImage.new_from_byteslice(_src);

@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.19-2026-11-13-her-offer-is-what-is-drawn";
+const BUILD = "aura-core-v9.999.20-2026-11-13-nothing-shows-through-is-kept";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -67285,13 +67285,16 @@ async function talkStatePut(env, me, name, raw) {
 // no `add` line either time. When she gives none, what is drawn is her own drawing words (`prompt`), else her offer as she said it - her
 // question, any sentence about the picture or photo itself, any sentence saying what won't work, and any claim that it is drawing taken
 // out - else their words.
+// (v9.999.20) MEASURED 18:20:21 (Cover Up, forearm): "...going over the wildflowers and past their edges so nothing shows through." was taken
+// out as a "won't work" sentence (it matched "shows through"), nothing of her offer was left, and their typed words were drawn. Only a
+// sentence that says won't / can't / wouldn't is taken out now.
 function herOfferWords(acted) {
   if (!acted) return "";
   if (typeof acted.add === "string" && acted.add.trim()) return acted.add.trim().slice(0, 300);
   if (typeof acted.prompt === "string" && acted.prompt.trim().split(/\s+/).length >= 6) return acted.prompt.trim().slice(0, 400);
   const kept = dropDrawClaim(String(acted.say || "")).split(/(?<=[.!?])\s+/)
     // a sentence saying what WON'T work ("a fine line peony in light pink is exactly what won't hide it") is her reason, not the design
-    .filter((x) => x.trim() && !/\?\s*$/.test(x) && !/\b(?:photo|picture|pictures)\b/i.test(x) && !/\b(?:won'?t|wouldn'?t|can'?t|cannot)\b|n[’']t\s+(?:hide|cover|work)|\bshows?\s+(?:\w+\s+)?through\b/i.test(x)).join(" ").trim();
+    .filter((x) => x.trim() && !/\?\s*$/.test(x) && !/\b(?:photo|picture|pictures)\b/i.test(x) && !/\b(?:won'?t|wouldn'?t|can'?t|cannot)\b|n[’']t\s+(?:hide|cover|work)/i.test(x)).join(" ").trim();
   return kept.split(/\s+/).length >= 8 ? kept.slice(0, 500) : "";
 }
 function dropDrawClaim(text) {

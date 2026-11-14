@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.29-2026-11-14-get-inspired-picture-is-one-they-like";
+const BUILD = "aura-core-v9.999.30-2026-11-14-a-liked-picture-is-never-rework";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -72269,6 +72269,22 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             carriedObj.job = "new";
             try { await talkStatePut(env, me, "brief", JSON.stringify(carriedObj)); console.log("[TURN:JOB] the kept brief corrected to a new design" + " · who=" + me); } catch {}
           }
+        }
+      }
+      // ══ A PICTURE THEY LIKE IS NEVER REWORK OR A COVER-UP (v9.999.30, 2026-11-14, Aaron: go) ═══ MEASURED 11:26-11:27 (pta_b2047549fa23c06a,
+      // Get Inspired > Show me real tattoos > "t rex" > a T-rex skull dotwork tattoo > Work on this > "i love it but i want the whole t rex not
+      // just the skull, roaring, with some jungle leaves around it" > Imagine it): core knew the picture was one they like (body_photo=false),
+      // but her first read wrote job "rework" - it is a tattoo on an arm - so Imagine it took the photo as the canvas and drew ONE picture on
+      // that stranger's arm instead of the 8. Rework and cover-up are jobs on their own skin. On a picture they like, the job is the one a
+      // picture is: the tattoo is made FROM it (v9.504) - Imagine it then draws the new-tattoo 8 from it, as on Create (v9.999.8). The kept
+      // brief is corrected too (as v9.924), so the project is never stored as a rework of somebody else's arm. Their own photos are untouched.
+      if (_likedPic && !_bodyPhoto && !(opts && opts.inspire) && ["rework", "cover"].includes(jobNow)) {
+        console.log("[TURN:JOB] the brief said " + jobNow + ", but the picture is one they like, not their skin - the tattoo is made from it" + (me ? " · who=" + me : ""));
+        jobNow = "from";
+        if (intent && typeof intent === "object") intent.job = "from";
+        if (me && carriedObj && typeof carriedObj === "object" && ["rework", "cover"].includes(String(carriedObj.job || "").toLowerCase())) {
+          carriedObj.job = "from";
+          try { await talkStatePut(env, me, "brief", JSON.stringify(carriedObj)); console.log("[TURN:JOB] the kept brief corrected to a tattoo made from their picture · who=" + me); } catch {}
         }
       }
       // (v9.861) THIS IS AN ADD-ON ON THEIR PHOTO - so their next turn may run straight away while nothing is drawn on it yet (the

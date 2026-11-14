@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.15-2026-11-13-fresh-picture-start-clean-brief";
+const BUILD = "aura-core-v9.999.16-2026-11-13-style-only-from-their-words";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70451,6 +70451,19 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (!_newStyle && !_hStyleSaid && !(_hDo === "TALK" && _canGo) && _hDo !== "GO") { const _fw = styleFromWords(_s); if (_fw) { _hStyleSaid = _fw; console.log("[TURN:STYLE] " + (_hm ? "she named no style" : "her answer did not come") + " - the style read from their own words: " + _fw + (me ? " · who=" + me : "")); } }
               // (v9.837) a style named before anything was said back is kept on a TALK too - "i kinda want one of those" (Embroidered) is the style
               // they want even with nothing yet to imagine. A question after the say-back still never changes the style.
+              // ══ A STYLE IS THEIRS ONLY WHEN THEY SAID IT (v9.999.16, 2026-11-13, Aaron: go) ═══ MEASURED 15:58:24 (Create > a koi sleeve photo >
+              // "i love the waves and the colors but i want a dragon instead of the koi"): her STYLE line said Japanese - read from the photo, not
+              // from them - so it "counted as picked", the picture-with-a-style line ("take the subject from my picture") went to the image model and
+              // 8 koi came back. The rule (2026-11-03) is a style named in THEIR words; a style that is not in what they typed is not picked.
+              if (_hStyleSaid) {
+                const _theirAll = (String(_told || "") + " " + String(_s || "")).toLowerCase();
+                const _svW = _hStyleSaid.replace(/\s+[-\u2013\u2014]\s+.*$/, "").replace(/[*"\u201c\u201d.]/g, "").replace(/\s+style$/i, "").trim().toLowerCase();
+                const _key = (_svW.split(/[\s\/-]+/).find((w) => w.length >= 3) || _svW);
+                if (!styleFromWords(_theirAll) && !(_key && _theirAll.includes(_key))) {
+                  console.log("[TURN:STYLE] her style line \"" + _hStyleSaid.slice(0, 60) + "\" is not in their words - not picked" + (me ? " · who=" + me : ""));
+                  _hStyleSaid = "";
+                }
+              }
               if (_hStyleSaid && !(_hDo === "TALK" && _canGo) && _hDo !== "GO") {
                 // (v9.839) the list shows "Name - what it looks like"; if she copies the description after the name, only the name is kept
                 let _sv = _hStyleSaid.replace(/\s+[-\u2013\u2014]\s+.*$/, "").replace(/[*"\u201c\u201d.]/g, "").replace(/\s+style$/i, "").replace(/\s+/g, " ").trim();

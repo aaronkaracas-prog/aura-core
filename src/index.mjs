@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.25-2026-11-14-image-tool-cuts-the-sheet";
+const BUILD = "aura-core-v9.999.26-2026-11-14-full-picture-lines-in-the-logs";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -6910,7 +6910,9 @@ async function processCommand(line, env, isOp) {
           const wall = wk.wallTimeMs != null ? " (" + wk.wallTimeMs + "ms)" : "";
           const lvl = md.level && md.level !== "log" && md.level !== "info" ? " [" + String(md.level).toUpperCase() + "]" : "";
           let text = msg || (url ? String(wk.eventType || "request") + " " + url : JSON.stringify(src || md).slice(0, 200));
-          text = String(text).replace(/\s+/g, " ").slice(0, 600);
+          // (v9.999.26, Aaron: go) 2,000, was 600 - MEASURED 06:37-06:42 on the koi sleeve: a change's "sent:" line names two pictures and
+          // ran past 600, so the model and the price were cut off every change line
+          text = String(text).replace(/\s+/g, " ").slice(0, 2000);
           if (!lgAll && lgNoise.test(text)) continue;
           // THE WHOLE STORY OF A TURN (2026-10-12, v9.578, Aaron: "set up logs so we can see everything"): the turns
           // view keeps every [TURN...] line - the turn itself, and [TURN:PICTURE] / [TURN:GO] / [TURN:LOCK] /
@@ -74518,7 +74520,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // picture when one went with it - so a result can be checked against exactly what the model was given.
               if (t && t.via === "thread") _pl("the chat model's brief: \"" + String(t.brief || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · pictures drawn " + t.pictures_drawn + " · " + t.quality + " " + t.size);
               if (t && t.via === "thread" && _designGrid) _pl("the chat model's reply: \"" + String(t.said || "").replace(/\s+/g, " ").slice(0, 1500) + "\" · cards from it: " + (readSaidCards(t.said) ? "4" : "none"));
-              if (!(t && t.cut)) _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 400) + "\" · picture 1: " + cur + (_viaNow ? " · via the chat model" : "") +
+              if (!(t && t.cut)) _pl("sent: \"" + String(ask).replace(/\s+/g, " ").slice(0, 1500) + "\" · picture 1: " + cur + (_viaNow ? " · via the chat model" : "") +
                   (_withNow ? " · picture 2: " + _withNow.join(", ") : "") + (_seedNow ? " · seed " + _seedNow : "") + (_canvasNow ? " · canvas " + _canvasNow.width + "x" + _canvasNow.height : "") + (_asNow ? " · image model only (" + _asNow + ")" + (t && t.model ? " " + t.model : "") + (t && t.cost_usd != null ? " $" + t.cost_usd : "") : "") + " -> " + _pr(t) +
                   (t && t.image_url ? " " + t.image_url : ""));
               // A CHANGE IS NOT LOOKED AT (2026-09-20). Aaron: colour, size, a small edit comes back

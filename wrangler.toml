@@ -149,6 +149,14 @@ new_classes = ["PtaDurableObject"]
 # NOT bound on the staging twin, deliberately: staging has isolated KV/D1/Vectorize, and pointing it
 # at the live knowledge bucket would write test facts into real memory. Code must therefore treat a
 # missing binding as normal and skip, the same way _egressDO does with LEDGER_DO.
+# ══ THE PICTURE STORE (2026-11-14, Aaron: go) ═══ aura-images exists (created 2026-06-11) and 22 places in index.mjs already write to it
+# and read it first - but it was not bound here, so every one of them fell back to the base64 text copy in KV. MEASURED 2026-11-14 05:40-05:48
+# (one add-on sheet + three changes): "Worker exceeded memory limit" after all three changes; the cut and the image-model references each held
+# the picture as ~13 MB of text plus its bytes. Bound, they read the file itself.
+[[r2_buckets]]
+binding = "AURA_IMAGES"
+bucket_name = "aura-images"
+
 [[r2_buckets]]
 binding = "AURA_KNOWLEDGE"
 bucket_name = "aura-knowledge"

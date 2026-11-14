@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.17-2026-11-13-cover-and-addon-fixes";
+const BUILD = "aura-core-v9.999.18-2026-11-13-cover-draws-her-say-back";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62519,7 +62519,9 @@ function _isOfferLine(t) {
 // itself 65s, and at 08:43:50 core died twice: "Worker exceeded memory limit". The artist files job, running on the same worker, died
 // with it after 5m45s and only finished on Cloudflare's retry, 6m55s after lock-in (57s the run before). Every copy now waits its turn:
 // at most PIC_GATE_MAX are made at once per worker, the rest queue. A copy finished while it waited is served as kept.
-const PIC_GATE_MAX = 2, PIC_GATE_WAIT_MS = 45000, PIC_SLOT_STALE_MS = 20000;
+// (v9.999.18, 2026-11-13, Aaron: go) MEASURED 17:25:26 and 17:27:56 (Add to Existing): "Worker exceeded memory limit" while the phone's nine
+// copies were made after an add-on sheet, two at a time - the second kill failed eight of them. One at a time now; the log says if the kill stops.
+const PIC_GATE_MAX = 1, PIC_GATE_WAIT_MS = 45000, PIC_SLOT_STALE_MS = 20000;
 // (v9.815) MEASURED 09:18:50-09:19:37: five of the phone's copies each waited the full 45s and finished together, though the background
 // copies had finished at 09:18:54 - the slots were still counted as taken. A request the phone abandons (the page swaps a card's picture,
 // or retries it) can be torn down before it hands its slot back. Each slot now carries the time it was taken, and one held longer than
@@ -75531,7 +75533,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // ideas clears them, so Imagine it never draws ideas from an earlier turn.
       // ══ WHAT SHE SAID BACK, KEPT FOR THE DRAW (v9.888, 2026-11-08, Aaron: "yes on one and two") ═══ On an add-on before anything is drawn,
       // her one line of what to add (her `add`) is kept; Imagine it or their yes draws it instead of everything they typed.
-      if (me && _bodyPhoto && acted && acted.add && !(drew && drew.image) && String((typeof jobNow !== "undefined" && jobNow) || "") === "add") {
+      // (v9.999.18, 2026-11-13, Aaron: go) MEASURED 17:33:39 (Cover Up, koi sleeve): she turned down "a delicate fine line peony with light pink
+      // watercolor" and offered a peony in deep blackwork; Imagine it drew their typed words - 8 pale pink fine-line peonies. A cover-up keeps her
+      // say-back the same way an add-on does: what she says back, and they confirm, is what is drawn.
+      if (me && _bodyPhoto && acted && acted.add && !(drew && drew.image) && ["add", "cover"].includes(String((typeof jobNow !== "undefined" && jobNow) || ""))) {
         try { await talkStatePut(env, me, "addon_what", String(acted.add).slice(0, 300)); console.log("[TURN:IDEAS] her line of what to add, kept for the draw: \"" + String(acted.add).slice(0, 200) + "\"" + (me ? " · who=" + me : "")); } catch {}
       }
       // ══ A PHOTO TOO CLOSE TO GROW IN (v9.888, Aaron: "she should always read the photo to see if it needs extending") ═══ Her read of the

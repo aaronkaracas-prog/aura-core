@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.20-2026-11-13-nothing-shows-through-is-kept";
+const BUILD = "aura-core-v9.999.21-2026-11-13-drawing-it-right-now-is-a-claim";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -67299,9 +67299,11 @@ function herOfferWords(acted) {
 }
 function dropDrawClaim(text) {
   const t = String(text || "").trim(); if (!t) return t;
+  // (v9.999.21, 2026-11-13) MEASURED 18:33:46 (Cover Up): "Drawing it right on your arm now." was not caught - only the exact shapes "drawing
+  // it now" / "drawing it on your arm now" were. Any "drawing / imagining / making ... now" within one short stretch of a sentence is the claim.
   // (v9.937, 2026-11-10 phone walk, Aaron: go) MEASURED: "Let me draw it on your arm." (cover-up) and "Let me draw that up." (a catalogue
   // pick) stood over Imagine it / Yes, show me with nothing drawing. "Let me / I'll draw it" says the same thing as "drawing it now".
-  const claim = /\b(?:(?:i'?m |i am )?(?:drawing|imagining|sketching|creating|putting|making|working on) (?:it|that|this|them|one|it up)?\s*(?:on you|on (?:your|the|their) [a-z]+|up)?\s*(?:now|right now)\b|(?:let me|i'?ll|i will|i'?m going to) (?:draw|sketch|paint) (?:it|that|this|them|one)(?: up| out| on you| on your [a-z]+| for you)?\s*[.!]|here it is|here you go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|coming (?:right )?up|on (?:its|the) way)/i;
+  const claim = /\b(?:(?:i'?m |i am )?(?:drawing|imagining|sketching|creating|putting|making|working on)\b[^.!?]{0,40}?\b(?:now|right now)\b|(?:let me|i'?ll|i will|i'?m going to) (?:draw|sketch|paint) (?:it|that|this|them|one)(?: up| out| on you| on your [a-z]+| for you)?\s*[.!]|here it is|here you go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|coming (?:right )?up|on (?:its|the) way)/i;
   const kept = t.split(/(?<=[.!?])\s+/).filter((x) => !claim.test(x) && !/^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i.test(x));   // (v9.888) a done-word alone
   const out = kept.join(" ").trim();
   return out.length >= 12 ? out : t;

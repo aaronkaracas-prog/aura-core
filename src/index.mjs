@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.26-2026-11-14-full-picture-lines-in-the-logs";
+const BUILD = "aura-core-v9.999.27-2026-11-14-no-versions-claim-and-the-name-kept";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62962,7 +62962,7 @@ async function addonSheetWords(env, sheetUrl, asked, ms) {
   console.log("[CUT8] add-on sheet read once - " + got.filter(Boolean).length + " of 4 named" + (got.some(Boolean) ? " · " + got.map((g, k) => (k + 1) + "=" + (g ? g.title + " | " + g.line : "-")).join(" · ") : " · it said: " + JSON.stringify(raw.slice(0, 200) || String((rd && rd.error) || "no answer"))));
   return got;
 }
-async function addonCardWords(env, cards, asked, sheetUrl, existing) {
+async function addonCardWords(env, cards, asked, sheetUrl, existing, keepName) {
   const _t0 = Date.now();
   if (!Array.isArray(cards) || !cards.length) return cards;
   let ask = ADDON_CARD_WORDS_ASK, ms = 6000;
@@ -62978,6 +62978,11 @@ async function addonCardWords(env, cards, asked, sheetUrl, existing) {
     const _exLine = "The existing tattoo, as it was described when their photo arrived: \"" + _ex + "\" Name only what is not part of it.";
     prompt = /look only at the new work\./i.test(prompt) ? prompt.replace(/look only at the new work\./i, (m) => m + " " + _exLine) : _exLine + " " + prompt;
   }
+  // ══ A CHANGED DESIGN KEEPS ITS NAME (v9.999.27, 2026-11-14, Aaron: go) ═══ MEASURED 07:02:51 (koi sleeve): the card they changed was "Hannya
+  // Mask"; the reader, reading each new card on its own, named the same red mask "Oni Mask" on card 1 and "Hannya Mask" on 2-4. On a change sheet
+  // the reader is told the name of the design being changed and keeps it unless the card shows a different main subject.
+  const _kn = String(keepName || "").replace(/["\u201c\u201d]/g, "'").trim().slice(0, 80);
+  if (_kn) prompt = "The design being changed is called \"" + _kn + "\". Use that same name for this card unless its main subject is something different. " + prompt;
   // (v9.999.19, 2026-11-13, Aaron: go) MEASURED 17:25:26 / 17:59:23: "Worker exceeded memory limit" ~20s after an add-on turn had finished,
   // with nothing in the log. A card read that loses the race is not stopped - it keeps its picture in memory until it ends. Each late read now
   // says when it finally ends, so the next kill shows whether reads were still running.
@@ -63002,7 +63007,7 @@ async function addonCardWords(env, cards, asked, sheetUrl, existing) {
     return w ? { ...c, title: w.title, lines: w.line ? [w.line] : [] } : c;
   });
   const got = out.filter((c) => c.title).length;
-  console.log("[CUT8] add-on card words read: " + got + " of " + cards.length + " (" + _one.filter(Boolean).length + " card by card" + (_sheetGot ? ", the rest from the whole sheet" : "") + ", eyes " + (_nm || "default") + (_ex ? ", told the existing tattoo: \"" + _ex.slice(0, 120) + "\"" : ", not told the existing tattoo") + ") · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s" +
+  console.log("[CUT8] add-on card words read: " + got + " of " + cards.length + " (" + _one.filter(Boolean).length + " card by card" + (_sheetGot ? ", the rest from the whole sheet" : "") + ", eyes " + (_nm || "default") + (_ex ? ", told the existing tattoo: \"" + _ex.slice(0, 120) + "\"" : ", not told the existing tattoo") + (_kn ? ", told the name to keep: \"" + _kn + "\"" : "") + ") · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s" +
     (got ? " · " + out.map((c, k) => (k + 1) + "=" + (c.title ? c.title + " | " + ((c.lines || [])[0] || "") : "-")).join(" · ") : ""));
   return out;
 }
@@ -67497,6 +67502,9 @@ function pareDrawLine(text) {
   const lead = /^\s*(?:here it is|here you go|here we go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|ta-?da|voil[aà])\s*[-–—:,.!]+\s*/i;
   // (v9.870) MEASURED 07:18: "If this is the one, or you want to tweak anything, just say." - the same claim, said the other way round
   const claim = /\b(here it is|here you go|here(?:'|’)s (it|your|the)|there you go|take a look|check it out|have a look|is this the one|this is the one|tweak anything|how does (it|that|this) look)\b/i;
+  // (v9.999.27, 2026-11-14, Aaron: go) MEASURED 07:01:44 (koi sleeve, a change): "...Here are some versions of that change on you - tap the one you
+  // love, then Finalize it to make it yours..." stood over a picture still drawing. A sentence that points at pictures before they exist is the claim.
+  const pointsAtPictures = /\b(?:here are (?:some|your|the|a few|four|4|these)|tap (?:the one|one|it)|finali[sz]e (?:it|this)|fine-?tune it)\b/i;
   // (v9.888) MEASURED 06:46: "...that'll make the whole piece feel alive. Changed." stood over a picture still drawing - a sentence that is
   // only a done-word says it is finished
   const doneOnly = /^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i;
@@ -67506,7 +67514,7 @@ function pareDrawLine(text) {
     p = p.replace(lead, "").replace(/\s*[-–—,:]\s*(?:here it is|here you go|there you go|here(?:'|’)s (?:it|your|the)[^.!?]*)\s*([.!]?)\s*$/i, "$1");
     if (!p) continue;
     p = p.charAt(0).toUpperCase() + p.slice(1);
-    if (claim.test(p) || doneOnly.test(p)) continue;
+    if (claim.test(p) || doneOnly.test(p) || pointsAtPictures.test(p)) continue;
     if (/\?\s*$/.test(p)) continue;
     kept.push(p);
   }
@@ -72363,7 +72371,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // of selecting fine lines ... unless they specify") ═══ her question stays in her own words; the new work goes in a similar style to
       // their tattoo unless they name one.
       if (jobNow === "add" && _bodyPhoto && acted && acted.choose) { acted.choose = null; console.log("[TURN:IDEAS] add-on - her style card left out; her question stays in her words" + (me ? " · who=" + me : "")); }
-      let _ideasGrid = false, _addonPoss = false, _addonOwnWords = null, _addonMore = null;
+      let _ideasGrid = false, _addonPoss = false, _addonOwnWords = null, _addonMore = null, _addonMoreName = null;
       // ══ EVERYTHING THEY TYPED FOR THIS ADD-ON (v9.850) ═══ the same reading as the Imagine-8 tap below (v9.680/683): their words since the
       // add-on started, not taps and not the page's notes. Used to hold the first drawing for their yes, and to find any lettering.
       const _addTyped = () => { try {
@@ -72498,7 +72506,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 // (v9.871) the four add-on ideas still on screen, none picked: their new words make a fresh four from everything they said
                 if (await env.AURA_KV.get("addonsheet:" + _id)) _onAddonSheet = true;
                 const _mk = JSON.parse((await env.AURA_KV.get("addonone:" + _id)) || "null");
-                if (_mk && _mk.ent && _mk.photo && String(_mk.photo) === String(refDesign)) _addonMore = String(_mk.ent);
+                if (_mk && _mk.ent && _mk.photo && String(_mk.photo) === String(refDesign)) { _addonMore = String(_mk.ent);
+                  // (v9.999.27) the name printed on the card they picked - the card reader keeps it for the changed versions
+                  try { const _pn = String((await env.AURA_KV.get("pickname:" + _id)) || "").trim(); if (_pn) _addonMoreName = _pn.slice(0, 80); } catch {} }
                 else if (_mk) console.log("[TURN:IDEAS] the last add-on picture was drawn on another photo - not built on" + (me ? " · who=" + me : ""));
               } catch {} }
               break; } }
@@ -74678,7 +74688,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           if (_addonOne && _addonSheet && cp?.ok && cp.image_url) {
             _eight = await eightCards(env, cp.image_url, null, null);
             if (_eight && _eight.length) {
-              _eight = await addonCardWords(env, _eight, _addonOwnWords, cp.image_url, _refHer || refSaw || null);
+              _eight = await addonCardWords(env, _eight, _addonOwnWords, cp.image_url, _refHer || refSaw || null, _addonMore ? _addonMoreName : null);
               const _sid = (String(cp.image_url).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
               if (_sid) { try { await env.AURA_KV.put("sheet8:" + _sid, JSON.stringify(_eight)); } catch {}
                 try { await Promise.all(_eight.map((c) => { const cid = (String(c.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];

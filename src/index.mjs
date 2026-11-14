@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.28-2026-11-14-lettering-when-her-say-back-is-late";
+const BUILD = "aura-core-v9.999.29-2026-11-14-get-inspired-picture-is-one-they-like";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68822,8 +68822,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // picture -> a puppy): it came fresh, so the rule below never ran - the puppy was taken as their skin, the job became an add-on and
       // her style card was thrown away ("add-on - her style card left out"); her question had nothing to tap. On the Create page (job0) a
       // picture is always one they like. A photo of a tattoo already on them is still found by her read (photo_is) and gets its three choices.
-      if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && String((opts && opts.page) || "") === "job0") {
-        _newRoadPic = true; console.log("[TURN:PHOTO] a picture sent from the Create page - a picture they like, not their skin" + (me ? " · who=" + me : ""));
+      // ══ A PICTURE PICKED ON GET INSPIRED IS ONE THEY LIKE TOO (v9.999.29, 2026-11-14, Aaron: go) ═══ MEASURED 09:00-09:02 (pta_707fbdf8793f775d):
+      // Work on this on a T-rex parked it by the box with a fixed "tell me what you'd like to change"; she never looked at it, and "Harley Davidson"
+      // (meant as a new search) drew 8 T-rexes with a Harley badge. Aaron: "she needs to read that and say all right, tell me what you wanna do with
+      // it". Work on this now starts the new tattoo with that picture from Get Inspired (job4), the same road as Create > I have a picture.
+      if (me && String((opts && opts.ref) || "").trim() && _bodyRefNow && ["job0", "job4"].includes(String((opts && opts.page) || ""))) {
+        _newRoadPic = true; console.log("[TURN:PHOTO] a picture sent from the " + (String(opts.page) === "job4" ? "Get Inspired page (Work on this)" : "Create page") + " - a picture they like, not their skin" + (me ? " · who=" + me : ""));
         // ══ A PICTURE ON CREATE STARTS THE NEW TATTOO (v9.999.14, 2026-11-13, Aaron: go) ═══ MEASURED 14:12 (Create > I have a picture > a koi
         // sleeve > "i love the waves and the colors but i want a dragon instead of the koi"): the start never marked a new tattoo, so their idea
         // skipped her say-back and Imagine it - v9.999.13 then drew it from a separate summary that dropped "instead of the koi", and 8 koi came

@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.27-2026-11-14-no-versions-claim-and-the-name-kept";
+const BUILD = "aura-core-v9.999.28-2026-11-14-lettering-when-her-say-back-is-late";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70992,8 +70992,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // ══ NEW LETTERING IN A CHANGE: THE SHEET FIRST (v9.848, 2026-11-05, Aaron: go) ═══ The change waits (change_held); the sheet goes up
               // with only the new pieces; their pick draws it (the branch above).
               try {
+                // ══ HER SAY-BACK LATE, THE LETTERING STILL READ (v9.999.28, 2026-11-14, Aaron: go) ═══ MEASURED 07:29:27-07:30:46 (Dido): "Let's
+                // add the name, Dido" on card 4 - her say-back took over 15s ("no answer in 15000ms"), its LETTERING line went with it, and the
+                // backstop check further down is off on this road, so the four were drawn with no lettering sheet. When her answer is late, the
+                // same short lettering question the other roads use (letterFind) reads their change.
+                if (_cq && _cq.late) {
+                  try { _cLetter = (await letterFind(env, String(_changeFull || _sC), "", talkModel)) || []; } catch {}
+                  console.log("[TURN:LETTER] her say-back was late - the lettering check read their change: " + (_cLetter.length ? _cLetter.map((t) => '"' + t + '"').join(", ") : "nothing to write") + (me ? " · who=" + me : ""));
+                }
                 const _lOld = letterParse(_ds.letter), _lNew = _cLetter.filter((t) => !letterHas(_lOld, t));
-                if (_lNew.length && !(_cq && _cq.late)) {
+                if (_lNew.length) {
                   await talkStatePut(env, me, "change_held", JSON.stringify({ words: String(_changeFull || _sC).slice(0, 600) }));
                   _letterHold = true; _fixedWhy = "letter_hold";
                   _fixedSay = await _fx("letter_ask_change", "Love it - first, pick how you'd like your new lettering to look.");

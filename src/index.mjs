@@ -108,7 +108,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.999.18-2026-11-13-cover-draws-her-say-back";
+const BUILD = "aura-core-v9.999.19-2026-11-13-her-offer-is-what-is-drawn";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62519,9 +62519,8 @@ function _isOfferLine(t) {
 // itself 65s, and at 08:43:50 core died twice: "Worker exceeded memory limit". The artist files job, running on the same worker, died
 // with it after 5m45s and only finished on Cloudflare's retry, 6m55s after lock-in (57s the run before). Every copy now waits its turn:
 // at most PIC_GATE_MAX are made at once per worker, the rest queue. A copy finished while it waited is served as kept.
-// (v9.999.18, 2026-11-13, Aaron: go) MEASURED 17:25:26 and 17:27:56 (Add to Existing): "Worker exceeded memory limit" while the phone's nine
-// copies were made after an add-on sheet, two at a time - the second kill failed eight of them. One at a time now; the log says if the kill stops.
-const PIC_GATE_MAX = 1, PIC_GATE_WAIT_MS = 45000, PIC_SLOT_STALE_MS = 20000;
+// (v9.999.18) tried one at a time - MEASURED 17:59:23: the kill came anyway, ~20s after the turn's own work, so the copies are not it. Back to two.
+const PIC_GATE_MAX = 2, PIC_GATE_WAIT_MS = 45000, PIC_SLOT_STALE_MS = 20000;
 // (v9.815) MEASURED 09:18:50-09:19:37: five of the phone's copies each waited the full 45s and finished together, though the background
 // copies had finished at 09:18:54 - the slots were still counted as taken. A request the phone abandons (the page swaps a card's picture,
 // or retries it) can be torn down before it hands its slot back. Each slot now carries the time it was taken, and one held longer than
@@ -62796,8 +62795,14 @@ async function addonCardWords(env, cards, asked, sheetUrl, existing) {
     const _exLine = "The existing tattoo, as it was described when their photo arrived: \"" + _ex + "\" Name only what is not part of it.";
     prompt = /look only at the new work\./i.test(prompt) ? prompt.replace(/look only at the new work\./i, (m) => m + " " + _exLine) : _exLine + " " + prompt;
   }
-  const reads = await Promise.all(cards.map((c) => Promise.race([new Promise((r) => setTimeout(() => r(null), ms)),
-    seeMedia({ url: c.image, prompt, max_tokens: 80, ...(_nm ? { model: _nm } : {}) }, env)]).catch(() => null)));
+  // (v9.999.19, 2026-11-13, Aaron: go) MEASURED 17:25:26 / 17:59:23: "Worker exceeded memory limit" ~20s after an add-on turn had finished,
+  // with nothing in the log. A card read that loses the race is not stopped - it keeps its picture in memory until it ends. Each late read now
+  // says when it finally ends, so the next kill shows whether reads were still running.
+  const reads = await Promise.all(cards.map((c, k) => { let _lost = false; const _rt0 = Date.now();
+    const _rd = seeMedia({ url: c.image, prompt, max_tokens: 80, ...(_nm ? { model: _nm } : {}) }, env);
+    _rd.then((r) => { if (_lost) { try { console.log("[CUT8] add-on card " + (k + 1) + " read came back " + ((Date.now() - _rt0) / 1000).toFixed(1) + "s after it began, after it was given up · " + (r && r.ok ? "ok" : String((r && r.error) || "no answer").slice(0, 60))); } catch {} } },
+      (e) => { if (_lost) { try { console.log("[CUT8] add-on card " + (k + 1) + " read failed late: " + String(e?.message ?? e).slice(0, 80)); } catch {} } });
+    return Promise.race([new Promise((r) => setTimeout(() => { _lost = true; r(null); }, ms)), _rd]).catch(() => null); }));
   const _cardWords = (k) => {
     const rd = reads[k]; const raw = String((rd && rd.ok && rd.saw) || "").replace(/\s+/g, " ").trim();
     const parts = raw.replace(/\b(?:title|line)\s*:\s*/gi, "").split(/\s*\|\s*|\s+-\s+|\n/).map((x) => x.replace(/^["'*#\s]+|["'*.\s]+$/g, "").trim()).filter(Boolean);
@@ -66001,7 +66006,8 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       const d = event.payload?.data || {};
       try {
         return await step.do("turn", { retries: { limit: 0, delay: "1 second" }, timeout: "15 minutes" }, async () => {
-          try { return await runTalkJob(this.env, d); }
+          // (v9.999.19) the job's own end is logged, so a kill after it is known to come from work still running in the background
+          try { const _r = await runTalkJob(this.env, d); try { console.log("[TURNJOB] job returned - the workflow step ends now"); } catch {} return _r; }
           catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 300) }; }
         });
       } catch (e) {
@@ -67273,6 +67279,21 @@ async function talkStatePut(env, me, name, raw) {
 // the one", "how does it look") and any question, since the picture's own line asks next. Too little left: "" - the fixed line stays.
 // (v9.871) Her words held for Imagine it, with any sentence that says it is being drawn or is here taken out - "Drawing it now.",
 // "Here it is", "Coming right up". Her say-back stays; if nothing would be left, her words stand as they were.
+// ══ WHAT SHE OFFERED IS WHAT IS DRAWN (v9.999.19, 2026-11-13, Aaron: go) ═══ MEASURED 17:33 and 17:49 (Cover Up): she turned down their idea
+// ("a single thin line hummingbird in really light grey" won't hide the butterfly) and offered one that will ("a hummingbird with real depth to
+// it, dark enough to fully hide that butterfly"); they said yes, and Imagine it drew their typed words - the idea she had turned down. She gave
+// no `add` line either time. When she gives none, what is drawn is her own drawing words (`prompt`), else her offer as she said it - her
+// question, any sentence about the picture or photo itself, any sentence saying what won't work, and any claim that it is drawing taken
+// out - else their words.
+function herOfferWords(acted) {
+  if (!acted) return "";
+  if (typeof acted.add === "string" && acted.add.trim()) return acted.add.trim().slice(0, 300);
+  if (typeof acted.prompt === "string" && acted.prompt.trim().split(/\s+/).length >= 6) return acted.prompt.trim().slice(0, 400);
+  const kept = dropDrawClaim(String(acted.say || "")).split(/(?<=[.!?])\s+/)
+    // a sentence saying what WON'T work ("a fine line peony in light pink is exactly what won't hide it") is her reason, not the design
+    .filter((x) => x.trim() && !/\?\s*$/.test(x) && !/\b(?:photo|picture|pictures)\b/i.test(x) && !/\b(?:won'?t|wouldn'?t|can'?t|cannot)\b|n[’']t\s+(?:hide|cover|work)|\bshows?\s+(?:\w+\s+)?through\b/i.test(x)).join(" ").trim();
+  return kept.split(/\s+/).length >= 8 ? kept.slice(0, 500) : "";
+}
 function dropDrawClaim(text) {
   const t = String(text || "").trim(); if (!t) return t;
   // (v9.937, 2026-11-10 phone walk, Aaron: go) MEASURED: "Let me draw it on your arm." (cover-up) and "Let me draw that up." (a catalogue
@@ -72335,6 +72356,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // Held for their yes, her words never say it is being drawn or is here: that sentence is taken out (her say-back stays).
             if (acted && acted.say) { const _cl0 = dropDrawClaim(acted.say); if (_cl0 !== acted.say) { console.log("[TURN:IDEAS] held for Imagine it - her claim that it is drawing taken out: \"" + String(acted.say).slice(0, 200) + "\""); acted.say = _cl0; } }
             try { await talkStatePut(env, me, "addon_go", _w); } catch {}
+            { const _ow = herOfferWords(acted); if (_ow) { try { await talkStatePut(env, me, "addon_what", _ow); } catch {} console.log("[TURN:IDEAS] what Imagine it draws - her offer: \"" + _ow.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } }
             console.log("[TURN:IDEAS] add-on - her words and Imagine it; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
           } else {
             _addonOwnWords = _onAddonSheet ? _addTyped() : String(said).trim();
@@ -72393,6 +72415,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               const _cl1 = dropDrawClaim(acted.say); if (_cl1 !== acted.say) { console.log("[TURN:IDEAS] held for Imagine it - her claim that it is drawing taken out: \"" + String(acted.say).slice(0, 200) + "\""); acted.say = _cl1; }
               _heardOut = { go: true }; acted.choose = null;
               try { await talkStatePut(env, me, "addon_go", _w); } catch {}
+              { const _ow = herOfferWords(acted); if (_ow) { try { await talkStatePut(env, me, "addon_what", _ow); } catch {} console.log("[TURN:IDEAS] what Imagine it draws - her offer: \"" + _ow.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } }
               console.log("[TURN:IDEAS] add-on - she offered to show them (\"" + String(acted.say).slice(0, 120) + "\") - Imagine it under her words; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
             }
           }

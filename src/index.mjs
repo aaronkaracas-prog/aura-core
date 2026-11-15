@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.38-2026-11-15-she-names-it-on-every-road";
+const BUILD = "aura-core-v9.999.39-2026-11-15-the-style-is-said-once";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -119,6 +119,16 @@ const BUILD = "aura-core-v9.999.38-2026-11-15-she-names-it-on-every-road";
 // ══ EVERY STYLE HAS ITS OWN FIRST QUESTION TOO (v9.960, 2026-11-11, Aaron: "it's literally every category when someone says I'll tell
 // you my idea") ═══ Create My Own on a style ("Let's create my own in the <style> style") asks what they'd like in that style, with the
 // things that style is known for. Setting: config:say:own_style:<name> (same naming as own:). A style not listed keeps config:say:create_own.
+// ══ THE STYLE IS SAID ONCE (v9.999.39, 2026-11-15, Aaron: "we are repeating the introduction to the style. It just needs to be said the first
+// time ... and then it's right to the prompt") ═══ Every way into a style on the page already says it ("American Traditional it is." in her
+// bubble, "X - great choice." on its card). Her first question drops its own "X it is." and asks straight away - for every line, the ones in
+// KV (config:say:own_style:<name>) too: "What would you like in your American Traditional tattoo - an eagle, a rose...? Tell me your idea."
+function ownStyleStraight(line, style) {
+  const t = String(line || "").trim();
+  const cut = t.replace(/^[^.?!]{1,60}\bit is\.\s*/i, "");
+  if (cut === t || cut.length < 12) return t;
+  return cut.replace(/\bWhat would you like in it\b/i, "What would you like in your " + String(style || "").trim() + " tattoo");
+}
 const OWN_STYLE_ASK = {
   "american traditional": "American Traditional it is. What would you like in it - an eagle, a rose, a dagger, a swallow, a panther? Tell me your idea.",
   "neo-traditional": "Neo-Traditional it is. What would you like in it - an animal, a portrait, flowers, something framed in jewels? Tell me your idea.",
@@ -70278,7 +70288,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             _fixedSay = _told
               ? (await _fx("create_own_more", "Love it - ____ it is. Tell me anything else you'd like in it, or I can imagine some designs now.")).replace("____", _newStyle)
               : (Object.prototype.hasOwnProperty.call(OWN_STYLE_ASK, _newStyle.trim().toLowerCase())
-                  ? await _fx("own_style:" + _newStyle.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""), OWN_STYLE_ASK[_newStyle.trim().toLowerCase()])
+                  ? ownStyleStraight(await _fx("own_style:" + _newStyle.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""), OWN_STYLE_ASK[_newStyle.trim().toLowerCase()]), _newStyle)
                   : (await _fx("create_own", "Love it - tell me what you want in your ____ piece.")).replace("____", _newStyle));
             console.log("[TURN:STYLE] work on this style: " + _newStyle + (_told ? " - they had already told her, she does not ask again" : "") + (me ? " · who=" + me : ""));
           } else if (/^let'?s create my own in the (.+) style\.?$/i.test(_s) && ["add", "cover"].includes(String((carriedObj && carriedObj.job) || "").toLowerCase())) {

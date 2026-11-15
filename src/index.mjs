@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.35-2026-11-14-style-card-road-named";
+const BUILD = "aura-core-v9.999.36-2026-11-15-one-line-for-the-card";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70046,6 +70046,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       let _inspWords = "";   // (v9.925) Make it my own: their words, drawn with their inspiration
       let _drawSayP = null;   // (v9.826) her line as the drawing starts - shown when it comes, never waited for
       let _saybackNow = false;   // (v9.999.33) her say-back of a new idea, with the card under it
+      let _cardPointed = false;  // (v9.999.36) her words already end on the card's words - nothing more is added for the card
       // (v9.999.34) the tattoo's name in a few words, found in the background right after her say-back (picture read or typed idea) and kept with
       // the idea it belongs to (go_name) - so the line as the drawing starts can name it with no wait. Good for 30 minutes and only for that idea.
       const _goNameQ = (her, theirs, idea, pic) => { try {
@@ -75608,7 +75609,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // (v9.999.35) MEASURED 17:33 (v9.999.34 live, Create, "i want a lighthouse with a storm and a little boat for my dad, he was a fisherman"):
       // her own full reply came with her style card under it and ended "Pick a style for it below - or tell me what you'd like to make from it."
       // - the third road. Whenever her style card is under her words on a new tattoo with nothing drawn, the same line names it.
-      const _hasStyles = !!(acted && acted.choose && Array.isArray(acted.choose.styles) && acted.choose.styles.length);
+      // (v9.999.36) her style card only goes to the page when no style is picked yet (v9.701 drops it below) - the line follows what will show
+      const _hasStyles = !!(acted && acted.choose && Array.isArray(acted.choose.styles) && acted.choose.styles.length) && !(_newFlow && _newStyle);
       const _styleCardNow = _hasStyles && !_fixedWhy && !_drewNow();
       if ((_saybackNow || (typeof _picOffer !== "undefined" && _picOffer) || _styleCardNow) && !(drew && drew.image) && String(_said || "").trim()) {
         try {
@@ -75630,7 +75632,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           const _keep = (_offer && _sent.length > _cutN) ? _sent.slice(0, _sent.length - _cutN).join(" ").replace(/\s+/g, " ").trim() : (_offer ? "" : String(_said).trim());
           if (_keep.length >= 12) {
             console.log("[TURN:CARD-POINT] " + _which + " - her last words -> the card's words: \"" + _last.slice(0, 160) + "\" -> \"" + _pt + "\"" + (me ? " · who=" + me : ""));
-            _said = _keep + " " + _pt;
+            _said = _keep + " " + _pt; _cardPointed = true;
           }
         } catch {}
       }
@@ -75858,7 +75860,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // ══ HER STYLE CARDS COME WITH A QUESTION (v9.999.10, 2026-11-13, Aaron: go) ═══ MEASURED 10:56:40 (Home, a samurai sleeve photo, nothing
       // typed): she described it beautifully and the style cards came up under it, but her words asked nothing - the screen did not say what to
       // do next. When her style cards go to the page and her words hold no question, one line says it. Setting: config:say:choose_ask.
-      if (acted && acted.choose && !_fixedWhy && typeof _said === "string" && _said.trim() && !/\?/.test(_said)) {
+      // (v9.999.36) MEASURED 05:09 (v9.999.35, Create, grandma's hummingbirds and roses): "...Tap Show me some ideas, or pick a style first. Pick a
+      // style for it below - or tell me what you'd like to make from it." - this line came after the card's words (they hold no question). Not
+      // when her words already end on the card's words.
+      if (acted && acted.choose && !_fixedWhy && !_cardPointed && typeof _said === "string" && _said.trim() && !/\?/.test(_said)) {
         let _ca = "Pick a style for it below - or tell me what you'd like to make from it.";
         try { const _k = String((await env.AURA_KV.get("config:say:choose_ask")) || "").trim(); if (_k) _ca = _k; } catch {}
         _said = _said.replace(/\s+$/, "") + " " + _ca;

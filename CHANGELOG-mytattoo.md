@@ -447,6 +447,22 @@ From his phone walk 16:24-16:36 and the logs:
 - Page: the trail carries the search - Get Inspired > "Scary clown" > This Picture > Your Designs > This Design. "Scary clown" brings the same results back (no new search; the tattoo stays in In Progress); This Picture goes to the top of the conversation; back from the picture goes to the results.
 - Note: her asking before drawing on Create is right (2026-11-01 later rule: she says it back and waits for the go) - my earlier flag was wrong.
 
+### Core v9.999.36 – my test of v9.999.35 (Nov 15, 05:08-05:11)
+
+From the pulled 17:32-17:35 logs (yesterday's run), the exact words sent:
+- Koi (Get Inspired > Yes, show me): "This is a picture I like. This is what I want to do with it: Japanese koi climbing through crashing waves - bold red and gold fish against turquoise water in a solid traditional style. Show me 8 different tattoo designs from it, each in a different tattoo style. Make the first one the closest to what I described..." (her read said back, as built in v9.826).
+- Lighthouse (Create, Japanese, Imagine it): "This is my tattoo idea: a lighthouse holding steady over a storm while a little boat rides it out. Show me 8 different designs of it, all in the Japanese style..."
+- Both drawn by the image model at 1440x3120 in about 53-55s. No cost line is written in these logs.
+
+Tested v9.999.35 at phone size - Create, typed "my grandma loved hummingbirds and her garden, something for her with roses":
+- Her reply: "That's a beautiful one to carry - a hummingbird among roses says garden, summer, and her all at once. Tap Show me some ideas, or pick a style first. Pick a style for it below - or tell me what you'd like to make from it." The card's words landed, but v9.999.10's choose_ask line ("her words hold no question") still went after them.
+- Show me some ideas (no style): "I'm imagining your hummingbird and roses tattoo now. Every one is 100% unique and 100% yours - never to be made again." Card 1 REALISTIC (a green-throated hummingbird at red roses).
+- The log pull was restarted (it had stopped with PowerShell); yesterday's 17:32-17:36 pulled by hand.
+
+Fixed in core v9.999.36:
+- Once her words end on the card's words, the choose_ask line is not added.
+- Her style card is only counted as going to the page when no style is picked yet (v9.701 drops it otherwise), so the line follows what is really shown.
+
 ### Core v9.999.35 – my test of v9.999.34/v925 (Nov 14, 17:28-17:36)
 
 Tested at phone size:

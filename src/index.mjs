@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.33-2026-11-14-her-words-match-the-card";
+const BUILD = "aura-core-v9.999.34-2026-11-14-her-words-name-the-card";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62191,7 +62191,7 @@ function letterItems(line) {
 // ══ THE TATTOO'S NAME IN A FEW WORDS (v9.999.33, 2026-11-14, Aaron: go) ═══ For her line while the first designs are imagined: "I'm imagining
 // your horror clown tattoo now." Reads her last line and their words; answers a few plain words or nothing. Model: config:source:name_idea:model
 // (else the heard dial, else the talk model). Time: config:talk:name_idea_ms (default 3000, 0 = no limit) - past it, the fixed line stands.
-async function nameIdea(env, herWords, theirWords, talkModel) {
+async function nameIdea(env, herWords, theirWords, talkModel, msOver) {
   try {
     if (!String(herWords || "").trim() && !String(theirWords || "").trim()) return "";
     let model = null;
@@ -62201,6 +62201,7 @@ async function nameIdea(env, herWords, theirWords, talkModel) {
       "feels - for example: horror clown / dragon, sword and axe / golden retriever and sunflowers. If there is no subject yet, reply NAME: none";
     const user = (theirWords ? "What they said:\n" + String(theirWords).slice(0, 1200) + "\n\n" : "") + (herWords ? "What Aura said back:\n" + String(herWords).slice(0, 900) : "");
     let _ms = 3000; try { const _v = parseInt(String((await env.AURA_KV.get("config:talk:name_idea_ms")) || ""), 10); if (Number.isFinite(_v) && _v >= 0) _ms = _v; } catch {}
+    if (Number.isFinite(msOver) && msOver > _ms) _ms = msOver;   // (v9.999.34) in the background it can take longer
     const _ask = callBrain({ system, user, max_tokens: 400, reasoning: "low", ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env);
     const r = _ms ? await Promise.race([_ask, new Promise((res) => setTimeout(() => res({ late: true }), _ms))]) : await _ask;
     if (r && r.late) { console.log("[TURN:NAME] no answer in " + (_ms / 1000) + "s - the fixed line stands"); return ""; }
@@ -62528,7 +62529,7 @@ function heardSystem(style, canGo, can) {
                   // tattoos; a question about tattoos is answered first, then the ask. Anything outside tattoos stays with her guidance.
                   : "TALK when there is nothing to imagine from yet - a hello, a question with no idea in it, or only a style. If they asked you a question about tattoos, answer TALK with nothing after it. Otherwise your words are your reply to them: ask what they would like the tattoo to be of. No offer to imagine anything yet.");
 }
-async function drawStartSay(env, idea, style, talkModel) {
+async function drawStartSay(env, idea, style, talkModel, name) {
   try {
     let ms = 8000; try { const v = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(v) && v >= 0) ms = v; } catch {}
     let model = null; try { model = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
@@ -62538,7 +62539,10 @@ async function drawStartSay(env, idea, style, talkModel) {
       (style ? " in the " + style + " style" : "") + ". You already said the idea back to them and they said yes. " +
       // (v9.826, Aaron: "regardless if there's repetition it needs to not be there") MEASURED 15:12:20: "I'm picturing a sleek chrome butterfly
       // on your lower back, its wings edged with thin, delicate barbed-wire..." - the whole tattoo a third time, right after they said yes to it.
-      "In one short, warm sentence in your own words, tell them you're imagining their designs now - without listing the idea again. " +
+      // (v9.999.34, 2026-11-14, Aaron: go - "she had a lot of information she could've put it there") with its name found after her say-back she
+      // calls it by that name, a few words, still never the whole idea again
+      (name ? "In one short, warm sentence in your own words, tell them you're imagining their " + String(name).slice(0, 60) + " designs now - call it by that name and say nothing more about it. "
+            : "In one short, warm sentence in your own words, tell them you're imagining their designs now - without listing the idea again. ") +
       "Never put a number in your words. Plain words only.";
     const q = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), ms)),
       callBrain({ system: sys, user: String(idea || "").slice(0, 600), max_tokens: 2000, ...(eff ? { reasoning: eff } : {}), ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env)]);
@@ -70041,6 +70045,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       let _inspWords = "";   // (v9.925) Make it my own: their words, drawn with their inspiration
       let _drawSayP = null;   // (v9.826) her line as the drawing starts - shown when it comes, never waited for
       let _saybackNow = false;   // (v9.999.33) her say-back of a new idea, with the card under it
+      // (v9.999.34) the tattoo's name in a few words, found in the background right after her say-back (picture read or typed idea) and kept with
+      // the idea it belongs to (go_name) - so the line as the drawing starts can name it with no wait. Good for 30 minutes and only for that idea.
+      const _goNameQ = (her, theirs, idea, pic) => { try {
+        const p = nameIdea(env, her, theirs, talkModel, 8000).then((n) => n ? talkStatePut(env, me, "go_name", JSON.stringify({ name: n, idea: String(idea || "").slice(0, 1200), pic: String(pic || ""), at: Date.now() })) : null).catch(() => {});
+        if (opts && typeof opts.waitUntil === "function") opts.waitUntil(p); } catch {} };
+      const _goNameOf = (raw, idea, pic) => { try { const o = JSON.parse(String(raw || "")); if (o && o.name && Date.now() - Number(o.at || 0) < 30 * 60000 &&
+        String(o.idea || "") === String(idea || "").slice(0, 1200) && (!o.pic || !pic || String(o.pic) === String(pic))) return String(o.name); } catch {} return ""; };
       let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _typedLetter = null, _addonGoWords = null, _addonLetter = null, _addonLetterHeld = false, _onAddonSheet = false;
       if (me && !_tapKeep) {
         try {
@@ -70058,7 +70069,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             return _tl.slice(_st).filter((e) => e && e.role === "them").map((e) => String(e.said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim())
               .filter((t) => t && !_tap.test(t) && t !== _s).join("\n").slice(0, 1500);
           } catch { return ""; } })();
-          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "letter", "change_held", "addon_go", "addon_drawn", "addon_ideas", "letter_go", "letter_wait"]); } catch {}
+          let _ds = {}; try { _ds = await talkStateGet(env, me, ["await_change", "design_change", "new_flow", "new_style", "await_idea", "new_drawn", "go_idea", "go_picks", "go_said", "go_name", "letter", "change_held", "addon_go", "addon_drawn", "addon_ideas", "letter_go", "letter_wait"]); } catch {}
           // ══ A TAP ON A CARD IS A PICK, NEVER THE CHANGE (v9.996, 2026-11-12, Aaron: "clicking other buttons and then going back ... it aired out")
           // ═══ MEASURED 17:31-17:33 (pta_657223bcde9d5a94, Dido): Fine-Tune It set "their next words are the change", then they tapped card 7
           // again three times - each "I want number 7" was read as the change ("Add the number 7"), found the lettering "7" and brought up the
@@ -70452,7 +70463,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // "Every one is 100% unique and 100% yours - never to be made again" - the same promise twice in a second. The page's line says it.
               { const _fixedGo = _fixedSay, _tail = "";
                 let _dsMs = 3000; try { const _v = parseInt(String((await env.AURA_KV.get("config:talk:drawsay_ms")) || ""), 10); if (Number.isFinite(_v) && _v >= 0) _dsMs = _v; } catch {}
-                _drawSayP = Promise.race([drawStartSay(env, _heardIdea, _newStyle, talkModel), new Promise((r) => setTimeout(() => r(null), _dsMs))])
+                const _gName = _goNameOf(_ds.go_name, _gi, refUrl);   // (v9.999.34) the name found after her say-back
+                if (_gName) console.log("[TURN:NAME] the go names it: \"" + _gName + "\"" + (me ? " · who=" + me : ""));
+                _drawSayP = Promise.race([drawStartSay(env, _heardIdea, _newStyle, talkModel, _gName), new Promise((r) => setTimeout(() => r(null), _dsMs))])
                   // (v9.842, 2026-11-04, Aaron: go) MEASURED 04:46:03: her words missed the 3000ms by 13ms, so "On it - I'm imagining your designs now.
                   // Every one is 100% unique and 100% yours." went up right under the page's own waiting line saying the same thing. When her words are
                   // late nothing more is sent - the page's waiting line is the line.
@@ -70818,7 +70831,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 // her words are shown with no button; their next words are heard again. After a say-back, nothing here changes.
                 if (!_heardIdea && !_canGo) { _heardOut = null; try { await talkStatePut(env, me, "go_idea", ""); await talkStatePut(env, me, "go_said", ""); } catch {} }
                 // with no IDEA line of hers, their own words (already kept above) are what Imagine it draws
-                if (_heardIdea) { try { await talkStatePut(env, me, "go_idea", _heardIdea); await talkStatePut(env, me, "go_picks", ""); await talkStatePut(env, me, "go_said", "1"); } catch {} }
+                if (_heardIdea) { try { await talkStatePut(env, me, "go_idea", _heardIdea); await talkStatePut(env, me, "go_picks", ""); await talkStatePut(env, me, "go_said", "1"); } catch {}
+                  _goNameQ(_hSay, [_told, _s].filter(Boolean).join(". "), _heardIdea, ""); }
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + (_hq && _hq.streamed ? " (streamed" + (_hq.shape ? ", " + _hq.shape : "") + ")" : "") + " - READY, nothing drawn until Imagine it · the idea: " + (_heardIdea ? "\"" + _heardIdea + "\"" : (_canGo ? "(none from her - the idea she said back before waits)" : "(none from her - nothing said back yet: no Imagine it, waiting for their next words)")) + " · her words: \"" + _fixedSay + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "CHOOSE" && _hSay) {
                 _fixedWhy = "heard_choose"; _fixedSay = _hSay; _heardOut = { picks: [{ k: "A", t: _hPicks.A.t }, { k: "B", t: _hPicks.B.t }] };
@@ -71220,11 +71234,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // card should carry the context of what she's actually imagining") ═══ MEASURED 16:28:11 (Get Inspired, a horror clown picture, Show me some
           // ideas): "I'm imagining amazing designs for you now" - she had just called it "a full-on horror clown". The first designs of a new tattoo
           // get its name in a few words, read from her last line and their words (nameIdea); no answer in time, and the fixed line stands.
-          if (_fixedWhy === "four_new" && !_drewNow() && _fixedSay) {
+          if (_fixedWhy === "four_new" && !_drewNow() && _fixedSay && !_drawSayP) {
             try {
               const _nmTheirs = (Array.isArray(tnow) ? tnow : []).filter((e) => e && e.role === "them").map((e) => String(e.said || "").trim())
                 .filter((t) => t && !/^\s*\[/.test(t)).slice(-4).join(". ");
-              const _nm = await nameIdea(env, _prevAuraLine, _nmTheirs, talkModel);
+              const _nm = _goNameOf(_ds.go_name, _ds.go_idea, refUrl) || await nameIdea(env, _prevAuraLine, _nmTheirs, talkModel);
               if (_nm) {
                 let _nl = "I'm imagining your {what} tattoo now.";
                 try { const _k = String((await env.AURA_KV.get("config:say:imagining_named")) || "").trim(); if (_k.includes("{what}")) _nl = _k; } catch {}
@@ -75571,6 +75585,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           let _pIdea = "a tattoo made from this picture";
           try { const _k = String((await env.AURA_KV.get("config:say:picture_idea")) || "").trim(); if (_k) _pIdea = _k; } catch {}
           await talkStatePut(env, me, "go_idea", (_pw || _pIdea).slice(0, 1200)); await talkStatePut(env, me, "go_said", "1"); await talkStatePut(env, me, "go_picks", "");
+          _goNameQ(String(_said || ""), _pw, (_pw || _pIdea).slice(0, 1200), refUrl || "");   // (v9.999.34)
           console.log("[TURN:PHOTO] her read of their picture is her say-back - a yes draws the 8 from it: \"" + (_pw || _pIdea).slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
         } catch {}
       }
@@ -75584,15 +75599,26 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // any particular style you have in mind?" and under it a card reading Pick a style / Show me some ideas. Her say-back of a new idea (and her
       // read of a picture they brought, with its card) ends on one fixed line naming what is on the card; her own question at the end goes.
       // Settings: config:say:card_point (no style picked yet), config:say:card_point_style (a style already picked - the card is Imagine it).
-      if ((_saybackNow || (typeof _picOffer !== "undefined" && _picOffer)) && !(drew && drew.image) && /\?\s*$/.test(_said)) {
+      // (v9.999.34) MEASURED 17:10 (v9.999.33 live, Get Inspired > a wolf and moon picture): her read ended "I'd love to imagine some designs made
+      // from this picture for you - or tell me what you'd change about it." - no question, so nothing changed, and the card under it was Yes, show
+      // me / I have my own idea, not the style card. The line names the card that will be there: her style card (she gave styles) -> Show me
+      // some ideas / a style; her picture read with no styles -> Yes, show me / I have my own idea; her say-back of a typed idea -> the same as the
+      // style card (the page turns "pick a style" into it), or Imagine it once a style is picked. Her last sentence goes when it is her offer.
+      if ((_saybackNow || (typeof _picOffer !== "undefined" && _picOffer)) && !(drew && drew.image) && String(_said || "").trim()) {
         try {
           const _stNow = String(_newStyle || "").trim();
-          const _cut = _said.replace(/\s*[^.!?\u2014\u2013]*\?\s*$/, "").trim();
-          let _pt = _stNow ? "Tap Imagine it when you're ready." : "Tap Show me some ideas, or pick a style first.";
-          try { const _k = String((await env.AURA_KV.get(_stNow ? "config:say:card_point_style" : "config:say:card_point")) || "").trim(); if (_k) _pt = _k; } catch {}
-          if (_cut.length >= 12) {
-            console.log("[TURN:CARD-POINT] her question at the end -> the card's words: \"" + _said.slice(-160) + "\" -> \"" + _pt + "\"" + (me ? " · who=" + me : ""));
-            _said = _cut + " " + _pt;
+          const _hasStyles = !!(acted && acted.choose && Array.isArray(acted.choose.styles) && acted.choose.styles.length);
+          const _which = _saybackNow ? (_stNow ? "card_point_style" : "card_point") : (_hasStyles ? "card_point" : "card_point_offer");
+          let _pt = { card_point: "Tap Show me some ideas, or pick a style first.", card_point_style: "Tap Imagine it when you're ready.",
+                      card_point_offer: "Tap Yes, show me, or I have my own idea." }[_which];
+          try { const _k = String((await env.AURA_KV.get("config:say:" + _which)) || "").trim(); if (_k) _pt = _k; } catch {}
+          const _sent = String(_said).trim().match(/[^.!?]+[.!?]+["\u201d']?|[^.!?]+$/g) || [String(_said).trim()];
+          const _last = String(_sent[_sent.length - 1] || "").trim();
+          const _offer = /\?\s*["\u201d']?$/.test(_last) || (!_saybackNow && _sent.length > 1) || _isOfferLine(_last);
+          const _keep = (_offer && _sent.length > 1) ? _sent.slice(0, -1).join(" ").replace(/\s+/g, " ").trim() : (_offer ? "" : String(_said).trim());
+          if (_keep.length >= 12) {
+            console.log("[TURN:CARD-POINT] " + _which + " - her last words -> the card's words: \"" + _last.slice(0, 160) + "\" -> \"" + _pt + "\"" + (me ? " · who=" + me : ""));
+            _said = _keep + " " + _pt;
           }
         } catch {}
       }

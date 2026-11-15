@@ -447,6 +447,14 @@ From his phone walk 16:24-16:36 and the logs:
 - Page: the trail carries the search - Get Inspired > "Scary clown" > This Picture > Your Designs > This Design. "Scary clown" brings the same results back (no new search; the tattoo stays in In Progress); This Picture goes to the top of the conversation; back from the picture goes to the results.
 - Note: her asking before drawing on Create is right (2026-11-01 later rule: she says it back and waits for the go) - my earlier flag was wrong.
 
+### Core v9.999.34 + page v925 – found in my own test of v9.999.33/v924 (Nov 14, 17:09-17:14)
+
+Tested at phone size: Get Inspired > Search anything in the world > "wolf howling at the moon" > the dock (stays over the chat box while scrolling; switching to Show me real tattoos searched the same words there) > a black-and-grey wolf and moon picture > Work on this > Yes, show me > 8 designs (card 1 STIPPLING REALISM) > trail "wolf howling at the moon" > This Picture > Your Designs > tapping the search brought the same results back with the dock.
+- Page: the trail lost the search as soon as Work on this started the conversation over (askAura rebuilds the first turn) - it read "Your Idea". The search now follows the new first turn (CRUMB_SRCH.first). Patched live in the browser and checked: "GET INSPIRED / This Picture".
+- Page: the line "Tap Show me real tattoos or Search anything in the world, then tell Aura what to look for below." stayed under the results - it steps aside with the big pair once something is searched.
+- Core: her picture read ended "I'd love to imagine some designs made from this picture for you - or tell me what you'd change about it." (no question) and the card under it was Yes, show me / I have my own idea - not the style card. The ending now names the card that will be there: style card -> "Tap Show me some ideas, or pick a style first."; her picture read with no styles -> "Tap Yes, show me, or I have my own idea." (config:say:card_point_offer); typed idea -> as before. Her last sentence goes when it is her offer, question or not.
+- Core: Yes, show me goes down the GO road, where her line is written by drawStartSay told never to repeat the idea - it said "I'm picturing it now, letting the details come together in my mind." The tattoo's name is now found in the background right after her say-back (picture read or typed idea; kept as go_name with its idea, 30 minutes) and her line calls it by that name only ("...imagining your howling wolf designs now"). The choose-card road uses the same kept name first, so neither waits.
+
 ### Not fixed yet (seen, not in the go list)
 
 - Swipe dots don't follow the swipe

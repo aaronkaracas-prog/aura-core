@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.42-2026-11-15-lettering-only";
+const BUILD = "aura-core-v9.999.43-2026-11-15-lettering-only-decided-in-code";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62516,7 +62516,7 @@ function heardSystem(style, canGo, can) {
                 "READY whenever there is something to imagine from - a subject, a person, a memory, a feeling - even if not everything is decided yet. A style on its own is not enough: they need some idea of what they want. " +
                 // ══ WORDS ALONE ARE A TATTOO (v9.999.42, 2026-11-15, Aaron: "lettering only, go") ═══ MEASURED 13:47:03: "i just want my daughters
                 // name Isabella written in pretty writing on my wrist, nothing else" came back TALK - no lettering sheet, no button, a dead end.
-                "Words alone are a tattoo too: when all they want is lettering - a name, a date, a word or a quote, with nothing else drawn - that is READY, and the IDEA line starts with \"Lettering only - \" followed by the words to be written. Then your words: if they shared something personal or hard, start there, simply - " +
+                "Words alone are a tattoo too: when all they want is lettering - a name, a date, a word or a quote, with nothing else drawn - that is READY, and the IDEA line starts with \"Lettering only - \" followed by the words to be written - those two words go on the IDEA line only, never in what you say to them. Then your words: if they shared something personal or hard, start there, simply - " +
                 // ══ SAID BACK ONCE, THEN ONLY WHAT IS NEW (v9.826, 2026-11-03, Aaron: "regardless if there's repetition it needs to not be there") ═══
                 // MEASURED 15:28:13: "its going on my inner forearm. could there be a tiny heart where the stems cross" got back the whole tattoo
                 // again - mom and son, larkspur for July, daffodil for March, fine line, delicate, small - before the two new things; turn 5 a third
@@ -70686,11 +70686,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // Isabella written in pretty writing on my wrist, nothing else" was TALK - nothing to tap. When she still answers TALK (or nothing) and their
               // words ask only for words - a name, a date, a quote - with "just", "only" or "nothing else", and ask no question, the same short check
               // that finds lettering reads them; what it finds is the idea, lettering only, and the lettering sheet goes up.
+              const _loAsk = (() => { const _t = String(_s || ""); return !/\?/.test(_t) &&
+                /\b(name|names|word|words|quote|saying|date|dates|initials?|written|write|writing|lettering|letters|script|says?)\b/i.test(_t) &&
+                /\b(just|only|nothing else|by itself|on its own|alone|no (image|picture|design|drawing|art)s?)\b/i.test(_t); })();
               try {
                 const _lo = String(_s || "");
-                if ((_hDo === "TALK" || !_hDo) && !/\?/.test(_lo) &&
-                    /\b(name|names|word|words|quote|saying|date|dates|initials?|written|write|writing|lettering|letters|script|says?)\b/i.test(_lo) &&
-                    /\b(just|only|nothing else|by itself|on its own|alone|no (image|picture|design|drawing|art)s?)\b/i.test(_lo)) {
+                if ((_hDo === "TALK" || !_hDo) && _loAsk) {
                   const _lf = await letterFind(env, _lo, "", talkModel);
                   if (_lf.length) {
                     const _q = _lf.slice(0, 4).map((x) => '"' + String(x).replace(/"/g, "'") + '"');
@@ -70710,6 +70711,24 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               let _hStyleSaid = "";
               let _hLetter = [];
               { const _sp = heardSplit(_hRest); _hIdea = _sp.idea; _hRest = _sp.words; _hStyleSaid = _sp.style || ""; _hLetter = _sp.lettering || []; }
+              // ══ LETTERING ONLY IS DECIDED HERE, NOT BY WHERE SHE PUTS THE LABEL (v9.999.43, 2026-11-15, Aaron: go) ═══ MEASURED 14:38:2x (Isabella):
+              // her idea came back "Isabella written in pretty writing on the wrist" and her words "Lettering only - Isabella on wrist" - the label in what
+              // she said, not on the idea - so the drawing sent "each in a different tattoo style" and 7 of the 8 came back with butterflies, snakes and a
+              // dragon. When their words ask only for words (the same check as the backup above) or she used the label anywhere, the idea carries it, and
+              // her words never show it.
+              try {
+                const _herLabel = /^\s*["'\u201c]?\s*lettering only\b/i.test(_hRest);
+                if ((_hDo === "READY" || _hDo === "GO") && (_loAsk || _herLabel || letterOnlyWords(_hIdea))) {
+                  if (_herLabel) {
+                    const _cut = String(_hRest).replace(/^\s*["'\u201c]?\s*lettering only\b[^\n.!?]*[.!?]?\s*/i, "").trim();
+                    const _q = (_hLetter || []).slice(0, 4).map((x) => '"' + String(x).replace(/"/g, "'") + '"');
+                    _hRest = _cut || (_q.length ? "Just " + _q.join(" and ") + " - lettering only, nothing else." : "");
+                  }
+                  if (_hIdea && !letterOnlyWords(_hIdea)) _hIdea = "Lettering only - " + _hIdea;
+                  console.log("[TURN:HEARD] lettering only" + (_loAsk ? " (their words ask only for words)" : "") + (_herLabel ? " - the label taken out of her words" : "") +
+                    " · the idea: \"" + String(_hIdea).slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
+                }
+              } catch (e) { try { console.log("[TURN:HEARD] the lettering-only step failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
               if (!_hIdea) { let _r0 = _hRest.replace(/^\s*IDEA\s*:\s*/i, ""); const _copies = [];   // v9.790: their words with no label
                 for (let _k = 0; _k < 6; _k++) { const _cp0 = _hCopy(_r0); if (!_cp0.copy) break;   // v9.799: every copy, one after another
                   _copies.push(_r0.slice(0, _cp0.end).replace(/^[\s"'\u201c\u201d\u2018\u2019*]+/, "").trim());
@@ -70809,6 +70828,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
               if (_hIdea.trim() && !(_hDo === "TALK" && _canGo)) {
                 _heardIdea = _ideaLost ? _theirs : (_hIdea.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "") + (_addBack ? ". " + _addBack : "")).slice(0, 1000);
+                // (v9.999.43) their own words in its place keep the lettering-only label her idea had
+                if (letterOnlyWords(_hIdea) && !letterOnlyWords(_heardIdea)) _heardIdea = "Lettering only - " + _heardIdea;
                 try { await talkStatePut(env, me, "brief", JSON.stringify(Object.assign({}, carriedObj || {}, { subject: _heardIdea }, _newStyle ? { style: _newStyle } : {}))); } catch {}
               }
               const _hSec = ((Date.now() - _hT0) / 1000).toFixed(1);

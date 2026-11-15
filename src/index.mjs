@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.40-2026-11-15-a-subject-before-any-showing";
+const BUILD = "aura-core-v9.999.41-2026-11-15-new-lettering-replaces-old";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62287,6 +62287,28 @@ function letterOpt(v) {
 function letterKey(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, ""); }
 function letterHas(saved, t) { const k = letterKey(t); return !!k && (saved.items || []).some((o) => o && o.font && (letterKey(o.text) === k || letterKey(o.from) === k)); }
 function letterParse(v) { try { const o = JSON.parse(String(v || "")); if (o && Array.isArray(o.items)) return o; } catch {} return { items: [] }; }
+// ══ NEW LETTERING THAT REPLACES THE OLD (v9.999.41, 2026-11-15, Aaron: "we can fix the banner thing if you're able to recognize that for sure") ═══
+// MEASURED 13:25 (Dragon Wave): "Let's change the banner to Malibu forever", Creepy picked - the image model was told '"Malibu" in Chicano Script
+// lettering, "Malibu forever" in Creepy lettering. Keep the lettering already on my design as it is.' - keep the old words and add the new ones,
+// against what they asked. An old lettering is replaced only when it is certain: the new lettering holds the old words ("Malibu" -> "Malibu
+// forever"); or their change names the old words and says change/replace/swap/instead ("change Jake to Mike"); or the design has only one
+// lettering and their change says to change it ("change the banner to ..."). Anything less certain keeps the old lettering, as before.
+function letterReplaced(oldItems, picked, words) {
+  const w = String(words || ""), wl = w.toLowerCase();
+  const swap = /\b(change|changing|replace|replacing|swap|switch|instead|rather than|rename|rewrite|re-?write)\b/i.test(w);
+  const lettery = /\b(banner|name|names|word|words|text|lettering|letters|writing|written|script|quote|says?|reads?)\b/i.test(w);
+  const olds = (oldItems || []).filter((o) => o && o.text);
+  const out = [];
+  for (const o of olds) {
+    const k = letterKey(o.text); if (!k) continue;
+    if (picked.some((p) => letterKey(p.text) === k || letterKey(p.from) === k)) continue;   // the same lettering again - not a replacement
+    const holds = (swap || /\b(say|says|read|reads)\b/i.test(w)) && picked.some((p) => { const pk = letterKey(p.text); return pk && pk !== k && pk.includes(k); });
+    const named = swap && new RegExp("\\b" + String(o.text).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+") + "\\b").test(wl);
+    const only = swap && lettery && olds.length === 1 && picked.length === 1;
+    if (holds || named || only) out.push(o);
+  }
+  return out;
+}
 // What every sentence to the image model says about the lettering, once it is chosen. forChange: the design already has it - keep it as it is.
 // one (v9.854): one picture, not a sheet - the lettering exactly, with no "number 1 ... the others" (the add-on, one at a time).
 function letterClause(letter, forChange, one, offBody) {
@@ -62294,6 +62316,10 @@ function letterClause(letter, forChange, one, offBody) {
   if (!items.length) return "";
   const each = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? " in " + String(x.font).replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()).replace(/\b3d\b/gi, "3D") + " lettering" : "")).join(", ");
   if (one) return " Write the lettering exactly as written here - " + each + ".";
+  // (v9.999.41) the lettering their change replaces is named, so the model takes it off rather than keeping it
+  const _rep = (letter && Array.isArray(letter.replaced) ? letter.replaced : []).filter(Boolean).map((t) => '"' + String(t).replace(/"/g, "'") + '"');
+  if (forChange && _rep.length) return " The lettering, spelled exactly as written here, each in its own lettering: " + each + ". This replaces " + _rep.join(" and ") +
+    " on my design - " + _rep.join(" and ") + (_rep.length > 1 ? " are" : " is") + " no longer written anywhere on it. Keep any other lettering on my design as it is.";
   if (forChange) return " The lettering, spelled exactly as written here, each in its own lettering: " + each + ". Keep the lettering already on my design as it is.";
   // (v9.995) offBody - a new tattoo's first designs: MEASURED 15:48 (launch pass, "a quote going down my spine in a thin script"): "put the
   // lettering where I described" drew number 1 as a woman's back with the quote on her spine, and locked in, the artist files were her back with
@@ -70368,8 +70394,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             let _items = []; try { _items = (await letterFind(env, _hw, "", talkModel)) || []; } catch {}
             const _picked = _items.slice(0, 4).map((t) => ({ text: (_typedLetter.caps ? String(t).toUpperCase() : String(t)).trim().slice(0, 80), font: _typedLetter.font })).filter((x) => x.text);
             const _old = letterParse(_ds.letter);
-            const _merged = _old.items.filter((o) => !_picked.some((p) => letterKey(p.text) === letterKey(o.text))).concat(_picked);
-            try { if (_picked.length) await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 6) })); await talkStatePut(env, me, "change_held", ""); } catch {}
+            const _gone = letterReplaced(_old.items, _picked, _hw);   /* (v9.999.41) */
+            const _merged = _old.items.filter((o) => !_gone.includes(o) && !_picked.some((p) => letterKey(p.text) === letterKey(o.text))).concat(_picked);
+            if (_gone.length) console.log("[TURN:LETTER] their new lettering replaces: " + _gone.map((x) => '"' + x.text + '"').join(", ") + " - taken off, not kept" + (me ? " · who=" + me : ""));
+            try { if (_picked.length) await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 6), ...(_gone.length ? { replaced: _gone.map((x) => x.text) } : {}) })); await talkStatePut(env, me, "change_held", ""); } catch {}
             _heldChange = _hw || null;
             _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining that change for you now.");
             console.log("[TURN:LETTER] their lettering typed, not picked: \"" + _s.slice(0, 80) + "\" - " + (_picked.length ? _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") : "(no lettering found in the change)") +
@@ -70381,9 +70409,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             const _old = letterParse(_ds.letter), _ids = new Set(LETTER_STYLES.map((x) => x.id));
             const _picked = opts.letter.items.map((x) => ({ text: String((x && x.text) || "").trim().slice(0, 80), font: _ids.has(String((x && x.font) || "").toLowerCase()) ? String(x.font).toLowerCase() : "",
               ...(x && x.from && letterKey(x.from) !== letterKey(x.text) ? { from: String(x.from).slice(0, 80) } : {}) })).filter((x) => x.text);
-            const _merged = _old.items.filter((o) => !_picked.some((p) => letterKey(p.text) === letterKey(o.text) || letterKey(p.from) === letterKey(o.text))).concat(_picked);
             let _held = null; try { _held = JSON.parse(String(_ds.change_held || "")); } catch {}
-            try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 6) })); await talkStatePut(env, me, "change_held", ""); } catch {}
+            const _gone = letterReplaced(_old.items, _picked, String((_held && _held.words) || ""));   /* (v9.999.41) */
+            const _merged = _old.items.filter((o) => !_gone.includes(o) && !_picked.some((p) => letterKey(p.text) === letterKey(o.text) || letterKey(p.from) === letterKey(o.text))).concat(_picked);
+            if (_gone.length) console.log("[TURN:LETTER] their new lettering replaces: " + _gone.map((x) => '"' + x.text + '"').join(", ") + " - taken off, not kept" + (me ? " · who=" + me : ""));
+            try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _merged.slice(0, 6), ...(_gone.length ? { replaced: _gone.map((x) => x.text) } : {}) })); await talkStatePut(env, me, "change_held", ""); } catch {}
             _heldChange = String((_held && _held.words) || "").slice(0, 600) || null;
             _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining that change for you now.");
             console.log("[TURN:LETTER] their lettering for the change: " + _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") + " - the change they asked for is drawn now: \"" + String(_heldChange || "").slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
@@ -74425,6 +74455,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 const _at = _sentNow.search(/\s(?:Make one tall page|Make one page)\b/);
                 _sentNow = letterFrame(_at > 0 ? _sentNow.slice(0, _at) + _cl + _sentNow.slice(_at) : _sentNow + _cl, _lc);
                 console.log("[TURN:DESIGN] their lettering is kept:" + _cl + (me ? " · who=" + me : ""));
+                // (v9.999.41) what this change replaced is said once - the next change starts from the design as it now is
+                if (Array.isArray(_lc.replaced) && _lc.replaced.length) { try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _lc.items })); } catch {} }
               }
             } catch {}
             _herAsk = null;

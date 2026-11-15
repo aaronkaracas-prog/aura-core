@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.36-2026-11-15-one-line-for-the-card";
+const BUILD = "aura-core-v9.999.37-2026-11-15-the-name-stays-with-the-tattoo";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69895,6 +69895,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               String(opts.style_on).trim().toLowerCase() === String(_nf.new_style || "").trim().toLowerCase() && String(_nf.new_flow || "") === "1" &&
               String(_nf.new_style || "").trim() && !String(_nf.new_drawn || "") && !String(_nf.new_start || "").trim() && !String(_nf.go_idea || "").trim()) {
             _styleStart = false; _styleKept = true;
+            try { await talkStatePut(env, me, "go_name", ""); } catch {}   // (v9.999.37) a new tattoo - the last one's name goes
             console.log("[TURN:NEWSTART] their first words after picking " + String(_nf.new_style).trim() + " - their idea for that style, not a new tattoo; the style is kept" + (me ? " · who=" + me : ""));
           }
           // ══ A FRESH START WITH A PHOTO OF THEM IS A NEW ADD-ON (v9.861, 2026-11-06) ═══ MEASURED 15:01: Start a new tattoo, then the rose
@@ -69907,6 +69908,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 (Array.isArray(opts.all_ideas) && opts.all_ideas.length))) {
             try { await talkStatePut(env, me, "addon_go", ""); await talkStatePut(env, me, "addon_drawn", ""); await talkStatePut(env, me, "letter", "");
                   await talkStatePut(env, me, "addon_talk", ""); } catch {}
+            try { await talkStatePut(env, me, "go_name", ""); } catch {}   // (v9.999.37) a new tattoo - the last one's name goes
             console.log("[TURN:NEWSTART] a fresh start with a photo of them - a new add-on; the last tattoo's add-on markers cleared" + (me ? " · who=" + me : ""));
           }
           // ══ A DESIGN PICKED FROM THE CATALOGUE IS A NEW TATTOO (v9.948, 2026-11-11) ═══ MEASURED 07:56 (Tiny lone samurai): they picked
@@ -69916,6 +69918,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           if (!_opener && !!(opts && (opts.pick_new || (opts.fresh && opts.pick))) && !_bodyPhoto) {
             try { await talkStatePut(env, me, "letter", ""); await talkStatePut(env, me, "change_held", ""); await talkStatePut(env, me, "await_change", "");
                   await talkStatePut(env, me, "design_change", ""); await talkStatePut(env, me, "design_change_parent", ""); } catch {}
+            try { await talkStatePut(env, me, "go_name", ""); } catch {}   // (v9.999.37) a new tattoo - the last one's name goes
             console.log("[TURN:NEWSTART] a design picked from the catalogue - the last tattoo's lettering and change markers cleared" + (me ? " · who=" + me : ""));
           }
           // ══ EVERY FRESH START LEAVES THE LAST TATTOO'S LETTERING BEHIND (v9.954, 2026-11-11, Aaron: "make sure that Aura is understanding what
@@ -69929,6 +69932,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   // (v9.955) MEASURED 11:24 (Trending -> Family, "roses with Kocham cię babciu"): a dragon, a koi, a fan and a torii in the roses - the
                   // Japanese Fusion style of the tattoo before was still kept. A fresh start has no style of its own, unless it was just picked (kept above).
                   if (!_styleKept) { await talkStatePut(env, me, "new_style", ""); _nf.new_style = ""; } } catch {}
+            try { await talkStatePut(env, me, "go_name", ""); } catch {}   // (v9.999.37) a new tattoo - the last one's name goes
             console.log("[TURN:NEWSTART] a fresh start" + (opts.page ? " from " + opts.page : "") + " - the last tattoo's lettering, change markers" + (_styleKept ? "" : " and style") + " cleared" + (me ? " · who=" + me : ""));
           }
           _newFlow = (_opener ? /^i want to create a new tattoo\.?$/i.test(_op) : _styleStart ? true : String(_nf.new_flow || "") === "1") &&
@@ -70052,8 +70056,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       const _goNameQ = (her, theirs, idea, pic) => { try {
         const p = nameIdea(env, her, theirs, talkModel, 8000).then((n) => n ? talkStatePut(env, me, "go_name", JSON.stringify({ name: n, idea: String(idea || "").slice(0, 1200), pic: String(pic || ""), at: Date.now() })) : null).catch(() => {});
         if (opts && typeof opts.waitUntil === "function") opts.waitUntil(p); } catch {} };
+      // (v9.999.37) MEASURED 06:07 (Create, a wolf-and-moon picture, Yes, show me): the yes step said the idea again in its own words ("a howling
+      // wolf against a full moon with pine trees...") and the name, kept against the first wording, no longer matched - "I'm picturing those
+      // elements coming together". The name now belongs to this tattoo: cleared at every new start, good for 30 minutes, same picture if any.
       const _goNameOf = (raw, idea, pic) => { try { const o = JSON.parse(String(raw || "")); if (o && o.name && Date.now() - Number(o.at || 0) < 30 * 60000 &&
-        String(o.idea || "") === String(idea || "").slice(0, 1200) && (!o.pic || !pic || String(o.pic) === String(pic))) return String(o.name); } catch {} return ""; };
+        (!o.pic || !pic || String(o.pic) === String(pic))) return String(o.name); } catch {} return ""; };
       let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _typedLetter = null, _addonGoWords = null, _addonLetter = null, _addonLetterHeld = false, _onAddonSheet = false;
       if (me && !_tapKeep) {
         try {
@@ -70128,6 +70135,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             if (_styleStart) { try { console.log(/^let'?s create my own in the .+ style\.?$/i.test(_s)
               ? "[TURN:NEWSTYLE] a new tattoo started from a style in one turn - the new-tattoo start and the style together" + (me ? " · who=" + me : "")
               : "[TURN:NEWSTART] typed on the front page or the Create page with nothing on screen - a new tattoo, no style; the last tattoo's markers cleared" + (me ? " · who=" + me : "")); } catch {} }
+            try { await talkStatePut(env, me, "go_name", ""); } catch {}   // (v9.999.37)
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "design_change", "");
                   await talkStatePut(env, me, "design_change_parent", "");
                   // THE NEW-TATTOO FLOW MARKER (v9.604): set only by the Create New Tattoo opener, cleared by every other start.

@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.37-2026-11-15-the-name-stays-with-the-tattoo";
+const BUILD = "aura-core-v9.999.38-2026-11-15-she-names-it-on-every-road";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62543,7 +62543,10 @@ async function drawStartSay(env, idea, style, talkModel, name) {
       // (v9.999.34, 2026-11-14, Aaron: go - "she had a lot of information she could've put it there") with its name found after her say-back she
       // calls it by that name, a few words, still never the whole idea again
       (name ? "In one short, warm sentence in your own words, tell them you're imagining their " + String(name).slice(0, 60) + " designs now - call it by that name and say nothing more about it. "
-            : "In one short, warm sentence in your own words, tell them you're imagining their designs now - without listing the idea again. ") +
+            // (v9.999.38) MEASURED 06:29 (Create, "a sea turtle swimming through kelp with sunlight coming down, go ahead and show me some designs" -
+            // their go in their first words, so no say-back and no name kept): "I'm picturing those graceful lines and gentle light now." With no name
+            // kept she names it herself in a few words - never the whole idea again.
+            : "In one short, warm sentence in your own words, tell them you're imagining their designs now, calling it by a short name of two to five words (for example: your wolf and full moon) - never describe the whole idea again. ") +
       "Never put a number in your words. Plain words only.";
     const q = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), ms)),
       callBrain({ system: sys, user: String(idea || "").slice(0, 600), max_tokens: 2000, ...(eff ? { reasoning: eff } : {}), ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env)]);

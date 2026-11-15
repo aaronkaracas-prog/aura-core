@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.39-2026-11-15-the-style-is-said-once";
+const BUILD = "aura-core-v9.999.40-2026-11-15-a-subject-before-any-showing";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -75601,6 +75601,20 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // imagine some ideas made from this picture." - not a question, so no offer card and nothing to tap. Her read of a picture they brought to
       // a new tattoo is always her say-back with a yes waiting (below), so the offer card always comes with it, however she words it.
       const _picOffer = !!(me && _newRoadPic && _freshPhoto && !_fixedWhy && !(drew && drew.image) && !_jobPick && !(acted && acted.choose));
+      // ══ A SUBJECT BEFORE ANY SHOWING (v9.999.40, 2026-11-15, Aaron: "There's no showing on just a style, we need a subject always") ═══
+      // MEASURED 08:45 (walk of page v933, Tattoo Styles chat): "whats the difference between fine line and micro realism? i want something
+      // small on my wrist" - she ended "Want me to show you some ideas either way?" and the page put Yes, show me under it; the yes got the
+      // style explanation again and "What subject…?" - nothing could be drawn. Her offer card (Yes, show me) only goes to the page when there is
+      // a subject to draw from: a picture in this tattoo, an idea of theirs she has said back, or designs already drawn. Without one, her
+      // words stay and nothing to tap promises a drawing; they tell her what they want.
+      let _offerSubj = !!refUrl || _picOffer;
+      if (!_offerSubj && me) {
+        try { const _os = await talkStateGet(env, me, ["go_idea", "new_drawn", "addon_drawn"]);
+              _offerSubj = !!(String(_os.go_idea || "").trim() || String(_os.new_drawn || "") === "1" || String(_os.addon_drawn || "") === "1"); } catch { _offerSubj = true; }
+      }
+      if (!_offerSubj && !_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && _isOfferLine(_said)) {
+        try { console.log("[TURN:OFFER] no subject yet (no picture, no idea said back, nothing drawn) - no Yes, show me under her offer" + (me ? " · who=" + me : "")); } catch {}
+      }
       if (me && _newRoadPic && _freshPhoto && !_fixedWhy && !(drew && drew.image) && !_jobPick) {
         try {
           const _pw = (Array.isArray(tnow) ? tnow : []).filter((e) => e && e.role === "them").map((e) => String(e.said || "").trim())
@@ -75898,7 +75912,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
             ideas: null,   // NO IDEA CARDS (v9.684, 2026-10-19, Aaron): her reply and the chat box are the whole screen
             choose: (acted && acted.choose && !_fixedWhy && !(drew && drew.image)) ? acted.choose : null,
-            offer: (!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer)) || undefined,
+            offer: (_offerSubj && !_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer)) || undefined,
             job_pick: _jobPick || undefined,
             see_on_me: _seeOnMe || undefined,
             photo_new: _photoNew || undefined,
@@ -75960,7 +75974,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                ...(acted && acted.choose && !_fixedWhy && !(drew && drew.image) ? { choose: acted.choose } : {}),
                // HER OFFER, ONE TAP (v9.691, 2026-10-21, Aaron: "there's never a reason to type unless you're changing what the moment
                // is"): when she offers to show ideas and there is no card, the page puts "Show me some ideas" / "Talk to me" under it.
-               ...(!_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer) ? { offer: true } : {}),
+               ...(_offerSubj && !_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer) ? { offer: true } : {}),
                // (v9.976) her read: their own tattoo - the page puts Build around it / Cover it up / Make a new tattoo from it under her words
                ...(_jobPick ? { job_pick: true } : {}),
                ...(_seeOnMe ? { see_on_me: true } : {}),

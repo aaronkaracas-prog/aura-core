@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.32-2026-11-14-see-it-on-you-is-create";
+const BUILD = "aura-core-v9.999.33-2026-11-14-her-words-match-the-card";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62188,6 +62188,31 @@ function letterItems(line) {
 // and the 8 were drawn at once; one card of 8 had "Rosa", in a script the image model chose, and the lettering sheet never came up. The hearing
 // step that finds lettering only runs on Create; on their photo nothing asked. One short question finds it, in the same LETTERING form.
 // Model: `config:source:lettering:model`, else `config:source:heard:model`, else her talk model.
+// ══ THE TATTOO'S NAME IN A FEW WORDS (v9.999.33, 2026-11-14, Aaron: go) ═══ For her line while the first designs are imagined: "I'm imagining
+// your horror clown tattoo now." Reads her last line and their words; answers a few plain words or nothing. Model: config:source:name_idea:model
+// (else the heard dial, else the talk model). Time: config:talk:name_idea_ms (default 3000, 0 = no limit) - past it, the fixed line stands.
+async function nameIdea(env, herWords, theirWords, talkModel) {
+  try {
+    if (!String(herWords || "").trim() && !String(theirWords || "").trim()) return "";
+    let model = null;
+    try { model = String((await env.AURA_KV.get("config:source:name_idea:model")) || "").trim() || String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+    const system = "You name a tattoo idea in a few plain words. Read what the person said and what Aura said back, and reply with one line: " +
+      "NAME: the subject of the tattoo in two to six words, lower case, no article (a, an, the), no style, no body part, no adjectives about how it " +
+      "feels - for example: horror clown / dragon, sword and axe / golden retriever and sunflowers. If there is no subject yet, reply NAME: none";
+    const user = (theirWords ? "What they said:\n" + String(theirWords).slice(0, 1200) + "\n\n" : "") + (herWords ? "What Aura said back:\n" + String(herWords).slice(0, 900) : "");
+    let _ms = 3000; try { const _v = parseInt(String((await env.AURA_KV.get("config:talk:name_idea_ms")) || ""), 10); if (Number.isFinite(_v) && _v >= 0) _ms = _v; } catch {}
+    const _ask = callBrain({ system, user, max_tokens: 400, reasoning: "low", ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env);
+    const r = _ms ? await Promise.race([_ask, new Promise((res) => setTimeout(() => res({ late: true }), _ms))]) : await _ask;
+    if (r && r.late) { console.log("[TURN:NAME] no answer in " + (_ms / 1000) + "s - the fixed line stands"); return ""; }
+    const t = String((r && r.text) || "");
+    const m = t.match(/NAME\s*:\s*([^\n]+)/i);
+    let n = m ? m[1].replace(/["*]/g, "").replace(/[.\s]+$/, "").trim() : "";
+    if (/^(none|n\/a|-)$/i.test(n) || n.length < 2 || n.length > 60 || n.split(/\s+/).length > 8) n = "";
+    n = n.replace(/^(a|an|the|your)\s+/i, "").replace(/\s+tattoos?$/i, "").toLowerCase();
+    console.log("[TURN:NAME] asked " + (model || talkModel || "the default model") + " - answer: \"" + t.replace(/\s+/g, " ").slice(0, 120) + "\" -> " + (n ? "\"" + n + "\"" : "no name, the fixed line stands"));
+    return n;
+  } catch (e) { console.log("[TURN:NAME] could not ask: " + String(e?.message ?? e).slice(0, 160)); return ""; }
+}
 async function letterFind(env, theirWords, herWords, talkModel) {
   // ══ ONLY WHAT THEY ASKED FOR (v9.890, 2026-11-08, Aaron: "she can suggest names and dates... actually let's just have her not recommend
   // names and dates - the person knows if they want that stuff, but if they ask for it this should pop up") ═══ MEASURED 08:14 (clock, "my dad
@@ -70015,6 +70040,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       let _heardIdea = null;
       let _inspWords = "";   // (v9.925) Make it my own: their words, drawn with their inspiration
       let _drawSayP = null;   // (v9.826) her line as the drawing starts - shown when it comes, never waited for
+      let _saybackNow = false;   // (v9.999.33) her say-back of a new idea, with the card under it
       let _heardTalk = false, _heardOut = null, _heardStreamed = false, _fixedSay = null, _fixedWhy = null, _lastDesignChange = "", _cutPick = false, _addonPossCard = null, _addonChangeWords = null, _changeFull = null, _letterHold = false, _heldChange = null, _typedLetter = null, _addonGoWords = null, _addonLetter = null, _addonLetterHeld = false, _onAddonSheet = false;
       if (me && !_tapKeep) {
         try {
@@ -70784,6 +70810,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 console.log("[TURN:HEARD] " + _hSec + "s" + (_hEff ? " (thinking " + _hEff + ")" : "") + " - TALK, nothing drawn; " + (_hSay ? "her reply shown, waiting for their idea" : "no words of hers - the turn goes to her") + " · her words: \"" + _hSay.slice(0, 200) + "\"" + (me ? " · who=" + me : ""));
               } else if (_hDo === "READY" && _hSay) {
                 _fixedWhy = "heard_ready"; _fixedSay = _hSay; _heardOut = { go: true };
+                _saybackNow = true;
                 // ══ NO IDEA LINE, NO IMAGINE IT BEFORE A SAY-BACK (v9.840, 2026-11-03, Aaron: go) ═══ MEASURED 19:01:27: "my grandpa was a fisherman
                 // his whole life and he passed last year. i want something for him" - READY with no IDEA line, her words "I'm sorry to hear about
                 // your grandfather— that's beautiful wanting to honor him. — ?", and Imagine it under them, waiting to draw their raw words that were
@@ -71189,6 +71216,23 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             } catch (e) { try { console.log("[TURN:LETTER] the first-designs lettering check failed - drawn as it was: " + String(e?.message ?? e).slice(0, 160)); } catch {} } }
           // The wait for their idea ends at any other fixed step (v9.699) - only the line right after Create your own is drawn as-is.
           if (_fixedWhy !== "create_own" && _fixedWhy !== "create_own_topic" && _fixedWhy !== "style" && _fixedWhy !== "door" && _fixedWhy !== "new" && _fixedWhy !== "heard_ready" && _fixedWhy !== "heard_choose" && !_heardTalk && String(_ds.await_idea || "") === "1") { try { await talkStatePut(env, me, "await_idea", ""); } catch {} }
+          // ══ SHE SAYS WHAT SHE IS IMAGINING (v9.999.33, 2026-11-14, Aaron: go; his rule of 2026-11-08: "whenever Aura is imagining, the waiting
+          // card should carry the context of what she's actually imagining") ═══ MEASURED 16:28:11 (Get Inspired, a horror clown picture, Show me some
+          // ideas): "I'm imagining amazing designs for you now" - she had just called it "a full-on horror clown". The first designs of a new tattoo
+          // get its name in a few words, read from her last line and their words (nameIdea); no answer in time, and the fixed line stands.
+          if (_fixedWhy === "four_new" && !_drewNow() && _fixedSay) {
+            try {
+              const _nmTheirs = (Array.isArray(tnow) ? tnow : []).filter((e) => e && e.role === "them").map((e) => String(e.said || "").trim())
+                .filter((t) => t && !/^\s*\[/.test(t)).slice(-4).join(". ");
+              const _nm = await nameIdea(env, _prevAuraLine, _nmTheirs, talkModel);
+              if (_nm) {
+                let _nl = "I'm imagining your {what} tattoo now.";
+                try { const _k = String((await env.AURA_KV.get("config:say:imagining_named")) || "").trim(); if (_k.includes("{what}")) _nl = _k; } catch {}
+                const _tail = await _fx("unique_tail", "Every one is 100% unique and 100% yours - never to be made again.");
+                _fixedSay = _nl.replace("{what}", _nm) + (_tail ? " " + _tail : "");
+              }
+            } catch {}
+          }
           if (_fixedSay) console.log("[TURN:FIXED] " + _fixedWhy + " - one fixed line, she is not called: \"" + _fixedSay + "\"");
           // WHY THE PLACEMENT WAITED FOR HER (v9.612): on any turn after they asked to see it on them, each condition is logged.
           if (_fixedWhy !== "onme" && (carriedObj && carriedObj.on_me === true || refHeld)) {
@@ -74830,7 +74874,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             _nameHint = _lastTap ? String(_lastTap).split(/\s+[-\u2013\u2014:]\s+/)[0].trim().slice(0, 60)
                                  : (_mineName ? String(_mineName).replace(/[\s.]+$/, "").slice(0, 70) : null);
             // "what do you think?." (v9.686): a line that ends in ? or ! keeps its own mark and gets no added full stop.
-            const _typed = _mine.map((x) => x.replace(/[\s.]+$/, "")).reduce((acc, x) => acc ? acc + (/[?!]$/.test(acc) ? " " : ". ") + x : x, "").slice(0, 1200);
+            // ══ CORE'S NOTE IS NOT THEIR WORDS, HERE TOO (v9.999.33, 2026-11-14, Aaron: go) ═══ MEASURED 16:28:20 (Get Inspired, a horror clown
+            // picture, Show me some ideas): the image model got "This is what I want to do with it: [they sent a photo, with no words]" - the
+            // note core writes for Aura reached the drawing (the 2026-09-28 rule strips it on the change road, not here). With no words of theirs
+            // the middle sentence drops, as v9.717 built it to.
+            const _typed = _mine.filter((x) => x && !/^\s*\[[^\]]*\]\s*$/.test(String(x))).map((x) => String(x).replace(/^\s*\[[^\]]*\]\s*/, "").replace(/[\s.]+$/, "")).filter(Boolean).reduce((acc, x) => acc ? acc + (/[?!]$/.test(acc) ? " " : ". ") + x : x, "").slice(0, 1200);
             // ══ WHAT THEY WANT, NOT THE WHOLE CONVERSATION (v9.704, 2026-10-21, Aaron: "the conversation does not need to be passed ...
             // that was basically what they wanted") ═══ MEASURED 17:20: every typed line went in - "My wife and I really don't know what
             // style we like. What other styles are there" - and "butter" became a butter dish in all 8. The record of what they want
@@ -75530,6 +75578,23 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       if (!_fixedWhy && !(drew && drew.image) && (_isOfferLine(_said) || _heardOut)) {
         const _cl9 = dropDrawClaim(_said);
         if (_cl9 !== _said) { try { console.log("[TURN:OFFER] nothing drawn yet - her claim that it is drawing taken out: \"" + _said.slice(0, 200) + "\" -> \"" + _cl9.slice(0, 200) + "\"" + (me ? " · who=" + me : "")); } catch {} _said = _cl9; }
+      }
+      // ══ HER WORDS POINT AT THE CARD (v9.999.33, 2026-11-14, Aaron: go - "she is mentioning style, she is mentioning go, but there's no continuity
+      // between those steps") ═══ MEASURED 16:33:03 (Create, dragon, sword and axe): "Should I go ahead and imagine some designs for you, or is there
+      // any particular style you have in mind?" and under it a card reading Pick a style / Show me some ideas. Her say-back of a new idea (and her
+      // read of a picture they brought, with its card) ends on one fixed line naming what is on the card; her own question at the end goes.
+      // Settings: config:say:card_point (no style picked yet), config:say:card_point_style (a style already picked - the card is Imagine it).
+      if ((_saybackNow || (typeof _picOffer !== "undefined" && _picOffer)) && !(drew && drew.image) && /\?\s*$/.test(_said)) {
+        try {
+          const _stNow = String(_newStyle || "").trim();
+          const _cut = _said.replace(/\s*[^.!?\u2014\u2013]*\?\s*$/, "").trim();
+          let _pt = _stNow ? "Tap Imagine it when you're ready." : "Tap Show me some ideas, or pick a style first.";
+          try { const _k = String((await env.AURA_KV.get(_stNow ? "config:say:card_point_style" : "config:say:card_point")) || "").trim(); if (_k) _pt = _k; } catch {}
+          if (_cut.length >= 12) {
+            console.log("[TURN:CARD-POINT] her question at the end -> the card's words: \"" + _said.slice(-160) + "\" -> \"" + _pt + "\"" + (me ? " · who=" + me : ""));
+            _said = _cut + " " + _pt;
+          }
+        } catch {}
       }
       // (The note about artist sheets being redone is no longer said to them - the files are made
       // quietly at the end and are not part of the conversation. It stays in `drew.she_checked`.)

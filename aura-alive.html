@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aura comes alive – waiting card preview</title>
+<style>
+html,body{margin:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:430px;margin:0 auto;padding:18px 14px 40px}
+.note{color:#8b86a3;font-size:.78rem;text-align:center;margin:0 0 12px;line-height:1.4}
+.gencard{position:relative;max-width:420px;margin:4px 0 16px;padding:16px 16px 14px;border-radius:20px;background:linear-gradient(180deg,#120f22,#0b0a14);border:1px solid rgba(167,139,250,.22);box-shadow:0 10px 40px rgba(88,28,135,.25)}
+.gca{position:relative;aspect-ratio:1/1;max-height:340px;margin:6px auto 2px;overflow:hidden;border-radius:14px;background:#000}
+.gca canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+h4{margin:10px 0 4px;text-align:center;color:#f3eefe;font:600 1.45rem/1.2 Georgia,'Times New Roman',serif}
+.gcs{margin:0 auto 14px;max-width:300px;text-align:center;color:#c9c3e0;font-size:.95rem;line-height:1.4}
+.gcb{height:7px;border-radius:7px;background:#221d33;overflow:hidden;margin:0 6px 14px}.gcb i{display:block;height:100%;width:0;border-radius:7px;background:linear-gradient(90deg,#7c3aed,#a855f7 55%,#ec4899);transition:width .6s ease}
+.gct{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:14px;border:1px solid rgba(167,139,250,.2);background:rgba(255,255,255,.02);color:#d6d1ea;font-size:.86rem;line-height:1.4}
+.gct svg{flex:0 0 auto;width:22px;height:22px;color:#c084fc}
+.row{display:flex;gap:8px;justify-content:center;margin-top:6px;flex-wrap:wrap}.row button{background:#14101c;border:1px solid #6b3fa8;color:#e9d5ff;border-radius:999px;padding:8px 14px;font:inherit;font-size:.85rem;cursor:pointer}
+.row button.on{background:#6d28d9;border-color:#c4b5fd;color:#fff}
+</style></head><body><div class="wrap">
+<p class="note">Preview: 12 sharp frames of your monarch, 1.3s each, soft blend. Faster speeds under the card.</p>
+<div class="gencard"><div class="gca"><canvas id="aura"></canvas></div>
+<h4 id="t1">Imagining your tattoo…</h4><p class="gcs" id="t2">Turning your idea into something amazing. This can take a moment.</p>
+<div class="gcb"><i id="bar"></i></div>
+<div class="gct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.9V16h5v-.2c0-.8.4-1.5 1-1.9A6 6 0 0 0 12 3z"/></svg><span>Tip: Like one but want something changed? Select it and tell me what to change.</span></div></div>
+<div class="row"><button data-sp="0.45">GIF speed</button><button data-sp="0.7">Slower</button><button data-sp="0.95">Slower still</button><button data-sp="1.3" class="on">Slowest</button></div>
+</div>
+<script>
+(function(){
+  /* AURA (2026-11-14). Aaron's GIF look, redrawn sharp with his blue monarch: 12 frames (his 6 keyframes + 6 in-betweens),
+     every frame has the butterfly. 1.3s a frame, soft blend over the last third of each step. */
+  var SRC=[
+    "https://auras.guide/image/img_mwh0ytk9ma8q?w=720",
+    "https://auras.guide/image/img_mwh0zjpayai6?w=720",
+    "https://auras.guide/image/img_mwh10axqbjrr?w=720",
+    "https://auras.guide/image/img_mwh0mtcbw5bb?w=720",
+    "https://auras.guide/image/img_mwh114a8cr1f?w=720",
+    "https://auras.guide/image/img_mwh11y7jy4y7?w=720",
+    "https://auras.guide/image/img_mwh130gimj5k?w=720",
+    "https://auras.guide/image/img_mwh13sc9zeyn?w=720",
+    "https://auras.guide/image/img_mwh14kx1crtr?w=720",
+    "https://auras.guide/image/img_mwh15bhrr28q?w=720",
+    "https://auras.guide/image/img_mwh1652zypud?w=720",
+    "https://auras.guide/image/img_mwh16uwvwzd0?w=720"];
+  var N=SRC.length, STEP=1.3, BL=.34;
+  var F=[], left=N; SRC.forEach(function(u,i){ var im=new Image(); im.onload=im.onerror=function(){ if(--left===0) requestAnimationFrame(frame); }; im.src=u; F[i]=im; });
+  var cv=document.getElementById('aura'), ctx=cv.getContext('2d'), W=0,H=0, DPR=Math.min(2,window.devicePixelRatio||1);
+  function size(){ var r=cv.getBoundingClientRect(); W=r.width; H=r.height; cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR); ctx.setTransform(DPR,0,0,DPR,0,0); }
+  size(); addEventListener('resize', size);
+  function ss(e){ e=Math.max(0,Math.min(1,e)); return e*e*(3-2*e); }
+  function draw(i,a){ var im=F[i]; if(a<=.003||!im.naturalWidth) return; var s=Math.max(W/im.naturalWidth,H/im.naturalHeight), w=im.naturalWidth*s, h=im.naturalHeight*s;
+    ctx.globalAlpha=a; ctx.drawImage(im,(W-w)/2,(H-h)/2,w,h); }
+  var pos=0, last=0;
+  function frame(now){ requestAnimationFrame(frame); var dt=last ? Math.min(.1,(now-last)/1000) : 0; last=now;
+    pos=(pos+dt/STEP)%N; var i=Math.floor(pos), f=pos-i, n=(i+1)%N, e=f>1-BL ? ss((f-(1-BL))/BL) : 0;
+    ctx.globalAlpha=1; ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H); draw(i,1); if(e>0) draw(n,e); ctx.globalAlpha=1; }
+  [].forEach.call(document.querySelectorAll('[data-sp]'), function(b){ b.onclick=function(){ STEP=parseFloat(b.getAttribute('data-sp')); [].forEach.call(document.querySelectorAll('[data-sp]'),function(x){ x.classList.toggle('on',x===b) }); }; });
+  var ST=[["Imagining your tattoo…","Turning your idea into something amazing. This can take a moment."],["Bringing it to life…","Building the details, placement and flow."],["Adding depth and detail…","Creating realistic texture, shadows and lighting."],["Refining the details…","Fine-tuning the colors, lighting and placement."],["Almost there…","Putting on the final touches for a natural, realistic look."]];
+  var si=0, bar=document.getElementById('bar'); function stage(){ document.getElementById('t1').textContent=ST[si][0]; document.getElementById('t2').textContent=ST[si][1]; bar.style.width=(12+si*19)+'%'; si=(si+1)%ST.length; } stage(); setInterval(stage,7000);
+})();
+</script></body></html>

@@ -447,6 +447,20 @@ From his phone walk 16:24-16:36 and the logs:
 - Page: the trail carries the search - Get Inspired > "Scary clown" > This Picture > Your Designs > This Design. "Scary clown" brings the same results back (no new search; the tattoo stays in In Progress); This Picture goes to the top of the conversation; back from the picture goes to the results.
 - Note: her asking before drawing on Create is right (2026-11-01 later rule: she says it back and waits for the go) - my earlier flag was wrong.
 
+### Core v9.999.35 – my test of v9.999.34/v925 (Nov 14, 17:28-17:36)
+
+Tested at phone size:
+- Get Inspired > Show me real tattoos > "koi fish swimming up a waterfall" (98 found). The dock was up while it searched, and the page line stepped aside. I opened "koi swimming up waterfall" (a red and orange koi climbing a blue waterfall, from Pinterest) and tapped Work on this.
+- Her read, 17:30:57 [TURN:CARD-POINT] card_point_offer: "That's a classic Japanese koi climbing through crashing waves - bold color, red and gold fish against all that turquoise water, done in a really solid traditional style. Great pick to build from. Tap Yes, show me, or I have my own idea." Her "Want me to imagine some designs made from this picture?" went. The card under it was Yes, show me / I have my own idea - a match.
+- The name was found in the background at 17:30:59: "koi fish and waves". Then Yes, show me - her line while drawing: "I'm already picturing those vivid koi swimming through the rolling waves for you." 8 came back; card 1 TRADITIONAL JAPANESE (the koi in red and black climbing teal waves). Trail: "koi fish swimming up a waterfall" > This Picture > Your Designs.
+- Create, typed "i want a lighthouse with a storm and a little boat for my dad, he was a fisherman": her own full reply came with her style card ("What feel should it have?" - the new Optional line, Show me some ideas / A mix of designs, each in a different style, Or keep telling me about it below). It ended "Tell me more if you want, or I can show you some ideas. Pick a style for it below - or tell me what you'd like to make from it." - not pointed: a third road. Japanese tapped (its own "Japanese it is." pop-up), Imagine it - her line: "I'm imagining your lighthouse storm boat tattoo now." Card 1 STEADFAST LIGHT.
+- Home: the "Choose what you'd like to do" line is gone.
+- From the 17:12 log (v9.999.33, wolf): sent to the image model: "This is a picture I like. This is what I want to do with it: a howling wolf head and chest against a big full moon, black and grey with stippling, a lone pine off to the side, and flowing ink swirls trailing down from the fur. Show me 8 different tattoo designs from it, each in a different tattoo style..." - no bracket note.
+
+Fixed in core v9.999.35:
+- Her style card under her own reply on a new tattoo with nothing drawn gets the same ending ("Tap Show me some ideas, or pick a style first."); an offer of hers that runs two sentences goes whole.
+- The name reads the way a person says it ("lighthouse and little boat in a storm", not "lighthouse storm boat").
+
 ### Core v9.999.34 + page v925 – found in my own test of v9.999.33/v924 (Nov 14, 17:09-17:14)
 
 Tested at phone size: Get Inspired > Search anything in the world > "wolf howling at the moon" > the dock (stays over the chat box while scrolling; switching to Show me real tattoos searched the same words there) > a black-and-grey wolf and moon picture > Work on this > Yes, show me > 8 designs (card 1 STIPPLING REALISM) > trail "wolf howling at the moon" > This Picture > Your Designs > tapping the search brought the same results back with the dock.

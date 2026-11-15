@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.34-2026-11-14-her-words-name-the-card";
+const BUILD = "aura-core-v9.999.35-2026-11-14-style-card-road-named";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62197,8 +62197,9 @@ async function nameIdea(env, herWords, theirWords, talkModel, msOver) {
     let model = null;
     try { model = String((await env.AURA_KV.get("config:source:name_idea:model")) || "").trim() || String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
     const system = "You name a tattoo idea in a few plain words. Read what the person said and what Aura said back, and reply with one line: " +
-      "NAME: the subject of the tattoo in two to six words, lower case, no article (a, an, the), no style, no body part, no adjectives about how it " +
-      "feels - for example: horror clown / dragon, sword and axe / golden retriever and sunflowers. If there is no subject yet, reply NAME: none";
+      "NAME: the subject of the tattoo in two to six words, the way a person would say it - things joined with 'and' or 'with', lower case, no " +
+      "article (a, an, the), no style, no body part, no adjectives about how it feels - for example: horror clown / dragon, sword and axe / " +
+      "lighthouse and little boat in a storm / golden retriever with sunflowers. If there is no subject yet, reply NAME: none";
     const user = (theirWords ? "What they said:\n" + String(theirWords).slice(0, 1200) + "\n\n" : "") + (herWords ? "What Aura said back:\n" + String(herWords).slice(0, 900) : "");
     let _ms = 3000; try { const _v = parseInt(String((await env.AURA_KV.get("config:talk:name_idea_ms")) || ""), 10); if (Number.isFinite(_v) && _v >= 0) _ms = _v; } catch {}
     if (Number.isFinite(msOver) && msOver > _ms) _ms = msOver;   // (v9.999.34) in the background it can take longer
@@ -75604,18 +75605,29 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // me / I have my own idea, not the style card. The line names the card that will be there: her style card (she gave styles) -> Show me
       // some ideas / a style; her picture read with no styles -> Yes, show me / I have my own idea; her say-back of a typed idea -> the same as the
       // style card (the page turns "pick a style" into it), or Imagine it once a style is picked. Her last sentence goes when it is her offer.
-      if ((_saybackNow || (typeof _picOffer !== "undefined" && _picOffer)) && !(drew && drew.image) && String(_said || "").trim()) {
+      // (v9.999.35) MEASURED 17:33 (v9.999.34 live, Create, "i want a lighthouse with a storm and a little boat for my dad, he was a fisherman"):
+      // her own full reply came with her style card under it and ended "Pick a style for it below - or tell me what you'd like to make from it."
+      // - the third road. Whenever her style card is under her words on a new tattoo with nothing drawn, the same line names it.
+      const _hasStyles = !!(acted && acted.choose && Array.isArray(acted.choose.styles) && acted.choose.styles.length);
+      const _styleCardNow = _hasStyles && !_fixedWhy && !_drewNow();
+      if ((_saybackNow || (typeof _picOffer !== "undefined" && _picOffer) || _styleCardNow) && !(drew && drew.image) && String(_said || "").trim()) {
         try {
           const _stNow = String(_newStyle || "").trim();
-          const _hasStyles = !!(acted && acted.choose && Array.isArray(acted.choose.styles) && acted.choose.styles.length);
           const _which = _saybackNow ? (_stNow ? "card_point_style" : "card_point") : (_hasStyles ? "card_point" : "card_point_offer");
+          const _isPicRoad = !_saybackNow && !_styleCardNow;
           let _pt = { card_point: "Tap Show me some ideas, or pick a style first.", card_point_style: "Tap Imagine it when you're ready.",
                       card_point_offer: "Tap Yes, show me, or I have my own idea." }[_which];
           try { const _k = String((await env.AURA_KV.get("config:say:" + _which)) || "").trim(); if (_k) _pt = _k; } catch {}
           const _sent = String(_said).trim().match(/[^.!?]+[.!?]+["\u201d']?|[^.!?]+$/g) || [String(_said).trim()];
           const _last = String(_sent[_sent.length - 1] || "").trim();
-          const _offer = /\?\s*["\u201d']?$/.test(_last) || (!_saybackNow && _sent.length > 1) || _isOfferLine(_last);
-          const _keep = (_offer && _sent.length > 1) ? _sent.slice(0, -1).join(" ").replace(/\s+/g, " ").trim() : (_offer ? "" : String(_said).trim());
+          const _offer = /\?\s*["\u201d']?$/.test(_last) || (_isPicRoad && _sent.length > 1) || _isOfferLine(_last) ||
+                         (_styleCardNow && /\b(styles?|ideas?|show you|tell me)\b/i.test(_last));
+          // (v9.999.35) her offer can take two sentences ("Tell me more if you want, or I can show you some ideas. Pick a style for it below...") -
+          // trailing offers go while one sentence of hers is left
+          let _cutN = _offer ? 1 : 0;
+          while (_offer && _sent.length - _cutN > 1 && _cutN < 2) { const _t = String(_sent[_sent.length - 1 - _cutN] || "");
+            if (/\?\s*["\u201d']?$/.test(_t) || _isOfferLine(_t) || /\b(show you|tell me more|pick a style|some ideas|want me to)\b/i.test(_t)) _cutN++; else break; }
+          const _keep = (_offer && _sent.length > _cutN) ? _sent.slice(0, _sent.length - _cutN).join(" ").replace(/\s+/g, " ").trim() : (_offer ? "" : String(_said).trim());
           if (_keep.length >= 12) {
             console.log("[TURN:CARD-POINT] " + _which + " - her last words -> the card's words: \"" + _last.slice(0, 160) + "\" -> \"" + _pt + "\"" + (me ? " · who=" + me : ""));
             _said = _keep + " " + _pt;

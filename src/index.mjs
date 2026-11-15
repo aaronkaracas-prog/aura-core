@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.41-2026-11-15-new-lettering-replaces-old";
+const BUILD = "aura-core-v9.999.42-2026-11-15-lettering-only";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62311,6 +62311,13 @@ function letterReplaced(oldItems, picked, words) {
 }
 // What every sentence to the image model says about the lettering, once it is chosen. forChange: the design already has it - keep it as it is.
 // one (v9.854): one picture, not a sheet - the lettering exactly, with no "number 1 ... the others" (the add-on, one at a time).
+// ══ LETTERING ONLY (v9.999.42, 2026-11-15, Aaron: "lettering only, go") ═══ When the words are the whole tattoo, the 8 designs are only
+// lettering: the same words written 8 ways, nothing drawn around them. Setting: config:frame:new:letteronly (empty value = the placements
+// clause, as before).
+const LETTER_ONLY_CLAUSE = " The lettering is the whole tattoo - no artwork, no pictures, no symbols, no hearts, flowers, vines or stars, only the letters. " +
+  "On number 1, write it the cleanest way, closest to what I described; on the others, write it a different way each time - the weight, size, " +
+  "slant and spacing of the letters, swashes and flourishes of the letters themselves, on one line or stacked.";
+function letterOnlyWords(w) { return /^\s*["']?\s*lettering only\b/i.test(String(w || "")); }
 function letterClause(letter, forChange, one, offBody) {
   const items = (letter && Array.isArray(letter.items) ? letter.items : []).filter((x) => x && x.text);
   if (!items.length) return "";
@@ -62506,7 +62513,10 @@ function heardSystem(style, canGo, can) {
                 // (v9.833, 2026-11-03, Aaron: go) MEASURED 17:09:44: "my uncle has one of those old japanese tattoos with a koi fish and waves on his
                 // arm ... i want something like that" came back TALK with no words in 0.5s - "know what they want" was read as "everything decided" -
                 // and went to her full chat (13.4s) with the old offer buttons. The same at 15:27:32 (birth flowers).
-                "READY whenever there is something to imagine from - a subject, a person, a memory, a feeling - even if not everything is decided yet. A style on its own is not enough: they need some idea of what they want. Then your words: if they shared something personal or hard, start there, simply - " +
+                "READY whenever there is something to imagine from - a subject, a person, a memory, a feeling - even if not everything is decided yet. A style on its own is not enough: they need some idea of what they want. " +
+                // ══ WORDS ALONE ARE A TATTOO (v9.999.42, 2026-11-15, Aaron: "lettering only, go") ═══ MEASURED 13:47:03: "i just want my daughters
+                // name Isabella written in pretty writing on my wrist, nothing else" came back TALK - no lettering sheet, no button, a dead end.
+                "Words alone are a tattoo too: when all they want is lettering - a name, a date, a word or a quote, with nothing else drawn - that is READY, and the IDEA line starts with \"Lettering only - \" followed by the words to be written. Then your words: if they shared something personal or hard, start there, simply - " +
                 // ══ SAID BACK ONCE, THEN ONLY WHAT IS NEW (v9.826, 2026-11-03, Aaron: "regardless if there's repetition it needs to not be there") ═══
                 // MEASURED 15:28:13: "its going on my inner forearm. could there be a tiny heart where the stems cross" got back the whole tattoo
                 // again - mom and son, larkspur for July, daffodil for March, fine line, delicate, small - before the two new things; turn 5 a third
@@ -70672,6 +70682,24 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               const _hm = _hClean.match(/^\W*(READY|CHOOSE|TALK|DRAW)\b\W*\s*([\s\S]*)$/i) || _hClean.match(/^\W*(GO)[ \t:.!*\-]*(?:\n([\s\S]*))?$/);
               let _hDo = _hm ? _hm[1].toUpperCase() : null; if (_hDo === "DRAW") _hDo = "READY"; if (_hDo === "GO" && !_canGo) _hDo = "READY";
               let _hRest = _hm ? _hm[2] : "";
+              // ══ LETTERING ONLY, A BACKUP (v9.999.42, 2026-11-15, Aaron: "lettering only, go") ═══ MEASURED 13:47:03: "i just want my daughters name
+              // Isabella written in pretty writing on my wrist, nothing else" was TALK - nothing to tap. When she still answers TALK (or nothing) and their
+              // words ask only for words - a name, a date, a quote - with "just", "only" or "nothing else", and ask no question, the same short check
+              // that finds lettering reads them; what it finds is the idea, lettering only, and the lettering sheet goes up.
+              try {
+                const _lo = String(_s || "");
+                if ((_hDo === "TALK" || !_hDo) && !/\?/.test(_lo) &&
+                    /\b(name|names|word|words|quote|saying|date|dates|initials?|written|write|writing|lettering|letters|script|says?)\b/i.test(_lo) &&
+                    /\b(just|only|nothing else|by itself|on its own|alone|no (image|picture|design|drawing|art)s?)\b/i.test(_lo)) {
+                  const _lf = await letterFind(env, _lo, "", talkModel);
+                  if (_lf.length) {
+                    const _q = _lf.slice(0, 4).map((x) => '"' + String(x).replace(/"/g, "'") + '"');
+                    _hDo = "READY";
+                    _hRest = "Just " + _q.join(" and ") + " - lettering only, nothing else.\nLETTERING: " + _q.join(" | ") + "\nIDEA: Lettering only - " + _q.join(" and ") + ", written on its own, nothing else.";
+                    console.log("[TURN:HEARD] her answer was TALK, but they asked only for words - lettering only: " + _q.join(", ") + (me ? " · who=" + me : ""));
+                  }
+                }
+              } catch (e) { try { console.log("[TURN:HEARD] the lettering-only check failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
               // ══ AN IDEA LINE WITHOUT A LABEL IS READY (v9.843, 2026-11-04, Aaron: go) ═══ MEASURED 04:53:32: "Sounds like you're picturing an
               // anatomical heart ... anything else you'd like to add? IDEA: anatomical heart in liquid chrome style STYLE: Liquid Chrome" - no
               // READY first, so nothing after it was read: her idea and style were thrown away and no Imagine it showed. Her IDEA line is her
@@ -70959,9 +70987,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                     // it?" and the only button under it was Choose my lettering - she offered one thing and the page another. Her say-back stays; a
                     // question she ends on is taken off and the lettering line ends it, shown as the final line.
                     const _sn = String(_fixedSay).match(/[^.!?]+[.!?]+["'\u201d)\]]*\s*|[^.!?]+$/g) || [String(_fixedSay)];
-                    let _keep = _sn.slice(); while (_keep.length && /\?["'\u201d)\]]*\s*$/.test(_keep[_keep.length - 1])) _keep.pop();
+                    // (v9.999.42) MEASURED 13:42:02 (compass, "Wanderlust"): "Do you have a particular tattoo style in mind ...? Let me know, and I'll
+                    // start imagining it for you." - her question was not the last sentence, so it stayed over a Choose my lettering button. From her first
+                    // question on, her words go; the lettering line ends it.
+                    let _qAt = _sn.findIndex((x) => /\?["'\u201d)\]]*\s*$/.test(x));
+                    let _keep = _qAt >= 0 ? _sn.slice(0, _qAt) : _sn.slice();
                     const _la = await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look.");
-                    if (_keep.length < _sn.length) {
+                    if (_keep.length < _sn.length || !String(_fixedSay).includes(_la)) {
                       _fixedSay = (_keep.join("").trim() + " " + _la).trim(); _heardStreamed = false;
                       console.log("[TURN:LETTER] her question at the end was an offer the page does not show - it ends with the lettering line: \"" + _fixedSay.slice(0, 220) + "\"" + (me ? " · who=" + me : ""));
                     }
@@ -74451,12 +74483,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             try {
               const _lc = letterParse((await talkStateGet(env, me, ["letter"])).letter);
               if (_lc.items.length) {
-                const _cl = letterClause(_lc, true);
+                let _cl = letterClause(_lc, true);
+                // (v9.999.42) a lettering-only design: its possibilities are lettering too
+                if (_lc.only && _designWords === "__poss__") _cl += " It is lettering only - keep it only lettering, with no artwork added.";
                 const _at = _sentNow.search(/\s(?:Make one tall page|Make one page)\b/);
                 _sentNow = letterFrame(_at > 0 ? _sentNow.slice(0, _at) + _cl + _sentNow.slice(_at) : _sentNow + _cl, _lc);
                 console.log("[TURN:DESIGN] their lettering is kept:" + _cl + (me ? " · who=" + me : ""));
                 // (v9.999.41) what this change replaced is said once - the next change starts from the design as it now is
-                if (Array.isArray(_lc.replaced) && _lc.replaced.length) { try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _lc.items })); } catch {} }
+                if (Array.isArray(_lc.replaced) && _lc.replaced.length) { try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _lc.items, ...(_lc.only ? { only: true } : {}) })); } catch {} }
               }
             } catch {}
             _herAsk = null;
@@ -75025,8 +75059,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // named all 8 came back in one look - realistic, full colour, storm skies - only the layout changed. Only when nothing was picked;
               // a picked style is sent exactly as tested (all 41). Setting: config:frame:new:grid:nostyle (empty value = say nothing).
               let _ns = ", each in a different tattoo style";
+              // (v9.999.42) lettering only: the words are the tattoo - 8 ways of writing them, not 8 styles of a picture
+              const _lOnly = letterOnlyWords(_words) || letterOnlyWords(typeof _heardIdea === "string" ? _heardIdea : "");
               try { const _k = await env.AURA_KV.get("config:frame:new:grid:nostyle"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim().replace(/^,\s*/, ""); _ns = _t ? ", " + _t : ""; } } catch {}
               if (!_newStyle && _ns) { try { console.log("[TURN:NEW] no style picked - asked for" + _ns.slice(1) + (me ? " · who=" + me : "")); } catch {} }
+              if (_lOnly && !_newStyle) { _ns = ", each one the lettering written a different way"; try { console.log("[TURN:NEW] lettering only - each one the lettering written a different way" + (me ? " · who=" + me : "")); } catch {} }
               askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : _ns);
               // ══ ALL OF HER IDEAS AT ONCE (v9.627, 2026-10-16, Aaron: "let me see all 4 absolutely") ══════════════════════
               // "Show me all of them" under her idea cards: one sheet, each card one of her ideas, in her order - instead of four
@@ -75052,7 +75089,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               try {
                 const _lc = letterParse((await talkStateGet(env, me, ["letter"])).letter);
                 if (_lc.items.length) {
-                  const _cl = letterClause(_lc, false, false, true);
+                  let _cl = letterClause(_lc, false, false, true);
+                  if (_lOnly) {
+                    let _lo = LETTER_ONLY_CLAUSE;
+                    try { const _k = await env.AURA_KV.get("config:frame:new:letteronly"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim(); _lo = _t ? " " + _t : ""; } } catch {}
+                    if (_lo) _cl = letterClause(_lc, false, true) + _lo;
+                    // the possibilities from this design stay lettering only
+                    try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _lc.items, only: true })); } catch {}
+                  }
                   const _at = askLine.search(/\s(?:Use colou?r wherever it works|Use the colou?rs|Keep the colou?rs|Make one tall page|Make one page)\b/);
                   askLine = letterFrame(_at > 0 ? askLine.slice(0, _at) + _cl + askLine.slice(_at) : askLine + _cl, _lc);
                   console.log("[TURN:NEW] their lettering goes in:" + _cl + (me ? " · who=" + me : ""));
@@ -75679,7 +75723,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // (v9.999.36) her style card only goes to the page when no style is picked yet (v9.701 drops it below) - the line follows what will show
       const _hasStyles = !!(acted && acted.choose && Array.isArray(acted.choose.styles) && acted.choose.styles.length) && !(_newFlow && _newStyle);
       const _styleCardNow = _hasStyles && !_fixedWhy && !_drewNow();
-      if ((_saybackNow || (typeof _picOffer !== "undefined" && _picOffer) || _styleCardNow) && !(drew && drew.image) && String(_said || "").trim()) {
+      // (v9.999.42) MEASURED 13:42:02: "...pick how you'd like your lettering to look. Tap Show me some ideas, or pick a style first." - the lettering
+      // sheet is the card then (Choose my lettering); her lettering line already says so.
+      const _letterCard = !!(_heardOut && _heardOut.letter);
+      if (!_letterCard && (_saybackNow || (typeof _picOffer !== "undefined" && _picOffer) || _styleCardNow) && !(drew && drew.image) && String(_said || "").trim()) {
         try {
           const _stNow = String(_newStyle || "").trim();
           const _which = _saybackNow ? (_stNow ? "card_point_style" : "card_point") : (_hasStyles ? "card_point" : "card_point_offer");

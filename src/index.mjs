@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.52-2026-11-16-portraits-come-back-as-eight";
+const BUILD = "aura-core-v9.999.53-2026-11-16-portrait-set-is-hers";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -77702,6 +77702,10 @@ export class PublicEntry extends WorkerEntrypoint {
             await talkStatePut(env, me, "project", _pidP);
             await talkStatePut(env, me, "timeline", JSON.stringify([{ ts: _atP, role: "picture", image: _r.image_url, design: _entP, words: "their person in the portrait design - 8 versions", grid: true }]));
             if (_entP) await talkStatePut(env, me, "last", JSON.stringify({ design: _entP, image: _r.image_url, subject: null, at: _atP }));
+            // (v9.999.53) MEASURED 10:39:40: "I want number 4" was read as the pick, but the set was not on record as HER drawing, so the rule
+            // "a drawing only continues from a picture she drew" (v9.798) sent it down the new-tattoo road - "no idea of theirs yet", nothing
+            // cut. The record of her design goes with it, the same as a reopened tattoo (v9.798).
+            if (_entP) await talkStatePut(env, me, "design", JSON.stringify({ design: _entP, image: _r.image_url, at: _atP }));
             const _labP = String(b.label || "").replace(/\s+-\s+.*$/, "").trim().slice(0, 120);
             await projectAppend(env, me, _pidP, { ...(_labP ? { title: _labP } : {}),
               pictures: [{ ts: _atP, image: _pd, design: null, pick: true, words: "their catalogue pick" },

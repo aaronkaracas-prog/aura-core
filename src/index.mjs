@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.48-2026-11-16-idea-said-to-you";
+const BUILD = "aura-core-v9.999.49-2026-11-16-butterflies-not-butter";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62244,7 +62244,7 @@ async function letterFind(env, theirWords, herWords, talkModel) {
     const _lfT0 = Date.now();
     const _lfAsk = callBrain({ system, user, max_tokens: 2000, reasoning: "low", ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env);
     const r = _lfMs ? await Promise.race([_lfAsk, new Promise((res) => setTimeout(() => res({ late: true }), _lfMs))]) : await _lfAsk;
-    if (r && r.late) { console.log("[TURN:LETTER-FIND] no answer in " + (_lfMs / 1000) + "s - counted as no lettering"); return []; }
+    if (r && r.late) { console.log("[TURN:LETTER-FIND] no answer in " + (_lfMs / 1000) + "s - counted as no lettering"); const _none = []; _none.late = true; return _none; }
     const t = String((r && r.text) || "");
     const m = t.match(/LETTERING\s*:\s*([^\n]+)/i);
     const items = m ? letterItems(m[1]) : [];
@@ -68324,6 +68324,13 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // EIGHT EVERYWHERE (v9.678): the buttons say "Imagine 8 ..."; every road reads it as the "Imagine 4 ..." it always knew.
       // WHAT THEY TAPPED, IN THE LOG (v9.679, 2026-10-19, Aaron): the log said "Imagine 4 possibilities" for a tap on Imagine 8.
       const _saidAsTapped = String(saidIn || "");
+      // ══ A SPEECH-TO-TEXT STUTTER IS ONE WORD (v9.999.49, 2026-11-16, Aaron: "yesterday I said butterflies and it drew butterflies and a
+      // piece of butter") ═══ MEASURED 06:56:41: spoken "butterflies" came in as "Let's add some butter butterflies" - read as lettering today,
+      // drawn as butter and butterflies yesterday. A word of three letters or more followed straight away by a longer word that starts with
+      // it ("butter butterflies", "drag dragon", "rose roses") is the dictation catching up with itself: only the longer word is kept.
+      { const _st0 = String(saidIn || "");
+        const _st1 = _st0.replace(/\b([A-Za-z]{3,})[ \t]+(\1[A-Za-z]+)\b/gi, "$2");
+        if (_st1 !== _st0) { saidIn = _st1; console.log("[TURN:SAID] a dictation stutter taken out: \"" + _st0.slice(0, 160) + "\" -> \"" + _st1.slice(0, 160) + "\"" + (me ? " · who=" + me : "")); } }
       saidIn = String(saidIn || "").replace(/^(\s*imagine\s+(?:another\s+)?)(?:8|eight)\b/i, "$14");
       if (/^\s*imagine\s+(?:4|four)\s+(?:ideas|cover-?ups|cover ups|directions|in this style)\.?\s*$/i.test(String(saidIn || ""))) saidIn = "Show me some ideas";
       else if (/^\s*fine-?\s?tune it\.?\s*$/i.test(String(saidIn || ""))) saidIn = "I want to change something";
@@ -71184,7 +71191,23 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   try { _cLetter = (await letterFind(env, String(_changeFull || _sC), "", talkModel)) || []; } catch {}
                   console.log("[TURN:LETTER] her say-back was late - the lettering check read their change: " + (_cLetter.length ? _cLetter.map((t) => '"' + t + '"').join(", ") : "nothing to write") + (me ? " · who=" + me : ""));
                 }
-                const _lOld = letterParse(_ds.letter), _lNew = _cLetter.filter((t) => !letterHas(_lOld, t));
+                const _lOld = letterParse(_ds.letter); let _lNew = _cLetter.filter((t) => !letterHas(_lOld, t));
+                // ══ HER LETTERING LINE IS CHECKED BEFORE THE SHEET GOES UP (v9.999.49, 2026-11-16, Aaron: go) ═══ MEASURED 06:56:46 (Fine-tune
+                // it on "Good Boy"): speech-to-text wrote "Let's add some butter butterflies"; her change step listed "butter butterflies" as new
+                // lettering, the lettering sheet went up and the butterflies were never drawn. Her change step is told to list words to be
+                // written, and it took a thing to draw for one. When she lists new lettering, the lettering reader (letterFind - only words they
+                // asked to have written) reads their change too; the sheet goes up only for what it also finds. No answer from it in time - her
+                // line stands, as before.
+                if (_lNew.length && !(_cq && _cq.late)) {
+                  let _lf = null; try { _lf = await letterFind(env, _sC, String(_changeFull || ""), talkModel); } catch {}
+                  if (_lf && !_lf.late) {
+                    const _was = _lNew.slice();
+                    _lNew = _lf.filter((t) => !letterHas(_lOld, t));
+                    if (_was.map((t) => letterKey(t)).join("|") !== _lNew.map((t) => letterKey(t)).join("|"))
+                      console.log("[TURN:LETTER] her change step listed " + _was.map((t) => '"' + t + '"').join(", ") + " - the lettering reader found " +
+                        (_lNew.length ? _lNew.map((t) => '"' + t + '"').join(", ") : "nothing to write") + "; that is what the sheet gets" + (me ? " · who=" + me : ""));
+                  }
+                }
                 if (_lNew.length) {
                   await talkStatePut(env, me, "change_held", JSON.stringify({ words: String(_changeFull || _sC).slice(0, 600) }));
                   _letterHold = true; _fixedWhy = "letter_hold";

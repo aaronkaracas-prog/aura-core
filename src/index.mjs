@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.43-2026-11-15-lettering-only-decided-in-code";
+const BUILD = "aura-core-v9.999.44-2026-11-15-newest-day-first";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -78867,8 +78867,12 @@ export class PublicEntry extends WorkerEntrypoint {
           if (u && r.at) faceAt[tatSlug(n)] = String(r.at);
           return u;
         };
+        // ══ THE NEWEST DAY FIRST, A RUN IN ITS OWN ORDER (v9.999.44, 2026-11-15, Aaron: "yes on re ordering ... make the most logical change")
+        // MEASURED 15:58 (Lettering & Composition, 100 drawn 14:38-15:15 in one run): sorted to the second, the run came out backwards - its last
+        // set (Creative Combinations) and card 100 first, Children and Lucas last. Newer is decided by the day it was drawn; designs drawn the same
+        // day keep the order they were written in. A newer day still comes first, as Aaron asked on Oct 4.
         const newestFirst = (arr, at) => arr
-          .map((x, i) => ({ x, i, t: at(x) || "" }))
+          .map((x, i) => ({ x, i, t: String(at(x) || "").slice(0, 10) }))
           .sort((a, b2) => (b2.t > a.t ? 1 : b2.t < a.t ? -1 : a.i - b2.i))
           .map((o) => o.x);
 

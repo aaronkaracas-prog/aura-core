@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.49-2026-11-16-butterflies-not-butter";
+const BUILD = "aura-core-v9.999.50-2026-11-16-their-person-in-a-portrait";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68881,6 +68881,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // Nobody's tattoo is copied, and the thing they actually reacted to survives, which is the
       // whole reason this path was built rather than passing pixels through.
 let refSaw = null, refUrl = null, refDesign = null, refHeld = false, _freshPhoto = false, _likedPic = false;
+let _picAsk = false;   // (v9.999.50) a picture with no words on a design - she asks what it is for
 let _seeOnMe = false;   // (v9.987) they asked to see the chosen design on them - the page opens its photo-and-place screen
 let _refusedNow = [];   // (v9.981) each refusal on this turn: what was sent, why, what was tried after
 let _refHer = null;   // (v9.878) her own first sentence about their photo, kept with it when core's look gave nothing
@@ -71091,6 +71092,15 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                        return false; })()) {
             _fixedWhy = "addon_change"; _addonChangeWords = _s;
             _fixedSay = await _fx("addon_change8", "On it - imagining that change on you now.");
+          // ══ A PICTURE WITH NO WORDS ON A DESIGN IS ASKED ABOUT, NOT GUESSED (v9.999.50, 2026-11-16, Aaron: go) ═══ MEASURED 07:29:23-07:29:35
+          // (pta_707fbdf8793f775d, Fine-tune it on the "I LOVE AURA" card, then a face photo, no words): the change step was handed
+          // "[they sent a photo, with no words]" and had two answers - a change, or ONME - so it answered ONME and See it on you opened with
+          // the face photo. A picture with no words while a design waits for its change: one fixed line, nothing drawn, and the page shows
+          // See It on Me / Fine-Tune It under it. Setting: config:say:pic_on_design.
+          } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now)) && !_yesAsk && _freshPhoto && /^\[they sent a photo, with no words\]$/.test(_s) && !(opts && opts.inspire)) {
+            _fixedWhy = "pic_ask"; _picAsk = true;
+            _fixedSay = await _fx("pic_on_design", "Got your picture. Do you want to see your design on it, or tell me what to change?");
+            console.log("[TURN:PHOTO] a picture with no words while a design waits for its change - she asks what it is for; nothing drawn, See It on Me / Fine-Tune It" + (me ? " · who=" + me : ""));
           } else if ((String(_ds.await_change || "") === "1" || !!(opts && opts.change_now) || !!_yesAsk) && _s && !(opts && opts.inspire) && (!_bodyPhoto || String((carriedObj && carriedObj.job) || "").toLowerCase() === "from")) {
             const _sC = _yesAsk || _s;   // (v9.947) on their yes, the change is what they asked before it
             _fixedWhy = "four"; _fixedSay = await _fx("eight_versions", "Imagining that change for you now.");
@@ -72932,7 +72942,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         if (me && _await && !/^\s*i want to change something\.?\s*$/i.test(String(said || ""))) {
           try { await talkStatePut(env, me, "await_change", ""); } catch {}
         }
-        if (_seeOnMe) {
+        if (_picAsk) {
+          // (v9.999.50) a picture with no words is asked about - nothing drawn; their next words are still the change
+          act = "none"; try { await talkStatePut(env, me, "await_change", "1"); } catch {}
+          console.log("[TURN:DESIGN] a picture with no words - she asks what it is for, nothing drawn" + (me ? " · who=" + me : ""));
+        } else if (_seeOnMe) {
           // (v9.988, 2026-11-12, sign-off) MEASURED 09:14:53: "love this one, can i see how it looks on me" - the change step answered ONME and
           // See it on you opened, but a change was waiting (await_change), so 8 versions were drawn first ($0.06, 54s). Seeing it on them draws nothing.
           act = "none";
@@ -76063,6 +76077,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             offer: (_offerSubj && !_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer)) || undefined,
             job_pick: _jobPick || undefined,
             see_on_me: _seeOnMe || undefined,
+            pic_ask: _picAsk || undefined,
             photo_new: _photoNew || undefined,
             ask_photo: (acted && acted.ask_photo && !_jobPick && !_fixedWhy && !(drew && drew.image)) || undefined,
             search: (acted && acted.search && !_fixedWhy && !(drew && drew.image)) ? acted.search : undefined,
@@ -76126,6 +76141,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                // (v9.976) her read: their own tattoo - the page puts Build around it / Cover it up / Make a new tattoo from it under her words
                ...(_jobPick ? { job_pick: true } : {}),
                ...(_seeOnMe ? { see_on_me: true } : {}),
+               ...(_picAsk ? { pic_ask: true } : {}),
                ...(_photoNew ? { photo_new: true } : {}),
                // ══ SHE ASKS FOR A PHOTO, THEY TAP TO SEND ONE (v9.978, 2026-11-11, Aaron: go) ═══ MEASURED 18:03 (My Tattoos): "Once I see it I'll
                // tell you straight which way I'd lean" - asking for a photo with nothing to tap but the + in the chat box. Her ask_photo puts
@@ -77609,6 +77625,62 @@ export class PublicEntry extends WorkerEntrypoint {
           return { ok: true, image_url: _su || null, split: !!_su };
         }
         return await cutPanel(env, String(b.url || "").slice(0, 300), Number(b.n));
+      }
+      // ══ THEIR PERSON IN A PORTRAIT (v9.999.50, 2026-11-16, Aaron: "if they're working on something in the catalog they can keep what's
+      // there but we're going to offer to show an image and replace the face with the image they suggested with the same background and
+      // everything else" + "text should always be offered in a portrait") ═══ PROVEN by command 08:03-08:04: the Isabella card and a photo of
+      // a woman with curly auburn hair, one image-model call with both pictures -> img_mwjgdvn07t6h: the whole person from the photo, the
+      // roses, "Isabella" and the style kept ($0.062). Aaron: "its good" - and the whole person, not only the face.
+      // The page sends the design they are working on (the white design half of the card) and the photo; and what they want for the words:
+      // keep them, none, or new words (with the words on the card now). One picture comes back; the page makes it the design they work on.
+      // Model: config:source:portrait:model (else the image default). Size: config:source:portrait:size (default 1152x1536).
+      if (action === "portrait") {
+        const _pd = String(b.design || "").trim().slice(0, 500);
+        const _pp = String(b.photo || "").trim();
+        if (!/^https:\/\//i.test(_pd)) return { ok: false, error: "NEED_DESIGN" };
+        let _pu = /^https:\/\//i.test(_pp) ? _pp.slice(0, 500) : "";
+        if (!_pu && /^data:image\//i.test(_pp)) {
+          if (_pp.length > 14 * 1024 * 1024) return { ok: false, error: "TOO_BIG", say: "That photo is too big - try a smaller one." };
+          const _tmp = "img_u" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+          await env.AURA_KV.put("image:" + _tmp, _pp.replace(/^data:[^,]+,/, ""));
+          _pu = "https://" + (await imageHost(env)) + "/image/" + _tmp;
+        }
+        if (!_pu) return { ok: false, error: "NEED_PHOTO", say: "Add a photo of them and I'll put them in this design." };
+        const _w = (b.words && typeof b.words === "object") ? b.words : {};
+        const _now = String(_w.now || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
+        const _txt = String(_w.text || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
+        const _mode = _w.mode === "none" ? "none" : (_w.mode === "new" && _txt) ? "new" : "keep";
+        let _ws = "";
+        if (_mode === "none") _ws = " Take all the lettering out of the tattoo - no words at all.";
+        else if (_mode === "new" && _now) _ws = " Change the lettering \"" + _now + "\" to \"" + _txt + "\", spelled exactly like that, in the same lettering style and in the same place.";
+        else if (_mode === "new") _ws = " Add the words \"" + _txt + "\", spelled exactly like that, in lettering that suits the design.";
+        else _ws = " Keep any lettering exactly as it is.";
+        const _sent = "The first picture is my tattoo design. The second picture is a photo of the person I want in it. Replace the person in the " +
+          "tattoo with the person in the second picture - their face, hair, age and features, so they are clearly recognisable - drawn in the same " +
+          "tattoo style as the design. If there are several people in the tattoo, replace the one who best matches the person in the photo. Keep " +
+          "everything around them exactly as it is: the pose and framing, the flowers and objects, the composition, the colours and the plain white background." + _ws;
+        let _pw = 1152, _ph = 1536;
+        try { const _sz = String((await env.AURA_KV.get("config:source:portrait:size")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/); if (_sz) { _pw = parseInt(_sz[1], 10); _ph = parseInt(_sz[2], 10); } } catch {}
+        // THE DRAW OUTLIVES THE DOOR (v9.999.50): the doorway gives /_design 40s and the proof took 31s - so the answer streams: a space
+        // every 5s while the picture is drawn, then the JSON (spaces before JSON are still JSON). The doorway passes a stream straight through.
+        const _work = async () => {
+          const _t0 = Date.now();
+          const _r = await showIt(_sent, env, { source: "portrait", raw: true, refs: [_pd, _pu], width: _pw, height: _ph, exactSize: true, creator: me, subject: "their person in a portrait design", pta: false }).catch((e) => ({ ok: false, error: String(e?.message ?? e).slice(0, 160) }));
+          try { console.log("[PORTRAIT] sent: \"" + _sent + "\" · picture 1 (the design): " + _pd + " · picture 2 (their photo): " + _pu + " · words: " + _mode + (_now ? " (on the card: \"" + _now + "\")" : "") +
+            " -> " + (_r && _r.ok ? _r.image_url + " · " + (_r.model || "?") + " · $" + (_r.cost_usd ?? "?") : "NOT DRAWN: " + (_r && _r.error)) + " · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s · who=" + me); } catch {}
+          if (!_r || !_r.ok || !_r.image_url) return { ok: false, error: (_r && _r.error) || "NOT_DRAWN", say: "That one didn't come out - try again, or try another photo." };
+          return { ok: true, image_url: _r.image_url, id: _r.id, cost_usd: _r.cost_usd ?? null, words: _mode };
+        };
+        const { readable: _prd, writable: _pwr } = new TransformStream();
+        const _pww = _pwr.getWriter(), _penc = new TextEncoder();
+        (async () => {
+          let _fin = false;
+          const _hb = setInterval(() => { if (!_fin) _pww.write(_penc.encode(" ")).catch(() => {}); }, 5000);
+          let _res; try { _res = await _work(); } catch (e) { _res = { ok: false, error: String(e?.message ?? e).slice(0, 160) }; }
+          _fin = true; clearInterval(_hb);
+          try { await _pww.write(_penc.encode(JSON.stringify(_res))); await _pww.close(); } catch {}
+        })();
+        return new Response(_prd, { headers: { "content-type": "application/json", "cache-control": "no-store" } });
       }
       // ══ HER WORDS ABOUT A TRENDING STYLE (v9.817, 2026-11-03, Aaron: "bring up Aura's chat box ... her description of what Neo-Tribal
       // is and ... what people are actually doing with it") ══ The page asks when a style's window opens. Fixed lines, researched once: what

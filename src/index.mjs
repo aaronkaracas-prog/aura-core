@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.45-2026-11-16-idea-said-back";
+const BUILD = "aura-core-v9.999.46-2026-11-16-no-idea-label";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70711,6 +70711,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               let _hStyleSaid = "";
               let _hLetter = [];
               { const _sp = heardSplit(_hRest); _hIdea = _sp.idea; _hRest = _sp.words; _hStyleSaid = _sp.style || ""; _hLetter = _sp.lettering || []; }
+              // ══ HER LABEL IS NOT HER WORDS (v9.999.46, 2026-11-16, Aaron: go) ═══ MEASURED 05:45 (Dark Fantasy, "a knight standing over a dead dragon,
+              // kind of epic and gloomy"): shown to them "Idea: a knight standing over a dead dragon, epic and gloomy in Dark Fantasy style." - the label
+              // she writes for the IDEA line began what she said. A leading "Idea:" goes; the words after it stay, first letter capital.
+              if (/^\s*["'\u201c]?\s*idea\s*:\s*/i.test(_hRest)) {
+                _hRest = String(_hRest).replace(/^\s*["'\u201c]?\s*idea\s*:\s*/i, "");
+                _hRest = _hRest.charAt(0).toUpperCase() + _hRest.slice(1);
+                try { console.log("[TURN:HEARD] her words began with \"Idea:\" - the label taken off" + (me ? " · who=" + me : "")); } catch {}
+              }
               // ══ LETTERING ONLY IS DECIDED HERE, NOT BY WHERE SHE PUTS THE LABEL (v9.999.43, 2026-11-15, Aaron: go) ═══ MEASURED 14:38:2x (Isabella):
               // her idea came back "Isabella written in pretty writing on the wrist" and her words "Lettering only - Isabella on wrist" - the label in what
               // she said, not on the idea - so the drawing sent "each in a different tattoo style" and 7 of the 8 came back with butterflies, snakes and a

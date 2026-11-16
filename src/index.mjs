@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.46-2026-11-16-no-idea-label";
+const BUILD = "aura-core-v9.999.47-2026-11-16-words-stop-at-the-idea";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62521,13 +62521,18 @@ function heardSystem(style, canGo, can) {
                 // MEASURED 15:28:13: "its going on my inner forearm. could there be a tiny heart where the stems cross" got back the whole tattoo
                 // again - mom and son, larkspur for July, daffodil for March, fine line, delicate, small - before the two new things; turn 5 a third
                 // time. The IDEA line still carries everything, so her words no longer need to.
+                // ══ HER WORDS STOP AT THE IDEA (v9.999.47, 2026-11-16, Aaron: go) ═══ MEASURED 05:56-05:58 (Neo-Traditional fox, Chicano abuela): "Let me
+                // know if you'd like any particular flowers or placement, otherwise I'll create a few variations for you." then "Want me to imagine it?"
+                // - asked twice, and "a few variations" when 8 come. The closing question is added after her words (page v946), so she asks nothing.
                 (canGo ? "you already said their idea back to them, so react only to what they just said - what is new or changed - in your own voice, " +
-                  "without repeating the rest, and ask if you should imagine it or if they " :
-                "then say back everything they want, and the style when they picked one, in your own voice, and ask if you should imagine it or if they ") +
+                  "without repeating the rest, and stop there. " :
+                "then say back everything they want, and the style when they picked one, in your own voice, and stop there. ") +
+                "The question \"Want me to imagine it?\" is added after your words for you, so ask nothing yourself - no \"let me know if\", no asking whether they " +
+                "want to add anything - and don't say what you'll do next. " +
                 // ══ NO QUESTIONS THEY CAN'T ANSWER (v9.986, 2026-11-12, Aaron: "she's asking questions that I would not even know the answer to ...
                 // just inform the person of what's going on") ═══ MEASURED 06:47:18 ("japanese fusion ... old japanese art mixed with something
                 // futuristic"): "What elements or symbols are you drawn to ..., and what kind of futuristic details are you imagining?" - under Imagine it.
-                "want to add anything. Never ask them to come up with details they wouldn't know as a customer - which elements, what kind of details, " +
+                "Never ask them to come up with details they wouldn't know as a customer - which elements, what kind of details, " +
                 "how it's laid out: that's your craft. If something is still open, tell them you'll work it out in the designs, so they only need to say yes. " +
                 // (v9.987, 2026-11-12, sign-off, Aaron 2026-11-08: "the person knows if they want that stuff") MEASURED 08:09 and 08:15: "a hint of
                 // old-world lettering framing the image", "Do you want any lettering...?" - words nobody asked for.

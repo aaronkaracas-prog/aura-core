@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.47-2026-11-16-words-stop-at-the-idea";
+const BUILD = "aura-core-v9.999.48-2026-11-16-idea-said-to-you";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70844,6 +70844,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (_hDo === "READY" && !String(_hSay || "").trim() && String(_hIdea || "").trim()) {
                 let _ii = String(_hIdea).replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "");
                 if (/^(A|An|The|My|Some)\s/.test(_ii)) _ii = _ii.charAt(0).toLowerCase() + _ii.slice(1);
+                // (v9.999.48, 2026-11-16, Aaron: go) MEASURED 06:16: "Love it - portrait of a woman resembling the user's abuela..." - her idea line is
+                // written about them, so it is turned to them before it is said back.
+                _ii = _ii.replace(/\bthe user's\b/gi, "your").replace(/\bthe user\b/gi, "you").replace(/\bthe customer's\b/gi, "your").replace(/\bthe customer\b/gi, "you");
                 const _tpl = await _fx("heard_ready_idea", "Love it - {idea}. Want me to imagine it?");
                 _hSay = /\{idea\}/.test(_tpl) ? _tpl.replace("{idea}", _ii.slice(0, 400)) : await _fx("heard_ready", "Love it - want me to imagine it?");
               }

@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.51-2026-11-16-endless-possibilities";
+const BUILD = "aura-core-v9.999.52-2026-11-16-portraits-come-back-as-eight";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69988,7 +69988,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // "HRVATSKA" and "1991" - the lettering of the tattoo before (Service & Sacrifice, 10:55). A tile on Trending is a fresh start on its own
           // page, and only the front page, the Create page, a style, a catalogue pick and a body photo cleared it. The page's fresh is a new tattoo
           // wherever it comes from: the last tattoo's lettering and change markers go. (A lettering pick is never fresh-cleared.)
-          if (!_opener && !_styleStart && opts && opts.fresh && !opts.letter && !(opts.pick || opts.pick_new) && !_bodyPhoto) {
+          // (v9.999.52, 2026-11-16) MEASURED 09:34 (Ink It, a photo of a man): the sheet went out with "I LOVE AURA" in Typewriter lettering - the
+          // lettering of a tattoo before. A photo of a person kept every fresh start from clearing, and only Home and Create clear it as an add-on
+          // (above). On any other page (Ink It, Get Inspired, See It On You) their photo is not their body to add to - it is cleared here too.
+          const _addonPages = !opts || !opts.page || opts.page === "home" || opts.page === "job0";
+          if (!_opener && !_styleStart && opts && opts.fresh && !opts.letter && !(opts.pick || opts.pick_new) && (!_bodyPhoto || !_addonPages)) {
             try { await talkStatePut(env, me, "letter", ""); await talkStatePut(env, me, "change_held", ""); await talkStatePut(env, me, "await_change", "");
                   await talkStatePut(env, me, "design_change", ""); await talkStatePut(env, me, "design_change_parent", "");
                   // (v9.955) MEASURED 11:24 (Trending -> Family, "roses with Kocham cię babciu"): a dragon, a koi, a fan and a torii in the roses - the
@@ -77653,26 +77657,58 @@ export class PublicEntry extends WorkerEntrypoint {
         const _now = String(_w.now || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
         const _txt = String(_w.text || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
         const _mode = _w.mode === "none" ? "none" : (_w.mode === "new" && _txt) ? "new" : "keep";
-        let _ws = "";
-        if (_mode === "none") _ws = " Take all the lettering out of the tattoo - no words at all.";
-        else if (_mode === "new" && _now) _ws = " Change the lettering \"" + _now + "\" to \"" + _txt + "\", spelled exactly like that, in the same lettering style and in the same place.";
-        else if (_mode === "new") _ws = " Add the words \"" + _txt + "\", spelled exactly like that, in lettering that suits the design.";
-        else _ws = " Keep any lettering exactly as it is.";
-        const _sent = "The first picture is my tattoo design. The second picture is a photo of the person I want in it. Replace the person in the " +
-          "tattoo with the person in the second picture - their face, hair, age and features, so they are clearly recognisable - drawn in the same " +
-          "tattoo style as the design. If there are several people in the tattoo, replace the one who best matches the person in the photo. Keep " +
-          "everything around them exactly as it is: the pose and framing, the flowers and objects, the composition, the colours and the plain white background." + _ws;
-        let _pw = 1152, _ph = 1536;
+        // ══ EIGHT VERSIONS, LIKE EVERY OTHER DESIGN (v9.999.52, 2026-11-16, Aaron: "we should be getting back eight different versions even
+        // if we're working on this ... they can choose ... our designs are never stacked") ═══ PROVEN 10:07 by command (img_mwjkr4dmnabb, his
+        // memorial card and his photo, $0.027, 30s): the same person clearly recognisable on all 8, "Hero" on 7 of 8 - number 1 kept the old
+        // date because "exactly as it is" won; number 1 now says the lettering changes too. The sheet is cut into its 8 cards like every other.
+        // The words part of the sentence: `config:frame:portrait:grid` ("____" is the words line, when set).
+        let _ws = "", _n1 = "with only the person and the lettering replaced";
+        if (_mode === "none") { _ws = " Take all the lettering out - no words in any version."; _n1 = "with only the person replaced and the lettering taken out"; }
+        else if (_mode === "new" && _now) _ws = " Change the lettering \"" + _now + "\" to \"" + _txt + "\" in every version, spelled exactly like that.";
+        else if (_mode === "new") _ws = " Add the words \"" + _txt + "\" to every version, spelled exactly like that.";
+        else { _ws = " Keep the lettering exactly as it is in every version."; _n1 = "with only the person replaced"; }
+        let _sent = "The first picture is my tattoo design. The second picture is a photo of the person I want in it. Show me 8 versions of my design " +
+          "with the person in the tattoo replaced by the person in the second picture - their face, hair, age and features, so they are clearly " +
+          "recognisable in every version - drawn as a tattoo. If there are several people in the tattoo, replace the one who best matches the person " +
+          "in the photo. Make number 1 my design exactly as it is, " + _n1 + ". For the others, be bold and imaginative with everything around the " +
+          "person - the frame, the flowers, the composition and the style.____ " + SHEET8_DIRECT;
+        try { const _k = String((await env.AURA_KV.get("config:frame:portrait:grid")) || "").trim(); if (_k.includes("____")) _sent = _k; } catch {}
+        _sent = _sent.replace("____", _ws);
+        // the sheet's own size and image model - the same dials as every other sheet; empty, the portrait's own
+        let _pw = 1440, _ph = 3120;
         try { const _sz = String((await env.AURA_KV.get("config:source:portrait:size")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/); if (_sz) { _pw = parseInt(_sz[1], 10); _ph = parseInt(_sz[2], 10); } } catch {}
+        let _pmod = null; try { _pmod = await sheet8Model(env); } catch {}
+        const _pwu = (pr) => { try { this.ctx?.waitUntil?.(pr); } catch {} };
         // THE DRAW OUTLIVES THE DOOR (v9.999.50): the doorway gives /_design 40s and the proof took 31s - so the answer streams: a space
         // every 5s while the picture is drawn, then the JSON (spaces before JSON are still JSON). The doorway passes a stream straight through.
         const _work = async () => {
           const _t0 = Date.now();
-          const _r = await showIt(_sent, env, { source: "portrait", raw: true, refs: [_pd, _pu], width: _pw, height: _ph, exactSize: true, creator: me, subject: "their person in a portrait design", pta: false }).catch((e) => ({ ok: false, error: String(e?.message ?? e).slice(0, 160) }));
+          const _r = await showIt(_sent, env, { source: "portrait", raw: true, refs: [_pd, _pu], width: _pw, height: _ph, exactSize: true, creator: me, subject: "their person in a portrait design", pta: false, ...(_pmod ? { model: _pmod } : {}) }).catch((e) => ({ ok: false, error: String(e?.message ?? e).slice(0, 160) }));
           try { console.log("[PORTRAIT] sent: \"" + _sent + "\" · picture 1 (the design): " + _pd + " · picture 2 (their photo): " + _pu + " · words: " + _mode + (_now ? " (on the card: \"" + _now + "\")" : "") +
             " -> " + (_r && _r.ok ? _r.image_url + " · " + (_r.model || "?") + " · $" + (_r.cost_usd ?? "?") : "NOT DRAWN: " + (_r && _r.error)) + " · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s · who=" + me); } catch {}
           if (!_r || !_r.ok || !_r.image_url) return { ok: false, error: (_r && _r.error) || "NOT_DRAWN", say: "That one didn't come out - try again, or try another photo." };
-          return { ok: true, image_url: _r.image_url, id: _r.id, cost_usd: _r.cost_usd ?? null, words: _mode };
+          // cut into its 8 cards, the words drawn on each - the same cut as every sheet (eightCards)
+          const _c8 = await eightCards(env, _r.image_url, null, { printed: true, waitUntil: _pwu }).catch(() => null);
+          try { console.log("[PORTRAIT] " + (Array.isArray(_c8) && _c8.length ? _c8.length + " cards cut off " + _r.image_url : "NOT CUT - the sheet is not shown") + " · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s · who=" + me); } catch {}
+          if (!Array.isArray(_c8) || _c8.length < 2) return { ok: false, error: "NOT_CUT", say: "That one didn't come out - try again, or try another photo." };
+          // ══ THE SHEET STARTS THEIR TATTOO, LIKE ANY SET OF 8 (v9.999.52) ═══ Nothing went through her conversation to get here (a catalogue
+          // pick, their photo, the words - all on the page), so the tattoo is started here: a new project with the card they picked and this
+          // sheet, the last tattoo's markers cleared, and the sheet on the timeline as the last drawing - so "I want number N" off it is the
+          // same pick as on any other sheet (the add-on favorite sets a sheet up the same way, v9.880).
+          try {
+            const _pidP = newProjectId(), _atP = new Date().toISOString(), _entP = _r.entity_id || null;
+            for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added", "addon_ideas", "addon_what", "addon_close", "addon_box",
+                              "letter", "change_held", "await_change", "design_change", "design_change_parent", "go_name", "new_style"]) { try { await talkStatePut(env, me, _k, ""); } catch {} }
+            await talkStatePut(env, me, "project", _pidP);
+            await talkStatePut(env, me, "timeline", JSON.stringify([{ ts: _atP, role: "picture", image: _r.image_url, design: _entP, words: "their person in the portrait design - 8 versions", grid: true }]));
+            if (_entP) await talkStatePut(env, me, "last", JSON.stringify({ design: _entP, image: _r.image_url, subject: null, at: _atP }));
+            const _labP = String(b.label || "").replace(/\s+-\s+.*$/, "").trim().slice(0, 120);
+            await projectAppend(env, me, _pidP, { ...(_labP ? { title: _labP } : {}),
+              pictures: [{ ts: _atP, image: _pd, design: null, pick: true, words: "their catalogue pick" },
+                         { ts: _atP, image: _r.image_url, design: _entP, words: "their person in the portrait design", grid: true, cards8: _c8 }] });
+            console.log("[PORTRAIT] a new tattoo " + _pidP + (_labP ? " (\"" + _labP + "\")" : "") + " - the sheet is the last drawing (" + (_entP || "no design id") + "), the last tattoo's markers cleared · who=" + me);
+          } catch (e) { try { console.log("[PORTRAIT] the new tattoo could not be set up: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
+          return { ok: true, image_url: _r.image_url, id: _r.id, cards8: _c8, cost_usd: _r.cost_usd ?? null, words: _mode };
         };
         const { readable: _prd, writable: _pwr } = new TransformStream();
         const _pww = _pwr.getWriter(), _penc = new TextEncoder();

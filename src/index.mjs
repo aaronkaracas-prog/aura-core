@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.50-2026-11-16-their-person-in-a-portrait";
+const BUILD = "aura-core-v9.999.51-2026-11-16-endless-possibilities";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70034,7 +70034,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         styles: "Tattoo Styles - they are browsing the tattoo styles.",
         beyond: "Wild Ideas - they are browsing unusual tattoo ideas.",
         // DISCOVER (v9.762, 2026-10-25, Aaron): the fourth home banner - every category, styles and subjects, in rows.
-        discover: "Discover Endless Imagination - they are browsing every category we have: every style and every subject (pets, family, zodiac, cars, memorials and more).",
+        // (v9.999.51, 2026-11-16, Aaron: "It should be called endless possibilities") renamed; the Create page's fourth card opens the same list.
+        discover: "Endless Possibilities - they are browsing every category we have, one set of cards: Portraits and Lettering first, then the popular ones (family, memorials, pets, flowers, zodiac), then every style and subject, the wildest ideas last.",
+        xsty0: "Endless Possibilities, from Create Your Own Tattoo - they came to design a brand-new tattoo and are browsing every category we have: Portraits and Lettering first, then the popular ones, then every style and subject, the wildest ideas last. A photo from them here is something that inspires them.",
+        xsty3: "Endless Possibilities, from See It On You - they came to create a new tattoo and see it on their body, and are browsing every category we have. A picture from them while they design is one they like - something to make the tattoo from.",
         // BAD BITCH AND BADASS (v9.763, 2026-10-25, Aaron): two front-page banners - bold, heavily tattooed looks for her and for him.
         badbitch: "For The Bad Bitch - bold, fierce tattoos for women: dark women, warrior women, cowgirls, Chicana, heavy blackwork, dark romance. Not soft or delicate.",
         badass: "For The Badass - bold, heavy tattoos for men: samurai, Vikings, knights, outlaws, beasts, cars, motorcycles, heavy blackwork."

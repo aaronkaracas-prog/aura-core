@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.54-2026-11-16-portrait-words-read-off-the-card";
+const BUILD = "aura-core-v9.999.55-2026-11-16-portrait-words-one-piece-at-a-time";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -77649,16 +77649,20 @@ export class PublicEntry extends WorkerEntrypoint {
         const _pd = String(b.design || "").trim().slice(0, 500);
         if (!/^https:\/\//i.test(_pd)) return { ok: false, error: "NEED_DESIGN" };
         const _t0 = Date.now();
-        let _q = "What words, names or dates are written in this tattoo design? Answer with only the words exactly as written, on one line, or NONE if there are no words.";
+        // (v9.999.55, Aaron: go) each separate piece of lettering on its own line, so one piece can be changed and the rest kept
+        let _q = "What words, names or dates are written in this tattoo design? Write each separate piece of lettering on its own line, exactly as written, and nothing else - or NONE if there are no words.";
         try { const _k = String((await env.AURA_KV.get("config:frame:portrait:words")) || "").trim(); if (_k) _q = _k; } catch {}
         let _m = ""; try { _m = String((await env.AURA_KV.get("config:source:portrait_words:model")) || "").trim(); } catch {}
         const _rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), 8000)),
-          seeMedia({ url: _pd, prompt: _q, max_tokens: 40, ...(_m ? { model: _m } : {}) }, env)]).catch(() => null);
-        let _w = String((_rd && _rd.ok && _rd.saw) || "").replace(/[*_`]+/g, "").replace(/\s+/g, " ").trim().replace(/^["'\u201c\u201d]+|["'\u201c\u201d.]+$/g, "").trim();
+          seeMedia({ url: _pd, prompt: _q, max_tokens: 60, ...(_m ? { model: _m } : {}) }, env)]).catch(() => null);
         const _read = !!(_rd && _rd.ok);
-        if (/^none\b/i.test(_w) || /\b(no (?:words|text|lettering)|there (?:are|is) no)\b/i.test(_w) || _w.length > 120) _w = "";
-        try { console.log("[PORTRAIT:WORDS] the card read: " + (_read ? (_w ? "\"" + _w + "\"" : "no words") : "no answer - the name's words are used") + " · " + _pd + " · " + (Date.now() - _t0) + "ms · who=" + me); } catch {}
-        return _read ? { ok: true, words: _w } : { ok: false, error: "NOT_READ" };
+        let _pc = String((_rd && _rd.ok && _rd.saw) || "").replace(/[*_`]+/g, "").split(/\r?\n/)
+          .map((x) => x.replace(/^\s*(?:[-\u2022]|\d+[.)])\s*/, "").replace(/\s+/g, " ").trim().replace(/^["'\u201c\u201d]+|["'\u201c\u201d.,]+$/g, "").trim())
+          .filter((x) => x && x.length <= 60 && !/^none\b/i.test(x) && !/\b(no (?:words|text|lettering)|there (?:are|is) no)\b/i.test(x));
+        _pc = _pc.filter((x, i) => _pc.indexOf(x) === i).slice(0, 4);
+        const _w = _pc.join(" ");
+        try { console.log("[PORTRAIT:WORDS] the card read: " + (_read ? (_pc.length ? _pc.map((x) => "\"" + x + "\"").join(" + ") : "no words") : "no answer - the name's words are used") + " · " + _pd + " · " + (Date.now() - _t0) + "ms · who=" + me); } catch {}
+        return _read ? { ok: true, words: _w, pieces: _pc } : { ok: false, error: "NOT_READ" };
       }
       if (action === "portrait") {
         const _pd = String(b.design || "").trim().slice(0, 500);
@@ -77683,7 +77687,8 @@ export class PublicEntry extends WorkerEntrypoint {
         // The words part of the sentence: `config:frame:portrait:grid` ("____" is the words line, when set).
         let _ws = "", _n1 = "with only the person and the lettering replaced";
         if (_mode === "none") { _ws = " Take all the lettering out - no words in any version."; _n1 = "with only the person replaced and the lettering taken out"; }
-        else if (_mode === "new" && _now) _ws = " Change the lettering \"" + _now + "\" to \"" + _txt + "\" in every version, spelled exactly like that.";
+        else if (_mode === "new" && _now) _ws = " Change the lettering \"" + _now + "\" to \"" + _txt + "\" in every version, spelled exactly like that." +
+          (_w.rest ? " Keep the rest of the lettering exactly as it is." : "");   // (v9.999.55) one piece of several changed - the others stay
         // (v9.999.54) MEASURED 11:09 (Face Emerging from Flowers, "Live free"): number 1 came back with no words - "with only the person and the
         // lettering replaced" on a card with no lettering. Number 1 says the words are added.
         else if (_mode === "new") { _ws = " Add the words \"" + _txt + "\" to every version, spelled exactly like that."; _n1 = "with only the person replaced and the words added"; }

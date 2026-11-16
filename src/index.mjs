@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.55-2026-11-16-portrait-words-one-piece-at-a-time";
+const BUILD = "aura-core-v9.999.56-2026-11-16-portrait-words-one-rule";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -77641,29 +77641,9 @@ export class PublicEntry extends WorkerEntrypoint {
       // The page sends the design they are working on (the white design half of the card) and the photo; and what they want for the words:
       // keep them, none, or new words (with the words on the card now). One picture comes back; the page makes it the design they work on.
       // Model: config:source:portrait:model (else the image default). Size: config:source:portrait:size (default 1152x1536).
-      // ══ THE WORDS ON A PORTRAIT CARD, READ OFF THE CARD (v9.999.54, 2026-11-16, Aaron: "are we reading that and knowing their words ... or is
-      // that just data") ═══ The words were taken from the card's NAME (the part after " - "): an older card with words drawn but no " - " in its name
-      // was offered "Add Words", and the new words would have gone in beside the old. When their photo arrives, the eyes read the card itself -
-      // one question, the eyes model (config:source:portrait_words:model, else the eyes default), 8s at most. No answer: the page keeps the name's.
-      if (action === "portrait_words") {
-        const _pd = String(b.design || "").trim().slice(0, 500);
-        if (!/^https:\/\//i.test(_pd)) return { ok: false, error: "NEED_DESIGN" };
-        const _t0 = Date.now();
-        // (v9.999.55, Aaron: go) each separate piece of lettering on its own line, so one piece can be changed and the rest kept
-        let _q = "What words, names or dates are written in this tattoo design? Write each separate piece of lettering on its own line, exactly as written, and nothing else - or NONE if there are no words.";
-        try { const _k = String((await env.AURA_KV.get("config:frame:portrait:words")) || "").trim(); if (_k) _q = _k; } catch {}
-        let _m = ""; try { _m = String((await env.AURA_KV.get("config:source:portrait_words:model")) || "").trim(); } catch {}
-        const _rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), 8000)),
-          seeMedia({ url: _pd, prompt: _q, max_tokens: 60, ...(_m ? { model: _m } : {}) }, env)]).catch(() => null);
-        const _read = !!(_rd && _rd.ok);
-        let _pc = String((_rd && _rd.ok && _rd.saw) || "").replace(/[*_`]+/g, "").split(/\r?\n/)
-          .map((x) => x.replace(/^\s*(?:[-\u2022]|\d+[.)])\s*/, "").replace(/\s+/g, " ").trim().replace(/^["'\u201c\u201d]+|["'\u201c\u201d.,]+$/g, "").trim())
-          .filter((x) => x && x.length <= 60 && !/^none\b/i.test(x) && !/\b(no (?:words|text|lettering)|there (?:are|is) no)\b/i.test(x));
-        _pc = _pc.filter((x, i) => _pc.indexOf(x) === i).slice(0, 4);
-        const _w = _pc.join(" ");
-        try { console.log("[PORTRAIT:WORDS] the card read: " + (_read ? (_pc.length ? _pc.map((x) => "\"" + x + "\"").join(" + ") : "no words") : "no answer - the name's words are used") + " · " + _pd + " · " + (Date.now() - _t0) + "ms · who=" + me); } catch {}
-        return _read ? { ok: true, words: _w, pieces: _pc } : { ok: false, error: "NOT_READ" };
-      }
+      // (v9.999.56, 2026-11-16, Aaron: "we're making a lot of concessions ... I only counted 10-15 cards that even had names on them") the card is
+      // no longer read and its lettering no longer split into pieces (v9.999.54-55, removed): they always add their photo and always say what it
+      // should say, and one rule tells the image model to replace whatever lettering is there, or add it where there is none.
       if (action === "portrait") {
         const _pd = String(b.design || "").trim().slice(0, 500);
         const _pp = String(b.photo || "").trim();
@@ -77687,11 +77667,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // The words part of the sentence: `config:frame:portrait:grid` ("____" is the words line, when set).
         let _ws = "", _n1 = "with only the person and the lettering replaced";
         if (_mode === "none") { _ws = " Take all the lettering out - no words in any version."; _n1 = "with only the person replaced and the lettering taken out"; }
-        else if (_mode === "new" && _now) _ws = " Change the lettering \"" + _now + "\" to \"" + _txt + "\" in every version, spelled exactly like that." +
-          (_w.rest ? " Keep the rest of the lettering exactly as it is." : "");   // (v9.999.55) one piece of several changed - the others stay
-        // (v9.999.54) MEASURED 11:09 (Face Emerging from Flowers, "Live free"): number 1 came back with no words - "with only the person and the
-        // lettering replaced" on a card with no lettering. Number 1 says the words are added.
-        else if (_mode === "new") { _ws = " Add the words \"" + _txt + "\" to every version, spelled exactly like that."; _n1 = "with only the person replaced and the words added"; }
+        else if (_mode === "new") _ws = " Replace any lettering in my design with \"" + _txt + "\", spelled exactly like that - or add it if my design has none.";
         else { _ws = " Keep the lettering exactly as it is in every version."; _n1 = "with only the person replaced"; }
         let _sent = "The first picture is my tattoo design. The second picture is a photo of the person I want in it. Show me 8 versions of my design " +
           "with the person in the tattoo replaced by the person in the second picture - their face, hair, age and features, so they are clearly " +

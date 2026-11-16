@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.44-2026-11-15-newest-day-first";
+const BUILD = "aura-core-v9.999.45-2026-11-16-idea-said-back";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70824,7 +70824,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               }
               // (v9.844, 2026-11-04, Aaron: go) MEASURED 05:22:11: "READY STYLE: Dotwork IDEA: a stippled sunflower ..." - no words of hers, so it was
               // "not usable": the fixed line went and her idea was thrown away. Her idea is her say-back; the fixed line shows with it.
-              if (_hDo === "READY" && !String(_hSay || "").trim() && String(_hIdea || "").trim()) _hSay = await _fx("heard_ready", "Love it - want me to imagine it?");
+              // ══ THE IDEA SAID BACK WHEN SHE GAVE NO WORDS (v9.999.45, 2026-11-16, Aaron: go) ═══ MEASURED 05:33:21 (Surrealism, "I love the ocean and
+              // my cat named Milo, maybe some moons too"): READY with the idea "A surreal ocean scene blending with a cat named Milo, incorporating moons"
+              // and no words of hers - only "Love it - want me to imagine it?" showed, nothing they said came back. The fixed line now carries her idea.
+              // Setting: config:say:heard_ready_idea ({idea} is her idea line).
+              if (_hDo === "READY" && !String(_hSay || "").trim() && String(_hIdea || "").trim()) {
+                let _ii = String(_hIdea).replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "");
+                if (/^(A|An|The|My|Some)\s/.test(_ii)) _ii = _ii.charAt(0).toLowerCase() + _ii.slice(1);
+                const _tpl = await _fx("heard_ready_idea", "Love it - {idea}. Want me to imagine it?");
+                _hSay = /\{idea\}/.test(_tpl) ? _tpl.replace("{idea}", _ii.slice(0, 400)) : await _fx("heard_ready", "Love it - want me to imagine it?");
+              }
               // WHAT THEY WANT, WRITTEN DOWN (v9.704): her one line of the idea goes on the record and is what the 8 are drawn from.
               if (_hIdea.trim() && !(_hDo === "TALK" && _canGo)) {
                 _heardIdea = _ideaLost ? _theirs : (_hIdea.replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "") + (_addBack ? ". " + _addBack : "")).slice(0, 1000);

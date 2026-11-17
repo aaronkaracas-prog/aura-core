@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.69-2026-11-17-card-words-ask";
+const BUILD = "aura-core-v9.999.70-2026-11-17-card-line-not-a-name";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -71017,8 +71017,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               let _ideaLost = false;
               // a plural or a voice-typed capital ("Dragons", "Roses") still counts when the idea holds the word itself
               // (v9.819) MEASURED 14:00:07: she wrote "2,650 miles", they typed "2650" - counted as left out. Commas inside numbers do not count.
+              // (v9.999.70, 2026-11-17) MEASURED 09:28 (Birth Month Flowers -> December): the card's own words "I want a Birth Month Flowers tattoo"
+              // were read as a name she left out ("Birth Month Flowers"), so that sentence was added to her idea and reached the image model. The
+              // card's Create My Own line names the card, not something to write - it is not checked for names.
+              const _theirsN = _theirs.split(/(?<=[.!?])\s+|\n+/).filter((x) => !_ownByWords(String(x).replace(/[.!?]+$/, ""))).join(" ");
               const _lost = (idea) => { const _il = String(idea || "").toLowerCase().replace(/(\d),(?=\d{3}\b)/g, "$1");
-                return _namesOf(_theirs.replace(/(\d),(?=\d{3}\b)/g, "$1")).filter((n) => { const k = n.toLowerCase(), st = k.length > 4 ? k.replace(/(es|s)$/, "") : k; return !_il.includes(k) && !_il.includes(st); }); };
+                return _namesOf(_theirsN.replace(/(\d),(?=\d{3}\b)/g, "$1")).filter((n) => { const k = n.toLowerCase(), st = k.length > 4 ? k.replace(/(es|s)$/, "") : k; return !_il.includes(k) && !_il.includes(st); }); };
               // ══ ONLY THE SENTENCE IT CAME FROM GOES BACK (v9.820b, 2026-11-03, Aaron: go) ═══ MEASURED by HEARD_TEST 14:27: the idea is now
               // where the conversation ended, and background they gave ("a power lineman for 30 years", "in 2019") is often not in it - the whole
               // clean idea was thrown away for their raw words, "maybe lightning too actually lose the lightning" and all. Now her idea stays and
@@ -76079,12 +76083,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       if (!_letterCard && (_saybackNow || (typeof _picOffer !== "undefined" && _picOffer) || _styleCardNow || (acted && acted._letterOffer)) && !(drew && drew.image) && String(_said || "").trim()) {
         try {
           const _stNow = String(_newStyle || "").trim();
-          const _which = (acted && acted._letterOffer) ? "card_point_offer" : _saybackNow ? (_stNow ? "card_point_style" : "card_point") : (_hasStyles ? "card_point" : "card_point_offer");   // (v9.999.60) Lettering: always her offer
+          // (v9.999.70) MEASURED 09:27 (Birth Month Flowers, December): her say-back with no style picked ended "Want me to show you some amazing
+          // ideas?" over an Imagine it button - a say-back's button is always Imagine it, style or not, so its line is that question.
+          const _which = (acted && acted._letterOffer) ? "card_point_offer" : _saybackNow ? (_stNow ? "card_point_style" : "card_point_sayback") : (_hasStyles ? "card_point" : "card_point_offer");   // (v9.999.60) Lettering: always her offer
           const _isPicRoad = !_saybackNow && !_styleCardNow;
           // (v9.999.67, 2026-11-17) MEASURED 08:37 (jellyfish): her bubble said "...done in fine line style. Want me to imagine it?" over Imagine it
           // while the conversation under it said "...done in fine line style. Tap Imagine it when you're ready." - the page turns a closing "Tap ..."
           // into the question for her first button (v934, v946), in the bubble only. The line here is now that same question, so both say one thing.
-          let _pt = { card_point: "Want me to show you some amazing ideas?", card_point_style: "Want me to imagine it?",
+          let _pt = { card_point: "Want me to show you some amazing ideas?", card_point_style: "Want me to imagine it?", card_point_sayback: "Want me to imagine it?",
                       card_point_offer: "Want me to show you some amazing ideas?" }[_which];
           try { const _k = String((await env.AURA_KV.get("config:say:" + _which)) || "").trim(); if (_k) _pt = _k; } catch {}
           const _sent = String(_said).trim().match(/[^.!?]+[.!?]+["\u201d']?|[^.!?]+$/g) || [String(_said).trim()];

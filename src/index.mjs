@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.62-2026-11-17-lettering-only-in-style";
+const BUILD = "aura-core-v9.999.63-2026-11-17-lettering-label-out";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70889,10 +70889,16 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // dragon. When their words ask only for words (the same check as the backup above) or she used the label anywhere, the idea carries it, and
               // her words never show it.
               try {
-                const _herLabel = /^\s*["'\u201c]?\s*lettering only\b/i.test(_hRest);
+                // (v9.999.63, 2026-11-17, Aaron: go) MEASURED 06:08 (Lettering, "my dog Dido's name on my ankle"): her words showed "Love it - Lettering
+                // only - Dido." - the label was taken out only when it led her words. The label in the middle of her words, set off by a dash or colon,
+                // comes out too; "lettering only" said in her own sentence is left as she said it.
+                const _herLead = /^\s*["'\u201c]?\s*lettering only\b/i.test(_hRest);
+                const _herMid = !_herLead && /\bLettering only\s*[-\u2013\u2014:]/.test(String(_hRest || ""));
+                const _herLabel = _herLead || _herMid;
                 if ((_hDo === "READY" || _hDo === "GO") && (_loAsk || _herLabel || letterOnlyWords(_hIdea))) {
                   if (_herLabel) {
-                    const _cut = String(_hRest).replace(/^\s*["'\u201c]?\s*lettering only\b[^\n.!?]*[.!?]?\s*/i, "").trim();
+                    const _cut = (_herLead ? String(_hRest).replace(/^\s*["'\u201c]?\s*lettering only\b[^\n.!?]*[.!?]?\s*/i, "")
+                      : String(_hRest).replace(/\s*(?:[-\u2013\u2014:]\s*)?\bLettering only\s*[-\u2013\u2014:]\s*/g, (m, o) => (/^\s*[-\u2013\u2014:]/.test(m) ? " - " : ""))).trim();
                     const _q = (_hLetter || []).slice(0, 4).map((x) => '"' + String(x).replace(/"/g, "'") + '"');
                     _hRest = _cut || (_q.length ? "Just " + _q.join(" and ") + " - lettering only, nothing else." : "");
                   }

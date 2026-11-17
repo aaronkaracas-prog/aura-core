@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.60-2026-11-16-lettering-offer";
+const BUILD = "aura-core-v9.999.61-2026-11-17-lettering-by-talk";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62340,6 +62340,29 @@ function letterOpt(v) {
 function letterKey(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, ""); }
 function letterHas(saved, t) { const k = letterKey(t); return !!k && (saved.items || []).some((o) => o && o.font && (letterKey(o.text) === k || letterKey(o.from) === k)); }
 function letterParse(v) { try { const o = JSON.parse(String(v || "")); if (o && Array.isArray(o.items)) return o; } catch {} return { items: [] }; }
+// ══ THEIR LETTERING STYLE, IN THEIR OWN WORDS (v9.999.61, 2026-11-17, Aaron: go) ═══ MEASURED 05:23-05:24 (Create, talk only: "big script
+// tattoos across the front of my neck that says Love Life", then "like that heavy old english lettering you see on the chicano guys, big and
+// bold, filling up my whole throat", then "yeah just like that, go ahead and draw it"): her idea read "Love Life in bold, heavy old-English
+// lettering", yet the sheet was asked for three times and nothing was drawn - only a tap on the sheet, or a typed line of 8 words or fewer,
+// counted as their pick. The lettering style they name in their own words (never hers) is their pick. The plain lettering names count on
+// their own ("script", "old english", "cursive"); any other style counts only tied to the lettering ("fire lettering", "letters in gothic"),
+// so "a traditional rose with Mom" still brings up the sheet. Returns the style's id, or "".
+function letterStyleNamed(text) {
+  const t = String(text || "").toLowerCase().replace(/[\u2010-\u2015]/g, "-");
+  if (!t.trim()) return "";
+  const plain = ["script", "chicano script", "fine-line script", "old english", "blackletter", "calligraphy", "handwritten", "signature", "typewriter", "brush script", "chicano lettering", "throat blackletter"];
+  const noun = "(?:lettering|letters|script|font|writing|text)";
+  const pat = (id) => id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/[-\s]+/g, "[-\\s]?");
+  const ids = LETTER_STYLES.map((x) => x.id).sort((a, b) => b.length - a.length);
+  for (const id of ids) {
+    const p = pat(id);
+    if (plain.includes(id) || new RegExp("\\b" + noun + "\\b").test(id)) { if (new RegExp("\\b" + p + "\\b").test(t)) return id; continue; }
+    if (new RegExp("\\b" + p + "(?:[- ]style)?(?:\\s+[a-z]+)?\\s+" + noun + "\\b").test(t) ||
+        new RegExp("\\b" + noun + "\\s+(?:in|like|as|made of|of)\\s+(?:an?\\s+|the\\s+)?" + p + "\\b").test(t)) return id;
+  }
+  if (/\bcursive\b/.test(t)) return "script";
+  return "";
+}
 // ══ NEW LETTERING THAT REPLACES THE OLD (v9.999.41, 2026-11-15, Aaron: "we can fix the banner thing if you're able to recognize that for sure") ═══
 // MEASURED 13:25 (Dragon Wave): "Let's change the banner to Malibu forever", Creepy picked - the image model was told '"Malibu" in Chicano Script
 // lettering, "Malibu forever" in Creepy lettering. Keep the lettering already on my design as it is.' - keep the old words and add the new ones,
@@ -70063,7 +70086,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // range with the sun coming up behind it, I hike a lot"): the See It On You card sends nothing to core either, so the first words on it
           // were not a new tattoo - she answered in her own turn with a "What feel do you want for it?" card, where Create says it back with
           // Imagine it. Its page (job3) is a new start too: the same road as Create, until the design is seen on them.
-          _styleStart = _styleStart || (!_opener && !!(opts && opts.fresh) && (!opts.page || opts.page === "home" || opts.page === "job0" || opts.page === "job3") && !refUrl && !_bodyPhoto &&
+          // (v9.999.61, 2026-11-17, Aaron: go) MEASURED 05:22 (Lettering, "I want to have Crazy Life tattoo on my neck"): the first words went to her
+          // full chat and ended on Yes, show me / I have my own idea - after they had just told her their idea. On Create the same words are said
+          // back with Choose my lettering. The Lettering page (letter) is a new start too, the same road as Create.
+          _styleStart = _styleStart || (!_opener && !!(opts && opts.fresh) && (!opts.page || opts.page === "home" || opts.page === "job0" || opts.page === "job3" || opts.page === "letter") && !refUrl && !_bodyPhoto &&
             !(opts.pick || opts.use || opts.own || opts.name || opts.tile || opts.inspire || opts.inspire_go || opts.choose_go || opts.heard_go ||
               opts.heard_pick || opts.placed || opts.recolor || opts.touch || opts.change_now || opts.new_now || opts.pick_sheet || opts.change_of ||
               (Array.isArray(opts.all_ideas) && opts.all_ideas.length)));
@@ -71146,7 +71172,23 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // that has no style chosen yet goes to the page as a lettering sheet, in place of Imagine it - and a yes waits for it too. The idea she
               // said back is kept, so their pick goes straight back to Imagine it.
               try {
-                const _lOld = letterParse(_ds.letter);
+                let _lOld = letterParse(_ds.letter);
+                // (v9.999.61) a lettering style named in their own words is their pick - the sheet goes up only for what has no style. A style in this
+                // line wins; one named earlier fills only what has none (a style picked on the sheet stays).
+                if ((_hLetter || []).length && (_hDo === "READY" || _hDo === "GO") && _heardOut && _heardOut.go) {
+                  const _nowSt = letterStyleNamed(_s), _anySt = _nowSt || letterStyleNamed(_theirs);
+                  if (_anySt) {
+                    const _set = _hLetter.slice(0, 4).map((t) => { const k = letterKey(t); const o = _lOld.items.find((x) => x && (letterKey(x.text) === k || letterKey(x.from) === k));
+                      return { text: o ? String(o.text) : String(t).trim().slice(0, 80), font: _nowSt || (o && o.font) || _anySt, ...(o && o.from ? { from: String(o.from) } : {}) }; })
+                      .filter((x) => x.text);
+                    const _mg = _set.concat(_lOld.items.filter((o) => !_set.some((p) => letterKey(p.text) === letterKey(o.text) || letterKey(p.from) === letterKey(o.text))));
+                    const _lj = JSON.stringify({ items: _mg.slice(0, 4) });
+                    try { await talkStatePut(env, me, "letter", _lj); await talkStatePut(env, me, "letter_wait", ""); } catch {}
+                    _ds.letter = _lj; _lOld = letterParse(_lj);
+                    console.log("[TURN:LETTER] their lettering style is in their own words: " + _set.map((x) => '"' + x.text + '" ' + x.font).join(", ") +
+                      " - taken as their pick, no sheet" + (_hDo === "GO" ? "; their go draws it" : "; Imagine it shown") + (me ? " · who=" + me : ""));
+                  }
+                }
                 const _lNew = (_hLetter || []).filter((t) => !letterHas(_lOld, t));
                 if (_lNew.length && (_hDo === "READY" || _hDo === "GO") && _heardOut && _heardOut.go) {
                   const _gi = _heardIdea || _goPrev;
@@ -71500,7 +71542,19 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 .filter(Boolean).join(". ").replace(/\.\s*\./g, ".").slice(0, 1200);
               if (_tw) {
                 const _lf = await letterFind(env, _tw, String(_prevAuraLine || ""), talkModel);
-                const _lsv = letterParse(_ds.letter);
+                let _lsv = letterParse(_ds.letter);
+                // (v9.999.61) a lettering style named in their own words is their pick here too - the sheet only for what has no style
+                { const _nowSt = letterStyleNamed(_s), _anySt = _nowSt || letterStyleNamed(_tw);
+                  if (_anySt && _lf.length) {
+                    const _set = _lf.slice(0, 4).map((t) => { const k = letterKey(t); const o = _lsv.items.find((x) => x && (letterKey(x.text) === k || letterKey(x.from) === k));
+                      return { text: o ? String(o.text) : String(t).trim().slice(0, 80), font: _nowSt || (o && o.font) || _anySt, ...(o && o.from ? { from: String(o.from) } : {}) }; })
+                      .filter((x) => x.text);
+                    const _mg = _set.concat(_lsv.items.filter((o) => !_set.some((p) => letterKey(p.text) === letterKey(o.text) || letterKey(p.from) === letterKey(o.text))));
+                    const _lj = JSON.stringify({ items: _mg.slice(0, 4) });
+                    try { await talkStatePut(env, me, "letter", _lj); await talkStatePut(env, me, "letter_wait", ""); } catch {}
+                    _ds.letter = _lj; _lsv = letterParse(_lj);
+                    console.log("[TURN:LETTER] first designs - their lettering style is in their own words: " + _set.map((x) => '"' + x.text + '" ' + x.font).join(", ") + " - taken as their pick, no sheet" + (me ? " · who=" + me : ""));
+                  } }
                 const _lnw = _lf.filter((t) => !letterHas(_lsv, t));
                 if (_lnw.length) {
                   try { await talkStatePut(env, me, "go_idea", _tw); await talkStatePut(env, me, "go_picks", ""); await talkStatePut(env, me, "go_said", "1"); } catch {}

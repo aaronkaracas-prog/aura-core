@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.70-2026-11-17-card-line-not-a-name";
+const BUILD = "aura-core-v9.999.71-2026-11-17-collections-start-new";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -70141,7 +70141,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // (v9.999.61, 2026-11-17, Aaron: go) MEASURED 05:22 (Lettering, "I want to have Crazy Life tattoo on my neck"): the first words went to her
           // full chat and ended on Yes, show me / I have my own idea - after they had just told her their idea. On Create the same words are said
           // back with Choose my lettering. The Lettering page (letter) is a new start too, the same road as Create.
-          _styleStart = _styleStart || (!_opener && !!(opts && opts.fresh) && (!opts.page || opts.page === "home" || opts.page === "job0" || opts.page === "job3" || opts.page === "letter") && !refUrl && !_bodyPhoto &&
+          _styleStart = _styleStart || (!_opener && !!(opts && opts.fresh) && (!opts.page || opts.page === "home" || opts.page === "job0" || opts.page === "job3" || opts.page === "letter" ||
+            // (v9.999.71, 2026-11-17) MEASURED 09:43 (Pets, Insects and Butterflies) and 08:54 (Aaron's phone, Birth Month Flowers): Create My Own on a
+            // collection page, after a tattoo was locked in, went to her as chat and she pitched - the lock-in clears the new-tattoo marker and only
+            // these pages set it again, so the card's own question was skipped. A collection or explore page is a new start too.
+            /^(col[a-z]+|trend|styles|beyond|discover|badbitch|badass)$/.test(String(opts.page))) && !refUrl && !_bodyPhoto &&
             !(opts.pick || opts.use || opts.own || opts.name || opts.tile || opts.inspire || opts.inspire_go || opts.choose_go || opts.heard_go ||
               opts.heard_pick || opts.placed || opts.recolor || opts.touch || opts.change_now || opts.new_now || opts.pick_sheet || opts.change_of ||
               (Array.isArray(opts.all_ideas) && opts.all_ideas.length)));

@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.65-2026-11-17-faster-yes-and-cut";
+const BUILD = "aura-core-v9.999.66-2026-11-17-say-check-saved";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -61274,6 +61274,24 @@ function _whiteCorners(buf, w, h) {
 //   3. only that card is loaded here, its edges are found at full size by the same black-row / black-column rules, and its corners, its
 //      artwork and its words box are made exactly as before.
 // Anything that does not come out right (no tool, a card that will not come off, a different count) goes back to the old cut, whole.
+// ══ EVERY LINE IS LOOKED AT BEFORE IT SHOWS (v9.999.65, 2026-11-17, Aaron: "we will do them all") ═══ Her fixed lines are put together from
+// pieces, and a piece can come in wrong: MEASURED 06:16 "Love it - Lettering only - Dido." (a working label inside her words, fixed one place at a
+// time in v9.999.63 and .64). Instead of one fix per line, the words the page will show pass one check: a slot never filled ({idea}), a working
+// label (IDEA:, LETTERING:, "Lettering only -" after a dash), a dash or space left in front of a full stop, a doubled space. And one name for
+// the designs they heart: Saved (Aaron, Nov 17 - "Favorites" is gone). What it changed is logged as [SAY-CHECK].
+function sayCheck(t) {
+  if (typeof t !== "string" || !t) return t;
+  let s = t;
+  s = s.replace(/\{[A-Za-z_]{2,20}\}/g, "");
+  s = s.replace(/(^|[\s(\-\u2013\u2014])(?:IDEA|STYLE|LETTERING|READY|TALK|DRAW|CHOOSE|WHOLE)\s*:\s*/g, "$1");
+  s = s.replace(/^(\s*)Idea\s*:\s*/, "$1");
+  s = s.replace(/(^|[\-\u2013\u2014]\s)lettering only\s*[\-\u2013\u2014:]\s*/gi, "$1");
+  s = s.replace(/[ \t]*[\-\u2013\u2014][ \t]*([.!?,])/g, "$1");
+  s = s.replace(/[ \t]+([.!?,])/g, "$1");
+  s = s.replace(/to save them to your Favorites/g, "to keep them in Saved").replace(/\byour Favorites\b/g, "Saved").replace(/\bFavorites\b/g, "Saved");
+  s = s.replace(/[ \t]{2,}/g, " ");
+  return s.trim();
+}
 async function cutAllCardsByTool(env, id, _art, _ck) {
   if (!env.IMAGES) return null;
   const _t0 = Date.now();
@@ -75101,10 +75119,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             if (_designGrid) {
               // FOUR VERSIONS OF A CHANGE (v9.605, Aaron): her own words to their change stay - she was called before it
               // was drawn - and the same fixed line as the first four follows. No look: the titles are in the picture.
-              let _done = (_fixedWhy === "more") ? "Here are more for you. Select the one that's closest, then tap Finalize This Design to make it yours." : "Here are your designs. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours - or Imagine More Possibilities for 8 new takes on it.";
+              let _done = (_fixedWhy === "more") ? "Here are more for you. Select the one that's closest, then tap Finalize This Design to make it yours." : "Here are your designs. Heart the ones you like to keep them in Saved. Select the one you love, then tap Finalize This Design to make it yours - or Imagine More Possibilities for 8 new takes on it.";
               try { const _k = String((await env.AURA_KV.get("config:say:eight_done")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_designWords === "__poss__") {
-                _done = "Here are some possibilities for your design. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours.";
+                _done = "Here are some possibilities for your design. Heart the ones you like to keep them in Saved. Select the one you love, then tap Finalize This Design to make it yours.";
                 try { const _k = String((await env.AURA_KV.get("config:say:poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               // HER WORDS WERE WRITTEN BEFORE THE EIGHT FROM THE PHOTO EXISTED (v9.740, 2026-10-24, Aaron: "she's saying things and
@@ -75115,13 +75133,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (_inkFirstTurn && acted && acted.say) { try { console.log("[TURN:WORDS] her words before the eight from the photo were not shown: \"" + String(acted.say).slice(0, 200) + "\""); } catch {} }
               _reaction = _hers ? (_hers + "\n\n" + _done) : _done;
             } else if (_ideasGrid) {
-              let _done = (_fixedWhy === "more") ? "Here are more for you. Select the one that's closest, then tap Finalize This Design to make it yours." : "Here are your designs. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours - or Imagine More Possibilities for 8 new takes on it.";
+              let _done = (_fixedWhy === "more") ? "Here are more for you. Select the one that's closest, then tap Finalize This Design to make it yours." : "Here are your designs. Heart the ones you like to keep them in Saved. Select the one you love, then tap Finalize This Design to make it yours - or Imagine More Possibilities for 8 new takes on it.";
               try { const _k = String((await env.AURA_KV.get("config:say:ideas_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               if (_addonPoss && _addonChangeWords) {
-                _done = "Here are some versions of that on you. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours.";
+                _done = "Here are some versions of that on you. Heart the ones you like to keep them in Saved. Select the one you love, then tap Finalize This Design to make it yours.";
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_change_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               } else if (_addonPoss) {
-                _done = "Here are some possibilities on you. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours.";
+                _done = "Here are some possibilities on you. Heart the ones you like to keep them in Saved. Select the one you love, then tap Finalize This Design to make it yours.";
                 try { const _k = String((await env.AURA_KV.get("config:say:addon_poss_done8")) || "").trim(); if (_k) _done = _k; } catch {}
               }
               _reaction = _done;
@@ -75587,7 +75605,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // reading them back added ~20s and told them nothing new. One fixed line instead (config:say:four_done).
             let _lk2 = null;
             if (_newSentence) {
-              _reaction = (_fixedWhy === "more") ? "Here are more for you. Select the one that's closest, then tap Finalize This Design to make it yours." : "Here are your designs. Heart the ones you like to save them to your Favorites. Select the one you love, then tap Finalize This Design to make it yours - or Imagine More Possibilities for 8 new takes on it.";
+              _reaction = (_fixedWhy === "more") ? "Here are more for you. Select the one that's closest, then tap Finalize This Design to make it yours." : "Here are your designs. Heart the ones you like to keep them in Saved. Select the one you love, then tap Finalize This Design to make it yours - or Imagine More Possibilities for 8 new takes on it.";
               try { const _k = String((await env.AURA_KV.get("config:say:eight_done")) || "").trim(); if (_k) _reaction = _k; } catch {}
             } else {
               _lk2 = await _lookAtResult(dp.image_url, wantsBody && !(opts && opts.inspire), null, _grid, _newFlow);
@@ -76357,6 +76375,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         try { await talkStatePut(env, me, "addon_ideas", _ideasOut ? JSON.stringify(_ideasOut) : ""); } catch {}
         if (_ideasOut) { try { console.log("[TURN:IDEAS] add-on - her ideas as buttons: " + _ideasOut.map((x) => '"' + x.slice(0, 80) + '"').join(", ") + (me ? " · who=" + me : "")); } catch {} }
       }
+      { const _sc = sayCheck(_said); if (typeof _said === "string" && _sc !== _said) { try { console.log("[SAY-CHECK] \"" + _said.replace(/\s+/g, " ").slice(0, 300) + "\" -> \"" + String(_sc).replace(/\s+/g, " ").slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } catch {} _said = _sc; } }
       return { ok: true, said: _said, act, ...(acted.act !== act ? { her_act: acted.act } : {}), phase_ms, world, spent,
                answered_by: _fixedWhy ? ("fixed line (" + _fixedWhy + ")" + (_reaction && _reaction !== _fixedSay ? " + her look" : "")) : (_tapKeep ? "tap (her short line after)" : "Aura"),
                ...(_picsGot.length ? { image_model_got: _picsGot } : {}),

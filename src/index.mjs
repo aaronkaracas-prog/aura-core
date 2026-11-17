@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.66-2026-11-17-say-check-saved";
+const BUILD = "aura-core-v9.999.67-2026-11-17-no-placement-in-new-drawings";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62932,8 +62932,16 @@ function _changeWords(t) {
 // above it, for forearm. Show me 8 different designs" - the placement went to the image model. A placement at the end of the idea comes off.
 function _dropPlace(t) {
   const s = String(t || "");
-  // a comma before it, or words that only say where it goes ("for", "going on") - "a hand on my shoulder" is a drawing and stays
-  const out = s.replace(/(?:\s*[,.;-]\s*(?:(?:it'?s|its|it is)\s+)?(?:for|on|going on|goes on|placed on|to go on)|\s+(?:(?:it'?s|its|it is)\s+)?(?:going on|goes on|placed on|to go on)|\s+for)\s+(?:(?:my|your|the)\s+)?(?:(?:left|right|upper|lower|inner|outer|top|back of (?:my|the))\s+)?(?:forearm|arm|wrist|shoulder(?: blade)?|back|chest|leg|thigh|calf|ankle|neck|hand|ribs?|rib ?cage|hip|bicep|collar ?bone|sternum|spine|foot|feet|forearms|arms)s?\b[\s.]*$/i, "").trim();
+  const _part = "(?:forearm|arm|wrist|shoulder(?: blade)?|back|chest|leg|thigh|calf|ankle|neck|throat|hand|finger|ribs?|rib ?cage|side|hip|bicep|collar ?bone|sternum|spine|foot|feet|forearms|arms|stomach|belly|knee|elbow|nape|ear|behind the ear)s?";
+  const _mods = "(?:(?:left|right|upper|lower|inner|outer|top|front|back|side|whole|entire|full)\\s+(?:of\\s+(?:my|the|your)\\s+)?)*";
+  let out = s.replace(new RegExp("(?:\\s*[,.;-]\\s*(?:(?:it'?s|its|it is)\\s+)?(?:for|on|going on|goes on|placed on|to go on)|\\s+(?:(?:it'?s|its|it is)\\s+)?(?:going on|goes on|placed on|to go on)|\\s+for)\\s+(?:(?:my|your|the)\\s+)?" + _mods + _part + "\\b[\\s.]*$", "i"), "").trim();
+  // (v9.999.67, 2026-11-17, Aaron: "placement going to the image model - only relevant when we're discussing add-ons and cover-ups") MEASURED 08:37
+  // (jellyfish): "A small, dreamy jellyfish floating on the forearm, done in fine line style" went to the image model. A new tattoo's drawing never
+  // carries where it goes; add-ons and cover-ups are drawn on their photo by their own sentence and do not pass here. Inside the idea too: "floating on the forearm", "big across the front of the neck", "spanning ear to ear" - a place on THEIR body
+  // ("the", "my", "your"), never "a hand on a shoulder"
+  out = out.replace(new RegExp("\\s*,?\\s*(?:(?:that|which)\\s+)?(?:(?:goes|going|placed|sitting|resting|floating|wrapping|wrapped|running|stretching|spanning|reaching|curving|flowing|winding)\\s+)?(?:on|across|along|around|down|up|over|onto|behind|under|below|inside)\\s+(?:my|your|the)\\s+" + _mods + _part + "\\b", "gi"), "");
+  out = out.replace(/\s*,?\s*(?:(?:spanning|stretching|running|going|reaching)\s+)?(?:from\s+)?ear[\s-]+to[\s-]+ear\b/gi, "");
+  out = out.replace(/\s+,/g, ",").replace(/,\s*,/g, ",").replace(/,\s*$/, "").replace(/\s{2,}/g, " ").replace(/^[\s,]+/, "").trim();
   return out.length >= 3 ? out : s;
 }
 function _isOfferLine(t) {
@@ -76061,8 +76069,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           const _stNow = String(_newStyle || "").trim();
           const _which = (acted && acted._letterOffer) ? "card_point_offer" : _saybackNow ? (_stNow ? "card_point_style" : "card_point") : (_hasStyles ? "card_point" : "card_point_offer");   // (v9.999.60) Lettering: always her offer
           const _isPicRoad = !_saybackNow && !_styleCardNow;
-          let _pt = { card_point: "Tap Show me some ideas, or pick a style first.", card_point_style: "Tap Imagine it when you're ready.",
-                      card_point_offer: "Tap Yes, show me, or I have my own idea." }[_which];
+          // (v9.999.67, 2026-11-17) MEASURED 08:37 (jellyfish): her bubble said "...done in fine line style. Want me to imagine it?" over Imagine it
+          // while the conversation under it said "...done in fine line style. Tap Imagine it when you're ready." - the page turns a closing "Tap ..."
+          // into the question for her first button (v934, v946), in the bubble only. The line here is now that same question, so both say one thing.
+          let _pt = { card_point: "Want me to show you some amazing ideas?", card_point_style: "Want me to imagine it?",
+                      card_point_offer: "Want me to show you some amazing ideas?" }[_which];
           try { const _k = String((await env.AURA_KV.get("config:say:" + _which)) || "").trim(); if (_k) _pt = _k; } catch {}
           const _sent = String(_said).trim().match(/[^.!?]+[.!?]+["\u201d']?|[^.!?]+$/g) || [String(_said).trim()];
           const _last = String(_sent[_sent.length - 1] || "").trim();

@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.76-2026-11-17-words-stencils-fresh";
+const BUILD = "aura-core-v9.999.77-2026-11-17-quick-pick-any-set";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -71637,7 +71637,21 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // (v9.871) a card off the four add-on ideas: no possibilities are offered on it yet, so the line does not offer them
             try { const _ps = (String((opts && opts.pick_sheet) || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
                   if (_ps && await env.AURA_KV.get("addonsheet:" + _ps)) _fixedSay = await _fx("pick_addon", "This is the one you're working on - make it your tattoo, or tell me what to change."); } catch {}
-          } else if ((String(_ds.design_change || "").trim() || _newFlow) && /^i want number [1-8]\.?$/i.test(_s) && !_bodyPhoto) {
+          } else if (/^i want number [1-8]\.?$/i.test(_s) && !_bodyPhoto && (String(_ds.design_change || "").trim() || _newFlow || await (async () => {
+                       // ══ A PICK OFF ANY MARKED SET IS A CUT (v9.999.77, 2026-11-17, Aaron: go) ═══ MEASURED 14:34 (their person in Baby Portrait and
+                       // Rose, 8 versions): "I want number 1" was cut by hand (no image model) but SHE was asked first - 15.6s, then 12.1s on the
+                       // second pick - because a portrait set and a set reopened from In Progress carry neither a change nor the new-idea mark.
+                       // When the last picture on the timeline is a set of 8 that was cut into cards (sheet8:), the pick is the same quick pick.
+                       try {
+                         const _tl = talkParse((await talkStateGet(env, me, ["timeline"])).timeline) || [];
+                         for (let i = _tl.length - 1; i >= 0; i--) { const e = _tl[i];
+                           if (opts && opts.pick_sheet && e && e.image !== opts.pick_sheet) continue;
+                           if (e && e.role === "picture") { const _id = (String(e.image || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+                             const _ok = !!(e.grid === true && _id && await env.AURA_KV.get("sheet8:" + _id));
+                             if (_ok) console.log("[TURN:PICK] a pick off a marked set (" + _id + ") - the quick pick, she is not asked" + (me ? " · who=" + me : ""));
+                             return _ok; } }
+                       } catch {}
+                       return false; })())) {
             // CHOOSE, THEN THE OFFER (v9.628, 2026-10-16, Aaron): change it, imagine 4 possibilities, or finish.
             _fixedWhy = "pick"; _fixedSay = await _fx("pick8", "This is the one you're working on - make it your tattoo, fine-tune it, or imagine possibilities of it.");
           } else if (_s && carriedObj && carriedObj.on_me === true && refHeld && _bodyPhoto && refUrl && !_freshPhoto &&

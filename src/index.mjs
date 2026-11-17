@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.58-2026-11-16-lettering-fit-colour";
+const BUILD = "aura-core-v9.999.59-2026-11-16-lettering-letters-only";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62383,6 +62383,9 @@ function letterLook(id) {
 // different group. Setting: config:frame:new:letteronly (empty value = the placements clause, as before).
 const LETTER_NEEDS_PHRASE = new Set(["mixed-font quote stack", "word stack with banner", "words forming a heart"]);
 const LETTER_NEEDS_INITIALS = new Set(["ornamental monogram", "couple initials"]);
+// (v9.999.59) MEASURED 16:49 (Sofia, img_mwjz5rkx9ta9): the sailor banner drew a swallow and an anchor around the name - on a sheet where the words
+// are the whole tattoo. Styles that bring a picture of their own are drawn only when they pick them; the random seven are letters only.
+const LETTER_HAS_PICTURE = new Set(["mom banner", "sailor banner", "traditional name plate", "name with a rose", "snake through the letters"]);
 const LETTER_COLOUR = new Set(["made of flowers", "birth-flower name", "mom banner", "sailor banner", "traditional name plate", "gold name necklace",
   "diamond letters", "fire", "water and waves", "galaxy", "graffiti wildstyle", "stained glass", "embroidered patch", "sticker", "neon sign", "watercolour splash"]);
 function letterOnlyPlan(letter) {
@@ -62396,7 +62399,7 @@ function letterOnlyPlan(letter) {
   const allText = items.map((x) => String(x.text)).join(" ").trim();
   const nWords = allText.split(/\s+/).filter(Boolean).length;
   const nLetters = allText.replace(/[^A-Za-z]/g, "").length;
-  const fits = (x) => (!LETTER_NEEDS_PHRASE.has(x.id) || nWords >= 3) && (!LETTER_NEEDS_INITIALS.has(x.id) || nLetters <= 3);
+  const fits = (x) => (!LETTER_NEEDS_PHRASE.has(x.id) || nWords >= 3) && (!LETTER_NEEDS_INITIALS.has(x.id) || nLetters <= 3) && !LETTER_HAS_PICTURE.has(x.id);
   const pool = LETTER_STYLES.filter((x) => x.look && !chosen.has(x.id) && fits(x)).sort(() => Math.random() - 0.5);
   const pick = [], usedG = new Set();
   const take = (want) => { for (const x of pool) { if (pick.length >= 7 || (want && pick.filter((y) => LETTER_COLOUR.has(y.id)).length >= 4)) return;
@@ -62404,8 +62407,12 @@ function letterOnlyPlan(letter) {
   take(true); take(false);
   for (const x of pool) { if (pick.length >= 7) break; if (!pick.includes(x)) pick.push(x); }
   const first = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? letterLook(x.font) : "")).join(", ");
-  return " The words are the whole tattoo - no separate pictures, symbols or artwork around them; the letters themselves are the art. " +
-    "Number 1: " + first + ". On each of the others, the same words " + words + " written a different way: " +
+  // (v9.999.59) a picture style they picked themselves keeps its picture on number 1 - the "no pictures" line then speaks for the other seven only
+  const picPicked = items.some((x) => LETTER_HAS_PICTURE.has(String(x.font || "").toLowerCase()));
+  return (picPicked
+    ? " The words are the heart of the tattoo. Number 1: " + first + ". On each of the others, the same words " + words + " written a different way, with no separate pictures, symbols or artwork around them - the letters themselves are the art: "
+    : " The words are the whole tattoo - no separate pictures, symbols or artwork around them; the letters themselves are the art. " +
+    "Number 1: " + first + ". On each of the others, the same words " + words + " written a different way: ") +
     pick.map((x, i) => (i + 2) + ". " + x.look).join("; ") + ". Every card spells the words exactly as written here.";
 }
 // Whether the words are the whole tattoo, asked once when the first designs are drawn and nothing else said so. Model: config:source:lettering:model,
@@ -65838,7 +65845,7 @@ export class PtaDurableObject {
     // ══ A TATTOO KNOWS WHERE IT BEGAN (v9.999.4, 2026-11-13 click-around, Aaron: "Yes, save it") ═══ MEASURED 08:14: a Get Inspired tattoo
     // reopened from In Progress read "Create" - nothing in it said which section it began in. The section of its first saved turn is kept
     // (job0 Create .. job6 Ink It) and never changed; the page reads it when the tattoo is reopened.
-    if (pt.section && !pj.section && /^job[0-6]$/.test(String(pt.section))) pj.section = String(pt.section);
+    if (pt.section && !pj.section && /^(job[0-6]|letter|portrait)$/.test(String(pt.section))) pj.section = String(pt.section);   // (v9.999.59) Lettering and Portraits too
     // HER NAME FOR IT (2026-10-10, v9.562, Aaron): at lock-in Aura names the tattoo ("California Lowrider
     // Queen"); that name replaces the title, and the description it was named from is kept as `about`
     // for the "i" on the page.
@@ -75266,7 +75273,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (!_lOnly && !_newStyle) { try { const _lw = letterParse((await talkStateGet(env, me, ["letter"])).letter);
                 if (_lw.items.length && (_lw.only || await letterWhole(env, _words, _lw.items, talkModel))) _lOnly = true; } catch {} }
               try { const _k = await env.AURA_KV.get("config:frame:new:grid:nostyle"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim().replace(/^,\s*/, ""); _ns = _t ? ", " + _t : ""; } } catch {}
-              if (!_newStyle && _ns) { try { console.log("[TURN:NEW] no style picked - asked for" + _ns.slice(1) + (me ? " · who=" + me : "")); } catch {} }
+              // (v9.999.59) MEASURED 16:49 (Sofia): the log said "no style picked - asked for each in a different tattoo style" on a lettering-only
+              // sheet that was sent "each one the lettering written a different way" - the line now names only what is actually sent.
+              if (!_newStyle && _ns && !_lOnly) { try { console.log("[TURN:NEW] no style picked - asked for" + _ns.slice(1) + (me ? " · who=" + me : "")); } catch {} }
               if (_lOnly && !_newStyle) { _ns = ", each one the lettering written a different way"; try { console.log("[TURN:NEW] lettering only - each one the lettering written a different way" + (me ? " · who=" + me : "")); } catch {} }
               askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : _ns);
               // ══ ALL OF HER IDEAS AT ONCE (v9.627, 2026-10-16, Aaron: "let me see all 4 absolutely") ══════════════════════
@@ -76051,7 +76060,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 : null,
               came_from: _cameFrom ? _cameFrom.id : null,
               // (v9.999.4) the section this tattoo began in - the page they were on, or Get Inspired for a picture taken from its search
-              section: /^job[0-6]$/.test(String((opts && opts.page) || "")) ? String(opts.page)
+              section: /^(job[0-6]|letter|portrait)$/.test(String((opts && opts.page) || "")) ? String(opts.page)
                 : (opts && (opts.inspire || opts.inspire_go || opts.inspire_own)) ? "job4" : null,
               ...(_herName ? { name_final: _herName } : {}),
               // THE ONE THEY PICKED NAMES THE TATTOO (v9.626): its card's title, and its two lines and what it shows as the "i".

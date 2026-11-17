@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.63-2026-11-17-lettering-label-out";
+const BUILD = "aura-core-v9.999.64-2026-11-17-lettering-label-idea";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -71008,6 +71008,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // Setting: config:say:heard_ready_idea ({idea} is her idea line).
               if (_hDo === "READY" && !String(_hSay || "").trim() && String(_hIdea || "").trim()) {
                 let _ii = String(_hIdea).replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "");
+                // (v9.999.64, 2026-11-17, Aaron: go) MEASURED 06:26 (live, v9.999.63, Lettering, "my dog Dido's name on my ankle"): still "Love it - Lettering
+                // only - Dido written on the ankle." - she gave no words, and this line says back her idea, which carries the "Lettering only - " label
+                // (it keeps the 8 to the words alone). The label stays on the idea; it is left out of what they read.
+                _ii = _ii.replace(/^\s*lettering only\s*[-\u2013\u2014:]\s*/i, "").trim();
                 if (/^(A|An|The|My|Some)\s/.test(_ii)) _ii = _ii.charAt(0).toLowerCase() + _ii.slice(1);
                 // (v9.999.48, 2026-11-16, Aaron: go) MEASURED 06:16: "Love it - portrait of a woman resembling the user's abuela..." - her idea line is
                 // written about them, so it is turned to them before it is said back.

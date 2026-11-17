@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.59-2026-11-16-lettering-letters-only";
+const BUILD = "aura-core-v9.999.60-2026-11-16-lettering-offer";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -75938,16 +75938,20 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // (v9.999.36) her style card only goes to the page when no style is picked yet (v9.701 drops it below) - the line follows what will show
       // (v9.999.58, 2026-11-16, Aaron: go) MEASURED 16:31 (Lettering, "i want my sons name Mateo on my forearm"): under her line came "What feel do
       // you want for the lettering? Optional - pick a style" with tattoo-style pictures; the lettering sheet's own Lettering Styles are the choice there.
-      if (opts && opts.page === "letter" && acted && acted.choose) { acted.choose = null; try { console.log("[TURN:LETTER] the lettering conversation - no tattoo-style card, the lettering sheet is the choice" + (me ? " · who=" + me : "")); } catch {} }
+      // (v9.999.60, 2026-11-16, Aaron: go) MEASURED 17:34 (Lettering, "just the word Familia across my chest, nothing else"): her style card was
+      // dropped but her words still ended "so we should pick a style for it. What feel do you want?" - and the page put the tattoo-style row back
+      // under them. On Lettering her style question becomes her offer: her line ends on Yes, show me / I have my own idea, and the yes brings the
+      // lettering sheet, as it does when she offers.
+      if (opts && opts.page === "letter" && acted && acted.choose) { acted.choose = null; acted._letterOffer = !_fixedWhy && !(_heardOut && (_heardOut.go || _heardOut.letter)); try { console.log("[TURN:LETTER] the lettering conversation - no tattoo-style card, the lettering sheet is the choice" + (me ? " · who=" + me : "")); } catch {} }
       const _hasStyles = !!(acted && acted.choose && Array.isArray(acted.choose.styles) && acted.choose.styles.length) && !(_newFlow && _newStyle);
       const _styleCardNow = _hasStyles && !_fixedWhy && !_drewNow();
       // (v9.999.42) MEASURED 13:42:02: "...pick how you'd like your lettering to look. Tap Show me some ideas, or pick a style first." - the lettering
       // sheet is the card then (Choose my lettering); her lettering line already says so.
       const _letterCard = !!(_heardOut && _heardOut.letter);
-      if (!_letterCard && (_saybackNow || (typeof _picOffer !== "undefined" && _picOffer) || _styleCardNow) && !(drew && drew.image) && String(_said || "").trim()) {
+      if (!_letterCard && (_saybackNow || (typeof _picOffer !== "undefined" && _picOffer) || _styleCardNow || (acted && acted._letterOffer)) && !(drew && drew.image) && String(_said || "").trim()) {
         try {
           const _stNow = String(_newStyle || "").trim();
-          const _which = _saybackNow ? (_stNow ? "card_point_style" : "card_point") : (_hasStyles ? "card_point" : "card_point_offer");
+          const _which = (acted && acted._letterOffer) ? "card_point_offer" : _saybackNow ? (_stNow ? "card_point_style" : "card_point") : (_hasStyles ? "card_point" : "card_point_offer");   // (v9.999.60) Lettering: always her offer
           const _isPicRoad = !_saybackNow && !_styleCardNow;
           let _pt = { card_point: "Tap Show me some ideas, or pick a style first.", card_point_style: "Tap Imagine it when you're ready.",
                       card_point_offer: "Tap Yes, show me, or I have my own idea." }[_which];
@@ -76209,7 +76213,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             ok: true, said: _said, act, project: _pid || null, confirm_lock: _confirmLock || null,
             ideas: null,   // NO IDEA CARDS (v9.684, 2026-10-19, Aaron): her reply and the chat box are the whole screen
             choose: (acted && acted.choose && !_fixedWhy && !(drew && drew.image)) ? acted.choose : null,
-            offer: (_offerSubj && !_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer)) || undefined,
+            offer: ((_offerSubj || (acted && acted._letterOffer)) && !_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer || (acted && acted._letterOffer))) || undefined,
             job_pick: _jobPick || undefined,
             see_on_me: _seeOnMe || undefined,
             pic_ask: _picAsk || undefined,
@@ -76272,7 +76276,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                ...(acted && acted.choose && !_fixedWhy && !(drew && drew.image) ? { choose: acted.choose } : {}),
                // HER OFFER, ONE TAP (v9.691, 2026-10-21, Aaron: "there's never a reason to type unless you're changing what the moment
                // is"): when she offers to show ideas and there is no card, the page puts "Show me some ideas" / "Talk to me" under it.
-               ...(_offerSubj && !_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer) ? { offer: true } : {}),
+               ...((_offerSubj || (acted && acted._letterOffer)) && !_jobPick && !(acted && acted.choose) && !_fixedWhy && !(drew && drew.image) && (_isOfferLine(_saidAsSaid) || _picOffer || (acted && acted._letterOffer)) ? { offer: true } : {}),
                // (v9.976) her read: their own tattoo - the page puts Build around it / Cover it up / Make a new tattoo from it under her words
                ...(_jobPick ? { job_pick: true } : {}),
                ...(_seeOnMe ? { see_on_me: true } : {}),

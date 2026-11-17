@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.72-2026-11-17-say-back-never-empty";
+const BUILD = "aura-core-v9.999.73-2026-11-17-old-school-is-traditional";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62648,7 +62648,15 @@ function styleFromWords(text) {
     for (let n = Math.min(3, w.length); n >= 1; n--) { const hit = styleNameMatch(w.slice(w.length - n).join(" ")); if (hit) return hit; }
   }
   const known = [...new Set([...STYLE_41, ...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])].filter((k) => /\s/.test(k));
-  return known.find((k) => new RegExp("\\b" + k.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(t)) || null;
+  const hit = known.find((k) => new RegExp("\\b" + k.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(t));
+  if (hit) return hit;
+  // (v9.999.73, 2026-11-17) MEASURED 10:16 ("a snake wrapped around a dagger, old school traditional"): the names people use for a style, not ours -
+  // the 8 came in 8 different styles. "Old school" and "Sailor Jerry" are American Traditional wherever they are said.
+  if (/\b(old[\s-]?school|sailor jerry|american trad(itional)?)\b/.test(t)) {
+    const at = [...STYLE_41, ...Object.keys(STYLE_LOOK)].find((k) => /^american traditional$/i.test(k));
+    if (at) return at;
+  }
+  return null;
 }
 // ══ HER JOB IS THE DESIGN (v9.834, 2026-11-03, Aaron: "Aura keeps making comments about tattoos aging well ... that needs to stop, it's not
 // her concern") ═══ MEASURED 17:09:58 (unasked: "has that bold, flowing look that ages beautifully"), 16:34 and 17:24 (asked: fading, "a big black

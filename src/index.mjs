@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.56-2026-11-16-portrait-words-one-rule";
+const BUILD = "aura-core-v9.999.57-2026-11-16-lettering-styles";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62268,7 +62268,58 @@ const LETTER_STYLES = [
   { id: "marker", family: "Permanent Marker" }, { id: "3d block", family: "Bungee Shade" }, { id: "chrome", family: "Bungee Inline" },
   { id: "dripping", family: "Rubik Wet Paint" }, { id: "neon", family: "Monoton" }, { id: "bubble", family: "Rubik Bubbles" },
   { id: "spray paint", family: "Rubik Spray Paint" }, { id: "horror", family: "Nosifer" }, { id: "creepy", family: "Eater" },
-  { id: "glitch", family: "Rubik Glitch" }, { id: "graffiti", family: "Rubik Puddles" }];
+  { id: "glitch", family: "Rubik Glitch" }, { id: "graffiti", family: "Rubik Puddles" },
+  // ══ LETTERING STYLES (v9.999.57, 2026-11-16, Aaron: "create a style sheet that they can select from so they can pick a font or pick a lettering
+  // style") ══ 47 looks from real lettering tattoos, in 10 groups - each one fixed sentence that follows their words, shown on the sheet as a drawn
+  // tile with the style's own name written in it. The page has the same list (LETTER_ART in mt-shell.html) - keep the two the same.
+  { id: "chicano lettering", look: "in heavy ornamental Chicano script with big sweeping swashes and flourishes, smooth black-and-grey shading and a soft 3D drop shadow", group: "Statement Script" },
+  { id: "bold forearm script", look: "in big bold flowing script with thick-and-thin strokes and a deep black drop shadow so the letters look raised off the skin", group: "Statement Script" },
+  { id: "throat blackletter", look: "in large sharp blackletter with ornate flourishes, built to sit across a throat or chest", group: "Statement Script" },
+  { id: "stomach script", look: "in wide elegant script with long swashes stretching from side to side, black and grey", group: "Statement Script" },
+  { id: "script with swash underline", look: "in flowing script with one long dramatic swash running underneath the whole word", group: "Statement Script" },
+  { id: "mixed-font quote stack", look: "as a stacked quote with the words locked together in one block, mixing ornate script, sharp blackletter and small serif capitals, black and grey with shading", group: "Stacked Quotes" },
+  { id: "word stack with banner", look: "with the main word in big script and the small words on a curling ribbon banner across it, black and grey", group: "Stacked Quotes" },
+  { id: "vertical spine text", look: "running vertically in one line, thin clean serif letters evenly spaced, the way it would run down a spine or forearm", group: "Stacked Quotes" },
+  { id: "typewriter quote", look: "in small clean typewriter letters with a slightly inked, imperfect print look", group: "Stacked Quotes" },
+  { id: "words forming a heart", look: "with the words in fine script curving and stacking so together they fill the shape of a heart", group: "Words into Shapes" },
+  { id: "letters forming a moon", look: "with the letters in sharp gothic script curving to form a crescent moon", group: "Words into Shapes" },
+  { id: "name as the flower stem", look: "in fine-line script that becomes the stem of a single wildflower, leaves growing from the letters", group: "Words into Shapes" },
+  { id: "heartbeat name", look: "in clean script flowing out of a heartbeat line with a small heart at the end", group: "Words into Shapes" },
+  { id: "constellation name", look: "written as a constellation - each letter made of small stars joined by fine lines", group: "Words into Shapes" },
+  { id: "made of flowers", look: "with every letter formed from roses, peonies, small wildflowers and leaves, in flowing script", group: "Botanical" },
+  { id: "vines and leaves", look: "in elegant script with thin vines, leaves and tiny buds growing out of and wrapping around the letters", group: "Botanical" },
+  { id: "name with a rose", look: "in fine script with a single rose and its stem resting beside the last letter", group: "Botanical" },
+  { id: "birth-flower name", look: "in delicate script woven through a small bouquet of birth-month flowers", group: "Botanical" },
+  { id: "mom banner", look: "on a classic American traditional ribbon banner across a red heart with roses, bold outline and solid colour", group: "Traditional" },
+  { id: "sailor banner", look: "in bold traditional letters across a swallow and anchor banner, solid red, gold and black", group: "Traditional" },
+  { id: "traditional name plate", look: "in bold American traditional lettering inside a heart with a dagger, thick black outline", group: "Traditional" },
+  { id: "liquid chrome", look: "in thick rounded letters made of shiny liquid chrome with bright reflections and drips, Y2K style", group: "Shine & Metal" },
+  { id: "chrome sigil gothic", look: "in spiky Y2K chrome blackletter with sharp cyber-sigil thorns growing from the letters", group: "Shine & Metal" },
+  { id: "gold name necklace", look: "as a dainty gold name necklace in script, hanging from a thin chain with a tiny heart charm", group: "Shine & Metal" },
+  { id: "diamond letters", look: "with the letters set with sparkling diamonds and gemstones in fine metal", group: "Shine & Metal" },
+  { id: "gothic thorns", look: "in sharp gothic letters wrapped in black thorny vines with a single drop of red", group: "Dark" },
+  { id: "dripping ink", look: "in bold black letters with thick ink dripping down from them", group: "Dark" },
+  { id: "cyber sigil", look: "in sharp thin futuristic cyber sigilism strokes with spikes and flowing curves", group: "Dark" },
+  { id: "bone letters", look: "with the letters built from bones and small skulls, black and grey", group: "Dark" },
+  { id: "snake through the letters", look: "with a slithering snake winding in and out of bold script letters, detailed scales", group: "Dark" },
+  { id: "fire", look: "with every letter made of roaring flames, bright orange and red fading into smoke", group: "Elements" },
+  { id: "smoke", look: "with the letters drifting out of soft swirling smoke, black and grey", group: "Elements" },
+  { id: "water and waves", look: "with the letters made of flowing water and curling waves, deep blues and white foam", group: "Elements" },
+  { id: "galaxy", look: "with the letters filled with a deep purple and blue galaxy, stars and tiny planets", group: "Elements" },
+  { id: "3d shadow block", look: "in clean bold capitals with a realistic 3D shadow so they look like they stand up off the skin, black and grey", group: "Art Styles" },
+  { id: "graffiti wildstyle", look: "in bold colourful graffiti wildstyle letters with arrows, highlights and a dark outline", group: "Art Styles" },
+  { id: "stained glass", look: "with the letters made of bright jewel-coloured stained glass divided by bold black lines", group: "Art Styles" },
+  { id: "embroidered patch", look: "as an embroidered patch with the letters stitched in thread, raised stitching texture and a stitched border", group: "Art Styles" },
+  { id: "sticker", look: "as a cute sticker with bubbly rounded letters, a thick white outline and a small sparkle", group: "Art Styles" },
+  { id: "neon sign", look: "as a glowing neon sign with the letters in bright pink and blue tubes", group: "Art Styles" },
+  { id: "watercolour splash", look: "in clean black script over soft watercolour splashes of colour behind it", group: "Art Styles" },
+  { id: "ambigram", look: "designed as an ambigram that reads the same when turned upside down, in ornate script", group: "Clever" },
+  { id: "negative space", look: "with the letters left as bare skin inside a solid black shape, negative space style", group: "Clever" },
+  { id: "real handwriting", look: "in a natural personal handwriting with slight wobbles and real pen pressure, like a note from a loved one", group: "Clever" },
+  { id: "ornamental monogram", look: "as an ornate monogram of the letter inside a circle of fine filigree and leaves", group: "Monograms" },
+  { id: "couple initials", look: "as two interlocking initials woven together with a small heart, elegant script", group: "Monograms" },
+  { id: "crown initial", look: "in bold letters with a small crown sitting on the first letter and fine flourishes", group: "Monograms" },
+];
 // The eight placements, one per card when lettering is drawn the first time (the WHERE list of "design words").
 const LETTER_PLACES = ["above the artwork", "below the artwork", "arced around the artwork", "on a ribbon banner across it",
   "woven behind and in front of parts of the artwork", "inside the artwork's negative space", "forming part of the artwork itself", "wrapped around the composition"];
@@ -62317,11 +62368,57 @@ function letterReplaced(oldItems, picked, words) {
 const LETTER_ONLY_CLAUSE = " The lettering is the whole tattoo - no artwork, no pictures, no symbols, no hearts, flowers, vines or stars, only the letters. " +
   "On number 1, write it the cleanest way, closest to what I described; on the others, write it a different way each time - the weight, size, " +
   "slant and spacing of the letters, swashes and flourishes of the letters themselves, on one line or stacked.";
+// (v9.999.57) how a chosen lettering is said to the image model: a font is "in Old English lettering"; a lettering style is its own sentence.
+function letterLook(id) {
+  const st = LETTER_STYLES.find((x) => x.id === String(id || "").toLowerCase());
+  if (st && st.look) return " " + st.look;
+  return " in " + String(id).replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()).replace(/\b3d\b/gi, "3D") + " lettering";
+}
+// ══ WORDS ONLY, EIGHT LETTERING STYLES (v9.999.57, 2026-11-16, Aaron: "that was cold lettering ... these little things") ═══ MEASURED 14:58 and
+// 15:03 ("I wanna write I love Aura", Bubble picked): the 8 were the same bubble words stuck on a butterfly, a heart, a moon, flowers, a dragon,
+// an eye and a koi - the placements sentence ("above the artwork ... woven behind the artwork") made the model invent artwork when the words are
+// the whole tattoo. Now number 1 is the lettering they chose and the other 7 are the same words in 7 other lettering styles, each from a
+// different group. Setting: config:frame:new:letteronly (empty value = the placements clause, as before).
+function letterOnlyPlan(letter) {
+  const items = (letter && Array.isArray(letter.items) ? letter.items : []).filter((x) => x && x.text);
+  if (!items.length) return "";
+  const words = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"').join(" and ");
+  const chosen = new Set(items.map((x) => String(x.font || "").toLowerCase()));
+  const pool = LETTER_STYLES.filter((x) => x.look && !chosen.has(x.id));
+  const groups = [...new Set(pool.map((x) => x.group))].sort(() => Math.random() - 0.5);
+  const pick = [];
+  for (const g of groups) { if (pick.length >= 7) break; const inG = pool.filter((x) => x.group === g); pick.push(inG[Math.floor(Math.random() * inG.length)]); }
+  for (const x of pool.sort(() => Math.random() - 0.5)) { if (pick.length >= 7) break; if (!pick.includes(x)) pick.push(x); }
+  const first = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? letterLook(x.font) : "")).join(", ");
+  return " The words are the whole tattoo - no separate pictures, symbols or artwork around them; the letters themselves are the art. " +
+    "Number 1: " + first + ". On each of the others, the same words " + words + " written a different way: " +
+    pick.map((x, i) => (i + 2) + ". " + x.look).join("; ") + ". Every card spells the words exactly as written here.";
+}
+// Whether the words are the whole tattoo, asked once when the first designs are drawn and nothing else said so. Model: config:source:lettering:model,
+// else the heard dial, else her talk model. Time: config:talk:letterwhole_ms (default 4000, 0 = no limit) - past it, it counts as not words-only.
+async function letterWhole(env, theirWords, items, talkModel) {
+  try {
+    let model = null;
+    try { model = String((await env.AURA_KV.get("config:source:lettering:model")) || "").trim() || String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+    const system = "You read what a person said about a tattoo they want, and the words that are to be written in it. Reply with one line: " +
+      "WHOLE: yes - if the written words are the whole tattoo and they asked for nothing else to be drawn; WHOLE: no - if they also want a picture, " +
+      "symbol, object or any other subject drawn.";
+    const user = "What they said:\n" + String(theirWords || "").slice(0, 1500) + "\n\nThe words to be written: " + (items || []).map((x) => '"' + String((x && x.text) || x) + '"').join(", ");
+    let _ms = 4000; try { const _v = parseInt(String((await env.AURA_KV.get("config:talk:letterwhole_ms")) || ""), 10); if (Number.isFinite(_v) && _v >= 0) _ms = _v; } catch {}
+    const _ask = callBrain({ system, user, max_tokens: 300, reasoning: "low", ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env);
+    const r = _ms ? await Promise.race([_ask, new Promise((res) => setTimeout(() => res({ late: true }), _ms))]) : await _ask;
+    if (r && r.late) { console.log("[TURN:LETTER-WHOLE] no answer in " + (_ms / 1000) + "s - counted as not words-only"); return false; }
+    const t = String((r && r.text) || "");
+    const yes = /WHOLE\s*:\s*yes/i.test(t);
+    console.log("[TURN:LETTER-WHOLE] asked " + (model || talkModel || "the default model") + " - answer: \"" + t.replace(/\s+/g, " ").slice(0, 120) + "\" -> " + (yes ? "the words are the whole tattoo" : "there is more to draw"));
+    return yes;
+  } catch (e) { console.log("[TURN:LETTER-WHOLE] could not ask: " + String(e?.message ?? e).slice(0, 160)); return false; }
+}
 function letterOnlyWords(w) { return /^\s*["']?\s*lettering only\b/i.test(String(w || "")); }
 function letterClause(letter, forChange, one, offBody) {
   const items = (letter && Array.isArray(letter.items) ? letter.items : []).filter((x) => x && x.text);
   if (!items.length) return "";
-  const each = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? " in " + String(x.font).replace(/(^|[\s-])([a-z])/g, (m, a, b) => a + b.toUpperCase()).replace(/\b3d\b/gi, "3D") + " lettering" : "")).join(", ");
+  const each = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? letterLook(x.font) : "")).join(", ");
   if (one) return " Write the lettering exactly as written here - " + each + ".";
   // (v9.999.41) the lettering their change replaces is named, so the model takes it off rather than keeping it
   const _rep = (letter && Array.isArray(letter.replaced) ? letter.replaced : []).filter(Boolean).map((t) => '"' + String(t).replace(/"/g, "'") + '"');
@@ -75150,7 +75247,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // a picked style is sent exactly as tested (all 41). Setting: config:frame:new:grid:nostyle (empty value = say nothing).
               let _ns = ", each in a different tattoo style";
               // (v9.999.42) lettering only: the words are the tattoo - 8 ways of writing them, not 8 styles of a picture
-              const _lOnly = letterOnlyWords(_words) || letterOnlyWords(typeof _heardIdea === "string" ? _heardIdea : "");
+              let _lOnly = letterOnlyWords(_words) || letterOnlyWords(typeof _heardIdea === "string" ? _heardIdea : "");
+              // (v9.999.57) their words named nothing but the words: asked once, here, when their lettering is already chosen
+              if (!_lOnly && !_newStyle) { try { const _lw = letterParse((await talkStateGet(env, me, ["letter"])).letter);
+                if (_lw.items.length && (_lw.only || await letterWhole(env, _words, _lw.items, talkModel))) _lOnly = true; } catch {} }
               try { const _k = await env.AURA_KV.get("config:frame:new:grid:nostyle"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim().replace(/^,\s*/, ""); _ns = _t ? ", " + _t : ""; } } catch {}
               if (!_newStyle && _ns) { try { console.log("[TURN:NEW] no style picked - asked for" + _ns.slice(1) + (me ? " · who=" + me : "")); } catch {} }
               if (_lOnly && !_newStyle) { _ns = ", each one the lettering written a different way"; try { console.log("[TURN:NEW] lettering only - each one the lettering written a different way" + (me ? " · who=" + me : "")); } catch {} }
@@ -75181,9 +75281,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 if (_lc.items.length) {
                   let _cl = letterClause(_lc, false, false, true);
                   if (_lOnly) {
-                    let _lo = LETTER_ONLY_CLAUSE;
-                    try { const _k = await env.AURA_KV.get("config:frame:new:letteronly"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim(); _lo = _t ? " " + _t : ""; } } catch {}
-                    if (_lo) _cl = letterClause(_lc, false, true) + _lo;
+                    let _lo = LETTER_ONLY_CLAUSE, _dial = false;
+                    try { const _k = await env.AURA_KV.get("config:frame:new:letteronly"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim(); _lo = _t ? " " + _t : ""; _dial = true; } } catch {}
+                    // (v9.999.57) number 1 their lettering, the other 7 the same words in 7 other lettering styles
+                    if (_lo && !_dial) _cl = letterOnlyPlan(_lc) || (letterClause(_lc, false, true) + _lo);
+                    else if (_lo) _cl = letterClause(_lc, false, true) + _lo;
                     // the possibilities from this design stay lettering only
                     try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _lc.items, only: true })); } catch {}
                   }

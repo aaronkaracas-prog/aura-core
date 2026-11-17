@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.67-2026-11-17-no-placement-in-new-drawings";
+const BUILD = "aura-core-v9.999.68-2026-11-17-her-question-stays";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -76081,10 +76081,21 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                          (_styleCardNow && /\b(styles?|ideas?|show you|tell me)\b/i.test(_last));
           // (v9.999.35) her offer can take two sentences ("Tell me more if you want, or I can show you some ideas. Pick a style for it below...") -
           // trailing offers go while one sentence of hers is left
-          let _cutN = _offer ? 1 : 0;
-          while (_offer && _sent.length - _cutN > 1 && _cutN < 2) { const _t = String(_sent[_sent.length - 1 - _cutN] || "");
+          // ══ HER QUESTION TO THEM STAYS (v9.999.68, 2026-11-17, Aaron's phone, "offering something with no context ... this will be global on
+          // every section") ═══ MEASURED 08:55 (Birth Month Flowers, Create my own): she asked "Tell me which months you're thinking of, or I can just
+          // start imagining some ideas for you." - the right question - and this step cut the whole sentence for the card's words; the bubble showed
+          // "...for people you love. Want me to show you some amazing ideas?" with nothing asked. When her last sentence asks them for something
+          // about their tattoo (which, whose, who, what, how many, tell me - not "tell me more"), her words stay as she said them; the buttons are
+          // still under them.
+          const _asksThem = (t) => { const x = String(t || "");
+            return /\b(?:tell me|let me know)\b(?!\s+(?:more|a (?:little|bit) more|anything)\b)/i.test(x) ||
+                   /\b(?:which|whose|who|what|how many|how old|what kind of)\b[^?]*\?/i.test(x.replace(/\b(?:want me to|shall i|should i|would you like me to)\b[^?]*\?/gi, "")); };
+          const _herAsk = _asksThem(_last);
+          if (_herAsk) { try { console.log("[TURN:CARD-POINT] " + _which + " - her last words ask them something - kept as she said them: \"" + _last.slice(0, 160) + "\"" + (me ? " · who=" + me : "")); } catch {} }
+          let _cutN = (_offer && !_herAsk) ? 1 : 0;
+          while (_offer && !_herAsk && _sent.length - _cutN > 1 && _cutN < 2) { const _t = String(_sent[_sent.length - 1 - _cutN] || "");
             if (/\?\s*["\u201d']?$/.test(_t) || _isOfferLine(_t) || /\b(show you|tell me more|pick a style|some ideas|want me to)\b/i.test(_t)) _cutN++; else break; }
-          const _keep = (_offer && _sent.length > _cutN) ? _sent.slice(0, _sent.length - _cutN).join(" ").replace(/\s+/g, " ").trim() : (_offer ? "" : String(_said).trim());
+          const _keep = _herAsk ? "" : (_offer && _sent.length > _cutN) ? _sent.slice(0, _sent.length - _cutN).join(" ").replace(/\s+/g, " ").trim() : (_offer ? "" : String(_said).trim());
           if (_keep.length >= 12) {
             console.log("[TURN:CARD-POINT] " + _which + " - her last words -> the card's words: \"" + _last.slice(0, 160) + "\" -> \"" + _pt + "\"" + (me ? " · who=" + me : ""));
             _said = _keep + " " + _pt; _cardPointed = true;

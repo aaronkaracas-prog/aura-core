@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.71-2026-11-17-collections-start-new";
+const BUILD = "aura-core-v9.999.72-2026-11-17-say-back-never-empty";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -71071,6 +71071,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // my cat named Milo, maybe some moons too"): READY with the idea "A surreal ocean scene blending with a cat named Milo, incorporating moons"
               // and no words of hers - only "Love it - want me to imagine it?" showed, nothing they said came back. The fixed line now carries her idea.
               // Setting: config:say:heard_ready_idea ({idea} is her idea line).
+              // (v9.999.72, 2026-11-17) MEASURED 09:56 (Insects and Butterflies -> "honestly i changed my mind, i want an old 64 impala lowrider, black and
+              // grey"): her words were only "Want me to imagine it?" - nothing of theirs said back, though her idea held it. Words that are only her
+              // offer count as no words: the line says back her idea.
+              const _onlyOffer = String(_hSay || "").trim() && String(_hSay).trim().split(/\s+/).length <= 8 && /\?\s*$/.test(String(_hSay).trim()) && _isOfferLine(String(_hSay));
+              if (_onlyOffer) { try { console.log("[TURN:HEARD] her words were only her offer (\"" + String(_hSay).trim() + "\") - her idea is said back with it" + (me ? " · who=" + me : "")); } catch {} _hSay = ""; }
               if (_hDo === "READY" && !String(_hSay || "").trim() && String(_hIdea || "").trim()) {
                 let _ii = String(_hIdea).replace(/\s+/g, " ").trim().replace(/[\s.]+$/, "");
                 // (v9.999.64, 2026-11-17, Aaron: go) MEASURED 06:26 (live, v9.999.63, Lettering, "my dog Dido's name on my ankle"): still "Love it - Lettering

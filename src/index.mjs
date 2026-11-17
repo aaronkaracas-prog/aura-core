@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.61-2026-11-17-lettering-by-talk";
+const BUILD = "aura-core-v9.999.62-2026-11-17-lettering-only-in-style";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -75324,12 +75324,17 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // (v9.999.42) lettering only: the words are the tattoo - 8 ways of writing them, not 8 styles of a picture
               let _lOnly = letterOnlyWords(_words) || letterOnlyWords(typeof _heardIdea === "string" ? _heardIdea : "");
               // (v9.999.57) their words named nothing but the words: asked once, here, when their lettering is already chosen
-              if (!_lOnly && !_newStyle) { try { const _lw = letterParse((await talkStateGet(env, me, ["letter"])).letter);
+              // (v9.999.62, 2026-11-17, Aaron: go) MEASURED 05:37 (talk only, "Love Life big across the front of my neck" + "that heavy old english
+              // lettering like the chicano guys have"): "chicano guys" picked the Chicano style, and with a style picked this check was skipped - the
+              // 8 got the placements "above the artwork, below the artwork..." and 7 came back as Virgin Mary, skulls and sacred hearts around the
+              // words (img_mwkqlny9zxhx). The check runs with a style too.
+              if (!_lOnly) { try { const _lw = letterParse((await talkStateGet(env, me, ["letter"])).letter);
                 if (_lw.items.length && (_lw.only || await letterWhole(env, _words, _lw.items, talkModel))) _lOnly = true; } catch {} }
               try { const _k = await env.AURA_KV.get("config:frame:new:grid:nostyle"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim().replace(/^,\s*/, ""); _ns = _t ? ", " + _t : ""; } } catch {}
               // (v9.999.59) MEASURED 16:49 (Sofia): the log said "no style picked - asked for each in a different tattoo style" on a lettering-only
               // sheet that was sent "each one the lettering written a different way" - the line now names only what is actually sent.
               if (!_newStyle && _ns && !_lOnly) { try { console.log("[TURN:NEW] no style picked - asked for" + _ns.slice(1) + (me ? " · who=" + me : "")); } catch {} }
+              if (_lOnly && _newStyle) { try { console.log("[TURN:NEW] lettering only, in the " + _newStyle + " style - only the letters, each written a different way" + (me ? " · who=" + me : "")); } catch {} }   // (v9.999.62)
               if (_lOnly && !_newStyle) { _ns = ", each one the lettering written a different way"; try { console.log("[TURN:NEW] lettering only - each one the lettering written a different way" + (me ? " · who=" + me : "")); } catch {} }
               askLine = _ng.replace("____", _words).replace("{style}", _newStyle ? _st.replace("{name}", _newStyle) : _ns);
               // ══ ALL OF HER IDEAS AT ONCE (v9.627, 2026-10-16, Aaron: "let me see all 4 absolutely") ══════════════════════
@@ -75361,7 +75366,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                     let _lo = LETTER_ONLY_CLAUSE, _dial = false;
                     try { const _k = await env.AURA_KV.get("config:frame:new:letteronly"); if (_k !== null && _k !== undefined) { const _t = String(_k).trim(); _lo = _t ? " " + _t : ""; _dial = true; } } catch {}
                     // (v9.999.57) number 1 their lettering, the other 7 the same words in 7 other lettering styles
-                    if (_lo && !_dial) _cl = letterOnlyPlan(_lc) || (letterClause(_lc, false, true) + _lo);
+                    // (v9.999.62) with a tattoo style picked, all 8 are their lettering in that style, only the letters, each written a different way -
+                    // not 7 other lettering looks, which would fight the style they chose
+                    if (_lo && !_dial) _cl = _newStyle ? (letterClause(_lc, false, true) + _lo) : (letterOnlyPlan(_lc) || (letterClause(_lc, false, true) + _lo));
                     else if (_lo) _cl = letterClause(_lc, false, true) + _lo;
                     // the possibilities from this design stay lettering only
                     try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _lc.items, only: true })); } catch {}

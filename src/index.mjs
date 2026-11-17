@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.74-2026-11-17-her-style-is-drawn";
+const BUILD = "aura-core-v9.999.75-2026-11-17-birthday-facts";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62661,6 +62661,18 @@ function styleFromWords(text) {
 // ══ HER JOB IS THE DESIGN (v9.834, 2026-11-03, Aaron: "Aura keeps making comments about tattoos aging well ... that needs to stop, it's not
 // her concern") ═══ MEASURED 17:09:58 (unasked: "has that bold, flowing look that ages beautifully"), 16:34 and 17:24 (asked: fading, "a big black
 // blob"). Told to answer "the way a real tattoo artist would", she took on the artist's whole job. One sentence, in her hearing step and her chat.
+// ══ BIRTHDAY FACTS (v9.999.75, 2026-11-17, Aaron: "give her flower logic and birthday logic") ═══ MEASURED 09:27, 11:09, 11:20 (Birth Month
+// Flowers, "i was born in december"): her quick say-back gave Narcissus once and Poinsettia twice - December's birth flowers are Narcissus and
+// Holly. Thinking medium did not change it. The month's flowers, stones and signs are given to her as plain facts, in her say-back and her chat.
+const BIRTH_FACTS = "BIRTHDAY FACTS (use these, never guess): " +
+  "Birth month flowers - January: carnation, snowdrop. February: violet, primrose. March: daffodil, jonquil. April: daisy, sweet pea. " +
+  "May: lily of the valley, hawthorn. June: rose, honeysuckle. July: larkspur, water lily. August: gladiolus, poppy. September: aster, morning glory. " +
+  "October: marigold, cosmos. November: chrysanthemum. December: narcissus (paperwhite), holly. " +
+  "Birthstones - January: garnet. February: amethyst. March: aquamarine, bloodstone. April: diamond. May: emerald. June: pearl, moonstone, alexandrite. " +
+  "July: ruby. August: peridot, spinel. September: sapphire. October: opal, tourmaline. November: topaz, citrine. December: turquoise, tanzanite, zircon. " +
+  "Zodiac signs - Aries: March 21 to April 19. Taurus: April 20 to May 20. Gemini: May 21 to June 20. Cancer: June 21 to July 22. Leo: July 23 to August 22. " +
+  "Virgo: August 23 to September 22. Libra: September 23 to October 22. Scorpio: October 23 to November 21. Sagittarius: November 22 to December 21. " +
+  "Capricorn: December 22 to January 19. Aquarius: January 20 to February 18. Pisces: February 19 to March 20.";
 const TALK_SCOPE = "Your job is designing the tattoo with them. How a tattoo heals, ages, fades, hurts or is cared for is for their tattoo artist, " +
   "not you - never bring it up, and if they ask, say their artist is the one to ask and come back to the design.";
 // ══ WHAT SHE CAN DO, ONE PLACE (v9.975, 2026-11-11, Aaron: "does my agent know what she is, what her capabilities are ... we've just connected
@@ -69339,7 +69351,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // floor below still needs it, because that is a direct model call with its own `system` and
       // never touches a channel.
       // (v9.834) her job is the design - added after the doctrine whether it comes from here or from a saved version
-      const talkDoctrine = (await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR)) + "\n\n" + TALK_SCOPE;
+      const talkDoctrine = (await loadPrompt(env, "tattoo_talk", TATTOO_TALK_FLOOR)) + "\n\n" + TALK_SCOPE + "\n\n" + BIRTH_FACTS;   // (v9.999.75)
       const talkSys = talkDoctrine + shelf + found;
 
       // ══ ONE CALL. HER WORDS AND HER ACT, TOGETHER. (2026-09-07) ═══════════════════════════
@@ -70824,7 +70836,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (_yesToOffer) console.log("[TURN:HEARD] a yes to her offer to imagine (\"" + String(_prevAuraLine).slice(0, 120) + "\") - the go" + (me ? " · who=" + me : ""));
               let _herLast = ""; if (_canGo) { try { const _tl0 = (typeof tnow !== "undefined" && Array.isArray(tnow)) ? tnow : [];
                 for (let i = _tl0.length - 1; i >= 0; i--) { const e = _tl0[i]; if (e && e.role === "aura" && String(e.said || "").trim()) { _herLast = String(e.said).trim().slice(0, 900); break; } } } catch {} }
-              const _hSys = heardSystem(_newStyle, _canGo, await canSection(env));
+              const _hSys = heardSystem(_newStyle, _canGo, await canSection(env)) + "\n\n" + BIRTH_FACTS;   // (v9.999.75)
               // ══ HER SAID-BACK STREAMS (v9.787) ═══ Her answer starts with its label line (and the IDEA / A / B lines) - those never
               // reach the page; from her first line of words on, each piece goes out as she writes it. A TALK answer is not streamed
               // (that turn goes to her as a conversation). Once her words have started, the time limit no longer cuts her off.

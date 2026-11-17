@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.73-2026-11-17-old-school-is-traditional";
+const BUILD = "aura-core-v9.999.74-2026-11-17-her-style-is-drawn";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62645,7 +62645,7 @@ function styleFromWords(text) {
   const t = String(text || "").toLowerCase();
   for (const m of t.matchAll(/([a-z0-9&'\-]+(?:\s+[a-z0-9&'\-]+){0,2})\s+(?:style|tattoos?)\b/g)) {
     const w = m[1].split(/\s+/);
-    for (let n = Math.min(3, w.length); n >= 1; n--) { const hit = styleNameMatch(w.slice(w.length - n).join(" ")); if (hit) return hit; }
+    for (let n = Math.min(3, w.length); n >= 1; n--) { const _ph = w.slice(w.length - n).join(" "); const hit = styleNameMatch(_ph) || (/-/.test(_ph) ? styleNameMatch(_ph.replace(/-/g, " ")) : null); if (hit) return hit; }   // (v9.999.74) "fine-line" is Fine Line
   }
   const known = [...new Set([...STYLE_41, ...Object.keys(STYLE_LOOK), ...Object.keys(TREND_SAY), ...COVER_STYLE_CARDS])].filter((k) => /\s/.test(k));
   const hit = known.find((k) => new RegExp("\\b" + k.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(t));
@@ -71109,13 +71109,23 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // (v9.831) MEASURED 16:34:22: she answered "red ink tattoos, all red no black" in time but gave no STYLE line - so whenever she
               // names no style and none is picked yet, their own words are read the same way.
               if (!_newStyle && !_hStyleSaid && !(_hDo === "TALK" && _canGo) && _hDo !== "GO") { const _fw = styleFromWords(_s); if (_fw) { _hStyleSaid = _fw; console.log("[TURN:STYLE] " + (_hm ? "she named no style" : "her answer did not come") + " - the style read from their own words: " + _fw + (me ? " · who=" + me : "")); } }
+              // ══ THE STYLE SHE SAYS BACK IS THE STYLE DRAWN (v9.999.74, 2026-11-17, Aaron: "yes") ═══ MEASURED 09:27 (Birth Month Flowers, "something
+              // delicate on my wrist"): she said it back "rendered in a soft, fine-line style" and the 8 came in 8 different styles, card 1 in full
+              // color - what she promised was not what was drawn. When neither they nor her style line name a style, a style named in the words she
+              // says back to them is the style drawn. Not with a photo in play (v9.999.16: a style read off their picture is not theirs).
+              let _hStyleHers = false;
+              if (!_newStyle && !_hStyleSaid && _hDo === "READY" && String(_hSay || "").trim() &&
+                  !(typeof refUrl !== "undefined" && refUrl) && !(typeof _bodyPhoto !== "undefined" && _bodyPhoto) && !(typeof _freshPhoto !== "undefined" && _freshPhoto)) {
+                const _hw = styleFromWords(String(_hSay).replace(/[\u2010-\u2015]/g, "-"));
+                if (_hw) { _hStyleSaid = _hw; _hStyleHers = true; console.log("[TURN:STYLE] the style she said back to them: " + _hw + " - the style drawn" + (me ? " · who=" + me : "")); }
+              }
               // (v9.837) a style named before anything was said back is kept on a TALK too - "i kinda want one of those" (Embroidered) is the style
               // they want even with nothing yet to imagine. A question after the say-back still never changes the style.
               // ══ A STYLE IS THEIRS ONLY WHEN THEY SAID IT (v9.999.16, 2026-11-13, Aaron: go) ═══ MEASURED 15:58:24 (Create > a koi sleeve photo >
               // "i love the waves and the colors but i want a dragon instead of the koi"): her STYLE line said Japanese - read from the photo, not
               // from them - so it "counted as picked", the picture-with-a-style line ("take the subject from my picture") went to the image model and
               // 8 koi came back. The rule (2026-11-03) is a style named in THEIR words; a style that is not in what they typed is not picked.
-              if (_hStyleSaid) {
+              if (_hStyleSaid && !_hStyleHers) {
                 const _theirAll = (String(_told || "") + " " + String(_s || "")).toLowerCase();
                 const _svW = _hStyleSaid.replace(/\s+[-\u2013\u2014]\s+.*$/, "").replace(/[*"\u201c\u201d.]/g, "").replace(/\s+style$/i, "").trim().toLowerCase();
                 const _key = (_svW.split(/[\s\/-]+/).find((w) => w.length >= 3) || _svW);

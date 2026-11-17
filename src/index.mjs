@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.75-2026-11-17-birthday-facts";
+const BUILD = "aura-core-v9.999.76-2026-11-17-words-stencils-fresh";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -10930,8 +10930,14 @@ async function processCommand(line, env, isOp) {
           : (fnCardName === "flat artwork" ? "" : TAT_SOURCE_LOCK) + fnCard[1] +
             (fnOnly ? " Show me ONLY the " + fnOnly + " - that section alone, nothing from the " +
                       "rest of the piece, flat on plain white." : "");
+        // ══ THE WORDS STAY ON EVERY STENCIL (v9.999.76, 2026-11-17, Aaron: go) ═══ MEASURED 13:03 (Classic Banner, koi + "Mateo 3.14.2015" on a
+        // ribbon): the linework stencil had the name and date, the shading-guide and realism stencils came back with the ribbon EMPTY - an artist
+        // working from either would leave the lettering off. (Rosa, 13:20, kept it on all three - big letters survive, small ones on a ribbon did
+        // not.) Every stencil is told to keep the lettering. `config:frame:stencil:words` holds the sentence; empty = this one, "off" = none.
+        let fnWords = " If the design has any words, names, dates or numbers in it, keep every one of them in this stencil exactly as they are - the same spelling, the same lettering and the same place - drawn in the same way as the rest of the stencil.";
+        try { const _sw = String((await env.AURA_KV.get("config:frame:stencil:words")) || "").trim(); if (_sw === "off") fnWords = ""; else if (_sw) fnWords = " " + _sw; } catch {}
         // Her correction goes last, on whichever shape was built above.
-        const fnPromptFinal = fnPrompt + (fnAgain ? " THE LAST ATTEMPT WAS WRONG: " + fnAgain : "");
+        const fnPromptFinal = fnPrompt + (fnStencil ? fnWords : "") + (fnAgain ? " THE LAST ATTEMPT WAS WRONG: " + fnAgain : "");
         // ══ THE ARTIST SHEET PRINTS AT THE SIZE OF ITS PIXELS (2026-09-16) ═════════════════
         // This asked for no resolution at all, so it took the lane default - and MEASURED, every
         // artist file came out of PRINT at ~5.1 INCHES. Nothing was wrong with the sizing: the
@@ -70278,6 +70284,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       if (_newRoadPic && _freshPhoto) _where = (_where ? _where + " " : "") + "They are making a brand-new tattoo" + (_newStyle ? " in the " + _newStyle + " style" : "") +
         " and just showed you this picture to make it from - that is why they sent it, so there is nothing to ask about why. Say what you see and offer to imagine it from this picture.";
       if (_where) { try { console.log("[TURN:PAGE] they are on " + opts.page + (me ? " · who=" + me : "")); } catch {} }
+      // ══ A NEW TATTOO IS NEW (v9.999.76, 2026-11-17, Aaron: go) ═══ MEASURED 13:15 (Start a new tattoo -> Cover Up -> a photo of faded
+      // "Still Here" text): her read said "Given the body jewelry you're working in..." - nothing about body jewelry was in this tattoo; it came
+      // from an earlier conversation she remembers. On the first turn of a new tattoo she is told it is new, as a fact about where they are:
+      // she still knows them, but what they are working on is only what they say and show in this one.
+      if (opts && opts.fresh) { _where = (_where ? _where + " " : "") + "This is the first message of a brand-new tattoo. Earlier tattoos and conversations are finished - they are not what they are working on now, so do not bring them in; work from what they say and show you here."; try { console.log("[TURN:FRESH] a new tattoo - she is told earlier conversations are not this one" + (me ? " · who=" + me : "")); } catch {} }
       const agentLine = hasLive
         ? "[A person is designing a tattoo with you on " + world + ".world. Answer as yourself, " +
           "from what you know about them.]\n\n" + (_purpose ? "WHY YOU ARE HERE: " + _purpose + "\n\n" : "") + (_where ? "WHERE THEY ARE: " + _where + "\n\n" : "") + agentSys + "\n\nTHEY SAID: " + said +
@@ -77980,6 +77991,18 @@ export class PublicEntry extends WorkerEntrypoint {
         const _now = String(_w.now || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
         const _txt = String(_w.text || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
         const _mode = _w.mode === "none" ? "none" : (_w.mode === "new" && _txt) ? "new" : "keep";
+        // ══ THE WORDS, NOT THEIR SENTENCE (v9.999.76, 2026-11-17, Aaron: go) ═══ MEASURED 13:08 (Baby Portrait and Rose + a photo): they typed
+        // "put Mom underneath in script please" and all 8 had that whole sentence written in them - it went to the image model as the words.
+        // When what they typed is more than the words (3+ words), the lettering reader picks out only what is to be written; their own sentence
+        // still goes along, so where and how they asked for it ("underneath", "in script") is kept. Nothing found, or no answer in time: as before.
+        let _txtW = _txt, _txtHow = "";
+        if (_mode === "new" && _txt.split(/\s+/).length >= 3) {
+          try {
+            const _lfP = await letterFind(env, _txt, "", null);
+            if (Array.isArray(_lfP) && _lfP.length && !_lfP.late) { _txtW = _lfP.join(" "); if (_txtW.toLowerCase() !== _txt.toLowerCase()) _txtHow = _txt; }
+            console.log("[PORTRAIT] their words \"" + _txt + "\" -> the lettering: " + (_txtHow ? "\"" + _txtW + "\" (their sentence goes along as how they asked)" : "as typed"));
+          } catch {}
+        }
         // ══ EIGHT VERSIONS, LIKE EVERY OTHER DESIGN (v9.999.52, 2026-11-16, Aaron: "we should be getting back eight different versions even
         // if we're working on this ... they can choose ... our designs are never stacked") ═══ PROVEN 10:07 by command (img_mwjkr4dmnabb, his
         // memorial card and his photo, $0.027, 30s): the same person clearly recognisable on all 8, "Hero" on 7 of 8 - number 1 kept the old
@@ -77987,7 +78010,8 @@ export class PublicEntry extends WorkerEntrypoint {
         // The words part of the sentence: `config:frame:portrait:grid` ("____" is the words line, when set).
         let _ws = "", _n1 = "with only the person and the lettering replaced";
         if (_mode === "none") { _ws = " Take all the lettering out - no words in any version."; _n1 = "with only the person replaced and the lettering taken out"; }
-        else if (_mode === "new") _ws = " Replace any lettering in my design with \"" + _txt + "\", spelled exactly like that - or add it if my design has none.";
+        else if (_mode === "new") _ws = " Replace any lettering in my design with \"" + _txtW + "\", spelled exactly like that - or add it if my design has none." +
+          (_txtHow ? " How I asked for it: " + _txtHow + "." : "");
         else { _ws = " Keep the lettering exactly as it is in every version."; _n1 = "with only the person replaced"; }
         let _sent = "The first picture is my tattoo design. The second picture is a photo of the person I want in it. Show me 8 versions of my design " +
           "with the person in the tattoo replaced by the person in the second picture - their face, hair, age and features, so they are clearly " +

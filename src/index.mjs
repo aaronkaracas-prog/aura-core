@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.57-2026-11-16-lettering-styles";
+const BUILD = "aura-core-v9.999.58-2026-11-16-lettering-fit-colour";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62221,6 +62221,8 @@ async function nameIdea(env, herWords, theirWords, talkModel, msOver) {
     let n = m ? m[1].replace(/["*]/g, "").replace(/[.\s]+$/, "").trim() : "";
     if (/^(none|n\/a|-)$/i.test(n) || n.length < 2 || n.length > 60 || n.split(/\s+/).length > 8) n = "";
     n = n.replace(/^(a|an|the|your)\s+/i, "").replace(/\s+tattoos?$/i, "").toLowerCase();
+    // (v9.999.58) MEASURED 16:32: "I'm imagining your mateo tattoo now" - a word they wrote with a capital (a name) keeps it
+    try { const _caps = String(theirWords || "").match(/\b[A-Z][a-zA-Z'-]+/g) || []; for (const c of _caps) n = n.replace(new RegExp("\\b" + c.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "g"), c); } catch {}
     console.log("[TURN:NAME] asked " + (model || talkModel || "the default model") + " - answer: \"" + t.replace(/\s+/g, " ").slice(0, 120) + "\" -> " + (n ? "\"" + n + "\"" : "no name, the fixed line stands"));
     return n;
   } catch (e) { console.log("[TURN:NAME] could not ask: " + String(e?.message ?? e).slice(0, 160)); return ""; }
@@ -62379,16 +62381,28 @@ function letterLook(id) {
 // an eye and a koi - the placements sentence ("above the artwork ... woven behind the artwork") made the model invent artwork when the words are
 // the whole tattoo. Now number 1 is the lettering they chose and the other 7 are the same words in 7 other lettering styles, each from a
 // different group. Setting: config:frame:new:letteronly (empty value = the placements clause, as before).
+const LETTER_NEEDS_PHRASE = new Set(["mixed-font quote stack", "word stack with banner", "words forming a heart"]);
+const LETTER_NEEDS_INITIALS = new Set(["ornamental monogram", "couple initials"]);
+const LETTER_COLOUR = new Set(["made of flowers", "birth-flower name", "mom banner", "sailor banner", "traditional name plate", "gold name necklace",
+  "diamond letters", "fire", "water and waves", "galaxy", "graffiti wildstyle", "stained glass", "embroidered patch", "sticker", "neon sign", "watercolour splash"]);
 function letterOnlyPlan(letter) {
   const items = (letter && Array.isArray(letter.items) ? letter.items : []).filter((x) => x && x.text);
   if (!items.length) return "";
   const words = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"').join(" and ");
   const chosen = new Set(items.map((x) => String(x.font || "").toLowerCase()));
-  const pool = LETTER_STYLES.filter((x) => x.look && !chosen.has(x.id));
-  const groups = [...new Set(pool.map((x) => x.group))].sort(() => Math.random() - 0.5);
-  const pick = [];
-  for (const g of groups) { if (pick.length >= 7) break; const inG = pool.filter((x) => x.group === g); pick.push(inG[Math.floor(Math.random() * inG.length)]); }
-  for (const x of pool.sort(() => Math.random() - 0.5)) { if (pick.length >= 7) break; if (!pick.includes(x)) pick.push(x); }
+  // (v9.999.58) MEASURED 16:32 (Mateo, img_mwjyk8vc3exo): the quote stack wrote "Mateo" twice and the initials gave "M A" - a style that needs a
+  // phrase or only initials is left out unless the words fit it; and all 8 came back black and grey (Aaron: "they all can't be in black and white")
+  // - at least four of the seven are colour styles.
+  const allText = items.map((x) => String(x.text)).join(" ").trim();
+  const nWords = allText.split(/\s+/).filter(Boolean).length;
+  const nLetters = allText.replace(/[^A-Za-z]/g, "").length;
+  const fits = (x) => (!LETTER_NEEDS_PHRASE.has(x.id) || nWords >= 3) && (!LETTER_NEEDS_INITIALS.has(x.id) || nLetters <= 3);
+  const pool = LETTER_STYLES.filter((x) => x.look && !chosen.has(x.id) && fits(x)).sort(() => Math.random() - 0.5);
+  const pick = [], usedG = new Set();
+  const take = (want) => { for (const x of pool) { if (pick.length >= 7 || (want && pick.filter((y) => LETTER_COLOUR.has(y.id)).length >= 4)) return;
+    if (pick.includes(x) || usedG.has(x.group) || (want && !LETTER_COLOUR.has(x.id))) continue; pick.push(x); usedG.add(x.group); } };
+  take(true); take(false);
+  for (const x of pool) { if (pick.length >= 7) break; if (!pick.includes(x)) pick.push(x); }
   const first = items.map((x) => '"' + String(x.text).replace(/"/g, "'") + '"' + (x.font ? letterLook(x.font) : "")).join(", ");
   return " The words are the whole tattoo - no separate pictures, symbols or artwork around them; the letters themselves are the art. " +
     "Number 1: " + first + ". On each of the others, the same words " + words + " written a different way: " +
@@ -75913,6 +75927,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // her own full reply came with her style card under it and ended "Pick a style for it below - or tell me what you'd like to make from it."
       // - the third road. Whenever her style card is under her words on a new tattoo with nothing drawn, the same line names it.
       // (v9.999.36) her style card only goes to the page when no style is picked yet (v9.701 drops it below) - the line follows what will show
+      // (v9.999.58, 2026-11-16, Aaron: go) MEASURED 16:31 (Lettering, "i want my sons name Mateo on my forearm"): under her line came "What feel do
+      // you want for the lettering? Optional - pick a style" with tattoo-style pictures; the lettering sheet's own Lettering Styles are the choice there.
+      if (opts && opts.page === "letter" && acted && acted.choose) { acted.choose = null; try { console.log("[TURN:LETTER] the lettering conversation - no tattoo-style card, the lettering sheet is the choice" + (me ? " · who=" + me : "")); } catch {} }
       const _hasStyles = !!(acted && acted.choose && Array.isArray(acted.choose.styles) && acted.choose.styles.length) && !(_newFlow && _newStyle);
       const _styleCardNow = _hasStyles && !_fixedWhy && !_drewNow();
       // (v9.999.42) MEASURED 13:42:02: "...pick how you'd like your lettering to look. Tap Show me some ideas, or pick a style first." - the lettering

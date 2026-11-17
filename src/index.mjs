@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.68-2026-11-17-her-question-stays";
+const BUILD = "aura-core-v9.999.69-2026-11-17-card-words-ask";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -61274,6 +61274,13 @@ function _whiteCorners(buf, w, h) {
 //   3. only that card is loaded here, its edges are found at full size by the same black-row / black-column rules, and its corners, its
 //      artwork and its words box are made exactly as before.
 // Anything that does not come out right (no tool, a card that will not come off, a different count) goes back to the old cut, whole.
+// the card a "Create My Own" was tapped on, read from its own words ("I want a Birth Month Flowers tattoo") - only a card with its own question
+function _ownByWords(t) {
+  const m = String(t || "").trim().match(/^i want an? (.{2,60}?) tattoo\.?$/i);
+  if (!m) return "";
+  const k = m[1].trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(OWN_TOPIC_ASK, k) ? m[1].trim() : "";
+}
 // ══ EVERY LINE IS LOOKED AT BEFORE IT SHOWS (v9.999.65, 2026-11-17, Aaron: "we will do them all") ═══ Her fixed lines are put together from
 // pieces, and a piece can come in wrong: MEASURED 06:16 "Love it - Lettering only - Dido." (a working label inside her words, fixed one place at a
 // time in v9.999.63 and .64). Instead of one fix per line, the words the page will show pass one check: a slot never filled ({idea}), a working
@@ -70547,7 +70554,12 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             _fixedSay = (await _fx("create_own_" + _bj, _bj === "cover" ? "Love it - tell me what you'd like in your ____ cover-up." : "Love it - tell me what you'd like to add in the ____ style."))
               .replace("____", _bs);
             console.log("[TURN:STYLE] " + _bj + " in the " + _bs + " style - she asks, nothing drawn" + (me ? " · who=" + me : ""));
-          } else if (_newFlow && opts && opts.own_topic && /^i want\b/i.test(_s) && !_drewNow()) {
+          } else if (_newFlow && opts && (opts.own_topic || _ownByWords(_s)) && /^i want\b/i.test(_s) && !_drewNow()) {
+            // (v9.999.68, 2026-11-17, Aaron: "if there's no context she says what do you want to do - that's global") MEASURED 08:54 (his phone,
+            // Birth Month Flowers): "I want a Birth Month Flowers tattoo" came without the card's mark and went to her as chat - she pitched ideas.
+            // The same words from my test at 09:15 carried the mark and got the card's own question. The words name the card themselves: "I want
+            // a/an <card> tattoo" for a card with its own question is that card's Create My Own, mark or not.
+            if (!opts.own_topic) { opts.own_topic = _ownByWords(_s); try { console.log("[TURN:TOPIC] no card mark came - the words name the " + JSON.stringify(opts.own_topic) + " card" + (me ? " · who=" + me : "")); } catch {} }
             // ══ CREATE MY OWN ON A SUBJECT ASKS FOR THEIR IDEA (v9.959, 2026-11-11, Aaron: go - "this probably applies in a lot of
             // places") ═══ MEASURED 12:33 (Discover -> Animals -> Create My Own): "I want an animal tattoo" went to her as chat and she
             // answered with her own idea - "a koi fish turning through dark water..." - when they had tapped Create My Own. Any subject

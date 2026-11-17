@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.64-2026-11-17-lettering-label-idea";
+const BUILD = "aura-core-v9.999.65-2026-11-17-faster-yes-and-cut";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -61290,14 +61290,15 @@ async function cutAllCardsByTool(env, id, _art, _ck) {
   const W = info && info.width, H = info && info.height;
   if (!W || !H) return null;
   // the sheet's own small copies - the phone asks for these (v9.999.22), made by the tool now
-  for (const _sw of [720, 240]) {
+  // (v9.999.65) made alongside the cut, not before it - the cut no longer waits about 1s for them; both are done before the cut returns
+  const _smallP = Promise.all([720, 240].map(async (_sw) => {
     try {
       const _sk = "small:" + id + "_w" + _sw + ".jpg";
-      if (W <= _sw || await env.AURA_KV.get(_sk, { type: "arrayBuffer" }).catch(() => null)) continue;
+      if (W <= _sw || await env.AURA_KV.get(_sk, { type: "arrayBuffer" }).catch(() => null)) return;
       const _sb = await toBytes(await env.IMAGES.input(await sheetStream()).transform({ width: _sw }).output({ format: "image/jpeg", quality: 80 }));
       await env.AURA_KV.put(_sk, _sb, { metadata: { ct: "image/jpeg", w: _sw, from: W + "x" + H, mark: 0, at_cut: 2 } }).catch(() => {});
     } catch {}
-  }
+  }));
   // 1. half size, the same rules
   const hw = Math.round(W / 2);
   const hb = await toBytes(await env.IMAGES.input(await sheetStream()).transform({ width: hw }).output({ format: "image/png" }));
@@ -61326,17 +61327,31 @@ async function cutAllCardsByTool(env, id, _art, _ck) {
     if (left) { const r = rr.find((q) => q[1] === fl.length) || rr[rr.length - 1]; return a + r[0]; }
     const r = rr.find((q) => q[0] === 0) || rr[0]; return a + r[1];
   };
-  const exact = [];
-  for (const [cx0, cx1] of fb.cols) exact.push([await colEdge(Math.round(cx0 * sx), true), await colEdge(Math.round(cx1 * sx), false)]);
+  // ══ THE CUT OVERLAPS ITS WAITS (v9.999.65, 2026-11-17, Aaron: "we will do them all") ═══ MEASURED 05:50:34 -> 05:50:55 (Love Life):
+  // 21.3s to cut the 8, about 2s a card, one wait after another - each strip, each card asked of the tool, each card stored, in turn, while
+  // they looked at the drawing line. The column edges are asked for together; the next two cards are asked of the tool while one is worked
+  // on; a card's files are stored while the next is cut (never more than one card's files waiting). Every pixel rule is unchanged - the
+  // same cards come out, only sooner.
+  const exact = await Promise.all(fb.cols.map(async ([cx0, cx1]) => await Promise.all([colEdge(Math.round(cx0 * sx), true), colEdge(Math.round(cx1 * sx), false)])));
   const host = await imageHost(env), cards = [];
+  const _boxes = [];
   for (let k = 0; k < fb.ordered.length; k++) {
     const b = fb.ordered[k];
     const ci = fb.cols.findIndex((c) => c[0] === b.x0); if (ci < 0) return null;
-    // 2. this card cut from the full sheet by the tool: its column's exact edges, and M pixels to spare above and below
     const L = exact[ci][0], R = exact[ci][1];
     const T = Math.max(0, Math.round(b.top * sy) - M), B = Math.min(H, Math.round(b.bot * sy) + M);
     if (R - L < 8) return null;
-    const cb = await toBytes(await env.IMAGES.input(await sheetStream()).transform({ trim: { top: T, left: L, bottom: H - B, right: W - R } }).output({ format: "image/png" }));
+    _boxes.push({ L, R, T, B });
+  }
+  const _crop = (q) => (async () => toBytes(await env.IMAGES.input(await sheetStream()).transform({ trim: { top: q.T, left: q.L, bottom: H - q.B, right: W - q.R } }).output({ format: "image/png" })))();
+  const _ahead = [];
+  const _fetchAt = (k) => { if (k < _boxes.length && !_ahead[k]) { _ahead[k] = _crop(_boxes[k]); _ahead[k].catch(() => {}); } };
+  let _prevStores = Promise.resolve();
+  for (let k = 0; k < fb.ordered.length; k++) {
+    // 2. this card cut from the full sheet by the tool: its column's exact edges, and M pixels to spare above and below
+    const { L, R, T, B } = _boxes[k];
+    _fetchAt(k); _fetchAt(k + 1); _fetchAt(k + 2);
+    const cb = await _ahead[k]; _ahead[k] = true;
     const cim = PhotonImage.new_from_byteslice(cb); const cw0 = cim.get_width(), ch0 = cim.get_height();
     let cpx = cim.get_raw_pixels(); try { cim.free(); } catch {}
     if (Math.abs(cw0 - (R - L)) > 2 || Math.abs(ch0 - (B - T)) > 2) { console.log("[CUT] " + id + " - image tool: card " + (k + 1) + " came back " + cw0 + "x" + ch0 + ", asked " + (R - L) + "x" + (B - T) + " - the old cut instead"); return null; }
@@ -61361,7 +61376,8 @@ async function cutAllCardsByTool(env, id, _art, _ck) {
       await Promise.all(_p);
     };
     const enc = (buf, w, h) => { const c = new PhotonImage(buf, w, h); const out = c.get_bytes(); try { c.free(); } catch {} return out; };
-    const nid = newId(); await store(nid, enc(dst, cw, ch));
+    const _ps = [];
+    const nid = newId(); _ps.push(store(nid, enc(dst, cw, ch)));
     const card = { n: k + 1, image_url: "https://" + host + "/image/" + nid, size: cw + "x" + ch };
     if (_art) {
       // the same as the old cut, in this card's own pixels: a black title strip (3 rows black across, below the middle), else the outlined box
@@ -61380,20 +61396,23 @@ async function cutAllCardsByTool(env, id, _art, _ck) {
         const acw = ax1 - ax0, ah = artBot - aTop, adst = new Uint8Array(acw * ah * 4);
         for (let y = 0; y < ah; y++) for (let x = 0; x < acw; x++) { const so = ((aTop + y) * cw0 + (ax0 + x)) * 4, to = (y * acw + x) * 4; adst[to] = cpx[so]; adst[to + 1] = cpx[so + 1]; adst[to + 2] = cpx[so + 2]; adst[to + 3] = 255; }
         _whiteCorners(adst, acw, ah);
-        const aid = newId(); await store(aid, enc(adst, acw, ah));
+        const aid = newId(); _ps.push(store(aid, enc(adst, acw, ah)));
         card.art_url = "https://" + host + "/image/" + aid; card.art_size = acw + "x" + ah;
         const wh = bot - artBot;
         if (wh > 8) {
           const wcw = x1 - x0, wdst = new Uint8Array(wcw * wh * 4);
           for (let y = 0; y < wh; y++) for (let x = 0; x < wcw; x++) { const so = ((artBot + y) * cw0 + (x0 + x)) * 4, to = (y * wcw + x) * 4; wdst[to] = cpx[so]; wdst[to + 1] = cpx[so + 1]; wdst[to + 2] = cpx[so + 2]; wdst[to + 3] = 255; }
-          const wid = newId(); await store(wid, enc(wdst, wcw, wh));
+          const wid = newId(); _ps.push(store(wid, enc(wdst, wcw, wh)));
           card.words_url = "https://" + host + "/image/" + wid;
         }
       }
     }
     cpx = null;
     cards.push(card);
+    // the last card's files are stored by now (one card's files waiting at most); this card's go on while the next is cut
+    await _prevStores; const _mine = Promise.all(_ps); _mine.catch(() => {}); _prevStores = _mine;
   }
+  await _prevStores; await _smallP;
   const out = { ok: true, from: id, sheet: W + "x" + H, columns: fb.cols.length, count: cards.length, cards, by: "image tool" };
   await env.AURA_KV.put(_ck, JSON.stringify(out)).catch(() => {});
   console.log("[CUT] all cards of " + id + " (" + out.sheet + "): " + cards.length + " cards in " + fb.cols.length + " columns - cut by the image tool, the sheet never loaded whole · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s");
@@ -78130,6 +78149,26 @@ export class PublicEntry extends WorkerEntrypoint {
         const _tOpts = {
           tid: b.tid ? String(b.tid).slice(0, 40) : null,
           from: b.from || null, lang, ref: _ref, tile: b.tile || null, fresh: !!b.fresh, touch: !!b.touch, recolor: !!b.recolor, all_ideas: Array.isArray(b.all_ideas) ? b.all_ideas.map((x) => String(x || "").slice(0, 200)).filter(Boolean).slice(0, 4) : null, change_now: !!b.change_now, new_now: !!b.new_now, pick_sheet: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.pick_sheet || "")) ? String(b.pick_sheet) : null, cover_style: (typeof b.cover_style === "string" && /^[A-Za-z &'-]{2,40}$/.test(b.cover_style.trim())) ? b.cover_style.trim() : null, choose_go: !!b.choose_go, heard_go: !!b.heard_go, heard_pick: /^[AB]$/.test(String(b.heard_pick || "")) ? String(b.heard_pick) : null, letter: letterOpt(b.letter), choose_style: (typeof b.choose_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.choose_style.trim())) ? b.choose_style.trim() : null, add_style: (typeof b.add_style === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.add_style.trim())) ? b.add_style.trim() : null, first: (typeof b.first === "string") ? b.first.slice(0, 40) : null, change_of: (typeof b.change_of === "string" && /^ent_[A-Za-z0-9]+$/.test(b.change_of)) ? b.change_of : null, placed: !!b.placed, placed_angle: (b.placed && Number.isFinite(Number(b.placed_angle))) ? Number(b.placed_angle) : null, use: !!b.use, lock: !!b.lock, cat: b.cat ? String(b.cat).slice(0, 80) : null, pick: !!b.pick, own: !!b.own, name: b.name ? String(b.name).slice(0, 300) : null, inspire: !!b.inspire, inspire_go: !!b.inspire_go, inspire_own: !!b.inspire_own, addon_fav: /^https:\/\/[a-z0-9.-]+\/image\/img_[A-Za-z0-9_-]+$/i.test(String(b.addon_fav || "")) ? String(b.addon_fav) : null, addon_box: _boxRef || null, page: (typeof b.page === "string" && /^[a-z0-9]{2,12}$/.test(b.page)) ? b.page : null, pick_new: !!b.pick_new, own_topic: (typeof b.own_topic === "string" && /^[^<>{}]{1,60}$/.test(b.own_topic.trim())) ? b.own_topic.trim() : (b.own_topic === true ? "1" : null), styles_shown: (typeof b.styles_shown === "boolean") ? b.styles_shown : null, style_on: (typeof b.style_on === "string" && /^[A-Za-z0-9 &'\/-]{2,60}$/.test(b.style_on.trim())) ? b.style_on.trim() : null };
+        // ══ A TYPED YES TO HER IMAGINE IT IS THE TAP (v9.999.65, 2026-11-17, Aaron: "we will do them all") ═══ MEASURED 05:49:42 (Love Life,
+        // talk only): she said it back and offered Imagine it; they typed "yes go ahead" - her hearing step was asked anyway, the first ask gave
+        // nothing in 6s, the second answered at 12.8s, and the drawing began 16.1s after they tapped send. A line that is only a yes, straight
+        // after her line offering Imagine it, on a new tattoo with its idea held and nothing drawn yet, goes the way the tap does - no ask. The
+        // same as an add-on has done since v9.904. Anything more than a yes ("yes but make it smaller") still goes to her.
+        try {
+          const _yesOnly = /^\s*(?:(?:yes|yeah|yep|yup|ya|sure|ok|okay|go|go ahead|go for it|do it|let'?s do it|show me|let'?s see( it)?|please|absolutely|definitely|perfect|sounds good)[\s,.!]*)+$/i.test(_said.replace(/\[[^\]]*\]/g, " "));
+          let _herLast = ""; for (let i = _hist.length - 1; i >= 0; i--) { const h = _hist[i]; if (h && h.role === "aura") { _herLast = String(h.said || ""); break; } }
+          if (_yesOnly && me && _tOpts.tid && /\bimagine it\b/i.test(_herLast) && !_tOpts.ref && !_tOpts.tile && !_tOpts.touch && !_tOpts.recolor &&
+              !(_tOpts.all_ideas && _tOpts.all_ideas.length) && !_tOpts.change_now && !_tOpts.new_now && !_tOpts.pick_sheet && !_tOpts.choose_go &&
+              !_tOpts.heard_go && !_tOpts.heard_pick && !_tOpts.change_of && !_tOpts.placed && !_tOpts.use && !_tOpts.pick && !_tOpts.own && !_tOpts.lock &&
+              !_tOpts.inspire && !_tOpts.inspire_go && !_tOpts.letter) {
+            const _ys = await talkStateGet(env, me, ["new_flow", "new_drawn", "go_idea", "go_picks", "addon_talk", "letter_go", "letter_wait"]);
+            if (String(_ys.new_flow || "") === "1" && String(_ys.go_idea || "").trim() && !String(_ys.new_drawn || "") && !String(_ys.go_picks || "").trim() &&
+                String(_ys.addon_talk || "") !== "1" && !String(_ys.letter_go || "").trim() && !String(_ys.letter_wait || "").trim()) {
+              _tOpts.heard_go = true;
+              console.log("[TURN:GO] \"" + _said.slice(0, 60) + "\" is a yes to her Imagine it - drawn as the tap is, no ask · who=" + me);
+            }
+          }
+        } catch (e) { try { console.log("[TURN:GO] the typed-yes check failed: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
         // ══ A START THAT CANNOT DRAW RUNS STRAIGHT AWAY (v9.792, 2026-11-01, Aaron: go) ═══ MEASURED 17:20:08 -> 17:20:10.6: the job took
         // 2.2s just to begin (1.5-4.1s across today) for a fixed line that then took 1.3s. The job exists so a 30-90s drawing survives a
         // dropped connection; a start never draws. ONLY these run directly: a new-tattoo / add / cover opener on its own, or a fresh "Let's

@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.81-2026-11-18-catalogue-find-whole-words";
+const BUILD = "aura-core-v9.999.82-2026-11-18-split-cards-marked";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -59817,6 +59817,34 @@ function tatFaceUrl(rec) {
 // Matches leaves first because a leaf is a design somebody can actually pick, then kinds, then
 // categories - narrowest thing that fits, which is what "where is X" is asking for.
 // READ ONLY. One KV get for the tree plus one face read per hit. It cannot draw.
+// The sets drawn as split cards: `shape:<set>` = 3:2. Read once and kept ten minutes per worker (a list plus one read per set).
+let CAT_SPLIT = { at: 0, set: null };
+async function catSplitSets(env) {
+  if (CAT_SPLIT.set && Date.now() - CAT_SPLIT.at < 600000) return CAT_SPLIT.set;
+  const names = []; let cur;
+  do {
+    const l = await env.AURA_KV.list({ prefix: "shape:", limit: 1000, ...(cur ? { cursor: cur } : {}) }).catch(() => null);
+    if (!l) break;
+    for (const x of l.keys) names.push(x.name);
+    cur = l.list_complete ? null : l.cursor;
+  } while (cur);
+  const set = new Set();
+  await Promise.all(names.map(async (nm) => {
+    const v = String((await env.AURA_KV.get(nm).catch(() => null)) || "").replace(/\s/g, "");
+    if (v === "3:2" || v === "3/2" || v === "1.5") set.add(nm.slice(6));
+  }));
+  CAT_SPLIT = { at: Date.now(), set };
+  return set;
+}
+async function catSplitMark(env, r) {
+  try {
+    if (!r || !Array.isArray(r.items) || !r.items.some((x) => x && x.kind)) return r;
+    const set = await catSplitSets(env);
+    for (const x of r.items) if (x && x.kind) x.split = set.has(tatSlug(x.kind));
+  } catch {}
+  return r;
+}
+
 async function catalogFind(env, query, limit) {
   const q = String(query || "").trim().toLowerCase();
   if (!q) return [];
@@ -79536,7 +79564,10 @@ export class PublicEntry extends WorkerEntrypoint {
       //
       // No session gate, the same as `row`. Browsing is public; a person has not become anybody
       // yet at this point and should not have to in order to look.
-      if (action === "catalog") {
+      // ══ WHICH DESIGNS ARE THE NEW SPLIT CARDS (v9.999.82, 2026-11-18, Aaron: "new split only") ══ Every catalogue answer marks each
+      // design whose set is drawn as a split card (design on the left, on a body on the right - `shape:<set>` = 3:2) with `split: true`,
+      // so a page can show only the new ones. The rest of the answer is unchanged.
+      if (action === "catalog") return await catSplitMark(env, await (async () => {
         const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
         if (!tree) return { ok: false, error: "NO_TREE" };
         const subj = tree.subjects || {}, spec = tree.specific || {};
@@ -79957,7 +79988,7 @@ export class PublicEntry extends WorkerEntrypoint {
                  categories: idx.items.length,
                  things: idx.items.reduce((n, x) => n + (x.things || 0), 0),
                  pictures: idx.items.reduce((n, x) => n + (x.pictures || 0), 0) };
-      }
+      })());
 
       if (action === "row") {
         const key = String(b.key || "").toLowerCase().replace(/[^a-z0-9:_-]+/g, "-").slice(0, 100);

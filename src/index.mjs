@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.85-2026-11-18-question-and-title-words";
+const BUILD = "aura-core-v9.999.86-2026-11-18-a-name-per-card";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62951,7 +62951,7 @@ async function styleLook(env, name) {
 // "The Original", "Classic Script"... The title now names what the design shows. `config:frame:sheet8:title_names` holds the words added after
 // "a short title in bold black capital letters"; "off" = none.
 async function sheetTitleNames(env, s) {
-  let add = " naming what that design shows - its subject, never its layout, its frame or where its lettering sits";   // (v9.999.85) MEASURED 12:48 (Create, lighthouse): FRAMED, BANNER WRAP, IN THE FRAME, WRAPPED TOGETHER - the frame still named 4 of 8
+  let add = " - a different name on every card, each one naming what that design shows, never its layout, its frame or where its lettering sits";   // (v9.999.86) MEASURED 12:58 (Create, PCT 2019): v9.999.85 named the subject on all 8 - and all 8 said MOUNTAINS & COMPASS   // (v9.999.85) MEASURED 12:48 (Create, lighthouse): FRAMED, BANNER WRAP, IN THE FRAME, WRAPPED TOGETHER - the frame still named 4 of 8
   try { const k = String((await env.AURA_KV.get("config:frame:sheet8:title_names")) || "").trim(); if (k === "off") return s; if (k) add = " " + k; } catch {}
   return String(s || "").replace(/(a short title in bold black capital letters)(?! naming)/, "$1" + add);
 }

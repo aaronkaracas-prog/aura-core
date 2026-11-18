@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.83-2026-11-18-reimagined-sets-are-split";
+const BUILD = "aura-core-v9.999.84-2026-11-18-big-test-fixes";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -59821,6 +59821,10 @@ function tatFaceUrl(rec) {
 let CAT_SPLIT = { at: 0, set: null };
 async function catSplitSets(env) {
   if (CAT_SPLIT.set && Date.now() - CAT_SPLIT.at < 600000) return CAT_SPLIT.set;
+  // (v9.999.84, 2026-11-18) MEASURED 11:52 (big test): Explore Portraits sat on "Loading..." for 15s+ - every new worker copy listed every shape:
+  // setting and read each one before the first catalogue answer. The list it makes is kept in KV for 10 minutes and shared by every copy.
+  try { const _c = JSON.parse((await env.AURA_KV.get("cache:catsplit")) || "null");
+    if (_c && Array.isArray(_c.s) && Date.now() - (+_c.at || 0) < 600000) { CAT_SPLIT = { at: +_c.at, set: new Set(_c.s) }; return CAT_SPLIT.set; } } catch {}
   const names = []; let cur;
   do {
     const l = await env.AURA_KV.list({ prefix: "shape:", limit: 1000, ...(cur ? { cursor: cur } : {}) }).catch(() => null);
@@ -59834,6 +59838,7 @@ async function catSplitSets(env) {
     if (v === "3:2" || v === "3/2" || v === "1.5") set.add(nm.slice(6));
   }));
   CAT_SPLIT = { at: Date.now(), set };
+  try { await env.AURA_KV.put("cache:catsplit", JSON.stringify({ at: CAT_SPLIT.at, s: [...set] }), { expirationTtl: 900 }); } catch {}
   return set;
 }
 async function catSplitMark(env, r) {
@@ -62940,6 +62945,16 @@ async function styleLook(env, name) {
   if (STYLE_LOOK[key]) return STYLE_LOOK[key];
   const ci = Object.keys(STYLE_LOOK).find((x) => x.toLowerCase() === key.toLowerCase()); return ci ? STYLE_LOOK[ci] : "";
 }
+// ══ A CARD'S TITLE NAMES THE DESIGN (v9.999.84, 2026-11-18, Aaron: "go with fixes") ═══ MEASURED in the big test: the 8 cards' printed titles were
+// where their lettering sat - ABOVE, AROUND, ACROSS, THE BANNER, WOVEN - because the lettering sentence lists those places, and the title asked for
+// said nothing about what it names. A printed card name names the tattoo (v9.804), so 7 of 8 locked tattoos were called "Across", "The Banner",
+// "The Original", "Classic Script"... The title now names what the design shows. `config:frame:sheet8:title_names` holds the words added after
+// "a short title in bold black capital letters"; "off" = none.
+async function sheetTitleNames(env, s) {
+  let add = " naming what that design shows - never its layout or where its lettering sits";
+  try { const k = String((await env.AURA_KV.get("config:frame:sheet8:title_names")) || "").trim(); if (k === "off") return s; if (k) add = " " + k; } catch {}
+  return String(s || "").replace(/(a short title in bold black capital letters)(?! naming)/, "$1" + add);
+}
 async function toEight(env, sentence, kind) {
   let s = String(sentence || "").trim();
   s = s.replace(/\bShow me (?:4|four)\b/gi, "Show me 8").replace(/\bthese (?:4|four) ideas\b/gi, "these ideas")
@@ -62953,6 +62968,7 @@ async function toEight(env, sentence, kind) {
   // sheet zooms out just enough to show the whole piece instead.
   if (_kn === "body" || _kn === "bodydirect") s = s.replace(/\s*Keep the same view of my body as this photo\.?/i, " Zoom out just enough that the whole design shows on my body, nothing cut off at the edges.");
   try { const k = String((await env.AURA_KV.get("config:frame:sheet8:" + _kn)) || "").trim(); if (k) end = k; } catch {}
+  end = await sheetTitleNames(env, end);
   // A STYLE DECIDES THE COLOUR (v9.723, 2026-10-22). MEASURED 15:50: "in the Black & Grey Realism style" with "Use colour wherever it
   // works" drew a green-and-blue hummingbird. When a style is named, the colour line comes out of the sentence and the ending.
   // THE STYLE'S OWN COLOURS (v9.781, 2026-11-01). MEASURED 11:04 img_mvy77rdfqjz7: "all in the Japanese style" with the colour line
@@ -67497,6 +67513,7 @@ async function makeArtistFiles(env, ctx) {
           })() : null;
           const sheets = _addSheets || [];
           const _checkSheets = await _checkOn("sheets");
+          let _flatErr = "";
           for (const panel of (_addSheets ? [] : panelList)) {
             // `section: what goes there`. The label before the colon is what the sheet is CALLED
             // and what she is asked to verify it against; the whole phrase is what gets drawn,
@@ -67512,6 +67529,20 @@ async function makeArtistFiles(env, ctx) {
             if (!fpp) {
               const fr = await processCommand(_ask, env, true);
               fpp = (fr && fr.payload) ? fr.payload : fr;
+              // ══ A REFUSED FLAT IS ASKED ONCE MORE, AND WHY IT FAILED IS KEPT (v9.999.84, 2026-11-18, Aaron: "go with fixes") ═══ MEASURED 11:38
+              // (big test, Cover Up koi on his own chest photo): the flat artwork came back refused by the image model's safety system, the files
+              // said only COULD_NOT_FLATTEN, and nothing logged why. Aaron's rule (2026-09-28): an immediate safety refusal is sent again as it
+              // is. The reason now rides on the failure, so the page can say it plainly.
+              if (!(fpp && fpp.ok && fpp.image)) {
+                const _e1 = String((fpp && fpp.error) || "no answer").slice(0, 300);
+                console.log("[FILES] flat artwork not made" + (label ? " (" + label + ")" : "") + ": " + _e1);
+                if (REFUSED_RE.test(_e1)) {
+                  const fr2 = await processCommand(_ask, env, true);
+                  const fp2 = (fr2 && fr2.payload) ? fr2.payload : fr2;
+                  if (fp2 && fp2.ok && fp2.image) { fpp = fp2; console.log("[FILES] flat artwork - asked once more after the refusal: made"); }
+                  else { _flatErr = "REFUSED: " + String((fp2 && fp2.error) || _e1).slice(0, 180); console.log("[FILES] flat artwork - asked once more after the refusal: refused again"); }
+                } else _flatErr = _e1.slice(0, 180);
+              }
             }
 
             // ══ ASK AGAIN THE WAY A PERSON WOULD (2026-09-16) ══════════════════════════
@@ -67577,7 +67608,7 @@ async function makeArtistFiles(env, ctx) {
           if (_measureP) { try { await _measureP; } catch {} }
           const fp = sheets.length ? { ok: true, image: sheets[0].flat, design: sheets[0].id } : null;
           if (!fp) {
-            drew = { failed: "COULD_NOT_FLATTEN", from: shopParent };
+            drew = { failed: _flatErr && /^REFUSED/.test(_flatErr) ? "REFUSED_BY_IMAGE_MODEL" : "COULD_NOT_FLATTEN", from: shopParent, ...(_flatErr ? { why: _flatErr } : {}) };
           } else {
             // ── 3. LINE ART ────────────────────────────────────────────────────────────
             // Once per sheet. The line art is what the needle follows, so a panel without one is
@@ -70570,6 +70601,28 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               }
             }
           }
+          // ══ MAKE IT MY OWN WAITS FOR ITS LETTERING (v9.999.84, 2026-11-18, Aaron: "go with fixes") ═══ MEASURED 11:39 (big test, Ink It, a green
+          // '67 Mustang, "this is literally my dad's car ... make it a black and grey tattoo with the words Dad's Ride"): Make it my own drew at once -
+          // no lettering sheet, and "Dad's Ride" was on 1 of the 8. Aaron's rule (2026-11-08): whenever they ask for any text, the lettering sheet
+          // comes up first. Their words, the picture and its design are held (inspire_hold); their pick on the sheet comes back here and the eight
+          // are drawn from their inspiration with their words and the lettering they picked.
+          let _inspHoldW = "";
+          if (opts && opts.letter && Array.isArray(opts.letter.items) && opts.letter.items.length && !opts.inspire_go && me) {
+            try {
+              const _h = JSON.parse(String(((await talkStateGet(env, me, ["inspire_hold"])) || {}).inspire_hold || "null"));
+              if (_h && _h.w && /^https?:\/\//i.test(String(_h.url || "")) && _h.design) {
+                const _ids = new Set(LETTER_STYLES.map((x) => x.id));
+                const _picked = opts.letter.items.map((x) => ({ text: String((x && x.text) || "").trim().slice(0, 80), font: _ids.has(String((x && x.font) || "").toLowerCase()) ? String(x.font).toLowerCase() : "" })).filter((x) => x.text);
+                if (_picked.length) {
+                  refUrl = String(_h.url); refDesign = String(_h.design); _inspHoldW = String(_h.w).slice(0, 400);
+                  opts.inspire_go = true; opts.inspire_own = true;
+                  await talkStatePut(env, me, "letter", JSON.stringify({ items: _picked.slice(0, 4) }));
+                  await talkStatePut(env, me, "inspire_hold", "");
+                  console.log("[TURN:INSPIRE] Make it my own - their lettering picked: " + _picked.map((x) => '"' + x.text + '" ' + (x.font || "(no style)")).join(", ") + " - the eight are drawn now with their words: \"" + _inspHoldW.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
+                }
+              }
+            } catch {}
+          }
           if (opts && opts.placed && refUrl) { try { _dzP = _pre ? await _pre.design : null; } catch {} }
           if (opts && opts.inspire_go && refUrl && refDesign) {
             // ══ IMAGINE FROM THIS (v9.745, 2026-10-24, Aaron: "if someone clicks on it there's no asking questions - that goes right
@@ -70580,11 +70633,23 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // over"; "Make it my own should just draw"). MEASURED 15:49 (Divine Direction): Make it my own went to her - she called the search
             // photo "the whole arm", marked the job an add-on, and the change sentence drew 8 near-copies. It now comes here with their words:
             // the same eight from their inspiration, she is not called, and their words go in as what they want.
-            if (opts.inspire_own) _inspWords = String(said || "").replace(/\s+/g, " ").trim().slice(0, 400);
+            if (opts.inspire_own) _inspWords = _inspHoldW || String(said || "").replace(/\s+/g, " ").trim().slice(0, 400);
+            // (v9.999.84) words to be written in it, with no style yet: the lettering sheet first - nothing is drawn
+            if (_inspWords && !_inspHoldW && me) {
+              let _lfI = []; try { _lfI = await letterFind(env, _inspWords, "", talkModel); } catch {}
+              if (Array.isArray(_lfI) && _lfI.length) {
+                try { await talkStatePut(env, me, "inspire_hold", JSON.stringify({ w: _inspWords, url: refUrl, design: refDesign })); await talkStatePut(env, me, "letter", ""); } catch {}
+                _heardOut = { letter: { items: _lfI.slice(0, 4), chosen: [], styles: LETTER_STYLES.map((x) => x.id) } };
+                let _ackI = null; try { _ackI = await heardAck(env, _inspWords, talkModel); } catch {}
+                _fixedSay = ((_ackI ? _ackI + " " : "") + (await _fx("letter_ask", "Before I imagine it - pick how you'd like your lettering to look."))).trim();
+                console.log("[TURN:INSPIRE] Make it my own - lettering in their words: " + _lfI.map((x) => '"' + x + '"').join(", ") + " - the lettering sheet comes up first, nothing drawn" + (me ? " · who=" + me : ""));
+              }
+            }
             _newFlow = false; _lastDesignChange = "";
             try { await talkStatePut(env, me, "await_change", ""); await talkStatePut(env, me, "new_flow", "");
                   await talkStatePut(env, me, "new_style", ""); await talkStatePut(env, me, "await_idea", ""); } catch {}
-            console.log("[TURN:INSPIRE] " + (_inspWords ? "Make it my own - eight from their inspiration with their words: \"" + _inspWords.slice(0, 200) + "\"" : "Imagine from this - eight from their inspiration") + ", she is not called" + (me ? " · who=" + me : ""));
+            if (_heardOut && _heardOut.letter) _fixedWhy = "inspire_letter";   // (v9.999.84) held for the lettering sheet - nothing drawn
+            else console.log("[TURN:INSPIRE] " + (_inspWords ? "Make it my own - eight from their inspiration with their words: \"" + _inspWords.slice(0, 200) + "\"" : "Imagine from this - eight from their inspiration") + ", she is not called" + (me ? " · who=" + me : ""));
           } else if (opts && opts.placed && refUrl && _dzP && _dzP.image && _dzP.design && _dzP.design !== refDesign) {
             // ══ THEY PLACED IT THEMSELVES (v9.613, 2026-10-15, Aaron) ═══════════════════════════════════════
             // "Let the user do whatever they want with it - size it, rotate it... once they say here's where I want it the image
@@ -77455,9 +77520,15 @@ export class PublicEntry extends WorkerEntrypoint {
         const _flat = String((pj.files && pj.files.flat_artwork) || (_lp && _lp.image) || "");
         const _des = (_lp && _lp.design) || ((_flat.match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1]) || null;
         if (!/^https?:\/\//i.test(_flat) || !_des) return { ok: false, error: "NO_ARTWORK" };
-        const _job = await startArtistFilesJob(env, { project: pid, me, world: "mytattoo", stage: "pta", seeing: false, jobNow: "new", refUrl: null,
-          refDesign: null, lastDrawn: { design: _des, image: _flat }, useRaw: [], acted: {}, intent: pj.details || null, alreadyFlat: true, rerun: true });
-        console.log("[FILES] make my files again - " + pid + " from its flat artwork " + _flat.slice(-24) + " -> " + (_job ? "job " + _job : "did not start") + " · who=" + me);
+        // ══ A PICTURE ON THEIR BODY IS NEVER THE FLAT ARTWORK (v9.999.84, 2026-11-18, Aaron: "go with fixes") ═══ MEASURED 11:58 (big test, The
+        // Banner - a koi cover-up drawn on his chest photo, whose first files had failed): Make my files again sent the chest picture as already
+        // flat, so the "flat artwork" was the photo of his chest and every stencil was refused - an artist would have been sent a body photo.
+        // A tattoo made on their own photo (Add to Existing, Cover Up) with no flat artwork yet is flattened again, as at the lock-in.
+        const _onBody = /^(job1|job2)$/.test(String(pj.section || "")) && (!(pj.files && pj.files.flat_artwork) || (_pics.some((x) => x.image === pj.files.flat_artwork)));   // a "flat" that is one of their body pictures was never flattened
+        const _jobR = String(pj.section || "") === "job2" ? "cover" : String(pj.section || "") === "job1" ? "add" : "new";
+        const _job = await startArtistFilesJob(env, { project: pid, me, world: "mytattoo", stage: "pta", seeing: false, jobNow: _onBody ? _jobR : "new", refUrl: null,
+          refDesign: null, lastDrawn: { design: _des, image: _flat }, useRaw: [], acted: {}, intent: pj.details || null, alreadyFlat: !_onBody, rerun: true });
+        console.log("[FILES] make my files again - " + pid + (_onBody ? " from the picture on their body, flattened again (" + _jobR + ") " : " from its flat artwork ") + _flat.slice(-24) + " -> " + (_job ? "job " + _job : "did not start") + " · who=" + me);
         return _job ? { ok: true, job: _job } : { ok: false, error: "JOB_NOT_STARTED" };
       }
 
@@ -78283,6 +78354,7 @@ export class PublicEntry extends WorkerEntrypoint {
           try { const _k = String((await env.AURA_KV.get("config:frame:portrait:people")) || "").trim(); if (_k.includes("____")) _sent = _k.replace("{n1}", _n1); } catch {}
         }
         _sent = _sent.replace("____", _ws);
+        _sent = await sheetTitleNames(env, _sent);
         // the sheet's own size and image model - the same dials as every other sheet; empty, the portrait's own
         let _pw = 1440, _ph = 3120;
         try { const _sz = String((await env.AURA_KV.get("config:source:portrait:size")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/); if (_sz) { _pw = parseInt(_sz[1], 10); _ph = parseInt(_sz[2], 10); } } catch {}

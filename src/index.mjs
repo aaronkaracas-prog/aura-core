@@ -62861,6 +62861,33 @@ async function drawStartSay(env, idea, style, talkModel, name) {
   } catch (e) { try { console.log("[TURN:DRAW-SAY] failed - the fixed line goes: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
   return null;
 }
+// ══ SHE ANSWERS WHAT THEY TOLD HER BEFORE THE LETTERING SHEET (v9.999.84, 2026-11-18, Aaron: "go with fixes") ═══ MEASURED in the big test:
+// "my mom passed last spring and honestly i'm still not ok" (Portraits) got no reply at all, and "i'm a whole different person now" (Cover Up)
+// got the fixed "Love it." - wherever lettering brought up the sheet, a fixed line stood in for her. Aaron's rule (2026-10-21): she always
+// acknowledges what they said, anything personal first. Her own short reply goes before the lettering line; no answer in
+// `config:talk:heard_ms`, the fixed line stands alone. The model is the say-back's (`config:source:heard:model`).
+async function heardAck(env, told, talkModel) {
+  try {
+    if (!String(told || "").trim()) return null;
+    let ms = 8000; try { const v = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(v) && v >= 0) ms = v; } catch {}
+    let model = null; try { model = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
+    const t0 = Date.now();
+    const sys = "You are Aura, the tattoo designer on mytattoo.world. Someone just told you about the tattoo they want. Reply to what they told you " +
+      "in one or two short, warm sentences in your own words, the way a caring person would - if they shared something personal, answer that first. " +
+      "Do not describe the tattoo or what you will draw, and do not ask a question. Never put a number in your words. Plain words only.";
+    const q = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), ms)),
+      callBrain({ system: sys, user: String(told).slice(0, 1500), max_tokens: 2000, reasoning: "low", ...(model ? { model } : (talkModel ? { model: talkModel } : {})) }, env)]);
+    let say = _finishedOnly(_wholeSentences(String((q && q.text) || "").replace(/^```[a-z]*\s*|```\s*$/gi, ""), 400));
+    // a question she adds anyway is taken off - the button under her words is the lettering sheet
+    const _sn = say.match(/[^.!?]+[.!?]+["'”)\]]*\s*|[^.!?]+$/g) || [];
+    const _q = _sn.findIndex((x) => /\?["'”)\]]*\s*$/.test(x));
+    if (_q >= 0) say = _sn.slice(0, _q).join("").trim();
+    const sec = ((Date.now() - t0) / 1000).toFixed(1);
+    if (say && !(q && q.late)) { console.log("[TURN:ACK] " + sec + "s - her words before the lettering: \"" + say.slice(0, 200) + "\""); return say; }
+    console.log("[TURN:ACK] " + sec + "s - " + (q && q.late ? "no answer in " + ms + "ms" : "no usable answer") + " - the lettering line stands alone");
+  } catch (e) { try { console.log("[TURN:ACK] failed: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+  return null;
+}
 function _titleWords(t) { return String(t || "").toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()).replace(/\b(Of|And|The|In|On|A|An|To)\b(?!$)/g, (m, w, i) => i ? w.toLowerCase() : w); }
 function _finishedOnly(t) {
   const s = String(t || "").trim();
@@ -71672,6 +71699,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   const _chosenA = (_savedA.items || []).filter((x) => x && x.font).map((x) => ({ said: x.from || x.text, text: x.text, font: x.font }));
                   _heardOut = { letter: { items: _itemsA.slice(0, 4), chosen: _chosenA, styles: LETTER_STYLES.map((x) => x.id) } };
                   _fixedWhy = "addon_letter"; _fixedSay = await _fx("addon_letter", "Love it. Before I imagine it, let's get the lettering exactly right.");
+                  // (v9.999.84) her short answer to what they told her goes first - see heardAck
+                  try { const _ackA = await heardAck(env, _toldA, talkModel); if (_ackA) _fixedSay = _ackA + " " + (await _fx("addon_letter_end", "Before I imagine it, let's get the lettering exactly right.")); } catch {}
                   _addonLetterHeld = true;
                   try { await talkStatePut(env, me, "addon_go", _toldA.replace(/\n+/g, ". ").slice(0, 600)); } catch {}
                   console.log("[TURN:LETTER] add-on ideas - lettering with no style yet: " + _newA.map((x) => '"' + x + '"').join(", ") + " - the lettering sheet comes up, nothing drawn" + (me ? " · who=" + me : ""));
@@ -73052,6 +73081,24 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         _heardOut = { letter: { items: _items.slice(0, 4), chosen: _chosen, styles: LETTER_STYLES.map((x) => x.id) } };
         let _ln = "Love it. Before I imagine it, let's get the lettering exactly right.";
         try { const _k = String((await env.AURA_KV.get("config:say:addon_letter")) || "").trim(); if (_k) _ln = _k; } catch {}
+        // ══ HER OWN WORDS STAY (v9.999.84, 2026-11-18, Aaron: "go with fixes") ═══ MEASURED in the big test: "my daughter lily ... she always traces
+        // my roses with her finger" (Add On) and "i got this when i was 19 and my ex picked it ... i'm a whole different person now" (Cover Up) - her
+        // reply was made (7.7s) and then thrown away for the fixed "Love it. Before I imagine it...". Her reply stays, from her first question on it
+        // goes (the button under it is the lettering sheet), and the lettering line ends it - the way a new tattoo's say-back already ends (v9.953).
+        // Her reply empty: her short answer to what they told her (heardAck); nothing in time, the fixed line as before.
+        try {
+          let _her = String((acted && acted.say) || "").replace(/\s+/g, " ").trim();
+          const _sn = _her.match(/[^.!?]+[.!?]+["'”)\]]*\s*|[^.!?]+$/g) || [];
+          const _qA = _sn.findIndex((x) => /\?["'”)\]]*\s*$/.test(x));
+          if (_qA >= 0) _her = _sn.slice(0, _qA).join("").trim();
+          if (!_her) _her = String((await heardAck(env, words, talkModel)) || "").trim();
+          if (_her) {
+            let _end = "Before I imagine it, let's get the lettering exactly right.";
+            try { const _k2 = String((await env.AURA_KV.get("config:say:addon_letter_end")) || "").trim(); if (_k2) _end = _k2; } catch {}
+            _ln = _her + " " + _end;
+            console.log("[TURN:LETTER] add-on - her own words stay before the lettering line: \"" + _ln.slice(0, 240) + "\"" + (me ? " · who=" + me : ""));
+          }
+        } catch {}
         acted.say = _ln; acted.choose = null;
         try { await talkStatePut(env, me, "addon_go", words); } catch {}
         console.log("[TURN:LETTER] add-on - lettering with no style yet: " + _new.map((x) => '"' + x + '"').join(", ") + " - the lettering sheet comes up, nothing drawn" + (me ? " · who=" + me : ""));
@@ -78104,6 +78151,23 @@ export class PublicEntry extends WorkerEntrypoint {
         const _pp = await portraitPeople(env, _pid, _pd, me);
         return { ok: true, count: (_pp && _pp.count) || null, who: (_pp && _pp.who) || "" };
       }
+      // ══ WHAT THEY TYPED FOR A PORTRAIT'S WORDS (v9.999.84, 2026-11-18, Aaron: "go with fixes") ═══ After "What should it say?" what they type goes
+      // here first: the lettering reader picks out only what is to be written, and she answers anything they told her. The page then opens the
+      // lettering sheet with those pieces, like every other section - nothing is drawn until they pick. Nothing found: she asks for just the words.
+      if (action === "portwords") {
+        const _tw = String(b.text || "").replace(/\s+/g, " ").trim().slice(0, 1500);
+        if (!_tw) return { ok: false, error: "NO_WORDS" };
+        const _short = _tw.split(/\s+/).length <= 3 && !/[.!?]/.test(_tw.replace(/\d[.]\d/g, ""));
+        const [_items, _ack] = await Promise.all([
+          _short ? Promise.resolve([_tw]) : letterFind(env, _tw, "", null).catch(() => []),
+          _short ? Promise.resolve(null) : heardAck(env, _tw, null) ]);
+        let _line = "Before I imagine it - pick how you'd like your lettering to look.";
+        try { const _k = String((await env.AURA_KV.get("config:say:letter_ask")) || "").trim(); if (_k) _line = _k; } catch {}
+        const _its = (Array.isArray(_items) ? _items : []).map((x) => String(x || "").trim().slice(0, 80)).filter(Boolean).slice(0, 4);
+        console.log("[PORTRAIT] their words for the design: \"" + _tw.slice(0, 300) + "\" -> " + (_its.length ? _its.map((x) => '"' + x + '"').join(", ") + " - the lettering sheet comes up" : "no words found - she asks for just the words") + " · who=" + me);
+        if (!_its.length) return { ok: true, items: [], say: ((_ack ? _ack + " " : "") + "What should it say? Type just the words - a name, a date or a short line.").trim() };
+        return { ok: true, items: _its, say: ((_ack ? _ack + " " : "") + _line).trim(), styles: LETTER_STYLES.map((x) => x.id) };
+      }
       if (action === "portrait") {
         const _pd = String(b.design || "").trim().slice(0, 500);
         if (!/^https:\/\//i.test(_pd)) return { ok: false, error: "NEED_DESIGN" };
@@ -78129,19 +78193,31 @@ export class PublicEntry extends WorkerEntrypoint {
         const _many = _pus.length > 1 || !!(_ppl && _ppl.count > 1);
         const _w = (b.words && typeof b.words === "object") ? b.words : {};
         const _now = String(_w.now || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
-        const _txt = String(_w.text || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
-        const _mode = _w.mode === "none" ? "none" : (_w.mode === "new" && _txt) ? "new" : "keep";
+        // \u2550\u2550 THE WHOLE MESSAGE IS READ, AND ONLY THE WORDS ARE WRITTEN (v9.999.84, 2026-11-18, Aaron: "go with fixes") \u2550\u2550\u2550 MEASURED 11:54 (big test,
+        // Isabella card + mom's photo): they typed "that's my mom. she passed last spring and honestly i'm still not ok. ... can it say Rosa with
+        // 1958 - 2025 under it". What they typed was cut at 120 letters BEFORE the lettering reader saw it - the cut fell before "Rosa" - so it found
+        // nothing, and the whole sentence was written on all 8. The reader now gets everything they typed; only what it finds is written.
+        const _txtAll = String(_w.text || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 1500);
+        const _txt = _txtAll.slice(0, 120);
+        // the lettering sheet's own picks (the page sends them once they have chosen): each piece and its style, spelled as they set it
+        const _wItems = (Array.isArray(_w.items) ? _w.items : []).map((x) => ({ text: String((x && x.text) || "").replace(/["\u201c\u201d]/g, "").trim().slice(0, 80),
+          font: String((x && x.font) || "").toLowerCase().trim().slice(0, 60) })).filter((x) => x.text).slice(0, 4);
+        const _mode = _w.mode === "none" ? "none" : (_w.mode === "new" && (_txt || _wItems.length)) ? "new" : "keep";
         // ══ THE WORDS, NOT THEIR SENTENCE (v9.999.76, 2026-11-17, Aaron: go) ═══ MEASURED 13:08 (Baby Portrait and Rose + a photo): they typed
         // "put Mom underneath in script please" and all 8 had that whole sentence written in them - it went to the image model as the words.
         // When what they typed is more than the words (3+ words), the lettering reader picks out only what is to be written; their own sentence
         // still goes along, so where and how they asked for it ("underneath", "in script") is kept. Nothing found, or no answer in time: as before.
         let _txtW = _txt, _txtHow = "";
-        if (_mode === "new" && _txt.split(/\s+/).length >= 3) {
+        if (_mode === "new" && !_wItems.length && _txtAll.split(/\s+/).length >= 3) {
+          let _found = false;
           try {
-            const _lfP = await letterFind(env, _txt, "", null);
-            if (Array.isArray(_lfP) && _lfP.length && !_lfP.late) { _txtW = _lfP.join(" "); if (_txtW.toLowerCase() !== _txt.toLowerCase()) _txtHow = _txt; }
-            console.log("[PORTRAIT] their words \"" + _txt + "\" -> the lettering: " + (_txtHow ? "\"" + _txtW + "\" (their sentence goes along as how they asked)" : "as typed"));
+            const _lfP = await letterFind(env, _txtAll, "", null);
+            if (Array.isArray(_lfP) && _lfP.length && !_lfP.late) { _found = true; _txtW = _lfP.join(" "); if (_txtW.toLowerCase() !== _txtAll.toLowerCase() && _txtAll.length <= 160) _txtHow = _txtAll; }
+            console.log("[PORTRAIT] their words \"" + _txtAll.slice(0, 300) + "\" -> the lettering: " + (_found ? "\"" + _txtW + "\"" + (_txtHow ? " (their sentence goes along as how they asked)" : "") : "none found"));
           } catch {}
+          // (v9.999.84) a sentence with no words found in it is never written on the tattoo - they are asked for the words instead
+          if (!_found && _txtAll.split(/\s+/).length >= 6) return { ok: false, error: "WORDS_UNCLEAR", ask_words: true,
+            say: "I want to get the words exactly right - type just what it should say, like a name or a date." };
         }
         // ══ EIGHT VERSIONS, LIKE EVERY OTHER DESIGN (v9.999.52, 2026-11-16, Aaron: "we should be getting back eight different versions even
         // if we're working on this ... they can choose ... our designs are never stacked") ═══ PROVEN 10:07 by command (img_mwjkr4dmnabb, his
@@ -78155,6 +78231,9 @@ export class PublicEntry extends WorkerEntrypoint {
         // "Mom & Dad" on 1 of 8 - the other cards put the words in the title box under the picture. Where the design has none, they go into the art.
         // (v9.999.80, Aaron: go) v9.999.79's wording still gave 1 of 8 (07:21, img_mwm9r8huifh3). PROVEN 07:25 by command on the set-of-8 model
         // (img_mwm9vdbpnkoi): "Write ... into the tattoo artwork of every version" - "Mom" in the art on all 8, and 7 of 8 again at 07:27.
+        // (v9.999.84) picked on the lettering sheet: each piece in its own lettering, in the same proven sentence
+        else if (_mode === "new" && _wItems.length) _ws = " Write " + _wItems.map((x) => "\"" + x.text.replace(/"/g, "'") + "\"" + (x.font ? letterLook(x.font) : "")).join(", ") +
+          " into the tattoo artwork of every version, spelled exactly like that, as part of the design - in place of any lettering my design has.";
         else if (_mode === "new") _ws = " Write \"" + _txtW + "\" into the tattoo artwork of every version, spelled exactly like that, as part of the design - in place of any lettering my design has." +
           (_txtHow ? " How I asked for it: " + _txtHow + "." : "");
         else { _ws = " Keep the lettering exactly as it is in every version."; _n1 = "with only the " + _who + " replaced"; }
@@ -78220,7 +78299,7 @@ export class PublicEntry extends WorkerEntrypoint {
             _parts.forEach((_s, _i) => console.log("[PORTRAIT] sent (" + (_i + 1) + "/" + _parts.length + "): \"" + _s + "\""));
             console.log("[PORTRAIT] picture 1 (the design): " + _pd + " · " + _pus.map((u, i) => "picture " + (i + 2) + " (their photo): " + u).join(" · ") +
             " · the card's people: " + (_ppl && _ppl.count ? _ppl.count + " (" + _ppl.who + ")" : "not known") + " · wording: " + (_many ? "several people" : "one person") +
-            " · words: " + _mode + (_now ? " (on the card: \"" + _now + "\")" : "") +
+            " · words: " + _mode + (_now ? " (on the card: \"" + _now + "\")" : "") + (_wItems.length ? " (picked on the lettering sheet: " + _wItems.map((x) => "\"" + x.text + "\" " + (x.font || "no style")).join(", ") + ")" : "") +
             " -> " + (_r && _r.ok ? _r.image_url + " · " + (_r.model || "?") + " · $" + (_r.cost_usd ?? "?") : "NOT DRAWN: " + (_r && _r.error)) + " · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s · who=" + me); } catch {}
           if (!_r || !_r.ok || !_r.image_url) return { ok: false, error: (_r && _r.error) || "NOT_DRAWN", say: "That one didn't come out - try again, or try another photo." };
           // cut into its 8 cards, the words drawn on each - the same cut as every sheet (eightCards)

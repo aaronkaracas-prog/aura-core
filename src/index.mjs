@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.77-2026-11-17-quick-pick-any-set";
+const BUILD = "aura-core-v9.999.78-2026-11-18-portrait-people";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -20692,7 +20692,7 @@ async function successionGate(env) {
         // thing holding the conversation is the only thing that knows.
         // ADDITIVE. No `with`, and this is the same single-reference call it has always been.
         const withRefs = Array.isArray(p.with)
-          ? p.with.filter((u) => typeof u === "string" && /^https?:\/\//i.test(u)).slice(0, 3)
+          ? p.with.filter((u) => typeof u === "string" && /^https?:\/\//i.test(u)).slice(0, 5)   // (v9.999.78) 5, not 3: a portrait change sends up to 5 photos of their people with the design - the engine takes 6 pictures in all
           : [];
         // `as` names the JOB for routing and the dial - absent, this is an image_evolve exactly
         // as it has always been. `width`/`height` default to the square every caller used.
@@ -63156,6 +63156,26 @@ async function premakeSetCopies(env, sheetId, cards) {
 // title is the card's number too, and comes off the same way; anything before it is kept exactly.
 const cardTitleClean = (t) => String(t || "").replace(/^\s*#?\d{1,2}\s*[.):\-\u2013\u2014]\s*/, "")
   .replace(/\s+(?:VIII|VII|VI|V|IV|III|II|I)\s*$/, "").trim();
+// ══ WHO IS IN A PORTRAIT CARD (v9.999.78, 2026-11-18, Aaron: go) ═══ Read once by the eyes and kept with the card (portrait:people:<id>):
+// how many people, and who in a few plain words. The question is `config:frame:portrait:people:read`; the model `config:source:portrait_people:model`,
+// else the eyes default. No answer in 12s, or one that does not read as a count: nothing is kept, and the page asks as for one person.
+async function portraitPeople(env, id, url, me) {
+  const key = "portrait:people:" + id;
+  try { const k = talkParse(await env.AURA_KV.get(key)); if (k && Number.isInteger(k.count)) return k; } catch {}
+  const t0 = Date.now();
+  let q = "This is a tattoo design. How many people are in it? Count only people - not animals, angels, statues or skulls. Reply with only the number, " +
+    "then a dash, then who they are in a few plain words, for example: 2 - a man and a woman";
+  try { const k = String((await env.AURA_KV.get("config:frame:portrait:people:read")) || "").trim(); if (k) q = k; } catch {}
+  let m = ""; try { m = String((await env.AURA_KV.get("config:source:portrait_people:model")) || "").trim(); } catch {}
+  const rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), 12000)),
+    seeMedia({ url, prompt: q, max_tokens: 40, ...(m ? { model: m } : {}) }, env)]).catch(() => null);
+  const saw = String((rd && rd.ok && rd.saw) || "").replace(/[*_`"]+/g, "").replace(/\s+/g, " ").trim();
+  const mm = saw.match(/^(\d{1,2})\s*[-\u2013\u2014:]\s*(.{2,80})$/);
+  const out = mm && parseInt(mm[1], 10) >= 1 && parseInt(mm[1], 10) <= 12 ? { count: parseInt(mm[1], 10), who: mm[2].replace(/[\s.]+$/, "") } : null;
+  if (out) { try { await env.AURA_KV.put(key, JSON.stringify(out)); } catch {} }
+  try { console.log("[PORTRAIT:PEOPLE] " + id + " read by the eyes (" + (Date.now() - t0) + "ms): " + (out ? out.count + " - " + out.who + " - kept with the card" : "no count in \"" + saw.slice(0, 80) + "\" - nothing kept") + (me ? " · who=" + me : "")); } catch {}
+  return out;
+}
 const CARD_BOX_ASK = "This is the caption box from a tattoo design card. Its first line, in large bold capital letters, is the title; " +
   "the smaller words under it are not part of the title. Reply with only the title, exactly as printed, nothing else.";
 const CARD_TITLE_ASK = "This is a tattoo design card. The title is in the box with a thin black outline under the artwork: the first line in that box, " +
@@ -74890,6 +74910,23 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 if (Array.isArray(_lc.replaced) && _lc.replaced.length) { try { await talkStatePut(env, me, "letter", JSON.stringify({ items: _lc.items, ...(_lc.only ? { only: true } : {}) })); } catch {} }
               }
             } catch {}
+            // ══ A CHANGE TO A PORTRAIT KEEPS THEIR PEOPLE (v9.999.78, 2026-11-18, Aaron: go) ═══ MEASURED 2026-11-17 15:47 and 15:53: "make her look
+            // about 10 years younger" and "clean up the bags under her eyes" went with the card alone (ent_e44d51e8352343ca) - the model never saw her
+            // photo, and the bold versions became other women. Their photos (kept with this tattoo when it was made) go as the other pictures.
+            if (me && _designWords !== "__inspire__" && !_inkFirst) {
+              try {
+                const _tsP = await talkStateGet(env, me, ["portrait_photos", "project"]);
+                const _ppP = talkParse(_tsP.portrait_photos);
+                if (_ppP && Array.isArray(_ppP.photos) && _ppP.photos.length && _ppP.project && String(_ppP.project) === String(_tsP.project || "")) {
+                  _withNow = _ppP.photos.filter((u) => /^https:\/\//i.test(String(u))).slice(0, 5);
+                  const _plP = _withNow.length > 1;
+                  const _pcP = " The other picture" + (_plP ? "s are photos of the people" : " is a photo of the person") + " in my design - keep every person in it recognisable as the person in their photo.";
+                  const _atP = _sentNow.search(/\s(?:Make one tall page|Make one page|Use color wherever it works)\b/);
+                  _sentNow = _atP > 0 ? _sentNow.slice(0, _atP) + _pcP + _sentNow.slice(_atP) : _sentNow + _pcP;
+                  console.log("[TURN:DESIGN] a portrait - their " + _withNow.length + " photo" + (_plP ? "s go" : " goes") + " with the change:" + _pcP + (me ? " · who=" + me : ""));
+                }
+              } catch {}
+            }
             _herAsk = null;
             _wordsFrom = "design_grid";
             _sizeNow = "2160x3840";
@@ -77989,18 +78026,39 @@ export class PublicEntry extends WorkerEntrypoint {
       // (v9.999.56, 2026-11-16, Aaron: "we're making a lot of concessions ... I only counted 10-15 cards that even had names on them") the card is
       // no longer read and its lettering no longer split into pieces (v9.999.54-55, removed): they always add their photo and always say what it
       // should say, and one rule tells the image model to replace whatever lettering is there, or add it where there is none.
+      // ══ WHO IS IN A PORTRAIT CARD, READ ONCE (v9.999.78, 2026-11-18, Aaron: go) ═══ A card with two people asked for one photo and said
+      // "Your person in this design". The eyes read each portrait card once - how many people, and who in a few words ("a man and a woman") -
+      // and it is kept with the card (portrait:people:<id>), so the page can ask for each person and no upload waits on it after the first.
+      if (action === "people") {
+        const _pd = String(b.design || "").trim().slice(0, 500);
+        const _pid = (_pd.match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
+        if (!_pid) return { ok: false, error: "NEED_DESIGN" };
+        const _pp = await portraitPeople(env, _pid, _pd, me);
+        return { ok: true, count: (_pp && _pp.count) || null, who: (_pp && _pp.who) || "" };
+      }
       if (action === "portrait") {
         const _pd = String(b.design || "").trim().slice(0, 500);
-        const _pp = String(b.photo || "").trim();
         if (!/^https:\/\//i.test(_pd)) return { ok: false, error: "NEED_DESIGN" };
-        let _pu = /^https:\/\//i.test(_pp) ? _pp.slice(0, 500) : "";
-        if (!_pu && /^data:image\//i.test(_pp)) {
-          if (_pp.length > 14 * 1024 * 1024) return { ok: false, error: "TOO_BIG", say: "That photo is too big - try a smaller one." };
-          const _tmp = "img_u" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
-          await env.AURA_KV.put("image:" + _tmp, _pp.replace(/^data:[^,]+,/, ""));
-          _pu = "https://" + (await imageHost(env)) + "/image/" + _tmp;
+        // ══ ONE PHOTO OR SEVERAL (v9.999.78, 2026-11-18, Aaron: go) ═══ PROVEN 06:15 by command (img_mwm7cbaxflaa, the Husband and Wife card,
+        // her photo and his photo, $0.085): both people in all 8, each face in its own place, nothing blended. Up to 5 photos - the engine takes
+        // 6 pictures and the design is one. `photo` (one) still works for a page that sends only that.
+        const _pin = (Array.isArray(b.photos) ? b.photos : [b.photo]).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 5);
+        const _pus = [];
+        for (const _pp of _pin) {
+          let _pu = /^https:\/\//i.test(_pp) ? _pp.slice(0, 500) : "";
+          if (!_pu && /^data:image\//i.test(_pp)) {
+            if (_pp.length > 14 * 1024 * 1024) return { ok: false, error: "TOO_BIG", say: "That photo is too big - try a smaller one." };
+            const _tmp = "img_u" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+            await env.AURA_KV.put("image:" + _tmp, _pp.replace(/^data:[^,]+,/, ""));
+            _pu = "https://" + (await imageHost(env)) + "/image/" + _tmp;
+          }
+          if (_pu) _pus.push(_pu);
         }
-        if (!_pu) return { ok: false, error: "NEED_PHOTO", say: "Add a photo of them and I'll put them in this design." };
+        if (!_pus.length) return { ok: false, error: "NEED_PHOTO", say: "Add a photo of them and I'll put them in this design." };
+        const _pu = _pus[0];
+        // who is in the card: read once and kept (the page asks for it when the card is picked, so this is normally already there)
+        let _ppl = null; try { const _pid0 = (_pd.match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1]; if (_pid0) _ppl = await portraitPeople(env, _pid0, _pd, me); } catch {}
+        const _many = _pus.length > 1 || !!(_ppl && _ppl.count > 1);
         const _w = (b.words && typeof b.words === "object") ? b.words : {};
         const _now = String(_w.now || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
         const _txt = String(_w.text || "").replace(/["\u201c\u201d]/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
@@ -78022,17 +78080,55 @@ export class PublicEntry extends WorkerEntrypoint {
         // memorial card and his photo, $0.027, 30s): the same person clearly recognisable on all 8, "Hero" on 7 of 8 - number 1 kept the old
         // date because "exactly as it is" won; number 1 now says the lettering changes too. The sheet is cut into its 8 cards like every other.
         // The words part of the sentence: `config:frame:portrait:grid` ("____" is the words line, when set).
-        let _ws = "", _n1 = "with only the person and the lettering replaced";
-        if (_mode === "none") { _ws = " Take all the lettering out - no words in any version."; _n1 = "with only the person replaced and the lettering taken out"; }
+        const _who = _many ? "people" : "person";
+        let _ws = "", _n1 = "with only the " + _who + " and the lettering replaced";
+        if (_mode === "none") { _ws = " Take all the lettering out - no words in any version."; _n1 = "with only the " + _who + " replaced and the lettering taken out"; }
         else if (_mode === "new") _ws = " Replace any lettering in my design with \"" + _txtW + "\", spelled exactly like that - or add it if my design has none." +
           (_txtHow ? " How I asked for it: " + _txtHow + "." : "");
-        else { _ws = " Keep the lettering exactly as it is in every version."; _n1 = "with only the person replaced"; }
-        let _sent = "The first picture is my tattoo design. The second picture is a photo of the person I want in it. Show me 8 versions of my design " +
-          "with the person in the tattoo replaced by the person in the second picture - their face, hair, age and features, so they are clearly " +
-          "recognisable in every version - drawn as a tattoo. If there are several people in the tattoo, replace the one who best matches the person " +
-          "in the photo. Make number 1 my design exactly as it is, " + _n1 + ". For the others, be bold and imaginative with everything around the " +
-          "person - the frame, the flowers, the composition and the style.____ " + SHEET8_DIRECT;
-        try { const _k = String((await env.AURA_KV.get("config:frame:portrait:grid")) || "").trim(); if (_k.includes("____")) _sent = _k; } catch {}
+        else { _ws = " Keep the lettering exactly as it is in every version."; _n1 = "with only the " + _who + " replaced"; }
+        // ══ THE PORTRAIT INSTRUCTIONS, EVERY TIME (v9.999.78, 2026-11-18, Aaron: go) ═══ PROVEN 2026-11-17 16:01 and 16:05 as the KV frame
+        // (img_mwlcvnox0hb3 - the same woman on all 8, cleaner light, age kept; img_mwld07kg7e7z - the man in his 70s, wrinkles kept, not made
+        // younger): his "Universal Portrait Enhancement" brief, tightened. One person: exactly that frame. A card with several people, or several
+        // photos: the wording proven by command 06:15 (img_mwm7cbaxflaa), each person matched to the one in the design they fit best; a person in
+        // the design with no photo is left out, and a person in the photos the design has no place for is added (Aaron, 2026-11-18).
+        // `config:frame:portrait:grid` still replaces the one-person wording ("____" is the words line); the several-people wording is
+        // `config:frame:portrait:people` ("____" the words line, "{n1}" what number 1 keeps).
+        const _phN = _pus.length > 1 ? "photos" : "photo";
+        let _sent;
+        if (!_many) {
+          _sent = "The first picture is my tattoo design. The second picture is a photo of the person I want in it. Show me 8 versions of my design " +
+            "with the person in the tattoo replaced by the person in the second picture - their face, hair, age and features, so they are clearly " +
+            "recognisable in every version - drawn as a tattoo. If there are several people in the tattoo, replace the one who best matches the person " +
+            "in the photo. This is a portrait tattoo. Do not just copy the photo - draw the person the way a professional portrait tattoo artist prepares " +
+            "a photo for permanent artwork: the best possible portrait of this actual person. Keep who they are: their face shape and proportions, eyes, " +
+            "nose, mouth and natural smile, jaw and cheeks, expression, skin tone, ethnicity, gender, hair colour and hairstyle, and their real age. Never " +
+            "swap in a generic attractive face. Improve the photo, not the person: fix the lighting, exposure and harsh shadows, reduce tired under-eye " +
+            "shadows, temporary blemishes and photo noise, make the eyes clear with natural catchlights, give the skin an even tone with natural texture, " +
+            "and give the hair clear, natural detail. Keep the lines and wrinkles that are part of their age - an older person's wrinkles are who they are, " +
+            "not flaws. They should look healthy, naturally flattering and at their best - never younger, never plastic, never a beauty filter, never " +
+            "over-smoothed. Do not add facial hair, scars, tattoos or anything that is not in the photo, and do not change their eyes, teeth or mouth. If " +
+            "the photo has more than one person, keep each person's own face and never blend them. The face matters most in every version: likeness first, " +
+            "then a flattering presentation, then the artwork. Make number 1 my design exactly as it is, " + _n1 + ". For the others, be bold and " +
+            "imaginative with everything around the person - the frame, the flowers, the composition and the style - but never the person's face.____ " + SHEET8_DIRECT;
+          try { const _k = String((await env.AURA_KV.get("config:frame:portrait:grid")) || "").trim(); if (_k.includes("____")) _sent = _k; } catch {}
+        } else {
+          _sent = "The first picture is my tattoo design. " + (_pus.length > 1 ? "The other pictures are photos" : "The second picture is a photo") +
+            " of the people I want in it. Show me 8 versions of my design with the people in the tattoo replaced by the people in the " + _phN + " - matching " +
+            "each one to the person in the design they fit best - their faces, hair, age and features, so every one of them is clearly recognisable in " +
+            "every version - drawn as a tattoo. If my design has more people than the " + _phN + ", leave the others out; if the " + _phN + " have more people " +
+            "than my design, add them in. This is a portrait tattoo. Do not just copy the " + _phN + " - draw the people the way a professional portrait " +
+            "tattoo artist prepares a photo for permanent artwork: the best possible portrait of these actual people. Keep who they are: their face shape " +
+            "and proportions, eyes, nose, mouth and natural smile, jaw and cheeks, expression, skin tone, ethnicity, gender, hair colour and hairstyle, and " +
+            "their real age. Never swap in a generic attractive face. Improve the " + _phN + ", not the people: fix the lighting, exposure and harsh shadows, " +
+            "reduce tired under-eye shadows, temporary blemishes and photo noise, make the eyes clear with natural catchlights, give the skin an even tone " +
+            "with natural texture, and give the hair clear, natural detail. Keep the lines and wrinkles that are part of their age - an older person's " +
+            "wrinkles are who they are, not flaws. They should look healthy, naturally flattering and at their best - never younger, never plastic, never " +
+            "a beauty filter, never over-smoothed. Do not add facial hair, scars, tattoos or anything that is not in the " + _phN + ", and do not change " +
+            "their eyes, teeth or mouths. Keep each person's own face and never blend them. The faces matter most in every version: likeness first, then " +
+            "a flattering presentation, then the artwork. Make number 1 my design exactly as it is, " + _n1 + ". For the others, be bold and imaginative " +
+            "with everything around the people - the frame, the flowers, the composition and the style - but never their faces.____ " + SHEET8_DIRECT;
+          try { const _k = String((await env.AURA_KV.get("config:frame:portrait:people")) || "").trim(); if (_k.includes("____")) _sent = _k.replace("{n1}", _n1); } catch {}
+        }
         _sent = _sent.replace("____", _ws);
         // the sheet's own size and image model - the same dials as every other sheet; empty, the portrait's own
         let _pw = 1440, _ph = 3120;
@@ -78043,8 +78139,14 @@ export class PublicEntry extends WorkerEntrypoint {
         // every 5s while the picture is drawn, then the JSON (spaces before JSON are still JSON). The doorway passes a stream straight through.
         const _work = async () => {
           const _t0 = Date.now();
-          const _r = await showIt(_sent, env, { source: "portrait", raw: true, refs: [_pd, _pu], width: _pw, height: _ph, exactSize: true, creator: me, subject: "their person in a portrait design", pta: false, ...(_pmod ? { model: _pmod } : {}) }).catch((e) => ({ ok: false, error: String(e?.message ?? e).slice(0, 160) }));
-          try { console.log("[PORTRAIT] sent: \"" + _sent + "\" · picture 1 (the design): " + _pd + " · picture 2 (their photo): " + _pu + " · words: " + _mode + (_now ? " (on the card: \"" + _now + "\")" : "") +
+          const _r = await showIt(_sent, env, { source: "portrait", raw: true, refs: [_pd, ..._pus], width: _pw, height: _ph, exactSize: true, creator: me, subject: "their person in a portrait design", pta: false, ...(_pmod ? { model: _pmod } : {}) }).catch((e) => ({ ok: false, error: String(e?.message ?? e).slice(0, 160) }));
+          // (v9.999.78) MEASURED 2026-11-17 16:01: the one log line stopped at 2,000 characters - with the longer wording the words, the pictures
+          // and the cost were cut off. The sentence goes in pieces, then one line with everything else.
+          try { const _parts = _sent.match(/[\s\S]{1,1500}/g) || [""];
+            _parts.forEach((_s, _i) => console.log("[PORTRAIT] sent (" + (_i + 1) + "/" + _parts.length + "): \"" + _s + "\""));
+            console.log("[PORTRAIT] picture 1 (the design): " + _pd + " · " + _pus.map((u, i) => "picture " + (i + 2) + " (their photo): " + u).join(" · ") +
+            " · the card's people: " + (_ppl && _ppl.count ? _ppl.count + " (" + _ppl.who + ")" : "not known") + " · wording: " + (_many ? "several people" : "one person") +
+            " · words: " + _mode + (_now ? " (on the card: \"" + _now + "\")" : "") +
             " -> " + (_r && _r.ok ? _r.image_url + " · " + (_r.model || "?") + " · $" + (_r.cost_usd ?? "?") : "NOT DRAWN: " + (_r && _r.error)) + " · " + ((Date.now() - _t0) / 1000).toFixed(1) + "s · who=" + me); } catch {}
           if (!_r || !_r.ok || !_r.image_url) return { ok: false, error: (_r && _r.error) || "NOT_DRAWN", say: "That one didn't come out - try again, or try another photo." };
           // cut into its 8 cards, the words drawn on each - the same cut as every sheet (eightCards)
@@ -78070,7 +78172,9 @@ export class PublicEntry extends WorkerEntrypoint {
             await projectAppend(env, me, _pidP, { ...(_labP ? { title: _labP } : {}),
               pictures: [{ ts: _atP, image: _pd, design: null, pick: true, words: "their catalogue pick" },
                          { ts: _atP, image: _r.image_url, design: _entP, words: "their person in the portrait design", grid: true, cards8: _c8 }] });
-            console.log("[PORTRAIT] a new tattoo " + _pidP + (_labP ? " (\"" + _labP + "\")" : "") + " - the sheet is the last drawing (" + (_entP || "no design id") + "), the last tattoo's markers cleared · who=" + me);
+            // (v9.999.78) their photos stay with this tattoo, so a change to it (Fine-Tune, More Possibilities) keeps their faces
+            await talkStatePut(env, me, "portrait_photos", JSON.stringify({ project: _pidP, photos: _pus }));
+            console.log("[PORTRAIT] a new tattoo " + _pidP + (_labP ? " (\"" + _labP + "\")" : "") + " - the sheet is the last drawing (" + (_entP || "no design id") + "), the last tattoo's markers cleared, " + _pus.length + " photo" + (_pus.length > 1 ? "s" : "") + " kept with it · who=" + me);
           } catch (e) { try { console.log("[PORTRAIT] the new tattoo could not be set up: " + String(e?.message ?? e).slice(0, 160)); } catch {} }
           return { ok: true, image_url: _r.image_url, id: _r.id, cards8: _c8, cost_usd: _r.cost_usd ?? null, words: _mode };
         };

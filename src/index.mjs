@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.82-2026-11-18-split-cards-marked";
+const BUILD = "aura-core-v9.999.83-2026-11-18-reimagined-sets-are-split";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -59840,7 +59840,9 @@ async function catSplitMark(env, r) {
   try {
     if (!r || !Array.isArray(r.items) || !r.items.some((x) => x && x.kind)) return r;
     const set = await catSplitSets(env);
-    for (const x of r.items) if (x && x.kind) x.split = set.has(tatSlug(x.kind));
+    // (v9.999.83) MEASURED on the live catalogue: the "<name> Reimagined" sets carry no `shape:` setting, yet all 21 found (Biomechanical,
+    // Sketch, Japanese, Fine Line, Animals II...) are 3:2 split cards; every other set without the setting was a square single design.
+    for (const x of r.items) if (x && x.kind) x.split = set.has(tatSlug(x.kind)) || /\sreimagined$/i.test(String(x.kind));
   } catch {}
   return r;
 }

@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.78-2026-11-18-portrait-people";
+const BUILD = "aura-core-v9.999.79-2026-11-18-portrait-words-in-art";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -78083,7 +78083,9 @@ export class PublicEntry extends WorkerEntrypoint {
         const _who = _many ? "people" : "person";
         let _ws = "", _n1 = "with only the " + _who + " and the lettering replaced";
         if (_mode === "none") { _ws = " Take all the lettering out - no words in any version."; _n1 = "with only the " + _who + " replaced and the lettering taken out"; }
-        else if (_mode === "new") _ws = " Replace any lettering in my design with \"" + _txtW + "\", spelled exactly like that - or add it if my design has none." +
+        // (v9.999.79, 2026-11-18, Aaron: go) MEASURED 06:40 and 06:57 (the Husband and Wife card, no words of its own): "Mom" in the art on 1 of 8,
+        // "Mom & Dad" on 1 of 8 - the other cards put the words in the title box under the picture. Where the design has none, they go into the art.
+        else if (_mode === "new") _ws = " Replace any lettering in my design with \"" + _txtW + "\", spelled exactly like that - or, if my design has no lettering, draw it into the tattoo artwork itself, as part of the design." +
           (_txtHow ? " How I asked for it: " + _txtHow + "." : "");
         else { _ws = " Keep the lettering exactly as it is in every version."; _n1 = "with only the " + _who + " replaced"; }
         // ══ THE PORTRAIT INSTRUCTIONS, EVERY TIME (v9.999.78, 2026-11-18, Aaron: go) ═══ PROVEN 2026-11-17 16:01 and 16:05 as the KV frame

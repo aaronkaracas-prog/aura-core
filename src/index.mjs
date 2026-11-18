@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.79-2026-11-18-portrait-words-in-art";
+const BUILD = "aura-core-v9.999.80-2026-11-18-portrait-words-and-count";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -78029,6 +78029,32 @@ export class PublicEntry extends WorkerEntrypoint {
       // ══ WHO IS IN A PORTRAIT CARD, READ ONCE (v9.999.78, 2026-11-18, Aaron: go) ═══ A card with two people asked for one photo and said
       // "Your person in this design". The eyes read each portrait card once - how many people, and who in a few words ("a man and a woman") -
       // and it is kept with the card (portrait:people:<id>), so the page can ask for each person and no upload waits on it after the first.
+      // ══ HOW MANY PEOPLE ARE IN THEIR PHOTOS (v9.999.80, 2026-11-18, Aaron: go) ═══ PROVEN by four sheets that the image model will not leave
+      // a person out of a couple card when only one person's photo comes. So before such a card is drawn, the eyes count the people in their
+      // photos (about 2s each); the page asks for the rest when there are fewer. The photos are kept (img_u...) and their addresses go back, so
+      // the drawing does not upload them again. Question: `config:frame:portrait:people:photo`; model: `config:source:portrait_people:model`.
+      if (action === "photopeople") {
+        const _pin = (Array.isArray(b.photos) ? b.photos : []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 5);
+        let _q = "How many people are in this photo? Count only real people whose faces can be seen. Reply with only the number.";
+        try { const k = String((await env.AURA_KV.get("config:frame:portrait:people:photo")) || "").trim(); if (k) _q = k; } catch {}
+        let _m = ""; try { _m = String((await env.AURA_KV.get("config:source:portrait_people:model")) || "").trim(); } catch {}
+        const _t0 = Date.now();
+        const _out = await Promise.all(_pin.map(async (_pp) => {
+          let _pu = /^https:\/\//i.test(_pp) ? _pp.slice(0, 500) : "";
+          if (!_pu && /^data:image\//i.test(_pp) && _pp.length <= 14 * 1024 * 1024) {
+            const _tmp = "img_u" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+            try { await env.AURA_KV.put("image:" + _tmp, _pp.replace(/^data:[^,]+,/, "")); _pu = "https://" + (await imageHost(env)) + "/image/" + _tmp; } catch {}
+          }
+          if (!_pu) return { url: null, count: null };
+          const rd = await Promise.race([new Promise((r) => setTimeout(() => r(null), 12000)),
+            seeMedia({ url: _pu, prompt: _q, max_tokens: 12, ...(_m ? { model: _m } : {}) }, env)]).catch(() => null);
+          const mm = String((rd && rd.ok && rd.saw) || "").match(/\b(\d{1,2})\b/);
+          return { url: _pu, count: mm ? parseInt(mm[1], 10) : null };
+        }));
+        try { console.log("[PORTRAIT:PHOTOS] the eyes counted the people in " + _out.length + " photo" + (_out.length === 1 ? "" : "s") + " (" + (Date.now() - _t0) + "ms): " +
+          _out.map((o, i) => "photo " + (i + 1) + " = " + (o.count == null ? "no answer" : o.count) + (o.url ? " (" + o.url + ")" : "")).join(" · ") + (me ? " · who=" + me : "")); } catch {}
+        return { ok: true, urls: _out.map((o) => o.url), counts: _out.map((o) => o.count) };
+      }
       if (action === "people") {
         const _pd = String(b.design || "").trim().slice(0, 500);
         const _pid = (_pd.match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1];
@@ -78085,7 +78111,9 @@ export class PublicEntry extends WorkerEntrypoint {
         if (_mode === "none") { _ws = " Take all the lettering out - no words in any version."; _n1 = "with only the " + _who + " replaced and the lettering taken out"; }
         // (v9.999.79, 2026-11-18, Aaron: go) MEASURED 06:40 and 06:57 (the Husband and Wife card, no words of its own): "Mom" in the art on 1 of 8,
         // "Mom & Dad" on 1 of 8 - the other cards put the words in the title box under the picture. Where the design has none, they go into the art.
-        else if (_mode === "new") _ws = " Replace any lettering in my design with \"" + _txtW + "\", spelled exactly like that - or, if my design has no lettering, draw it into the tattoo artwork itself, as part of the design." +
+        // (v9.999.80, Aaron: go) v9.999.79's wording still gave 1 of 8 (07:21, img_mwm9r8huifh3). PROVEN 07:25 by command on the set-of-8 model
+        // (img_mwm9vdbpnkoi): "Write ... into the tattoo artwork of every version" - "Mom" in the art on all 8, and 7 of 8 again at 07:27.
+        else if (_mode === "new") _ws = " Write \"" + _txtW + "\" into the tattoo artwork of every version, spelled exactly like that, as part of the design - in place of any lettering my design has." +
           (_txtHow ? " How I asked for it: " + _txtHow + "." : "");
         else { _ws = " Keep the lettering exactly as it is in every version."; _n1 = "with only the " + _who + " replaced"; }
         // ══ THE PORTRAIT INSTRUCTIONS, EVERY TIME (v9.999.78, 2026-11-18, Aaron: go) ═══ PROVEN 2026-11-17 16:01 and 16:05 as the KV frame
@@ -78117,8 +78145,10 @@ export class PublicEntry extends WorkerEntrypoint {
           _sent = "The first picture is my tattoo design. " + (_pus.length > 1 ? "The other pictures are photos" : "The second picture is a photo") +
             " of the people I want in it. Show me 8 versions of my design with the people in the tattoo replaced by the people in the " + _phN + " - matching " +
             "each one to the person in the design they fit best - their faces, hair, age and features, so every one of them is clearly recognisable in " +
-            "every version - drawn as a tattoo. If my design has more people than the " + _phN + ", leave the others out; if the " + _phN + " have more people " +
-            "than my design, add them in. This is a portrait tattoo. Do not just copy the " + _phN + " - draw the people the way a professional portrait " +
+            // (v9.999.80) "leave the others out" is gone - MEASURED 06:40, 07:21, 07:25, 07:27: with one person's photo on a couple card the model kept our
+            // person or drew theirs twice, however it was worded. The page now makes sure the photos have as many people as the card (photopeople).
+            "every version - drawn as a tattoo. If the " + _phN + (_pus.length > 1 ? " have" : " has") + " more people than my design, add them in. " +
+            "This is a portrait tattoo. Do not just copy the " + _phN + " - draw the people the way a professional portrait " +
             "tattoo artist prepares a photo for permanent artwork: the best possible portrait of these actual people. Keep who they are: their face shape " +
             "and proportions, eyes, nose, mouth and natural smile, jaw and cheeks, expression, skin tone, ethnicity, gender, hair colour and hairstyle, and " +
             "their real age. Never swap in a generic attractive face. Improve the " + _phN + ", not the people: fix the lighting, exposure and harsh shadows, " +

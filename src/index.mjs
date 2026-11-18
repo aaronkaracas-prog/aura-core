@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.80-2026-11-18-portrait-words-and-count";
+const BUILD = "aura-core-v9.999.81-2026-11-18-catalogue-find-whole-words";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -59828,7 +59828,13 @@ async function catalogFind(env, query, limit) {
   const STOP = new Set(["the","and","for","with","that","this","have","want","like","some","just",
     "about","what","when","where","which","would","could","looking","really","think","thinking",
     "getting","from","into","your","you","are","was","but","not","can","get","its","it's","one",
-    "something","anything","maybe","kind","sort","idea","tattoo","tattoos","design","designs"]);
+    "something","anything","maybe","kind","sort","idea","tattoo","tattoos","design","designs",
+    // ══ WHERE IT GOES IS NOT WHAT IT IS (v9.999.81, 2026-11-18) ═══════════════════════════════
+    // MEASURED: "koi fish half sleeve" and "lotus mandala on the spine" found nothing - with more than one word every word has to be in the
+    // name, and no design is named after a sleeve or a spine. The catalogue holds subjects; the place and the size are said with them.
+    "half","full","sleeve","sleeves","back","spine","arm","arms","forearm","upper","lower","chest","rib","ribs","side","leg","legs","thigh",
+    "calf","shin","ankle","foot","wrist","hand","hands","finger","fingers","neck","shoulder","shoulders","hip","stomach","small","little",
+    "tiny","big","large","huge","piece","over","under","around","behind","above","below","between","inside","outside","my","his","her"]);
   const words = q.split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
   if (!words.length) return [];
   // ══ WHOLE WORDS ONLY (2026-09-07) ═════════════════════════════════════════════════════════
@@ -59838,10 +59844,16 @@ async function catalogFind(env, query, limit) {
   // A substring match will always find SOMETHING for any noun, which is worse than finding
   // nothing: an empty shelf is a clean input, a wrong shelf is noise she has to reason around.
   const wordIn = (n, w) => new RegExp("(^|[^a-z0-9])" + w + "(s|es)?([^a-z0-9]|$)", "i").test(n);
+  // ══ THE WHOLE PHRASE IS A WHOLE WORD TOO (v9.999.81, 2026-11-18) ════════════════════════════
+  // MEASURED: "lion" came back Stallion and five Centre Gem Medallions, "clown" brought Clownfish - `includes` matched inside other
+  // words, the thing the rule above was written against. The phrase is matched the same way as a single word: whole words only.
+  const qWords = q.split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
+  const qCore = qWords.join(" ");
+  const phraseIn = (n, ph) => !!ph && new RegExp("(^|[^a-z0-9])" + ph.replace(/[^a-z0-9 ]/g, "").replace(/ +/g, "[^a-z0-9]+") + "(s|es)?([^a-z0-9]|$)", "i").test(n);
   const hit = (name) => {
     const n = String(name).toLowerCase();
-    if (n === q) return 4;
-    if (n.includes(q)) return 3;
+    if (n === q || (qCore && n === qCore)) return 4;
+    if (phraseIn(n, qCore)) return 3;
     // Every content word present beats only one - "japanese dragon" should beat "dragon".
     if (words.length > 1 && words.every((w) => wordIn(n, w))) return 2;
     return words.some((w) => wordIn(n, w)) ? 1 : 0;

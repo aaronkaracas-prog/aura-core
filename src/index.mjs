@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.89-2026-11-19-your-not-yous";
+const BUILD = "aura-core-v9.999.90-2026-11-19-taps-seen";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -77535,6 +77535,22 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!/^prj_[a-z0-9]{6,40}$/i.test(pid)) return { ok: false, error: "BAD_PROJECT_ID" };
         let r = null; try { r = await talkDo(env, me, "talkProject", [pid]); } catch {}
         return (r && r.ok && r.project) ? { ok: true, project: r.project } : { ok: false, error: "NOT_FOUND" };
+      }
+      // ══ THEIR TAPS, SEEN (v9.999.90, 2026-11-19, Aaron: "you cannot see every tap that doesn't go through ... I tapped show me ideas and
+      // it did not go through") ══ The logs only had what reached a turn, so a tap the page dropped left nothing. The page now sends its
+      // taps in small batches; each is one [TAP] line: what was tapped, where, whether a reply was still on its way, and whether the
+      // browser sent no click for it and the page made the tap itself. Nothing is stored - log lines only.
+      if (action === "taps") {
+        const L = Array.isArray(b.taps) ? b.taps.slice(0, 40) : [];
+        const _t = (ms) => { try { const d = new Date(Number(ms) || Date.now());
+          return d.toLocaleTimeString("en-US", { timeZone: "America/Los_Angeles", hour12: false }) + "." + String(d.getMilliseconds()).padStart(3, "0"); } catch { return "?"; } };
+        const _c = (v, n) => String(v == null ? "" : v).replace(/[\r\n]+/g, " ").slice(0, n);
+        for (const t of L) {
+          if (!t || typeof t !== "object") continue;
+          try { console.log("[TAP] " + _t(t.at) + " " + _c(t.k, 20) + (t.b ? " \"" + _c(t.b, 60) + "\"" : "") + (t.w ? " -> " + _c(t.w, 80) : "") +
+            (t.busy ? " (a reply was still on its way)" : "") + (t.scr ? " · on " + _c(t.scr, 20) : "") + " · who=" + me); } catch {}
+        }
+        return { ok: true, n: L.length };
       }
       // ══ DELETE A TATTOO IN PROGRESS (v9.999.88, 2026-11-19, Aaron: "I want to add the ability to delete in progress and favorites") ══
       // The page asks first. If it is the tattoo they are on, the conversation is cleared the way a lock-in clears it, so the next thing they

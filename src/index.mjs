@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.93-2026-11-19-photo-after-offer";
+const BUILD = "aura-core-v9.999.94-2026-11-19-her-words-kept";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -67946,6 +67946,21 @@ function herOfferWords(acted) {
     .filter((x) => x.trim() && !/\?\s*$/.test(x) && !/\b(?:photo|picture|pictures)\b/i.test(x) && !/\b(?:won'?t|wouldn'?t|can'?t|cannot)\b|n[’']t\s+(?:hide|cover|work)/i.test(x)).join(" ").trim();
   return kept.split(/\s+/).length >= 8 ? kept.slice(0, 500) : "";
 }
+// ══ HER SAY-BACK KEPT, THE CLAIM TAKEN OFF (v9.999.94, 2026-11-19, Aaron: go) ═══ One sentence of hers that opens with a drawing claim
+// ("Let me draw the hand ...", "Here it comes - the hand ...") or ends with one (", drawn right on your photo") loses only those words; the
+// rest of the sentence is her say-back and stays. "Let me draw it." alone has nothing left and is left for the callers' own rules.
+function salvageDrawClaim(x) {
+  const s0 = String(x || "");
+  const lead = /^\s*(?:(?:so|and|ok|okay|alright)[,\s]+)?(?:(?:let me|i'?ll|i will|i'?m going to)\s+(?:go ahead and\s+)?(?:draw|sketch|paint)\s+(?!(?:it|that|this|them|one|up|out)\b)|(?:here it (?:is|comes)|here you go|here we go|here (?:they|it) come[s]?)\s*[-–—:,]\s*)/i;
+  const tail = /,?\s*(?:all\s+)?(?:drawn|sketched|inked|imagined)\s+(?:right\s+)?(?:on|onto)\s+(?:you|your\s+[a-z]+)\s*([.!?]?)\s*$/i;
+  let y = s0.replace(lead, "");
+  y = y.replace(tail, "$1");
+  if (y === s0) return s0;
+  y = y.trim().replace(/[\s,;:–—-]+$/, "");
+  if (y.length < 20) return s0;
+  if (!/[.!?]$/.test(y)) y += ".";
+  return y.charAt(0).toUpperCase() + y.slice(1);
+}
 function dropDrawClaim(text) {
   const t = String(text || "").trim(); if (!t) return t;
   // (v9.999.21, 2026-11-13) MEASURED 18:33:46 (Cover Up): "Drawing it right on your arm now." was not caught - only the exact shapes "drawing
@@ -67958,7 +67973,12 @@ function dropDrawClaim(text) {
   // out. A "let me / I'll draw it ..." clause after a dash or comma is cut to the end of its sentence; her say-back before it stays.
   const clause = /\s*[-–—,;:]\s*(?:so\s+|and\s+)?(?:let me|i'?ll|i will|i'?m going to) (?:draw|sketch|paint) (?:it|that|this|them|one)\b[^.!?]*[.!?]?\s*$/i;
   const cutC = (x) => { const y = x.replace(clause, "").trim(); return y.length >= 12 && y !== x.trim() ? y.replace(/[\s,;:–—-]+$/, "") + "." : x; };
-  const kept = t.split(/(?<=[.!?])\s+/).map(cutC).filter((x) => !claim.test(x) && !/^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i.test(x));   // (v9.888) a done-word alone
+  // (v9.999.94, 2026-11-19, Aaron: go) MEASURED 13:35:08 and 13:35:57: "Let me draw the hand keeping its grip as the whole thing crawls up over
+  // your shoulder..." and "Here it comes - the hand keeping its grip ... drawn right on your photo" stood over Imagine it with nothing drawing -
+  // the claim was the opening of her only say-back, so it stayed, or the whole line went for a stock question. The claim words come off the
+  // front (and "drawn right on your photo" off the end); what she said back stays: "The hand keeping its grip as the whole thing crawls up...".
+  const sv = (x) => salvageDrawClaim(x);
+  const kept = t.split(/(?<=[.!?])\s+/).map(cutC).map(sv).filter((x) => !claim.test(x) && !/^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i.test(x));   // (v9.888) a done-word alone
   const out = kept.join(" ").trim();
   return out.length >= 12 ? out : t;
 }
@@ -76292,7 +76312,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       if (!(drew && (drew.image || drew.for_the_artist || drew.failed || drew.used)) && _said) {
         const _claimPic = /(^|[.!?]\s+)[^.!?]*\b(here it is|here you go|here (it|they) comes?|here'?s (it|your (design|tattoo|picture|drawing|designs)|the (design|picture|drawing))|take a look|check it out|have a look)\b[^.!?]*[.!?]?/gi;
         const _was = _said;
-        let _now = _said.replace(_claimPic, "$1").replace(/\s{2,}/g, " ").trim();
+        // (v9.999.94) a claim at the front or end of her sentence comes off and her say-back stays; only what is left a claim goes
+        const _salv = _said.split(/(?<=[.!?])\s+/).map((x) => salvageDrawClaim(x)).join(" ");
+        let _now = _salv.replace(_claimPic, "$1").replace(/\s{2,}/g, " ").trim();
         if (_now !== _was.trim()) {
           if (!_now) {
             _now = "Want me to show you some designs of it?";

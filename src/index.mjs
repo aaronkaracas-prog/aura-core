@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.90-2026-11-19-taps-seen";
+const BUILD = "aura-core-v9.999.91-2026-11-19-past-the-photo";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68862,7 +68862,7 @@ async function _auraTalkInner(env, me, stage, saidIn, history, opts) {
       // is cleared where it is kept: the brief, the piece on screen, the held photo, the record of
       // her design and of the last look on them.
       if (me && opts && opts.fresh) {
-        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added", "addon_ideas", "addon_what", "addon_close", "addon_box"]) {
+        for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added", "addon_ideas", "addon_what", "addon_close", "addon_close_photo", "addon_box"]) {
           try { await talkStatePut(env, me, _k, ""); } catch {}
         }
       }
@@ -73327,7 +73327,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             console.log("[TURN:IDEAS] add-on - \"" + String(said).trim().slice(0, 60) + "\" is a yes to her offer - drawn now from their words: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
           }
           else if (!_drawnYet) {
-            act = "none"; _ideasGrid = false; _heardOut = { go: true }; acted.choose = null; _addonMore = null;
+            act = "none"; _ideasGrid = false; _heardOut = { go: true, ...(acted && acted.extend ? { more_photo: true } : {}) }; acted.choose = null; _addonMore = null;   // (v9.999.91) past the photo: a photo of more is offered beside Imagine it
             // (v9.871) MEASURED 07:31: "...great pick, that rose is made for it. Drawing it now." stood over Imagine it with nothing drawing.
             // Held for their yes, her words never say it is being drawn or is here: that sentence is taken out (her say-back stays).
             if (acted && acted.say) { const _cl0 = dropDrawClaim(acted.say); if (_cl0 !== acted.say) { console.log("[TURN:IDEAS] held for Imagine it - her claim that it is drawing taken out: \"" + String(acted.say).slice(0, 200) + "\""); acted.say = _cl0; } }
@@ -73389,7 +73389,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             }
             else {
               const _cl1 = dropDrawClaim(acted.say); if (_cl1 !== acted.say) { console.log("[TURN:IDEAS] held for Imagine it - her claim that it is drawing taken out: \"" + String(acted.say).slice(0, 200) + "\""); acted.say = _cl1; }
-              _heardOut = { go: true }; acted.choose = null;
+              _heardOut = { go: true, ...(acted && acted.extend ? { more_photo: true } : {}) }; acted.choose = null;   // (v9.999.91)
               try { await talkStatePut(env, me, "addon_go", _w); } catch {}
               { const _ow = herOfferWords(acted); if (_ow) { try { await talkStatePut(env, me, "addon_what", _ow); } catch {} console.log("[TURN:IDEAS] what Imagine it draws - her offer: \"" + _ow.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } }
               console.log("[TURN:IDEAS] add-on - she offered to show them (\"" + String(acted.say).slice(0, 120) + "\") - Imagine it under her words; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
@@ -74937,6 +74937,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // line asks for more of their body (config:frame:addon:close), before the skin and keep-it words. Nothing else changes.
               // (v9.889, Aaron: "unless we tell the image model expand this up or down, right or left") the line names which way, in her words
               let _closeP = ""; try { _closeP = String((await talkStateGet(env, me, ["addon_close"])).addon_close || "").trim(); } catch {}
+              // (v9.999.91) a turn she answered and that draws at once (an idea they tapped, a yes with their words) goes by her answer on this turn:
+              // her extend if it reaches past the photo, else what she read of the photo itself - never an earlier turn's
+              if (acted && !_fixedWhy && !_fixedSay) {
+                const _ceNow = acted.extend ? String(acted.extend).trim() : "";
+                if (_ceNow) _closeP = _ceNow;
+                else { try { _closeP = String((await talkStateGet(env, me, ["addon_close_photo"])).addon_close_photo || "").trim(); } catch {} }
+              }
               // (v9.899) MEASURED 16:50: Imagine ideas for me went out with her read of the photo as a place ("zoom out to show more of my upper
               // arm, open skin below the dragon toward the elbow and above toward the neck") - the wild card has no idea and no place in it.
               const _wildNoClose = /^\s*imagine ideas for me\.?\s*$/i.test(String(said || ""));
@@ -76681,8 +76688,19 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // (v9.893) and again when they tap how big: MEASURED 11:44 (clock) - "Large, toward the shoulder" was drawn on the forearm photo as it
       // was, because nothing asked for the rest of the arm. Her read on the size turn says whether that size reaches past the photo's edge.
       if (me && _freshPhoto && acted) { try { await talkStatePut(env, me, "addon_body", acted.body ? String(acted.body) : ""); if (acted.body) console.log("[BRIEF] the body part their tattoo is on, as she read it: \"" + String(acted.body) + "\"" + (me ? " · who=" + me : "")); } catch {} }
-      if (me && (_freshPhoto || (/^\s*i want it to go\s+\S/i.test(String(said || "")) && String((typeof jobNow !== "undefined" && jobNow) || "") === "add")) && acted) {
-        try { await talkStatePut(env, me, "addon_close", acted.extend ? String(acted.extend) : ""); if (acted.extend) console.log("[BRIEF] their photo is too close to grow in, as she read it - the canvas is widened: \"" + String(acted.extend) + "\"" + (me ? " · who=" + me : "")); } catch {}
+      // (v9.999.91, 2026-11-19, Aaron: "I need Aura to recognize and make these offers") MEASURED 11:05: "extend it all the way down my arm to my
+      // wrist" on an upper-arm photo - her reply had no extend and the sentence said "framed exactly as it is - never zoom in". Her `extend` now
+      // says, on any add-on turn she is asked, when what they want reaches past the photo; it is kept for the draw that follows (Imagine it
+      // does not ask her) and replaced on her next answer. Without one, it goes back to what she read of the photo itself (a close photo stays
+      // close), so an idea that stays inside the photo is never drawn with an earlier turn's wrist.
+      if (me && (_freshPhoto || String((typeof jobNow !== "undefined" && jobNow) || "") === "add") && acted) {
+        try {
+          let _cv = acted.extend ? String(acted.extend) : "";
+          if (_freshPhoto) await talkStatePut(env, me, "addon_close_photo", _cv);
+          else if (!_cv) { try { _cv = String((await talkStateGet(env, me, ["addon_close_photo"])).addon_close_photo || ""); } catch {} }
+          await talkStatePut(env, me, "addon_close", _cv);
+          if (acted.extend) console.log((_freshPhoto ? "[BRIEF] their photo is too close to grow in, as she read it - the canvas is widened: \"" : "[TURN:IDEAS] what they want reaches past their photo, as she read it - the canvas is widened: \"") + String(acted.extend) + "\"" + (me ? " · who=" + me : ""));
+        } catch {}
       }
       let _ideasOut = null;
       if (me && _bodyPhoto && !_fixedWhy && !(drew && drew.image) && acted &&
@@ -78456,7 +78474,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // same pick as on any other sheet (the add-on favorite sets a sheet up the same way, v9.880).
           try {
             const _pidP = newProjectId(), _atP = new Date().toISOString(), _entP = _r.entity_id || null;
-            for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added", "addon_ideas", "addon_what", "addon_close", "addon_box",
+            for (const _k of ["brief", "last", "ref", "design", "onme", "bad", "split", "added", "addon_ideas", "addon_what", "addon_close", "addon_close_photo", "addon_box",
                               "letter", "change_held", "await_change", "design_change", "design_change_parent", "go_name", "new_style"]) { try { await talkStatePut(env, me, _k, ""); } catch {} }
             await talkStatePut(env, me, "project", _pidP);
             await talkStatePut(env, me, "timeline", JSON.stringify([{ ts: _atP, role: "picture", image: _r.image_url, design: _entP, words: "their person in the portrait design - 8 versions", grid: true }]));

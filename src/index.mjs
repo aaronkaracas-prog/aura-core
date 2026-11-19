@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.97-2026-11-19-their-words-no-load";
+const BUILD = "aura-core-v9.999.98-2026-11-19-how-big-first";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69629,7 +69629,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         // as a small card under her words; a tap sends it to her as if they had typed it.
         // THE PLACES IT COULD GO (2026-10-18, v9.655, Aaron) - the same words as aura-think's reply format.
         '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go, in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
-        '  "directions": ["when it\'s their own tattoo on a photo and they have not said where the new work goes: 2 or 3 places it can grow, read from the part of the body you see and how much of it the photo shows - past the edge of the photo too when the tattoo fills it - each in their words, finishing \'I want it to go ___\', and each naming where the new work ends - the place it reaches, not only a way it heads - e.g. \'down over my wrist and onto the back of my hand\', \'up past my elbow to the top of my bicep\', \'all the way up to my shoulder\'"] - otherwise leave it out,\n' +
+        // (v9.999.98, 2026-11-19, Aaron: "we have to establish how big the person wants the add-on first") the floor asks how big too
+        '  "directions": ["only on an add-on, on the turn the photo of their own tattoo arrives: 3 or 4 sizes that fit the part of the body it is on, the small one first, never one that leaves out where the tattoo already is - an arm: \'a small piece just around it\', \'a half sleeve, from my shoulder down to my elbow\', \'a lower half sleeve, from my elbow down to my wrist\', \'a full sleeve, from my shoulder down to my wrist\'; a leg: \'a small piece just around it\', \'a thigh piece, from my hip down to my knee\', \'a lower leg piece, from my knee down to my ankle\', \'a full leg, from my hip down to my ankle\'; a back: \'a small piece just around it\', \'a piece across my shoulder blade\', \'a half back piece\', \'a full back piece\'; a chest: \'a small piece just around it\', \'a piece on one side of my chest\', \'a full chest piece\', \'a chest piece that carries onto my shoulder\'; anywhere else: \'a small piece just around it\', \'a bigger piece, still on my ___\', \'a piece covering my whole ___\'"] - otherwise leave it out,\n' +
         '  "go": "only when they want to go somewhere else - one of the places named in WHY YOU ARE HERE, by its name; the app takes them there. If you can\'t tell where they want to go, ask them and leave it out",\n' +
         // (v9.976) WHAT THEIR PHOTO IS, IN HER READ - see THEIR OWN TATTOO, THEIR CHOICE below
         '  "photo_is": "only on a turn where they just sent a photo: their_tattoo when it is a tattoo already on their body; otherwise leave it out",\n' +
@@ -73186,7 +73187,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       const _dirTap = String(said || "").trim().match(/^i want it to go\s+(.{3,160}?)[.!\s]*$/i);
       if (me) {
         try {
-          _placeNow = _freshPhoto ? "" : String((await talkStateGet(env, me, ["placement"])).placement || "").trim();
+          // (v9.999.98, 2026-11-19, Aaron: "establish how big first") a size they tapped stays with this tattoo when a photo that shows more
+          // arrives (the button or the +); only a new add-on (its opening line, or a fresh start) clears it.
+          const _newStart = !!(opts && opts.fresh) || /^\s*i want to (?:add to|cover up)\b/i.test(String(said || ""));
+          let _keepSize = false;
+          if (_freshPhoto && !_newStart) { try { _keepSize = String((await talkStateGet(env, me, ["placement_tap"])).placement_tap || "") === "1"; } catch {} }
+          _placeNow = (_freshPhoto && !_keepSize) ? "" : String((await talkStateGet(env, me, ["placement"])).placement || "").trim();
+          if (_keepSize && _placeNow) console.log("[TURN:PLACE] a photo that shows more - the size they chose stays: \"" + _placeNow + "\"" + (me ? " · who=" + me : ""));
           // A BARE "I want it to go" IS NO PLACE (v9.655): MEASURED 04:38 - her where_to was those words alone and the grid
           // was sent "I want it to go I want it to go." The phrase comes off with or without words after it; nothing left, nothing kept.
           // (v9.893) A BUTTON IS NOT THEM SAYING WHERE: MEASURED 11:44 (clock) - they tapped "Large, connecting it toward the shoulder", then
@@ -73194,12 +73201,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // tapped as one "she heard", and the picture went without it. On a page tap (her idea, Give me some ideas) her where_to is left out.
           const _herPl = (_ideaTap || _ideasLine || _wildTap) ? "" : String((acted && acted.where_to) || "").trim().replace(/^i want it to go\b\s*/i, "").replace(/[.!\s]+$/, "");
           const _newPl = _dirTap ? _dirTap[1].trim() : _herPl;
-          if (_freshPhoto || (_newPl && _newPl !== _placeNow)) {
-            if (_newPl || _freshPhoto) _placeNow = _newPl || "";
+          if ((_freshPhoto && !_keepSize) || (_newPl && _newPl !== _placeNow)) {
+            if (_newPl || (_freshPhoto && !_keepSize)) _placeNow = _newPl || "";
             await talkStatePut(env, me, "placement", _placeNow);
             // (v9.855) where the place came from: "1" when they tapped it (their choice), empty when she heard it - an add-on drawn one at a time
             // sends only a place they chose.
             await talkStatePut(env, me, "placement_tap", (_dirTap && _placeNow) ? "1" : "");
+            if (!_dirTap) { try { await talkStatePut(env, me, "addon_close_size", ""); } catch {} }
             console.log("[TURN:PLACE] " + (_placeNow ? "where it goes: \"" + _placeNow + "\"" + (_dirTap ? " (they tapped it)" : " (she heard it)") : "a new photo - no placement yet"));
           }
         } catch {}
@@ -75022,7 +75030,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 let _atP = _sentNow.indexOf(" Show me 4"); if (_atP < 0) _atP = _sentNow.indexOf(" Be bold");
                 // (v9.892) a size they tapped reads "I want it medium, down onto my chest." - a place, "I want it to go down my arm."
                 const _plc = _placeNow.replace(/[\s.]+$/, "");
-                const _ps1 = (/^(?:small|medium|large|big|bigger)\b/i.test(_plc) ? " I want it " : " I want it to go ") + _plc + ".";
+                // (v9.999.98) a size off the SIZES chart reads "a full sleeve, from my shoulder down to my wrist" - "I want it to be ..."
+                const _ps1 = (/^(?:small|medium|large|big|bigger)\b/i.test(_plc) ? " I want it " : /^an?\s/i.test(_plc) ? " I want it to be " : " I want it to go ") + _plc + ".";
                 _sentNow = _atP > 0 ? _sentNow.slice(0, _atP) + _ps1 + _sentNow.slice(_atP) : _sentNow + _ps1;
                 _oFrom += "+placement";
               }
@@ -75054,7 +75063,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               }
               // (v9.899) MEASURED 16:50: Imagine ideas for me went out with her read of the photo as a place ("zoom out to show more of my upper
               // arm, open skin below the dragon toward the elbow and above toward the neck") - the wild card has no idea and no place in it.
-              const _wildNoClose = /^\s*imagine ideas for me\.?\s*$/i.test(String(said || ""));
+              // (v9.999.98) a size they tapped that reaches past the photo widens the canvas for every drawing at that size - her read on the
+              // size turn (addon_close_size) when this turn's own answer did not say it; Imagine ideas for me too, since the size is theirs.
+              if (!_closeP && _placeNow && _placeTap) { try { _closeP = String((await talkStateGet(env, me, ["addon_close_size"])).addon_close_size || "").trim(); } catch {} }
+              const _wildNoClose = /^\s*imagine ideas for me\.?\s*$/i.test(String(said || "")) && !(_placeNow && _placeTap);
               if (_wildNoClose && _closeP) console.log("[TURN:IDEAS] Imagine ideas for me - her close-up line left out: \"" + _closeP.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
               if (_closeP && !_boxE && !_wildNoClose) {
                 const _dirC = (/^(1|yes|true)$/i.test(_closeP) ? "my body around it" : _closeP).replace(/[\s.]+$/, "");
@@ -76809,6 +76821,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         try {
           let _cv = acted.extend ? String(acted.extend) : "";
           if (_freshPhoto) await talkStatePut(env, me, "addon_close_photo", _cv);
+          // (v9.999.98) the turn they tapped how big: her read of whether that size reaches past the photo, kept for every drawing at that size
+          if (/^\s*i want it to go\s+\S/i.test(String(said || ""))) { await talkStatePut(env, me, "addon_close_size", _cv); if (_cv) console.log("[TURN:PLACE] the size they chose reaches past the photo, as she read it: \"" + _cv.slice(0, 160) + "\"" + (me ? " · who=" + me : "")); }
           else if (!_cv) { try { _cv = String((await talkStateGet(env, me, ["addon_close_photo"])).addon_close_photo || ""); } catch {} }
           await talkStatePut(env, me, "addon_close", _cv);
           if (acted.extend) console.log((_freshPhoto ? "[BRIEF] their photo is too close to grow in, as she read it - the canvas is widened: \"" : "[TURN:IDEAS] what they want reaches past their photo, as she read it - the canvas is widened: \"") + String(acted.extend) + "\"" + (me ? " · who=" + me : ""));

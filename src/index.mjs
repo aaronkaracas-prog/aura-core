@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.96-2026-11-19-card-copy-log";
+const BUILD = "aura-core-v9.999.97-2026-11-19-their-words-no-load";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62138,6 +62138,34 @@ async function lookCopy(env, url) {
     if (!id) return url;
     const was = await env.AURA_KV.get("lookcopy:" + id).catch(() => null);
     if (was) return was;
+    // ══ THE STORED PICTURE GOES STRAIGHT TO THE IMAGE TOOL (v9.999.97, 2026-11-19, Aaron: go) ═══ MEASURED 11:49:54, 11:51:04 and 13:38:00: each
+    // "Worker exceeded memory limit" came on a drawing job, 10-20s after its sheet (10-12 MB) had been read whole into this worker - here, as
+    // the KV text (about 16 MB) and its bytes (12 MB more) - even when the image tool then made the small copy. The picture's own file in R2
+    // is handed to the image tool as a stream, so the sheet never sits in this worker; only the 1024 copy (about 150 KB) comes back. If there
+    // is no R2 file or the tool fails, the reading below runs as before.
+    let _rb = null, _rKB = 0;
+    try {
+      if (env.AURA_IMAGES && env.IMAGES) {
+        const _o = await env.AURA_IMAGES.get(id + ".png").catch(() => null);
+        if (_o) {
+          _rKB = Math.round((_o.size || 0) / 1024);
+          if ((_o.size || 0) <= 1200 * 1024) { try { await _o.body.cancel(); } catch {} return url; }   // small enough as it is
+          const _out = await env.IMAGES.input(_o.body).transform({ width: 1024, height: 1024, fit: "scale-down" }).output({ format: "image/jpeg" });
+          const _b = new Uint8Array(await _out.response().arrayBuffer());
+          if (_b.length > 512) _rb = _b;
+        }
+      }
+    } catch (e) { try { console.log("[LOOKCOPY] " + id + " - the stored file could not go to the image tool, read here instead: " + String(e?.message ?? e).slice(0, 120)); } catch {} }
+    if (_rb) {
+      let t0 = "";
+      for (let k = 0; k < _rb.length; k += 8192) t0 += String.fromCharCode.apply(null, _rb.subarray(k, k + 8192));
+      const nid0 = "img_l" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map((x) => x.toString(16).padStart(2, "0")).join("");
+      await env.AURA_KV.put("image:" + nid0, btoa(t0), { expirationTtl: 7 * 24 * 3600 });
+      const out0 = "https://" + (await imageHost(env)) + "/image/" + nid0;
+      await env.AURA_KV.put("lookcopy:" + id, out0, { expirationTtl: 7 * 24 * 3600 }).catch(() => {});
+      console.log("[LOOKCOPY] " + id + " " + _rKB + " KB -> " + nid0 + " " + Math.round(_rb.length / 1024) + " KB · straight from the stored file by the image tool - never loaded here");
+      return out0;
+    }
     const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
     if (!b64 || b64.length * 0.75 <= 1200 * 1024) return url;   // small enough as it is
     // ══ THE IMAGE TOOL MAKES HER COPY (v9.999.92, 2026-11-19, Aaron: go) ═══ MEASURED 11:49:25: "[LOOKCOPY] img_mwnyqffxjh9k 9155 KB" -
@@ -67951,10 +67979,17 @@ async function talkStatePut(env, me, name, raw) {
 // (v9.999.20) MEASURED 18:20:21 (Cover Up, forearm): "...going over the wildflowers and past their edges so nothing shows through." was taken
 // out as a "won't work" sentence (it matched "shows through"), nothing of her offer was left, and their typed words were drawn. Only a
 // sentence that says won't / can't / wouldn't is taken out now.
-function herOfferWords(acted) {
+// ══ ON AN ADD-ON, THEIR OWN WORDS WHEN SHE GAVE NO LINE (v9.999.97, 2026-11-19, Aaron: go) ═══ MEASURED 14:45:24: "can you add a raven landing on
+// my forearm with its wings spread, like its coming for the skull" - she gave no `add` line, so her chat went to the image model ("A raven coming
+// in with its wings spread, headed right for the skull - that's a strong pairing."); "on my forearm" never got there, the raven went on the
+// shoulder and the skull was moved down the arm. On an add-on she never replaces their idea (v9.888: their typed words when she gives no line),
+// so with no `add` or `prompt` nothing of her chat is kept and their own words are drawn. A cover-up keeps her offer (v9.999.19) - there she may
+// offer a version that will hide the old tattoo instead of theirs.
+function herOfferWords(acted, job) {
   if (!acted) return "";
   if (typeof acted.add === "string" && acted.add.trim()) return acted.add.trim().slice(0, 300);
   if (typeof acted.prompt === "string" && acted.prompt.trim().split(/\s+/).length >= 6) return acted.prompt.trim().slice(0, 400);
+  if (String(job || "") === "add") return "";
   const kept = dropDrawClaim(String(acted.say || "")).split(/(?<=[.!?])\s+/)
     // a sentence saying what WON'T work ("a fine line peony in light pink is exactly what won't hide it") is her reason, not the design
     .filter((x) => x.trim() && !/\?\s*$/.test(x) && !/\b(?:photo|picture|pictures)\b/i.test(x) && !/\b(?:won'?t|wouldn'?t|can'?t|cannot)\b|n[’']t\s+(?:hide|cover|work)/i.test(x)).join(" ").trim();
@@ -73397,7 +73432,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // Held for their yes, her words never say it is being drawn or is here: that sentence is taken out (her say-back stays).
             if (acted && acted.say) { const _cl0 = dropDrawClaim(acted.say); if (_cl0 !== acted.say) { console.log("[TURN:IDEAS] held for Imagine it - her claim that it is drawing taken out: \"" + String(acted.say).slice(0, 200) + "\""); acted.say = _cl0; } }
             try { await talkStatePut(env, me, "addon_go", _w); } catch {}
-            { const _ow = herOfferWords(acted); if (_ow) { try { await talkStatePut(env, me, "addon_what", _ow); } catch {} console.log("[TURN:IDEAS] what Imagine it draws - her offer: \"" + _ow.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } }
+            { const _ow = herOfferWords(acted, jobNow); if (!_ow) { try { await talkStatePut(env, me, "addon_what", ""); } catch {} console.log("[TURN:IDEAS] what Imagine it draws - their own words (she gave no line of what to add)" + (me ? " · who=" + me : "")); } if (_ow) { try { await talkStatePut(env, me, "addon_what", _ow); } catch {} console.log("[TURN:IDEAS] what Imagine it draws - her offer: \"" + _ow.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } }
             console.log("[TURN:IDEAS] add-on - her words and Imagine it; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
           } else {
             _addonOwnWords = _onAddonSheet ? _addTyped() : String(said).trim();
@@ -73464,7 +73499,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               const _cl1 = dropDrawClaim(acted.say); if (_cl1 !== acted.say) { console.log("[TURN:IDEAS] held for Imagine it - her claim that it is drawing taken out: \"" + String(acted.say).slice(0, 200) + "\""); acted.say = _cl1; }
               _heardOut = { go: true, ...(acted && acted.extend ? { more_photo: true } : {}) }; acted.choose = null;   // (v9.999.91)
               try { await talkStatePut(env, me, "addon_go", _w); } catch {}
-              { const _ow = herOfferWords(acted); if (_ow) { try { await talkStatePut(env, me, "addon_what", _ow); } catch {} console.log("[TURN:IDEAS] what Imagine it draws - her offer: \"" + _ow.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } }
+              { const _ow = herOfferWords(acted, jobNow); if (!_ow) { try { await talkStatePut(env, me, "addon_what", ""); } catch {} console.log("[TURN:IDEAS] what Imagine it draws - their own words (she gave no line of what to add)" + (me ? " · who=" + me : "")); } if (_ow) { try { await talkStatePut(env, me, "addon_what", _ow); } catch {} console.log("[TURN:IDEAS] what Imagine it draws - her offer: \"" + _ow.slice(0, 300) + "\"" + (me ? " · who=" + me : "")); } }
               console.log("[TURN:IDEAS] add-on - she offered to show them (\"" + String(acted.say).slice(0, 120) + "\") - Imagine it under her words; nothing drawn until they say yes · kept: \"" + _w.slice(0, 300) + "\"" + (me ? " · who=" + me : ""));
             }
           }

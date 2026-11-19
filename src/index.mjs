@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.87-2026-11-18-her-answer-on-the-said-back";
+const BUILD = "aura-core-v9.999.88-2026-11-19-delete-in-progress";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -66173,6 +66173,23 @@ export class PtaDurableObject {
     return { ok: !!pj, project: pj };
   }
 
+  // ══ A TATTOO IN PROGRESS CAN BE DELETED (v9.999.88, 2026-11-19, Aaron: "I want to add the ability to delete in progress and favorites") ══
+  // Only one still in progress - a locked-in tattoo (My Tattoos, artist files) is never removed here. Its record, its line in the list and
+  // its designs' pointers to it go; nothing else is touched.
+  async talkProjectRemove(pid) {
+    pid = String(pid || "");
+    let pj = null; try { pj = JSON.parse((await this.storage.get("talk-proj:" + pid)) || "null"); } catch {}
+    if (!pj) return { ok: false, error: "NOT_FOUND" };
+    if (pj.locked) return { ok: false, error: "LOCKED" };
+    await this.storage.delete("talk-proj:" + pid);
+    let idx = []; try { idx = JSON.parse((await this.storage.get("talk-proj:index")) || "[]") || []; } catch {}
+    if (Array.isArray(idx)) await this.storage.put("talk-proj:index", JSON.stringify(idx.filter((e) => e && e.id !== pid)));
+    let bd = {}; try { bd = JSON.parse((await this.storage.get("talk-proj:by-design")) || "{}") || {}; } catch {}
+    let _n = 0; for (const k of Object.keys(bd)) if (bd[k] === pid) { delete bd[k]; _n++; }
+    if (_n) await this.storage.put("talk-proj:by-design", JSON.stringify(bd));
+    return { ok: true, id: pid, designs: _n };
+  }
+
   async talkProjectOf(design) {
     let bd = {}; try { bd = JSON.parse((await this.storage.get("talk-proj:by-design")) || "{}") || {}; } catch {}
     return { ok: true, project: bd[String(design || "")] || null };
@@ -74868,14 +74885,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // new artwork" drew ONE picture. The change sentence asks for four versions on one sheet (proven by command 05:40 on the reaper card,
               // img_mw7vpyoz941u), cut into cards like the first sheet; a pick off it is built on the same way. The setting decides: an older
               // one-picture setting still draws one.
-              let _m = "The first picture is my tattoo with the new part we are adding. The second picture is my tattoo as it is today. Change the new part like this: ____. Show me 4 different versions of that change. Make the first one exactly what I described. For the other three, take the change further in a different direction each - a different color, shape, size or layout for the new part - so all four look clearly different at a glance. In every version my tattoo from the second picture stays exactly as it is - the same size, shape, color and place on my body. Everything stays tattooed on my skin, inside the outline of my body - nothing goes past the edge onto my clothes or the background. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";   // (v9.890) word for word the stored config:frame:addon:more, 2026-11-08 08:00
+              let _m = "The first picture is my tattoo with the new part we are adding. The second picture is my tattoo as it is today, so you can tell my tattoo apart from the new part. Keep everything in the first picture exactly as it is - my tattoo and the new part, the same size, shape, color and place on my body - and change only this: ____. Show me 4 different versions of that change. Make the first one exactly what I described. For the other three, take only that change in a bold, different direction each - a different color, shape, size or layout for what I just asked for - so all four look clearly different at a glance, while everything else from the first picture stays exactly as it is. Everything stays tattooed on my skin, inside the outline of my body - nothing goes past the edge onto my clothes or the background. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";   // (v9.999.88) word for word the stored config:frame:addon:more, 2026-11-18 - the picture they picked is the base, picture 2 only tells their tattoo from the new part (MEASURED 14:52: "the second picture stays exactly as it is" shrank the dragon back and cards 2-4 threw the waves out)
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:more")) || "").trim(); if (_k.includes("____")) _m = _k; } catch {}
               _sentNow = _m.replace("____", _ownW);
               _oneParent = _addonMore;
               _wordsFrom = "addon_more";
             } else {
               // (v9.887) the default is the stored setting word for word (config:frame:addon:one, 2026-11-07 17:53) - no "my arm", no black background
-              let _o = "This is my current tattoo. I want to add to it, in a similar style to my tattoo: ____. Show me 4 different ideas for that. Make every idea a completely different design - change the composition, where the new work sits on my body, how far it spreads and what else is added around it, so no two look alike. Make the first one the closest to what I described, and for the other three be bold and imaginative with the idea. Everything you add is tattooed on my skin and stays inside the outline of my body - nothing goes past the edge onto my clothes or the background. Keep my existing tattoo exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is in every version. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";
+              let _o = "This is my current tattoo. I want to add to it, in a similar style to my tattoo: ____. Show me 4 different ideas for that. Make every idea a completely different design, so no two look alike. Only the new work is new - my existing tattoo is never redrawn: in every idea it keeps its exact shape, pose, size, color and place, and the new work goes around it and next to it. Make all four bold and imaginative with the idea, each one its own unique take on it. Everything you add is tattooed on my skin and stays inside the outline of my body - nothing goes past the edge onto my clothes or the background. Keep my existing tattoo exactly as it is - the same size, shape and place on my body - and keep my photo exactly as it is in every version. Show my whole photo in every version, framed exactly as it is - never zoom in or crop. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them. No words or numbers anywhere. Every line is clean, solid and connected, the way a finished tattoo is inked. The bare skin around and between the tattoo is completely clean in every version - no dots, specks, flecks, dashes or marks of any kind that are not part of the design.";
               let _oFrom = "default";
               try { const _k = String((await env.AURA_KV.get("config:frame:addon:one")) || "").trim(); if (_k.includes("____")) { _o = _k; _oFrom = "setting"; } } catch {}
               // A style they named goes in place of "a similar style to my tattoo" (v9.852 kept it the same way).
@@ -77516,6 +77533,30 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!/^prj_[a-z0-9]{6,40}$/i.test(pid)) return { ok: false, error: "BAD_PROJECT_ID" };
         let r = null; try { r = await talkDo(env, me, "talkProject", [pid]); } catch {}
         return (r && r.ok && r.project) ? { ok: true, project: r.project } : { ok: false, error: "NOT_FOUND" };
+      }
+      // ══ DELETE A TATTOO IN PROGRESS (v9.999.88, 2026-11-19, Aaron: "I want to add the ability to delete in progress and favorites") ══
+      // The page asks first. If it is the tattoo they are on, the conversation is cleared the way a lock-in clears it, so the next thing they
+      // say starts a new one. Favorites need nothing new - the heart's own "fav" with on:false takes one out.
+      if (action === "unproject") {
+        const pid = String(b.id || "").trim();
+        if (!/^prj_[a-z0-9]{6,40}$/i.test(pid)) return { ok: false, error: "BAD_PROJECT_ID" };
+        let r = null; try { r = await talkDo(env, me, "talkProjectRemove", [pid]); } catch {}
+        if (!r || !r.ok) { console.log("[PROJECT] delete refused - " + pid + " " + ((r && r.error) || "no answer")); return { ok: false, error: (r && r.error) || "NOT_DELETED" }; }
+        let _was = false;
+        try {
+          const _cur = String((await talkStateGet(env, me, ["project"])).project || "").replace(/^"|"$/g, "");
+          if (_cur === pid) { _was = true;
+            await talkDo(env, me, "talkPut", [{
+              "talk-state:timeline": "[]", "talk-state:brief": "", "talk-state:last": "", "talk-state:ref": "",
+              "talk-state:design": "", "talk-state:onme": "", "talk-state:bad": "", "talk-state:split": "",
+              "talk-state:added": "", "talk-state:project": "",
+              "talk-state:letter": "", "talk-state:change_held": "", "talk-state:await_change": "", "talk-state:design_change": "",
+              "talk-state:design_change_parent": "", "talk-state:await_idea": "", "talk-state:go_idea": "", "talk-state:go_picks": "",
+              "talk-state:go_said": "", "talk-state:new_style": "", "talk-state:new_drawn": "", "talk-state:new_flow": "",
+              "talk-state:addon_go": "", "talk-state:addon_drawn": "", "talk-state:addon_talk": "" }]); }
+        } catch {}
+        console.log("[PROJECT] deleted from In Progress - " + pid + " (" + (r.designs || 0) + " designs)" + (_was ? "; it was the one they were on - the conversation starts clean" : ""));
+        return { ok: true, id: pid, was_current: _was };
       }
       // ══ MAKE MY FILES AGAIN (v9.990, 2026-11-12, sign-off, Aaron: "we need to include a fallback to rerun artist files for the user") ═══
       // MEASURED 10:53 (Wrist Gauge: two stencils refused) and 11:02 (Tucked Crescent: no print file - no browser free). A finished tattoo whose

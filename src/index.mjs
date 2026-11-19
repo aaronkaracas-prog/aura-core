@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.95-2026-11-19-showing-now";
+const BUILD = "aura-core-v9.999.96-2026-11-19-card-copy-log";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -63110,17 +63110,30 @@ function _picBusy() { const now = Date.now(); let n = 0;
   for (const [k, t] of _PIC_SLOTS) { if (now - t > PIC_SLOT_STALE_MS) _PIC_SLOTS.delete(k); else n++; }
   if (_SHEET_AT && now - _SHEET_AT < 60000) n += PIC_GATE_MAX;
   return n; }
+// ══ WHICH WORKER COPY IS DOING WHAT (v9.999.96, 2026-11-19, Aaron: go) ═══ MEASURED 13:38:00: "Worker exceeded memory limit" landed on the
+// turn's workflow 16s after its step returned, while the page's 8 card copies were being made. Each line below names this worker copy (a short
+// id, made on first use), so the next kill shows which copies were being made in the same worker at that moment, how long each took and how
+// big it came out. Log lines only - nothing is changed.
+let _ISO_ID = null, _PIC_WAITING = 0, _PIC_DOING = 0;
+function isoId() { if (!_ISO_ID) _ISO_ID = Math.random().toString(36).slice(2, 8); return _ISO_ID; }
 async function picGated(fn, keptKey, env) {
   // a copy that is already kept is a plain read - it never waits behind copies being made
   if (keptKey && env) { try { if (await env.AURA_KV.get(keptKey, { type: "arrayBuffer" })) return await fn(); } catch {} }
+  const _w0 = Date.now(); _PIC_WAITING++;
+  try { return await _picGatedRun(fn, keptKey, _w0); } finally { _PIC_WAITING = Math.max(0, _PIC_WAITING - 1); }
+}
+async function _picGatedRun(fn, keptKey, _w0) {
   // (v9.814) MEASURED 09:06:50-09:06:59: three picture requests were cancelled - "The Workers runtime canceled this request because it
   // detected that your Worker's code had hung". A request that waits for ANOTHER request to wake it is seen as hung. Each waiting copy now
   // checks again on its own timer, and after PIC_GATE_WAIT_MS it goes ahead regardless - a copy is never refused for waiting.
   const _t0 = Date.now();
   while (_picBusy() >= PIC_GATE_MAX && Date.now() - _t0 < PIC_GATE_WAIT_MS) await new Promise((r) => setTimeout(r, 150));
   const _slot = ++_PIC_N; _PIC_SLOTS.set(_slot, Date.now());
-  try { return await fn(); }
-  finally { _PIC_SLOTS.delete(_slot); }
+  _PIC_DOING++; const _m0 = Date.now(); let _bytes = null;
+  try { console.log("[PICMEM] " + isoId() + " start " + String(keptKey || "?").slice(0, 80) + " · waited " + (_m0 - _w0) + "ms · making " + _PIC_DOING + " · waiting " + Math.max(0, _PIC_WAITING - 1)); } catch {}
+  try { const _r = await fn(); try { _bytes = _r && _r.headers ? _r.headers.get("content-length") : null; } catch {} return _r; }
+  finally { _PIC_SLOTS.delete(_slot); _PIC_DOING = Math.max(0, _PIC_DOING - 1);
+    try { console.log("[PICMEM] " + isoId() + " done " + String(keptKey || "?").slice(0, 80) + " · " + (Date.now() - _m0) + "ms · " + (_bytes ? Math.round(Number(_bytes) / 1024) + " KB" : "no picture") + " · still making " + _PIC_DOING); } catch {} }
 }
 // ══ CLOUDFLARE'S IMAGE TOOL SHRINKS IT FIRST (v9.999.23, 2026-11-13, Aaron: go) ═══ MEASURED all day: "Worker exceeded memory limit" while
 // the phone's copies were made here, each by loading the whole card (about 1152x1728) into this worker. The image tool (the IMAGES binding)
@@ -66641,7 +66654,8 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       try {
         return await step.do("turn", { retries: { limit: 0, delay: "1 second" }, timeout: "15 minutes" }, async () => {
           // (v9.999.19) the job's own end is logged, so a kill after it is known to come from work still running in the background
-          try { const _r = await runTalkJob(this.env, d); try { console.log("[TURNJOB] job returned - the workflow step ends now"); } catch {} return _r; }
+          try { try { console.log("[PICMEM] " + isoId() + " turn job begins in this worker copy"); } catch {}
+                const _r = await runTalkJob(this.env, d); try { console.log("[TURNJOB] job returned - the workflow step ends now · worker copy " + isoId() + " · pictures still being made here: " + _PIC_DOING + ", waiting: " + _PIC_WAITING); } catch {} return _r; }
           catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 300) }; }
         });
       } catch (e) {

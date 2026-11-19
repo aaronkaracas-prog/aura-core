@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.94-2026-11-19-her-words-kept";
+const BUILD = "aura-core-v9.999.95-2026-11-19-showing-now";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -67978,7 +67978,11 @@ function dropDrawClaim(text) {
   // the claim was the opening of her only say-back, so it stayed, or the whole line went for a stock question. The claim words come off the
   // front (and "drawn right on your photo" off the end); what she said back stays: "The hand keeping its grip as the whole thing crawls up...".
   const sv = (x) => salvageDrawClaim(x);
-  const kept = t.split(/(?<=[.!?])\s+/).map(cutC).map(sv).filter((x) => !claim.test(x) && !/^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i.test(x));   // (v9.888) a done-word alone
+  // (v9.999.95, 2026-11-19) MEASURED 13:55: "...I'll imagine it past the wrist. Showing it on your photo now." stood over Imagine it with
+  // nothing drawing - "showing" was not in the list of doing-words above. A sentence that OPENS with any doing-word and says "now"
+  // ("Showing it on your photo now.", "Putting it together now.", "I'm bringing it to life now.") is the same claim, whatever the verb.
+  const nowClaim = /^\s*(?:(?:ok|okay|alright|so)[,\s]+)?(?:i'?m |i am )?(?!(?:some|any|every|no)?thing\b|morning\b|evening\b|spring\b|string\b|wedding\b)[a-z]{3,}ing\b[^.!?]{0,60}?\b(?:now|right now)\b[^.!?]*[.!]?\s*$/i;
+  const kept = t.split(/(?<=[.!?])\s+/).map(cutC).map(sv).filter((x) => !claim.test(x) && !nowClaim.test(x) && !/^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i.test(x));   // (v9.888) a done-word alone
   const out = kept.join(" ").trim();
   return out.length >= 12 ? out : t;
 }

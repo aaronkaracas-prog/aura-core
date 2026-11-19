@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.92-2026-11-19-photo-shows-more";
+const BUILD = "aura-core-v9.999.93-2026-11-19-photo-after-offer";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -73187,7 +73187,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             t = t.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim().replace(/^show me:\s*/i, "");
             if (!t || _tapW.test(t) || _bareW.test(t)) continue;
             t = _dropAsk(t); if (!t) continue;
-            _ws.push(t.replace(/[\s.]+$/, "")); }
+            // (v9.999.92) their idea sent again with a photo that shows more is one idea, not two
+            if (!_ws.includes(t.replace(/[\s.]+$/, ""))) _ws.push(t.replace(/[\s.]+$/, "")); }
           const _now = _dropAsk(String(said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim()).replace(/[\s.]+$/, "");
           if (_now && !_tapW.test(_now) && !_bareW.test(_now) && !_ws.includes(_now)) _ws.push(_now);
           return _ws.join(". ").slice(0, 600);
@@ -73393,9 +73394,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // answered "...let me draw that on, filling in the rest of your arm as it goes.", [ASKFIRST] held the drawing, and this hold was
           // skipped because a photo came with the turn - so no Imagine it, only "I have my own idea / Imagine ideas for me", under a line
           // promising a picture. A photo that arrives with their own words (not the add-on's opening line) is held the same way.
+          // (v9.999.93, 2026-11-19, Aaron: go) MEASURED 12:54:47: the photo came through the + (not the button) right after her offer, with no
+          // words - she answered "...Want me to draw it?" and nothing was held, so no Imagine it. A photo turn is held whenever they have told
+          // her an idea since the add-on began (their typed words, below); their first photo, with nothing said yet, has none and is not held.
           !(opts && (opts.inspire || opts.pick || opts.use || opts.own || opts.tile)) &&
-          !(opts && opts.ref && !(/\w/.test(String(said || "")) && !/^\s*\[they sent a photo/i.test(String(said || "")) &&
-            !/^\s*i want to (?:add to a tattoo|cover up a tattoo)/i.test(String(said || "")))) &&
           !_askIdeas && _isOfferLine(acted.say) &&
           // (v9.988, 2026-11-12, sign-off, Aaron: "we can't let people select fine lines and florals" over a big tattoo; their typed idea that won't
           // hide it - she explains and offers what works). When her cover-up answer asks in `choose` with the styles that will hide it, nothing is
@@ -74983,7 +74985,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (_wildNoClose && _closeP) console.log("[TURN:IDEAS] Imagine ideas for me - her close-up line left out: \"" + _closeP.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
               if (_closeP && !_boxE && !_wildNoClose) {
                 const _dirC = (/^(1|yes|true)$/i.test(_closeP) ? "my body around it" : _closeP).replace(/[\s.]+$/, "");
-                let _cl = "My photo is too close to fit the new work - zoom out to show more of ____, the way my body really is, so there is room - never shrink, move or redraw my existing tattoo to make space.";
+                // (v9.999.92) MEASURED 11:48:24: her extend is often a sentence ("my arm carries on past the edge of the photo down to my wrist"), and
+                // "show more of ____" read "show more of my arm carries on past...". Her words now come after a colon, which reads right either way.
+                let _cl = "My photo is too close to fit the new work. Zoom out to show more of my body the way it really is, so there is room for it: ____. Never shrink, move or redraw my existing tattoo to make space.";
                 try { const _k = String((await env.AURA_KV.get("config:frame:addon:close")) || "").trim(); if (_k.includes("____")) _cl = _k; } catch {}
                 _cl = _cl.replace("____", _dirC);
                 // a close photo is widened, so "keep my photo exactly as it is" would fight the line above - the photo's own words go, the tattoo's stay

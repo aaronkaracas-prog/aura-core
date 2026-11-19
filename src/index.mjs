@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.91-2026-11-19-past-the-photo";
+const BUILD = "aura-core-v9.999.92-2026-11-19-photo-shows-more";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -5182,6 +5182,11 @@ function agentInstanceFor(isOp, ptaId) {
 // entry shows up as a wrong answer in a test rather than as a silent right-looking one.
 const AURA_WORLDS = [
   ["mytattoo.world",         "mytattoo"],
+  // (v9.999.92, 2026-11-19, Session B request via Aaron) worldFor() returned null for both, so design() handed proxyToAgent a null
+  // channel and Aura answered these doors on the operator default. Ink It is the mytattoo world on its new domain; Ink Studio is the
+  // artist's own world, answered on aura-think's "inkstudio" channel.
+  ["inkit.world",            "mytattoo"],
+  ["inkstudio.world",        "inkstudio"],
   ["tattooparlors.world",    "tattooparlors"],
   ["tattooartist.world",     "tattooartist"],
   ["shareyourink.world",     "shareyourink"],
@@ -62135,14 +62140,29 @@ async function lookCopy(env, url) {
     if (was) return was;
     const b64 = await env.AURA_KV.get("image:" + id).catch(() => null);
     if (!b64 || b64.length * 0.75 <= 1200 * 1024) return url;   // small enough as it is
-    const im = PhotonImage.new_from_byteslice(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
-    const W = im.get_width(), H = im.get_height();
-    const s = 1024 / Math.max(W, H);
-    let small = im;
-    if (s < 1) small = photonResize(im, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)), PhotonSampling.Lanczos3);
-    const bts = small.get_bytes_jpeg(85);
-    try { if (small !== im) small.free(); } catch {}
-    try { im.free(); } catch {}
+    // ══ THE IMAGE TOOL MAKES HER COPY (v9.999.92, 2026-11-19, Aaron: go) ═══ MEASURED 11:49:25: "[LOOKCOPY] img_mwnyqffxjh9k 9155 KB" -
+    // the whole 2304x3456 add-on sheet decoded inside this worker - and 29s later "Worker exceeded memory limit" (again at 11:51:04, 11s
+    // after the next sheet was cut), and the page waited 290s on a turn whose pictures were made. The image tool (IMAGES binding) makes
+    // the 1024 copy outside the worker, as the cuts and the phone's copies already are. If it fails, a picture over 4 MB is never decoded
+    // here - her look uses the picture's own link, as it does whenever this fails.
+    let bts = null;
+    const _raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    { const _sh = await imagesShrink(env, _raw, 1024, 1024, "image/jpeg"); if (_sh) bts = _sh; }
+    const _byTool = !!bts;
+    if (!bts && _raw.length > 4 * 1024 * 1024) {
+      console.log("[LOOKCOPY] " + id + " " + Math.round(_raw.length / 1024) + " KB - the image tool could not make her copy and it is too big to make here; her look uses the picture itself");
+      return url;
+    }
+    if (!bts) {
+      const im = PhotonImage.new_from_byteslice(_raw);
+      const W = im.get_width(), H = im.get_height();
+      const s = 1024 / Math.max(W, H);
+      let small = im;
+      if (s < 1) small = photonResize(im, Math.max(1, Math.round(W * s)), Math.max(1, Math.round(H * s)), PhotonSampling.Lanczos3);
+      bts = small.get_bytes_jpeg(85);
+      try { if (small !== im) small.free(); } catch {}
+      try { im.free(); } catch {}
+    }
     let t = "";
     for (let k = 0; k < bts.length; k += 8192) t += String.fromCharCode.apply(null, bts.subarray(k, k + 8192));
     const nid = "img_l" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
@@ -62150,7 +62170,7 @@ async function lookCopy(env, url) {
     await env.AURA_KV.put("image:" + nid, btoa(t), { expirationTtl: 7 * 24 * 3600 });
     const out = "https://" + (await imageHost(env)) + "/image/" + nid;
     await env.AURA_KV.put("lookcopy:" + id, out, { expirationTtl: 7 * 24 * 3600 }).catch(() => {});
-    console.log("[LOOKCOPY] " + id + " " + Math.round(b64.length * 0.75 / 1024) + " KB -> " + nid + " " + Math.round(bts.length / 1024) + " KB");
+    console.log("[LOOKCOPY] " + id + " " + Math.round(b64.length * 0.75 / 1024) + " KB -> " + nid + " " + Math.round(bts.length / 1024) + " KB" + (_byTool ? " · made by the image tool" : " · made in the worker"));
     return out;
   } catch (e) {
     console.log("[LOOKCOPY] failed, original used: " + String(e?.message ?? e).slice(0, 160));
@@ -63105,10 +63125,11 @@ async function picGated(fn, keptKey, env) {
 // ══ CLOUDFLARE'S IMAGE TOOL SHRINKS IT FIRST (v9.999.23, 2026-11-13, Aaron: go) ═══ MEASURED all day: "Worker exceeded memory limit" while
 // the phone's copies were made here, each by loading the whole card (about 1152x1728) into this worker. The image tool (the IMAGES binding)
 // makes the small version outside the worker; only that is loaded here. If the tool is not there or fails, the worker shrinks it as before.
-async function imagesShrink(env, src, w) {
+async function imagesShrink(env, src, w, h, fmt) {
   if (!env.IMAGES || !src || !w) return null;
   try {
-    const _out = await env.IMAGES.input(new Blob([src]).stream()).transform({ width: w, fit: "scale-down" }).output({ format: "image/png" });
+    // (v9.999.92) optional h: the box the picture fits inside (its long side), and fmt: the format back - both default as before
+    const _out = await env.IMAGES.input(new Blob([src]).stream()).transform({ width: w, ...(h ? { height: h } : {}), fit: "scale-down" }).output({ format: fmt || "image/png" });
     const _b = new Uint8Array(await _out.response().arrayBuffer());
     return _b.length > 512 ? _b : null;
   } catch (e) { try { console.log("[IMAGES] shrink to " + w + " failed - the worker shrinks it: " + String(e?.message ?? e).slice(0, 140)); } catch {} return null; }
@@ -67932,7 +67953,12 @@ function dropDrawClaim(text) {
   // (v9.937, 2026-11-10 phone walk, Aaron: go) MEASURED: "Let me draw it on your arm." (cover-up) and "Let me draw that up." (a catalogue
   // pick) stood over Imagine it / Yes, show me with nothing drawing. "Let me / I'll draw it" says the same thing as "drawing it now".
   const claim = /\b(?:(?:i'?m |i am )?(?:drawing|imagining|sketching|creating|putting|making|working on)\b[^.!?]{0,40}?\b(?:now|right now)\b|(?:let me|i'?ll|i will|i'?m going to) (?:draw|sketch|paint) (?:it|that|this|them|one)(?: up| out| on you| on your [a-z]+| for you)?\s*[.!]|here it is|here you go|there you go|here(?:'|’)s (?:your|the) (?:new )?(?:look|design|version|picture|tattoo)|coming (?:right )?up|on (?:its|the) way)/i;
-  const kept = t.split(/(?<=[.!?])\s+/).filter((x) => !claim.test(x) && !/^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i.test(x));   // (v9.888) a done-word alone
+  // (v9.999.92, 2026-11-19) MEASURED 12:17:56: "Smoke and bones spilling out of the skull, the whole piece running down to your wrist - let me
+  // draw that on, filling in the rest of your arm as it goes." - the claim was the second half of her only sentence, so nothing was taken
+  // out. A "let me / I'll draw it ..." clause after a dash or comma is cut to the end of its sentence; her say-back before it stays.
+  const clause = /\s*[-–—,;:]\s*(?:so\s+|and\s+)?(?:let me|i'?ll|i will|i'?m going to) (?:draw|sketch|paint) (?:it|that|this|them|one)\b[^.!?]*[.!?]?\s*$/i;
+  const cutC = (x) => { const y = x.replace(clause, "").trim(); return y.length >= 12 && y !== x.trim() ? y.replace(/[\s,;:–—-]+$/, "") + "." : x; };
+  const kept = t.split(/(?<=[.!?])\s+/).map(cutC).filter((x) => !claim.test(x) && !/^\s*(?:changed|done|updated|all set|finished|added|all done)\s*[.!]*\s*$/i.test(x));   // (v9.888) a done-word alone
   const out = kept.join(" ").trim();
   return out.length >= 12 ? out : t;
 }
@@ -73363,7 +73389,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
       // show you one on your wrist?", nothing was held because this was add-on only, and on "yes show me" she answered "Here it is..." with
       // nothing drawn. A cover-up on their photo is held the same way as an add-on.
       if (me && (jobNow === "add" || jobNow === "cover") && refDesign && _bodyPhoto && act === "none" && !_heardOut && !_fixedWhy && acted && !_ideasGrid &&
-          !(opts && (opts.ref || opts.inspire || opts.pick || opts.use || opts.own || opts.tile)) && !_askIdeas && _isOfferLine(acted.say) &&
+          // (v9.999.92, 2026-11-19, Aaron: go) MEASURED 12:17:51: "Send a Photo That Shows More" sent their new photo WITH their idea; she
+          // answered "...let me draw that on, filling in the rest of your arm as it goes.", [ASKFIRST] held the drawing, and this hold was
+          // skipped because a photo came with the turn - so no Imagine it, only "I have my own idea / Imagine ideas for me", under a line
+          // promising a picture. A photo that arrives with their own words (not the add-on's opening line) is held the same way.
+          !(opts && (opts.inspire || opts.pick || opts.use || opts.own || opts.tile)) &&
+          !(opts && opts.ref && !(/\w/.test(String(said || "")) && !/^\s*\[they sent a photo/i.test(String(said || "")) &&
+            !/^\s*i want to (?:add to a tattoo|cover up a tattoo)/i.test(String(said || "")))) &&
+          !_askIdeas && _isOfferLine(acted.say) &&
           // (v9.988, 2026-11-12, sign-off, Aaron: "we can't let people select fine lines and florals" over a big tattoo; their typed idea that won't
           // hide it - she explains and offers what works). When her cover-up answer asks in `choose` with the styles that will hide it, nothing is
           // held for Imagine it - the page shows those styles and Imagine cover-ups.

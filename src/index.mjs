@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.104-2026-11-20-inkstudio-own-store";
+const BUILD = "aura-core-v9.999.105-2026-11-20-ink-it-by-name";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -31892,7 +31892,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const ap = await processCommand("APPOINTMENT NEW " + bookAs + " ::: " + JSON.stringify({
           customer: req.person, name: req.name || null, contact: req.contact || null,
           artist: req.artist || null, start: when,
-          note: "From mytattoo.world - " + (req.brief || "a design they made") +
+          note: "From Ink It - " + (req.brief || "a design they made") +
                 (req.image ? " - " + req.image : "")
         }), env, true);
         const app = (ap && ap.payload) ? ap.payload : ap;
@@ -62797,7 +62797,7 @@ async function canSection(env) {
   } catch { return ""; }
 }
 function heardSystem(style, canGo, can) {
-  return "You are Aura, the tattoo designer on mytattoo.world. Someone designing a new tattoo with you" +
+  return "You are Aura, the tattoo designer on Ink It. Someone designing a new tattoo with you" +
                 (style ? " (in the " + style + " style)" : "") + " just told you what they want. Answer them the way a warm, real " +
                 "tattoo artist would: brief, in your own words. If they shared something personal or hard, your words start there, simply. " +
                 "Never put a number in your words. " + TALK_SCOPE + "\n\n" + (can ? can + "\n\n" : "") +
@@ -62900,7 +62900,7 @@ async function drawStartSay(env, idea, style, talkModel, name) {
     let model = null; try { model = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
     let eff = "low"; try { const k = String((await env.AURA_KV.get("config:source:heard:reasoning")) || "").trim().toLowerCase(); if (["low", "medium", "high"].includes(k)) eff = k; else if (/^(off|none|default)$/.test(k)) eff = null; } catch {}
     const t0 = Date.now();
-    const sys = "You are Aura, the tattoo designer on mytattoo.world. Someone just asked you to imagine designs of their tattoo idea" +
+    const sys = "You are Aura, the tattoo designer on Ink It. Someone just asked you to imagine designs of their tattoo idea" +
       (style ? " in the " + style + " style" : "") + ". You already said the idea back to them and they said yes. " +
       // (v9.826, Aaron: "regardless if there's repetition it needs to not be there") MEASURED 15:12:20: "I'm picturing a sleek chrome butterfly
       // on your lower back, its wings edged with thin, delicate barbed-wire..." - the whole tattoo a third time, right after they said yes to it.
@@ -62932,7 +62932,7 @@ async function heardAck(env, told, talkModel) {
     let ms = 8000; try { const v = parseInt(String((await env.AURA_KV.get("config:talk:heard_ms")) || ""), 10); if (Number.isFinite(v) && v >= 0) ms = v; } catch {}
     let model = null; try { model = String((await env.AURA_KV.get("config:source:heard:model")) || "").trim() || null; } catch {}
     const t0 = Date.now();
-    const sys = "You are Aura, the tattoo designer on mytattoo.world. Someone just told you about the tattoo they want. Reply to what they told you " +
+    const sys = "You are Aura, the tattoo designer on Ink It. Someone just told you about the tattoo they want. Reply to what they told you " +
       "in one or two short, warm sentences in your own words, the way a caring person would - if they shared something personal, answer that first. " +
       "Do not describe the tattoo or what you will draw, and do not ask a question. Never put a number in your words. Plain words only.";
     const q = await Promise.race([new Promise((r) => setTimeout(() => r({ late: true }), ms)),
@@ -71724,7 +71724,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // (config:source:heard:reasoning, empty = low), and a last sentence that never finished is left off.
               let _cEff = "low"; try { const k = String((await env.AURA_KV.get("config:source:heard:reasoning")) || "").trim().toLowerCase(); if (["low", "medium", "high"].includes(k)) _cEff = k; else if (/^(off|none|default)$/.test(k)) _cEff = null; } catch {}
               const _cT0 = Date.now();
-              const _cSys = "You are Aura, the tattoo designer on mytattoo.world. Someone is changing the tattoo design they chose, and they just " +
+              const _cSys = "You are Aura, the tattoo designer on Ink It. Someone is changing the tattoo design they chose, and they just " +
                 "told you the change they want. In one or two short, warm sentences, in your own words: say back the change they asked for, so " +
                 "they know you got it, and tell them you're imagining their new versions now. Only what they asked for - nothing you are " +
                 "adding. Never put a number in your words. Plain words only, no lists.\n\n" +
@@ -80775,7 +80775,7 @@ export class PublicEntry extends WorkerEntrypoint {
           email: found.email || null, locality: null, region: null,
           claimed_at: found.claimed ? "signed-up" : null };
         const who = String(b.name || "").trim().slice(0, 80) || "Somebody";
-        const note = who + " designed a tattoo on mytattoo.world and wants " +
+        const note = who + " designed a tattoo on Ink It (inkit.world) and wants " +
           (row.name || "your shop") + " to do it.";
         // Cut at a word boundary, never mid-word - and prefer what the PERSON said over anything
         // written for a model.
@@ -80874,7 +80874,7 @@ export class PublicEntry extends WorkerEntrypoint {
               // The customer's own brief was sitting right there and was not the one being sent.
               // And their contact goes in, because "somebody wants this" without a way to reach
               // them is a lead the shop cannot act on.
-              context: who + " designed a tattoo on mytattoo.world and asked for " +
+              context: who + " designed a tattoo on Ink It (inkit.world) and asked for " +
                 (row.name || "your shop") + " by name" +
                 // The brief usually ends in a full stop of its own, so adding one produced
                 // "...on the back.. Reach them at" - a small thing that reads as carelessness in

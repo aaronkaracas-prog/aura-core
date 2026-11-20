@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.99-2026-11-19-their-size-plain-words";
+const BUILD = "aura-core-v9.999.100-2026-11-20-every-size";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68161,7 +68161,7 @@ function talkReadAct(txt) {
              // HER IDEAS AS PICTURE WORDS (2026-10-12, v9.584, Aaron): the same four, written for the picture.
              // (v9.897) MEASURED 15:43 (clock): "down past my wrist toward my hand, carrying the roots and knotwo" - the 80 characters were cut
              // before "I want it to go" came off, mid-word, and the cut words went to the image model. Off first, then cut at a word.
-             directions: strList(o.directions, 4, 240).map((x) => { let s = x.replace(/^\s*i want it(?: to go)?\s+/i, "").replace(/[.\s]+$/, "");
+             directions: strList(o.directions, 5, 240).map(   /* (v9.999.100) 5: the arm has five sizes - the full sleeve was the one cut */(x) => { let s = x.replace(/^\s*i want it(?: to go)?\s+/i, "").replace(/[.\s]+$/, "");
                if (s.length > 100) { s = s.slice(0, 100); const sp = s.lastIndexOf(" "); if (sp > 40) s = s.slice(0, sp); s = s.replace(/[\s,;:-]+$/, ""); }
                return s; }),
              where_to: (typeof o.where_to === "string") ? o.where_to.trim().slice(0, 160) : "",

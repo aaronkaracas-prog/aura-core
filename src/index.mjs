@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.102-2026-11-20-where-it-can-go";
+const BUILD = "aura-core-v9.999.103-2026-11-20-it-never-moves";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -75039,8 +75039,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 // "Extend it ...", "a small piece just around it" reads "Add ...".
                 const _ext = /^an?\s+small\b/i.test(_sz) ? "Add " + _sz : /^(?:an?|the)\s/i.test(_sz) ? "Extend it into " + _sz : "Extend it " + _sz.replace(/^covering\b/i, "to cover");
                 let _sw = _ownW
-                  ? "This is my current tattoo, I really like this style. %SIZE%, the same way, with ____. Show me 4 different versions of that, on my body. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them."
-                  : "This is my current tattoo, I really like this style. %SIZE%, the same way. Show me 4 different ideas for the new work, on my body. Make every idea a completely different design, so no two look alike, but keep the same style. Keep my existing tattoo exactly as it is. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them.";
+                  ? "This is my current tattoo, I really like this style. %SIZE%, the same way, with ____. Show me 4 different versions of that, on my body. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is and exactly where it is on my body - it never moves. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them."
+                  : "This is my current tattoo, I really like this style. %SIZE%, the same way. Show me 4 different ideas for the new work, on my body. Make every idea a completely different design, so no two look alike, but keep the same style. Keep my existing tattoo exactly as it is and exactly where it is on my body - it never moves. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them.";
                 try { const _k = String((await env.AURA_KV.get(_ownW ? "config:frame:addon:size" : "config:frame:addon:size_wild")) || "").trim(); if (_k.includes("%SIZE%")) _sw = _k; } catch {}
                 // her idea they tapped ("Show me: a raven ...") is a thing - "with a raven ..."; words they typed are theirs as they said them
                 if (_ownW && !/^\s*show me:/i.test(String(said || ""))) _sw = _sw.replace(", the same way, with ____.", ", the same way. Here is what I want: ____.");

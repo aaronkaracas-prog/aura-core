@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.101-2026-11-20-size-question-not-offer";
+const BUILD = "aura-core-v9.999.102-2026-11-20-where-it-can-go";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -69630,7 +69630,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
         // THE PLACES IT COULD GO (2026-10-18, v9.655, Aaron) - the same words as aura-think's reply format.
         '  "where_to": "when they are adding to a tattoo and tell you where they want the new work to go, in their own words - their words for where, finishing \'I want it to go ___\'; otherwise leave it out",\n' +
         // (v9.999.98, 2026-11-19, Aaron: "we have to establish how big the person wants the add-on first") the floor asks how big too
-        '  "directions": ["only on an add-on, on the turn the photo of their own tattoo arrives: 3 or 4 sizes that fit the part of the body it is on, the small one first, never one that leaves out where the tattoo already is - an arm: \'a small piece just around it\', \'a half sleeve, from my shoulder down to my elbow\', \'a lower half sleeve, from my elbow down to my wrist\', \'a full sleeve, from my shoulder down to my wrist\'; a leg: \'a small piece just around it\', \'a thigh piece, from my hip down to my knee\', \'a lower leg piece, from my knee down to my ankle\', \'a full leg, from my hip down to my ankle\'; a back: \'a small piece just around it\', \'a piece across my shoulder blade\', \'a half back piece\', \'a full back piece\'; a chest: \'a small piece just around it\', \'a piece on one side of my chest\', \'a full chest piece\', \'a chest piece that carries onto my shoulder\'; anywhere else: \'a small piece just around it\', \'a bigger piece, still on my ___\', \'a piece covering my whole ___\'"] - otherwise leave it out,\n' +
+        '  "directions": ["only on an add-on, on the turn the photo of their own tattoo arrives: look at where the tattoo sits and think like a tattoo artist about where it can naturally grow from there - around it, across the whole of that part of the body, and onward onto the parts next to it, up to the bigger pieces people really get (a sleeve, a full leg, a back piece): 4 or 5 of those, the smallest first, each in plain words that say where the new work ends (e.g. \'over my wrist and onto my forearm\', \'a half sleeve, from my hand up to my elbow\')"] - otherwise leave it out,\n' +
         '  "go": "only when they want to go somewhere else - one of the places named in WHY YOU ARE HERE, by its name; the app takes them there. If you can\'t tell where they want to go, ask them and leave it out",\n' +
         // (v9.976) WHAT THEIR PHOTO IS, IN HER READ - see THEIR OWN TATTOO, THEIR CHOICE below
         '  "photo_is": "only on a turn where they just sent a photo: their_tattoo when it is a tattoo already on their body; otherwise leave it out",\n' +
@@ -75034,7 +75034,10 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               let _sizeSent = false;
               if (_placeNow && _placeTap) {
                 const _sz = String(_placeNow).replace(/[\s.]+$/, "");
-                const _ext = /^an?\s+small\b/i.test(_sz) ? "Add " + _sz : "Extend it into " + _sz;
+                // (v9.999.102, 2026-11-20, Aaron: "we want them to be logical", not word for word) her places are her own words now: "a half
+                // sleeve, from my hand up to my elbow" reads "Extend it into ...", "onto my fingers" / "over my wrist and onto my forearm" read
+                // "Extend it ...", "a small piece just around it" reads "Add ...".
+                const _ext = /^an?\s+small\b/i.test(_sz) ? "Add " + _sz : /^(?:an?|the)\s/i.test(_sz) ? "Extend it into " + _sz : "Extend it " + _sz.replace(/^covering\b/i, "to cover");
                 let _sw = _ownW
                   ? "This is my current tattoo, I really like this style. %SIZE%, the same way, with ____. Show me 4 different versions of that, on my body. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them."
                   : "This is my current tattoo, I really like this style. %SIZE%, the same way. Show me 4 different ideas for the new work, on my body. Make every idea a completely different design, so no two look alike, but keep the same style. Keep my existing tattoo exactly as it is. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them.";

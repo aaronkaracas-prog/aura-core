@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.112-2026-11-20-print-size-asked-again";
+const BUILD = "aura-core-v9.999.113-2026-11-20-artist-hours";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -81775,7 +81775,11 @@ export class PublicEntry extends WorkerEntrypoint {
       for (const s of (seats?.results || [])) {
         const zone = await bizZoneName(this.env, s.biz);
         let hours = null;
-        try { const h = await run("SEAT HOURS " + s.biz + " " + me.pta); hours = h?.reads_as || null; } catch {}
+        // SEAT HOURS hands back the stored minutes ({wed:[[780,1140]]}); the page wants
+        // "13:00-19:00". MEASURED: this read `reads_as`, which SEAT HOURS never returns, so an
+        // artist with hours set saw "No hours set for you here yet".
+        try { const h = await run("SEAT HOURS " + s.biz + " " + me.pta);
+          hours = h?.reads_as || (h?.hours && typeof h.hours === "object" ? hoursReadAs(h.hours) : null); } catch {}
         let mine = [];
         try {
           const l = await run("APPOINTMENT LIST " + s.biz);

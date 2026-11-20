@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.100-2026-11-20-every-size";
+const BUILD = "aura-core-v9.999.101-2026-11-20-size-question-not-offer";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -73270,7 +73270,9 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             t = _dropAsk(t); if (!t) continue;
             // (v9.999.92) their idea sent again with a photo that shows more is one idea, not two
             if (!_ws.includes(t.replace(/[\s.]+$/, ""))) _ws.push(t.replace(/[\s.]+$/, "")); }
-          const _now = _dropAsk(String(said || "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim()).replace(/[\s.]+$/, "");
+          // (v9.999.101, 2026-11-20) MEASURED 06:41 (Aaron's phone): this turn's line was the page's own opener, "I want to add to a tattoo I
+          // already have" - stripped from earlier turns above, but not from this one - and went to the image model as their idea. Stripped here too.
+          const _now = _dropAsk(String(said || "").replace(_jobW, "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim()).replace(/[\s.]+$/, "");
           if (_now && !_tapW.test(_now) && !_bareW.test(_now) && !_ws.includes(_now)) _ws.push(_now);
           return _ws.join(". ").slice(0, 600);
         } catch { return String(said || "").trim().slice(0, 600); } };
@@ -73480,6 +73482,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // her an idea since the add-on began (their typed words, below); their first photo, with nothing said yet, has none and is not held.
           !(opts && (opts.inspire || opts.pick || opts.use || opts.own || opts.tile)) &&
           !_askIdeas && _isOfferLine(acted.say) &&
+          // ══ HOW BIG FIRST IS A QUESTION, NOT AN OFFER (v9.999.101, 2026-11-20, Aaron: "once again, I did not get any options for size") ═══
+          // MEASURED 06:41 (his phone, hand photo): she asked "How big do you want to take it?" with her sizes in `directions`; "take ...?" read as
+          // an offer, Imagine it was held under it, and the page hides the sizes under Imagine it. When her answer carries sizes, it is the size
+          // question - nothing is held; the sizes are the buttons.
+          !(jobNow === "add" && Array.isArray(acted.directions) && acted.directions.filter(Boolean).length) &&
           // (v9.988, 2026-11-12, sign-off, Aaron: "we can't let people select fine lines and florals" over a big tattoo; their typed idea that won't
           // hide it - she explains and offers what works). When her cover-up answer asks in `choose` with the styles that will hide it, nothing is
           // held for Imagine it - the page shows those styles and Imagine cover-ups.

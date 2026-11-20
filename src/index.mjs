@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.110-2026-11-20-parlors-artists";
+const BUILD = "aura-core-v9.999.111-2026-11-20-customer-reach";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -34085,7 +34085,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 (c.status === "CANCELLED" ? "It was " : "It is ") + nWhen + (nArtist ? " with " + nArtist : "") +
                 (c.summary ? "  --  " + String(c.summary).slice(0, 160) : "");
               const tell = async (who, key, subj, body) => {
-                const addr = await reachAddress(env, who, nBiz);
+                // The customer's own address is on the booking (book() puts it there); everyone
+                // else is found the way book() has always found them.
+                const addr = (key === "customer" && c.reach && String(c.reach).includes("@")) ? String(c.reach)
+                  : await reachAddress(env, who, nBiz);
                 if (!addr) { toldOf[key] = "no address"; return; }
                 const e = await emailFromWorld(env, addr, BIZ_WORLD, subj, body);
                 toldOf[key] = e?.ok ? true : (e?.error || false);
@@ -81873,6 +81876,19 @@ export class PublicEntry extends WorkerEntrypoint {
             : rp?.error === "TIME_TAKEN" ? "That time is no longer free - pick another."
             : rp?.error === "HOURS_UNKNOWN" ? "We could not check their hours, so this was not booked."
             : "That could not be booked.") };
+      // ══ THE CUSTOMER'S ADDRESS LIVES ON THE BOOKING (2026-11-20) ═════════════════════════
+      // MEASURED: a parlor moved Customer Two's booking and the reply said `customer: "no address"`.
+      // Their contact was used once for the confirmation email and kept nowhere we can read: the
+      // identity is hashed (for matching, never for reading back) and their chain needs a grant they
+      // never gave. Same rule as an owner's address on the owns edge - an address given so this shop
+      // can reach them about THIS booking is a fact about the booking, so it rides on its edge and
+      // goes when the booking does.
+      try {
+        const bRow = await this.env.AURA_MEMORY.prepare("SELECT context FROM pta_edges WHERE id = ?").bind(rp.booking).first();
+        let bc = {}; try { bc = bRow?.context ? JSON.parse(bRow.context) : {}; } catch {}
+        bc.reach = contact;
+        await this.env.AURA_MEMORY.prepare("UPDATE pta_edges SET context = ? WHERE id = ?").bind(JSON.stringify(bc), rp.booking).run();
+      } catch {}
       // What they said they want, in their words, on their own chain.
       let notes_kept = null;
       if (f.notes) {

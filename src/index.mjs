@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.107-2026-11-20-own-plain-keys";
+const BUILD = "aura-core-v9.999.108-2026-11-20-eyes-ask";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -6514,6 +6514,83 @@ async function processCommand(line, env, isOp) {
         cursor = pg.cursor;
       }
       return { cmd: "FEEDBACK", payload: { ok: true, count: out.length, feedback: out } };
+    }
+    // ══ EYES_ASK ── ONE PHOTO, ONE QUESTION, THE MODELS NAMED (v9.999.108, 2026-11-20, Aaron: "whatever image model needs to read it and
+    // give us back real choices just like GPT did") ═══ A test door - nothing else calls it. The photo goes to each model as the picture
+    // itself (its bytes, not a link and not a description), with the question word for word and nothing of ours: no system line, no
+    // instructions. "her" is her own dial (config:core:provider, then config:core:model:<provider>), with her reasoning dial
+    // (config:neurons:reasoning) as her turns send it; any other name is sent as the model id it is - names live in the command, not here.
+    // Each answer comes back word for word with its time and tokens.
+    //   RUN 'EYES_ASK {"image":"ent_... or img_...","q":"the question","models":["her","<model id>"]}'
+    case "EYES_ASK": {
+      if (!isOp) return { cmd: "EYES_ASK", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const eaUse = 'RUN \'EYES_ASK {"image":"ent_... or img_...","q":"the question","models":["her","<model id>"]}\'';
+      let eaP = null; try { eaP = JSON.parse(String(line || "").replace(/^\s*EYES_ASK\s*/i, "")); } catch {}
+      if (!eaP || !eaP.image || !eaP.q) return { cmd: "EYES_ASK", payload: { ok: false, error: "Usage: " + eaUse } };
+      const eaRef = String(eaP.image).trim();
+      let eaImg = (eaRef.match(/img_[A-Za-z0-9_-]{4,80}/) || [])[0] || "";
+      if (!eaImg && /^ent_/i.test(eaRef)) {
+        try {
+          const eaEnt = await resolveSmartFile(env.AURA_MEMORY, eaRef);
+          let eaMeta = {}; try { eaMeta = JSON.parse((eaEnt && eaEnt.metadata) || "{}"); } catch {}
+          eaImg = (String(eaMeta.url || eaMeta.image_url || "").match(/img_[A-Za-z0-9_-]{4,80}/) || [])[0] || "";
+        } catch {}
+      }
+      if (!eaImg) return { cmd: "EYES_ASK", payload: { ok: false, error: "no picture found for " + eaRef } };
+      // The bytes, from our own store - never over HTTP to our own domain (see seeMedia).
+      let eaBytes = null;
+      try { if (env.AURA_IMAGES) { const o = await env.AURA_IMAGES.get(eaImg + ".png").catch(() => null); if (o) { const b = await o.arrayBuffer(); if (b && b.byteLength > 1024) eaBytes = new Uint8Array(b); } } } catch {}
+      if (!eaBytes) { const k = await env.AURA_KV.get("image:" + eaImg).catch(() => null);
+        if (k) { const bin = atob(k); const u = new Uint8Array(bin.length); for (let n = 0; n < bin.length; n++) u[n] = bin.charCodeAt(n); if (u.length > 1024) eaBytes = u; } }
+      if (!eaBytes) return { cmd: "EYES_ASK", payload: { ok: false, error: "the picture " + eaImg + " has no bytes in our store" } };
+      const eaType = (eaBytes[0] === 0x89 && eaBytes[1] === 0x50) ? "image/png" : (eaBytes[0] === 0xff && eaBytes[1] === 0xd8) ? "image/jpeg"
+                   : (eaBytes[0] === 0x52 && eaBytes[1] === 0x49 && eaBytes[8] === 0x57) ? "image/webp" : "image/png";
+      let eaBin = ""; for (let i = 0; i < eaBytes.length; i += 8192) eaBin += String.fromCharCode.apply(null, eaBytes.subarray(i, i + 8192));
+      const eaData = "data:" + eaType + ";base64," + btoa(eaBin);
+      const eaQ = String(eaP.q);
+      const eaList = (Array.isArray(eaP.models) && eaP.models.length ? eaP.models : ["her"]).map((m) => String(m || "").trim()).filter(Boolean).slice(0, 6);
+      const eaEff = String((await env.AURA_KV.get("config:neurons:reasoning").catch(() => null)) || "").trim().toLowerCase();
+      const eaOne = async (name) => {
+        const t0 = Date.now();
+        let model = name, herDial = null;
+        if (/^her$/i.test(name)) {
+          const prov = String((await env.AURA_KV.get("config:core:provider").catch(() => null)) || "neurons").trim() || "neurons";
+          herDial = "config:core:model:" + prov;
+          model = String((await env.AURA_KV.get(herDial).catch(() => null)) || "").trim();
+          if (!model) return { asked: name, ok: false, error: "her dial " + herDial + " is empty" };
+        }
+        const msgs = [{ role: "user", content: [{ type: "image_url", image_url: { url: eaData } }, { type: "text", text: eaQ }] }];
+        try {
+          if (/^@cf\//i.test(model)) {
+            if (!env.AI || typeof env.AI.run !== "function") return { asked: name, model, ok: false, error: "NO_AI_BINDING" };
+            const inp = { max_tokens: 3000, messages: msgs };
+            const effOn = herDial && eaEff && !/^(off|none|null|disable)$/i.test(eaEff);
+            let rr; try { rr = await env.AI.run(model, effOn ? { ...inp, reasoning_effort: eaEff } : inp); }
+            catch (e) { if (!effOn) throw e; rr = await env.AI.run(model, inp); }
+            const mf = modelFinalText(aiText(rr));
+            const u = (rr && rr.usage) || {};
+            return { asked: name, model, ok: !!mf.text, ms: Date.now() - t0, ...(herDial ? { dial: herDial, reasoning: effOn ? eaEff : "model default" } : {}),
+                     tokens_in: Number(u.prompt_tokens ?? u.input_tokens ?? 0), tokens_out: Number(u.completion_tokens ?? u.output_tokens ?? 0),
+                     answer: mf.text || null, ...(mf.text ? {} : { error: "the model returned nothing readable" }) };
+          }
+          const prov = /^grok/i.test(model) ? "xai" : /^gpt|^o[0-9]/i.test(model) ? "openai" : null;
+          if (!prov) return { asked: name, model, ok: false, error: "EYES_ASK speaks to @cf/, gpt and grok models" };
+          const key = prov === "xai" ? (env.XAI_API_KEY || await KV.get(env, "secret:grok_api_key")) : (env.OPENAI_API_KEY || await KV.get(env, "secret:openai"));
+          if (!key) return { asked: name, model, ok: false, error: "no key for " + prov };
+          const url = prov === "xai" ? "https://api.x.ai/v1/chat/completions" : "https://api.openai.com/v1/chat/completions";
+          const body = prov === "xai" ? { model, max_tokens: 3000, messages: msgs } : { model, max_completion_tokens: 6000, messages: msgs };
+          const r = await pfetch(env, prov, "EYES_ASK", url, { method: "POST", headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) return { asked: name, model, ok: false, ms: Date.now() - t0, error: String((d && d.error && d.error.message) || ("http " + r.status)).slice(0, 300) };
+          const text = String(d?.choices?.[0]?.message?.content || "").trim();
+          return { asked: name, model, ok: !!text, ms: Date.now() - t0, tokens_in: d?.usage?.prompt_tokens || 0, tokens_out: d?.usage?.completion_tokens || 0,
+                   answer: text || null, ...(text ? {} : { error: "empty answer" }) };
+        } catch (e) { return { asked: name, model, ok: false, ms: Date.now() - t0, error: String(e?.message ?? e).slice(0, 300) }; }
+      };
+      const eaOut = await Promise.all(eaList.map(eaOne));
+      for (const o of eaOut) { try { console.log("[EYES_ASK] " + o.model + (o.ok ? " answered in " + o.ms + "ms: " + String(o.answer).slice(0, 300) : " failed: " + o.error)); } catch {} }
+      return { cmd: "EYES_ASK", payload: { ok: eaOut.some((o) => o.ok), picture: eaImg, bytes: eaBytes.length, type: eaType,
+               sent: "the picture + the question, word for word - no system line, nothing added", question: eaQ, answers: eaOut } };
     }
     // ══ MODELPING ── HOW FAST IS HER MODEL RIGHT NOW (v9.682, 2026-10-19, Aaron: "work on speed and analyze every step") ═════
     // MEASURED 06:31-06:35: the same 98%-cached request took 38s, 44s, 64s, then 5.6s and 3.5s; at 10:18-10:21 three calls took 55-65s

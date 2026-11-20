@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.108-2026-11-20-eyes-ask";
+const BUILD = "aura-core-v9.999.109-2026-11-20-addon-two";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -75148,13 +75148,13 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 // "Extend it ...", "a small piece just around it" reads "Add ...".
                 const _ext = /^an?\s+small\b/i.test(_sz) ? "Add " + _sz : /^(?:an?|the)\s/i.test(_sz) ? "Extend it into " + _sz : "Extend it " + _sz.replace(/^covering\b/i, "to cover");
                 let _sw = _ownW
-                  ? "This is my current tattoo, I really like this style. %SIZE%, the same way, with ____. Show me 4 different versions of that, on my body. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is and exactly where it is on my body - it never moves. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them."
-                  : "This is my current tattoo, I really like this style. %SIZE%, the same way. Show me 4 different ideas for the new work, on my body. Make every idea a completely different design, so no two look alike, but keep the same style. Keep my existing tattoo exactly as it is and exactly where it is on my body - it never moves. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them.";
-                try { const _k = String((await env.AURA_KV.get(_ownW ? "config:frame:addon:size" : "config:frame:addon:size_wild")) || "").trim(); if (_k.includes("%SIZE%")) _sw = _k; } catch {}
+                  ? "This is my current tattoo. %SIZE%, with ____. Do it in the same style as my tattoo. Keep my existing tattoo exactly as it is. Show me 2 different versions of this, side by side on one page, with a wide black gap between them."
+                  : "This is my current tattoo. %SIZE%. Do it in the same style as my tattoo. Keep my existing tattoo exactly as it is. Show me 2 different ideas for the new work, side by side on one page, with a wide black gap between them.";
+                try { const _k = String((await env.AURA_KV.get(_ownW ? "config:frame:addon:size_two" : "config:frame:addon:size_wild_two")) || "").trim(); if (_k.includes("%SIZE%")) _sw = _k; } catch {}
                 // her idea they tapped ("Show me: a raven ...") is a thing - "with a raven ..."; words they typed are theirs as they said them
-                if (_ownW && !/^\s*show me:/i.test(String(said || ""))) _sw = _sw.replace(", the same way, with ____.", ", the same way. Here is what I want: ____.");
+                if (_ownW && !/^\s*show me:/i.test(String(said || ""))) _sw = _sw.replace(", with ____.", ". Here is what I want: ____.");
                 _sw = _sw.replace("%SIZE%", _ext).replace("____", _ownW.replace(/^(?:show me:?\s*)/i, "").replace(/^(?:[A-Z](?=[a-z])|An?(?= ))/, (c) => c.toLowerCase()));
-                if (_addStyle1) _sw = _sw.replace(", I really like this style.", ". I want the new work in the " + _addStyle1 + " style.").replace(", the same way", "").replace("but keep the same style", "in the " + _addStyle1 + " style");
+                if (_addStyle1) _sw = _sw.replace("in the same style as my tattoo", "in the " + _addStyle1 + " style");
                 _sentNow = _sw; _sizeSent = true; _oFrom = (_ownW ? "size" : "size_wild") + (_addStyle1 ? "+style" : "");
                 console.log("[TURN:IDEAS] their size in plain words - no zoom-out, no framing lines: \"" + _ext + "\"" + (me ? " · who=" + me : ""));
               }
@@ -75166,16 +75166,23 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // added - no zoom-out, no framing lines. With no words (Imagine ideas for me, no place) the same plain wild sentence.
               // Settings: config:frame:addon:own_plain ("____" their words) and config:frame:addon:own_wild_plain (v9.999.107: their own names -
               // the 12:31 rose run read config:frame:addon:own, the v9.667 path's setting with its caption-grid sentence, and sent that instead).
+              // ══ TWO, NOT FOUR, AND NO "BE BOLD" (v9.999.109, 2026-11-20, Aaron: "two worked fine ... make whatever changes we need") ═══ PROVEN by
+              // command 14:30-14:40 on the bent-arm rose photo (img_mwpjscywtqb4, flare at medium, the photo sent as the picture): one picture held,
+              // two held (img_mwpjz7639ddl to the elbow, img_mwpka74jhopa a full sleeve - normal arm, both roses untouched, two different sleeves);
+              // three in a strip shrank each picture, four (img_mwpk077b1bwy) and four with "be bold" (img_mwpk4mz2zsni) morphed the arm - longer
+              // forearm, elbow off the frame - and "bold" grew past the elbow onto the upper arm. The plain sentence of that 14:40 run goes, two
+              // side by side on one wide page (2048x1536, config:source:addon:size2), cut into two cards. Settings: config:frame:addon:own_two,
+              // own_wild_two, size_two, size_wild_two - new names, so no older four-picture setting can stand in for them.
               let _boxOwn = ""; try { _boxOwn = String((await talkStateGet(env, me, ["addon_box"])).addon_box || "").trim(); } catch {}
               if (!_sizeSent && !_boxOwn) {   // a green box they marked keeps its own proven words (v9.894)
                 let _pw = _ownW
-                  ? "This is my current tattoo, I really like this style. Here is what I want: ____. Show me 4 different versions of that, on my body. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is and exactly where it is on my body - it never moves. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them."
-                  : "This is my current tattoo, I really like this style. Add to it, the same way. Show me 4 different ideas for the new work, on my body. Make every idea a completely different design, so no two look alike, but keep the same style. Keep my existing tattoo exactly as it is and exactly where it is on my body - it never moves. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them.";
-                try { const _k = String((await env.AURA_KV.get(_ownW ? "config:frame:addon:own_plain" : "config:frame:addon:own_wild_plain")) || "").trim(); if (_ownW ? _k.includes("____") : _k) _pw = _k; } catch {}
+                  ? "This is my current tattoo. Here is what I want: ____. Do it in the same style as my tattoo. Keep my existing tattoo exactly as it is. Show me 2 different versions of this, side by side on one page, with a wide black gap between them."
+                  : "This is my current tattoo. Add to it, in the same style as my tattoo. Keep my existing tattoo exactly as it is. Show me 2 different ideas for the new work, side by side on one page, with a wide black gap between them.";
+                try { const _k = String((await env.AURA_KV.get(_ownW ? "config:frame:addon:own_two" : "config:frame:addon:own_wild_two")) || "").trim(); if (_ownW ? _k.includes("____") : _k) _pw = _k; } catch {}
                 // her idea they tapped ("Show me: a raven ...") is a thing - "Add to it, the same way, with a raven ..."
-                if (_ownW && /^\s*show me:/i.test(String(said || ""))) _pw = _pw.replace(" Here is what I want: ____.", " Add to it, the same way, with ____.");
+                if (_ownW && /^\s*show me:/i.test(String(said || ""))) _pw = _pw.replace(" Here is what I want: ____.", " Add to it with ____.");
                 _pw = _pw.replace("____", _ownW.replace(/^(?:show me:?\s*)/i, "").replace(/^(?:[A-Z](?=[a-z])|An?(?= ))/, (c) => c.toLowerCase()));
-                if (_addStyle1) _pw = _pw.replace(", I really like this style.", ". I want the new work in the " + _addStyle1 + " style.").replace(", the same way", "").replace("but keep the same style", "in the " + _addStyle1 + " style");
+                if (_addStyle1) _pw = _pw.replace("in the same style as my tattoo", "in the " + _addStyle1 + " style");
                 _sentNow = _pw; _sizeSent = true; _oFrom = (_ownW ? "own" : "own_wild") + (_addStyle1 ? "+style" : "");
                 console.log("[TURN:IDEAS] their own words, no place tapped - the plain sentence, no zoom-out, no framing lines" + (me ? " · who=" + me : ""));
               }
@@ -75189,7 +75196,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // they tapped is their choice and goes, after what they want, before the freedom words.
               if (_placeNow && !_placeTap) console.log("[TURN:IDEAS] her place left out - they did not tap it: \"" + _placeNow + "\"");
               if (_placeNow && _placeTap && !_sizeSent) {
-                let _atP = _sentNow.indexOf(" Show me 4"); if (_atP < 0) _atP = _sentNow.indexOf(" Be bold");
+                let _atP = _sentNow.search(/ Show me [24]\b/); if (_atP < 0) _atP = _sentNow.indexOf(" Be bold");
                 // (v9.892) a size they tapped reads "I want it medium, down onto my chest." - a place, "I want it to go down my arm."
                 const _plc = _placeNow.replace(/[\s.]+$/, "");
                 // (v9.999.98) a size off the SIZES chart reads "a full sleeve, from my shoulder down to my wrist" - "I want it to be ..."
@@ -75206,7 +75213,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 _sentNow = _sentNow.replace(/ I want it(?: to go)? [^.]*\./, "");
                 // the green box on their photo must not be kept - "keep my photo exactly as it is" goes; the tattoo's own keep-it words stay
                 _sentNow = _sentNow.replace(/ - and keep my photo exactly as it is( in every version)?(?=\.)/, "");
-                let _atB = _sentNow.indexOf(" Show me 4"); if (_atB < 0) _atB = _sentNow.indexOf(" Make every idea");
+                let _atB = _sentNow.search(/ Show me [24]\b/); if (_atB < 0) _atB = _sentNow.indexOf(" Make every idea");
                 _sentNow = _atB > 0 ? _sentNow.slice(0, _atB) + " " + _bx + _sentNow.slice(_atB) : _sentNow + " " + _bx;
                 _boxParent = _boxE; _oFrom += "+box";
                 console.log("[TURN:IDEAS] drawn on their photo with the box they marked (" + _boxE + "): \"" + _bx + "\"" + (me ? " · who=" + me : ""));
@@ -75258,7 +75265,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             }
             // (v9.871) a sheet of four when the words ask for one; an older one-picture setting still draws one
             // (v9.887) a change on the one they picked too - the change sentence asks for four
-            _addonSheet = /\bShow me 4\b/.test(_sentNow);
+            _addonSheet = /\bShow me [24]\b/.test(_sentNow);
+            const _addonTwo = /\bShow me 2\b/.test(_sentNow);   // (v9.999.109) two side by side on one wide page
             // (v9.871) what they asked for, for the version row: the change they typed, or the last thing they said they want
             _askedFor = _oneParent ? (_ownW || null) : (() => { const _sg = String(_addonOwnWords || "").split(/\.\s+/).filter(Boolean); let _t = _sg.pop() || "";
               if (_t.length < 15 && _sg.length) _t = _sg.pop() + ". " + _t; return _t.slice(0, 160) || null; })();
@@ -75270,8 +75278,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             // model could not tell their dragon from the new koi and turned the dragon blue. The card goes first (it is built on), their photo second.
             if (_oneParent && refUrl && /^https:\/\//i.test(String(refUrl))) { _withNow = [String(refUrl)]; console.log("[TURN:IDEAS] the change goes with their photo as it is today: " + refUrl + (me ? " · who=" + me : "")); }
             if (_addonSheet) {
-              _canvasNow = { width: 2304, height: 3456 };
-              try { const _gm = String((await env.AURA_KV.get("config:source:addon:size")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/);
+              _canvasNow = _addonTwo ? { width: 2048, height: 1536 } : { width: 2304, height: 3456 };
+              try { const _gm = String((await env.AURA_KV.get(_addonTwo ? "config:source:addon:size2" : "config:source:addon:size")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/);
                     if (_gm) _canvasNow = { width: parseInt(_gm[1], 10), height: parseInt(_gm[2], 10) }; } catch {}
             }
             let _m1 = ""; try { _m1 = String((await env.AURA_KV.get("config:source:addon:model")) || "").trim(); } catch {}
@@ -75279,7 +75287,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
             let _q1 = ""; try { _q1 = String((await env.AURA_KV.get("config:source:addon:quality")) || "").trim().toLowerCase(); } catch {}
             _qualNow = ["low", "medium", "high", "auto"].includes(_q1) ? _q1 : await sheet8DirectQuality(env);
             _seedNow = 1 + Math.floor(Math.random() * 2000000000);
-            console.log("[TURN:IDEAS] add-on, " + (_addonSheet ? "four ideas on one sheet (" + _canvasNow.width + "x" + _canvasNow.height + ")" : "one picture") + (_oneParent ? " - a change on the one they have (" + _oneParent + ")" : " on their photo") +
+            console.log("[TURN:IDEAS] add-on, " + (_addonSheet ? (_addonTwo ? "two" : "four") + " ideas on one sheet (" + _canvasNow.width + "x" + _canvasNow.height + ")" : "one picture") + (_oneParent ? " - a change on the one they have (" + _oneParent + ")" : " on their photo") +
               " · " + (_modelNow || "the shared edit model") + " at " + _qualNow + " · words from " + _wordsFrom + (me ? " · who=" + me : ""));
           }
           // THE FOUR VERSIONS OF A CHANGE (v9.599): their words inside one fixed sentence (`config:frame:design:grid`,

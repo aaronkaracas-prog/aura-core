@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.111-2026-11-20-customer-reach";
+const BUILD = "aura-core-v9.999.112-2026-11-20-print-size-asked-again";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -67736,6 +67736,12 @@ async function makeArtistFiles(env, ctx) {
             let _saved = null, _name = null;
             try { _saved = String((await talkStateGet(env, me, ["added"])).added || "").trim() || null; } catch {}
             const _ok = (v) => (v >= 1 && v <= 60) ? Math.round(v * 10) / 10 : 0;   // PRINT's own ceiling
+            // ══ HER ANSWER IS USED ONLY IN THE SHAPE ASKED, ELSE SHE IS ASKED ONCE MORE (v9.999.112, 2026-11-20, Aaron: go) ═══ MEASURED 15:12:22
+            // (pta_26d1411820e30fde, the peony full sleeve): she answered this question as if asked to show the card - "Got it - number 1 on its
+            // own, just the artwork on plain white... Here it is." (do: change) - so no height came back and every stencil in the PDF read "planned
+            // at about 5 in" for a full sleeve, and her sentence was taken as the new work's name. A reply with no whole height is not used at all
+            // (neither its numbers nor its name); she is asked once more, and a second miss is logged as one before the standard size goes.
+            for (let _sizeTry = 1; _sizeTry <= 2 && !_seeWhole; _sizeTry++) {
             try {
               const q = await proxyToAgent(env,
                 "[FOR YOU, NOT THEM. Their artist's sheets are being drawn now." +
@@ -67765,7 +67771,11 @@ async function makeArtistFiles(env, ctx) {
                 const _wm = _meas.match(/\bwhole\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i) ||
                             _meas.match(/(\d+(?:\.\d+)?)\s*(?:in\b|inch\w*|")?[^0-9\n\/]{0,12}\/\s*new\b/i);
                 const _nm = _meas.match(/\bnew\b[^0-9\n]{0,24}?(\d+(?:\.\d+)?)/i);
-                if (_wm) _seeWhole = _ok(parseFloat(_wm[1]));
+                if (!_wm || !_ok(parseFloat(_wm[1]))) {
+                  try { console.log("[PRINT-SIZE] ask " + _sizeTry + " - her answer is not the two lines asked for (no whole height), not used" + (_sizeTry < 2 ? " - she is asked once more" : "") + " | she said: " + JSON.stringify(_rawQ.slice(0, 300))); } catch {}
+                  continue;
+                }
+                _seeWhole = _ok(parseFloat(_wm[1]));
                 if (_nm) _seeNew = _ok(parseFloat(_nm[1]));
                 try { console.log("[PRINT-SIZE] she measured on their body: whole=" + (_seeWhole || "?") + "in new=" + (_seeNew || "?") + "in | she said: " + JSON.stringify(_seeRaw)); } catch {}
                 _name = (_ans.split(/\r?\n/).map((x) => x.trim()).find((x) => x && !/^(whole|new)\b/i.test(x)) || "").trim()
@@ -67777,6 +67787,8 @@ async function makeArtistFiles(env, ctx) {
                 if (_name) _name = _name.replace(/^(The|A|An)\b/, (w) => w.toLowerCase());
               }
             } catch {}
+            }
+            if (!_seeWhole) { try { console.log("[PRINT-SIZE] MISS - no height from her after 2 asks; the standard size goes on the files and the name comes from the design" + (me ? " · who=" + me : "")); } catch {} }
             // ══ THE WHOLE PIECE KEEPS ITS COLORS (v9.891, 2026-11-08, Aaron: go) ═══ MEASURED: the black-and-grey rose (07:30) and the lighthouse
             // clock (10:09, img_mw8594e2b9tl) came back brown all over, the gold beam lost in it - the sentence said nothing of color and the skin's
             // warmth went onto the paper. PROVEN by command 10:14 on the locked card: with the color line the waves stay black and grey and the

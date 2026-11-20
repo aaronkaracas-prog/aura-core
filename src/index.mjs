@@ -50,6 +50,13 @@ import QRCode from "qrcode-svg";
 // went. Concurrency-safe: every request has its own store. Logging only - changes no behaviour.
 import { AsyncLocalStorage } from "node:async_hooks";
 const _TURN_ALS = new AsyncLocalStorage();
+// ══ A WORLD THAT KEEPS ITS OWN WORK (v9.999.104, 2026-11-20, Session B request 2, Aaron: go) ══════════════════════════════
+// Ink Studio's projects, In Progress, favourites and conversation live apart from the same person's Ink It work. The world is
+// set only around Ink Studio's own calls (design() and its background jobs); everywhere else the store is empty and every
+// read and write goes exactly where it always has.
+const _WORLD_ALS = new AsyncLocalStorage();
+const OWN_STORE_WORLDS = new Set(["inkstudio"]);
+function _ownStoreWorld() { try { const s = _WORLD_ALS.getStore(); return (s && OWN_STORE_WORLDS.has(s.world)) ? s.world : null; } catch { return null; } }
 // ══ PHOTON — DETERMINISTIC IMAGE PROCESSING, NO MODEL ════════════════════════════════════════
 // Rust image library compiled to WebAssembly, running inside this Worker. Cloudflare's own
 // documented answer for image processing here: Sharp needs libvips and ImageMagick needs system
@@ -109,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.103-2026-11-20-it-never-moves";
+const BUILD = "aura-core-v9.999.104-2026-11-20-inkstudio-own-store";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -65510,7 +65517,10 @@ async function showIt(subject, env, opts = {}) {
     // A priced-from-usage figure and a guessed one must not look the same downstream either.
     cost_source: result.cost_source || null, neurons: result.neurons ?? null,
     edited: refs.length ? true : undefined,
-    from_refs: refs.length || undefined };
+    from_refs: refs.length || undefined,
+    // (v9.999.104, Session B request 3) a picture served from the image cache says so - not named "cached", which catalogue commands read
+    from_cache: result.cached ? true : undefined,
+    cost_note: result.cached ? "image cache - these exact words were drawn before; the earlier picture, free" : undefined };
   // THE IMAGE IS A LIVING SMART FILE. Register it through the generic Smart File engine as
   // filetype:"image" - it gets the same identity, timeline, lineage, and attributed contributors any
   // file gets. Image is just one filetype; the engine is universal.
@@ -66594,7 +66604,21 @@ export class PtaDurableObject {
 // being a design problem. And each completed step persists: a redeploy resumes at the last finished
 // tile instead of re-crawling the city.
 export class GridCrawlWorkflow extends WorkflowEntrypoint {
+  // (v9.999.104) Ink Studio's jobs run inside its own store; every other job runs the body exactly as before, with the same step.
   async run(event, step) {
+    const _d = (event && event.payload && event.payload.data) || {};
+    const _w = _d.world || worldFor(_d.host);
+    if (!OWN_STORE_WORLDS.has(_w)) return this._runBody(event, step);
+    const _st = { world: _w };
+    const _step = {
+      do: (name, ...rest) => { const i = rest.length - 1; if (i >= 0 && typeof rest[i] === "function") { const cb = rest[i]; rest[i] = (...a) => _WORLD_ALS.run(_st, () => cb(...a)); } return step.do(name, ...rest); },
+      sleep: (...a) => step.sleep(...a),
+      sleepUntil: (...a) => step.sleepUntil(...a),
+      waitForEvent: (...a) => step.waitForEvent(...a),
+    };
+    return _WORLD_ALS.run(_st, () => this._runBody(event, _step));
+  }
+  async _runBody(event, step) {
     // ══ ENRICHMENT IS A MODE OF THIS WORKFLOW, NOT A SECOND ONE (2026-08-18) ═══════════════════
     // Claude spent a day building synchronous polling inside CG_ENRICH, hit CRAWL_TIMEOUT on every
     // healthy domain, then designed a "start and collect" split to solve it. THIS ALREADY EXISTED:
@@ -67913,7 +67937,11 @@ async function makeArtistFiles(env, ctx) {
 // everybody's existing conversation carries over without a migration.
 const TALK_STATE_KV = { timeline: "pta:timeline:", brief: "talk:brief:", last: "talk:last:",
                         bad: "talk:bad:", ref: "talk:ref:", tile: "talk:tile:" };
-function talkStub(env, me) { return env.PTA_DO.get(env.PTA_DO.idFromName(me)); }
+function talkStub(env, me) {
+  // (v9.999.104) Ink Studio's work in its own Durable Object, "<pta>@inkstudio"; any other world, the person's own, as always
+  const _w = _ownStoreWorld();
+  return env.PTA_DO.get(env.PTA_DO.idFromName(_w ? me + "@" + _w : me));
+}
 async function talkDo(env, me, method, params) {
   const r = await talkStub(env, me).fetch(new Request("http://do", { method: "POST",
     body: JSON.stringify({ method, params }) }));
@@ -67935,6 +67963,7 @@ async function talkStateGet(env, me, names) {
     if (v != null) { out[n] = v; continue; }
     let raw = null;
     if (!TALK_STATE_KV[n]) { out[n] = null; continue; }   // born in the Durable Object, no KV past
+    if (_ownStoreWorld()) { out[n] = null; continue; }    // (v9.999.104) Ink Studio's store starts empty - Ink It's KV past is not copied into it
     try { raw = await env.AURA_KV.get(TALK_STATE_KV[n] + me); } catch {}
     out[n] = raw;
     if (raw != null && vals) copy["talk-state:" + n] = raw;
@@ -68492,6 +68521,7 @@ function imageDimsOf(buf) {
 
 async function startArtistFilesJob(env, data) {
   try {
+    { const _ow = _ownStoreWorld(); if (_ow && data && !data.world) data.world = _ow; }   // (v9.999.104) Ink Studio only
     if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
     const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: "artist_files", data } });
     // (v9.813) the job's id in the log, so RUN "FACES <id>" can check this exact job
@@ -68570,6 +68600,7 @@ async function lockNameAndColour(env, me, _pidN, _imgN, _descN, world) {
 const TALK_GO_WORDS = /\b(show me|show us|let'?s see|let me see|go for it|go ahead|do it|try it|try that|draw it|draw that|see (it|what|that|how)|looks? like)\b/i;
 async function startLockNameJob(env, data) {
   try {
+    { const _ow = _ownStoreWorld(); if (_ow && data && !data.world) data.world = _ow; }   // (v9.999.104) Ink Studio only
     if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
     const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: "lock_name", data } });
     return (inst && inst.id) ? inst.id : null;
@@ -68580,6 +68611,7 @@ async function startLockNameJob(env, data) {
 }
 async function startTalkJob(env, data) {
   try {
+    { const _ow = _ownStoreWorld(); if (_ow && data && !data.world) data.world = _ow; }   // (v9.999.104) Ink Studio only
     if (!env.GRID_CRAWL_WORKFLOW || typeof env.GRID_CRAWL_WORKFLOW.create !== "function") return null;
     const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: "talk_turn", data } });
     return (inst && inst.id) ? inst.id : null;
@@ -77603,7 +77635,13 @@ export class PublicEntry extends WorkerEntrypoint {
   // The hostname is known by aura-host, which is the only thing that cannot be lied to about it, so
   // it crosses the binding as its own argument. Optional: an older caller passing two arguments
   // resolves to null and falls back exactly as before.
+  // (v9.999.104) Ink Studio's calls run inside its own store; every other world calls the body directly, exactly as before.
   async design(action, body, host, from) {
+    const _w = worldFor(host);
+    if (!OWN_STORE_WORLDS.has(_w)) return this._designBody(action, body, host, from);
+    return _WORLD_ALS.run({ world: _w }, () => this._designBody(action, body, host, from));
+  }
+  async _designBody(action, body, host, from) {
     const b = body || {};
     const env = this.env;
     const world = worldFor(host);
@@ -77775,7 +77813,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // A tattoo made on their own photo (Add to Existing, Cover Up) with no flat artwork yet is flattened again, as at the lock-in.
         const _onBody = /^(job1|job2)$/.test(String(pj.section || "")) && (!(pj.files && pj.files.flat_artwork) || (_pics.some((x) => x.image === pj.files.flat_artwork)));   // a "flat" that is one of their body pictures was never flattened
         const _jobR = String(pj.section || "") === "job2" ? "cover" : String(pj.section || "") === "job1" ? "add" : "new";
-        const _job = await startArtistFilesJob(env, { project: pid, me, world: "mytattoo", stage: "pta", seeing: false, jobNow: _onBody ? _jobR : "new", refUrl: null,
+        const _job = await startArtistFilesJob(env, { project: pid, me, world: world || "mytattoo", stage: "pta", seeing: false, jobNow: _onBody ? _jobR : "new", refUrl: null,
           refDesign: null, lastDrawn: { design: _des, image: _flat }, useRaw: [], acted: {}, intent: pj.details || null, alreadyFlat: !_onBody, rerun: true });
         console.log("[FILES] make my files again - " + pid + (_onBody ? " from the picture on their body, flattened again (" + _jobR + ") " : " from its flat artwork ") + _flat.slice(-24) + " -> " + (_job ? "job " + _job : "did not start") + " · who=" + me);
         return _job ? { ok: true, job: _job } : { ok: false, error: "JOB_NOT_STARTED" };

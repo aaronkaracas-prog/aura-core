@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.106-2026-11-20-their-words-plain";
+const BUILD = "aura-core-v9.999.107-2026-11-20-own-plain-keys";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -75087,13 +75087,14 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // went out with "My photo is too close ... Zoom out to show more of my body" and every keep/crop/framing line, and GPT drew a different woman
               // in a whole new sleeve (img_mwpep8rii2xs). The plain sentence proven this morning goes instead: their words as they said them, nothing
               // added - no zoom-out, no framing lines. With no words (Imagine ideas for me, no place) the same plain wild sentence.
-              // Settings: config:frame:addon:own ("____" their words) and config:frame:addon:own_wild.
+              // Settings: config:frame:addon:own_plain ("____" their words) and config:frame:addon:own_wild_plain (v9.999.107: their own names -
+              // the 12:31 rose run read config:frame:addon:own, the v9.667 path's setting with its caption-grid sentence, and sent that instead).
               let _boxOwn = ""; try { _boxOwn = String((await talkStateGet(env, me, ["addon_box"])).addon_box || "").trim(); } catch {}
               if (!_sizeSent && !_boxOwn) {   // a green box they marked keeps its own proven words (v9.894)
                 let _pw = _ownW
                   ? "This is my current tattoo, I really like this style. Here is what I want: ____. Show me 4 different versions of that, on my body. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is and exactly where it is on my body - it never moves. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them."
                   : "This is my current tattoo, I really like this style. Add to it, the same way. Show me 4 different ideas for the new work, on my body. Make every idea a completely different design, so no two look alike, but keep the same style. Keep my existing tattoo exactly as it is and exactly where it is on my body - it never moves. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them.";
-                try { const _k = String((await env.AURA_KV.get(_ownW ? "config:frame:addon:own" : "config:frame:addon:own_wild")) || "").trim(); if (_ownW ? _k.includes("____") : _k) _pw = _k; } catch {}
+                try { const _k = String((await env.AURA_KV.get(_ownW ? "config:frame:addon:own_plain" : "config:frame:addon:own_wild_plain")) || "").trim(); if (_ownW ? _k.includes("____") : _k) _pw = _k; } catch {}
                 // her idea they tapped ("Show me: a raven ...") is a thing - "Add to it, the same way, with a raven ..."
                 if (_ownW && /^\s*show me:/i.test(String(said || ""))) _pw = _pw.replace(" Here is what I want: ____.", " Add to it, the same way, with ____.");
                 _pw = _pw.replace("____", _ownW.replace(/^(?:show me:?\s*)/i, "").replace(/^(?:[A-Z](?=[a-z])|An?(?= ))/, (c) => c.toLowerCase()));

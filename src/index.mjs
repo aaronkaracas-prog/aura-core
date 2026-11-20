@@ -109,7 +109,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.98-2026-11-19-how-big-first";
+const BUILD = "aura-core-v9.999.99-2026-11-19-their-size-plain-words";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -75016,17 +75016,39 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // A style they named goes in place of "a similar style to my tattoo" (v9.852 kept it the same way).
               const _addStyle1 = opts && opts.add_style ? String(opts.add_style).replace(/[^A-Za-z0-9 &'\/-]/g, "").trim().slice(0, 60) : "";
               if (_addStyle1) { _o = _o.replace("in a similar style to my tattoo", "in the " + _addStyle1 + " style"); _oFrom += "+style"; }
+              // ══ THEIR SIZE, IN PLAIN WORDS (v9.999.99, 2026-11-19, Aaron: "all you have to do is this - here's my current tattoo, extend it to my
+              // elbow or my wrist because Aura gave those suggestions, and add a snake or whatever else is said - it's never anything more than that")
+              // ═══ PROVEN by command 16:27 (img_mwo8nsb5zxne, flare at medium, 2304x3456, their close skull photo only): the skull kept in all four,
+              // the photo's framing kept, the arm extended to the wrist by the model, four clearly different. MEASURED on the way: the zoom-out line
+              // and "my photo is too close" moved the skull (15:52, img_mwo7et3id3pb); "4 different versions of this" gave one design four times;
+              // "be bold" without "Keep my existing tattoo exactly as it is" redrew it. When they tapped a size, this sentence goes - nothing else
+              // (no zoom-out, no framing lines). Setting: config:frame:addon:size ("%SIZE%" their size, "____" what they want).
+              let _placeTap = false; try { _placeTap = String((await talkStateGet(env, me, ["placement_tap"])).placement_tap || "") === "1"; } catch {}
+              let _sizeSent = false;
+              if (_placeNow && _placeTap) {
+                const _sz = String(_placeNow).replace(/[\s.]+$/, "");
+                const _ext = /^an?\s+small\b/i.test(_sz) ? "Add " + _sz : "Extend it into " + _sz;
+                let _sw = _ownW
+                  ? "This is my current tattoo, I really like this style. %SIZE%, the same way, with ____. Show me 4 different versions of that, on my body. Make the first one the closest to what I described. For the other three, be bold and imaginative with the idea, but keep the same style. Keep my existing tattoo exactly as it is. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them."
+                  : "This is my current tattoo, I really like this style. %SIZE%, the same way. Show me 4 different ideas for the new work, on my body. Make every idea a completely different design, so no two look alike, but keep the same style. Keep my existing tattoo exactly as it is. Make one tall page divided into a grid of 4 equal pictures, 2 across and 2 down, with a wide black gap between them.";
+                try { const _k = String((await env.AURA_KV.get(_ownW ? "config:frame:addon:size" : "config:frame:addon:size_wild")) || "").trim(); if (_k.includes("%SIZE%")) _sw = _k; } catch {}
+                // her idea they tapped ("Show me: a raven ...") is a thing - "with a raven ..."; words they typed are theirs as they said them
+                if (_ownW && !/^\s*show me:/i.test(String(said || ""))) _sw = _sw.replace(", the same way, with ____.", ", the same way. Here is what I want: ____.");
+                _sw = _sw.replace("%SIZE%", _ext).replace("____", _ownW.replace(/^(?:show me:?\s*)/i, "").replace(/^(?:[A-Z](?=[a-z])|An?(?= ))/, (c) => c.toLowerCase()));
+                if (_addStyle1) _sw = _sw.replace(", I really like this style.", ". I want the new work in the " + _addStyle1 + " style.").replace(", the same way", "").replace("but keep the same style", "in the " + _addStyle1 + " style");
+                _sentNow = _sw; _sizeSent = true; _oFrom = (_ownW ? "size" : "size_wild") + (_addStyle1 ? "+style" : "");
+                console.log("[TURN:IDEAS] their size in plain words - no zoom-out, no framing lines: \"" + _ext + "\"" + (me ? " · who=" + me : ""));
+              }
               // Nothing typed ("Show me some ideas" on its own): the sentence without the blank.
-              _sentNow = _ownW ? _o.replace("____", _ownW) : _o.replace(/:\s*____\./, ".").replace("____", "");
+              if (!_sizeSent) _sentNow = _ownW ? _o.replace("____", _ownW) : _o.replace(/:\s*____\./, ".").replace("____", "");
               // (v9.898) MEASURED 16:34: with no idea the sentence still read "Show me 4 different ideas for that" and "bold and imaginative with
               // the idea" - there is no "that" and no idea. Only those words go, only when nothing was asked for; the rest stays word for word.
-              if (!_ownW) _sentNow = _sentNow.replace(/(Show me 4 different ideas) for that\./, "$1.").replace(/ with the idea(,)/, "$1");
+              if (!_ownW && !_sizeSent) _sentNow = _sentNow.replace(/(Show me 4 different ideas) for that\./, "$1.").replace(/ with the idea(,)/, "$1");
               // Where it goes, ONLY when they tapped it (v9.855, 2026-11-06, Aaron: go). MEASURED 10:06: "I want it to go around the rose on my
               // inner forearm." went to the image model - her words; they never said it. Her reading never reaches the image model; a direction
               // they tapped is their choice and goes, after what they want, before the freedom words.
-              let _placeTap = false; try { _placeTap = String((await talkStateGet(env, me, ["placement_tap"])).placement_tap || "") === "1"; } catch {}
               if (_placeNow && !_placeTap) console.log("[TURN:IDEAS] her place left out - they did not tap it: \"" + _placeNow + "\"");
-              if (_placeNow && _placeTap) {
+              if (_placeNow && _placeTap && !_sizeSent) {
                 let _atP = _sentNow.indexOf(" Show me 4"); if (_atP < 0) _atP = _sentNow.indexOf(" Be bold");
                 // (v9.892) a size they tapped reads "I want it medium, down onto my chest." - a place, "I want it to go down my arm."
                 const _plc = _placeNow.replace(/[\s.]+$/, "");
@@ -75068,7 +75090,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               if (!_closeP && _placeNow && _placeTap) { try { _closeP = String((await talkStateGet(env, me, ["addon_close_size"])).addon_close_size || "").trim(); } catch {} }
               const _wildNoClose = /^\s*imagine ideas for me\.?\s*$/i.test(String(said || "")) && !(_placeNow && _placeTap);
               if (_wildNoClose && _closeP) console.log("[TURN:IDEAS] Imagine ideas for me - her close-up line left out: \"" + _closeP.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
-              if (_closeP && !_boxE && !_wildNoClose) {
+              if (_sizeSent && _closeP) console.log("[TURN:IDEAS] their size is in the words - no zoom-out line: \"" + _closeP.slice(0, 160) + "\"" + (me ? " · who=" + me : ""));
+              if (_closeP && !_boxE && !_wildNoClose && !_sizeSent) {
                 const _dirC = (/^(1|yes|true)$/i.test(_closeP) ? "my body around it" : _closeP).replace(/[\s.]+$/, "");
                 // (v9.999.92) MEASURED 11:48:24: her extend is often a sentence ("my arm carries on past the edge of the photo down to my wrist"), and
                 // "show more of ____" read "show more of my arm carries on past...". Her words now come after a colon, which reads right either way.

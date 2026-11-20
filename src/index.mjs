@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.109-2026-11-20-addon-two";
+const BUILD = "aura-core-v9.999.110-2026-11-20-parlors-artists";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -5206,6 +5206,115 @@ function worldFor(host) {
     if (h === domain || h.endsWith("." + domain)) return world;
   }
   return null;
+}
+
+// ══ WHERE A PARLOR AND AN ARTIST LIVE (2026-11-20, Session B) ════════════════════════════════
+// Aaron: the Open For Business concept no longer applies. The engine underneath (PTA, seats, the
+// calendar, bookings) stays exactly as it is; only the ADDRESSES move. A parlor lives at
+// <slug>.tattooparlors.world (public page at /, console at /admin), and an artist lives on
+// tattooartist.world (join link, their own page at /me). Every link the business code hands out is
+// built from these two names, so the next move is one line, not thirty.
+const BIZ_WORLD = "tattooparlors.world";
+const ARTIST_WORLD = "tattooartist.world";
+const bizUrl = (slug, path) => slug ? "https://" + slug + "." + BIZ_WORLD + (path || "") : null;
+
+// The day and time IN THE SHOP'S OWN ZONE, the way a person reads it: "Wed, Nov 25, 1:00 PM PST".
+// MEASURED 2026-11-20: a 1:00pm Los Angeles booking was emailed to the customer and the shop as
+// "Wed, 25 Nov 2026 21:00:00" - UTC, labelled as if local. A customer would have arrived eight
+// hours late. The zone is the stored IANA name; Intl does the arithmetic, so DST is not ours.
+function whenIn(iso, zone) {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: zone || "UTC", weekday: "short", month: "short",
+      day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(iso));
+  } catch { return String(iso || ""); }
+}
+// The business's own zone - the same stored fact AVAILABILITY reads (latest chain event carrying a
+// timezone). Reading the NAME is not decoding offsets; AVAILABILITY stays the only offset decoder.
+async function bizZoneName(env, bizId) {
+  try {
+    const stub = env.PTA_DO.get(env.PTA_DO.idFromName(bizId));
+    const r = await stub.fetch(new Request("http://do", { method: "POST",
+      body: JSON.stringify({ method: "getState", params: [] }) }));
+    const j = await r.json();
+    const t = [...(j?.pta?.chain || [])].reverse().find(c => c?.data?.timezone);
+    return t?.data?.timezone ? String(t.data.timezone) : null;
+  } catch { return null; }
+}
+// Where to reach a person ABOUT this business - the same three places book() has always looked,
+// in the same order: their entity's metadata, the edge they hold to the business, then any chain
+// event carrying an email. Lifted out so a moved appointment can tell people the same way a new
+// one does, instead of a second resolver that disagrees with the first.
+async function reachAddress(env, who, biz) {
+  if (!who) return null;
+  try {
+    const row = await env.AURA_MEMORY.prepare("SELECT metadata FROM pta_entities WHERE id = ? LIMIT 1").bind(who).first();
+    let md = {}; try { md = row?.metadata ? JSON.parse(row.metadata) : {}; } catch {}
+    const a = md.email || md.contact_email || null;
+    if (a && String(a).includes("@")) return String(a);
+  } catch {}
+  if (biz) {
+    try {
+      const er = await env.AURA_MEMORY.prepare(
+        "SELECT context FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type IN ('owns','works_at') " +
+        "AND state != 'revoked' AND context IS NOT NULL LIMIT 1").bind(who, biz).first();
+      let ec = {}; try { ec = er?.context ? JSON.parse(er.context) : {}; } catch {}
+      if (ec.reach && String(ec.reach).includes("@")) return String(ec.reach);
+    } catch {}
+  }
+  try {
+    const stub = env.PTA_DO.get(env.PTA_DO.idFromName(who));
+    const r = await stub.fetch(new Request("http://do", { method: "POST",
+      body: JSON.stringify({ method: "getState", params: [] }) }));
+    const j = await r.json();
+    const hit = [...((j?.pta?.chain) || [])].reverse().find(x => x?.data?.email);
+    return hit?.data?.email || null;
+  } catch { return null; }
+}
+// Mail from the world the person knows us by - a parlor hears from tattooparlors.world, an artist
+// from tattooartist.world. A domain not yet onboarded in Cloudflare Email fails the send, so it
+// falls back to the default sender rather than losing the message (EMAIL_SEND's own rule).
+// The subject must not contain "|" - EMAIL_SEND splits subject from body on the first one.
+async function emailFromWorld(env, to, world, subject, body) {
+  const subj = String(subject || "").replace(/\|/g, "-");
+  let r = await processCommand("EMAIL_SEND " + to + " FROM noreply@" + world + " " + subj + " | " + body, env, true);
+  let p = (r && r.payload) ? r.payload : r;
+  if (p?.ok) return { ok: true, from: "noreply@" + world };
+  r = await processCommand("EMAIL_SEND " + to + " " + subj + " | " + body, env, true);
+  p = (r && r.payload) ? r.payload : r;
+  return { ok: !!p?.ok, from: p?.ok ? "default sender" : null, error: p?.ok ? undefined : (p?.error || "did not send") };
+}
+// A week typed in a sentence -> the weekly object the calendar reads. Only used ONCE, at signup,
+// to pre-fill the hours grid from what the owner typed into the form ("Tue-Sat 12-8, closed Sun");
+// from then on hours are clicked, never typed. Days it cannot read are left out, not guessed shut.
+const WEEK_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+function weekFromText(text) {
+  const t = String(text || "").toLowerCase().replace(/[–—]/g, "-");
+  if (!t.trim()) return null;
+  const dayOf = (w) => { const k = String(w || "").slice(0, 3); return WEEK_ORDER.includes(k) ? k : null; };
+  const out = {};
+  for (const seg of t.split(/[;,\n]+/)) {
+    const s = seg.trim(); if (!s) continue;
+    let days = [];
+    const rng = s.match(/\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?\s*(?:-|to|through|thru)\s*(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?/);
+    if (rng) {
+      const a = WEEK_ORDER.indexOf(dayOf(rng[1])), b = WEEK_ORDER.indexOf(dayOf(rng[2]));
+      for (let i = a; ; i = (i + 1) % 7) { days.push(WEEK_ORDER[i]); if (i === b || days.length > 7) break; }
+    } else if (/\b(daily|every\s*day|7\s*days)\b/.test(s)) days = [...WEEK_ORDER];
+    else days = [...s.matchAll(/\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b/g)].map(m => dayOf(m[1])).filter(Boolean);
+    if (!days.length) continue;
+    if (/\b(closed|off|shut)\b/.test(s)) { for (const d of days) out[d] = null; continue; }
+    const timePart = s.replace(/\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?/g, " ")
+      .replace(/\b(daily|every\s*day|7\s*days|through|thru)\b/g, " ").replace(/^[\s:-]+/, "").trim();
+    const ranges = hoursFromText(timePart.replace(/\s*-\s*/g, "-").replace(/\s+/g, ""));
+    if (!ranges) continue;
+    for (const d of days) out[d] = ranges;
+  }
+  if (!Object.keys(out).length) return null;
+  // A shop that writes out its week and leaves a day off is shut that day ("Tue-Sat 12-8, closed
+  // Sun" says nothing about Monday because Monday is not a working day). Only once something was
+  // read - a sentence we could not read at all stays null rather than becoming a closed week.
+  for (const d of WEEK_ORDER) if (!(d in out)) out[d] = null;
+  return out;
 }
 
 // ══ WHICH CHANNEL A TURN ARRIVES ON (2026-09-10) ═════════════════════════════════════════════
@@ -30565,7 +30674,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             try {
               const r = await env.AURA_MEMORY.prepare("SELECT slug FROM pta_entities WHERE id = ?")
                 .bind(pta || obId).first();
-              return r?.slug ? "https://" + r.slug + ".openforbusiness.world" : null;
+              return r?.slug ? bizUrl(r.slug) : null;
             } catch { return null; }
           })(),
           note: pta
@@ -30915,6 +31024,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             if (pend.hours) {
               await processCommand("PTA_REMEMBER " + ing.id + " HOURS " + JSON.stringify({
                 hours: pend.hours, source: "signup" }), env, true);
+              // ══ AND THE GRID IS FILLED FROM IT (2026-11-20) ═══════════════════════════════
+              // MEASURED: "Tue-Sat 12-8, closed Sun" typed at signup and the console showed no
+              // hours at all - the prose sat on the chain and nothing the calendar reads ever
+              // saw it. Read once, here, into the same weekly object the grid writes, through the
+              // same BUSINESS_EDIT the grid uses. The owner corrects it by clicking, as always.
+              const wkSign = weekFromText(pend.hours);
+              if (wkSign) await processCommand("BUSINESS_EDIT " + ing.id + " hours ::: " +
+                JSON.stringify(wkSign), env, true);
             }
             // A zone SUGGESTED by their state, so a business can book on day one. They can change
             // it whenever they like and theirs wins - we do not set their conditions.
@@ -30926,6 +31043,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             }
           } catch {}
           try { await env.AURA_KV.delete("addbiz:" + token); } catch {}
+          // ══ EVERY SHOP GETS ITS ADDRESS AT SIGNUP (2026-11-20) ══════════════════════════════
+          // MEASURED: Test Parlor One confirmed and had no address - the console lives at
+          // <slug>.tattooparlors.world and nothing assigned the slug, so somebody had to type
+          // SLUG SET by hand. The name first; if another shop already has it, the name plus the
+          // town, then a number. SLUG SET still does every check (reserved names, taken).
+          let shopSlug = null;
+          try {
+            const town = String(pend.address || "").split(",")[0].trim();
+            const base = String(pend.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+            const tries = [base, base + town.toLowerCase().replace(/[^a-z0-9]+/g, ""),
+              ...[2, 3, 4, 5, 6, 7, 8, 9].map(n => base + n)].filter(x => x && x.length >= 3);
+            for (const t of [...new Set(tries)]) {
+              const sr = await processCommand("SLUG SET " + ing.id + " " + t.slice(0, 40), env, true);
+              const sp2 = (sr && sr.payload) ? sr.payload : sr;
+              if (sp2?.ok) { shopSlug = sp2.slug; break; }
+              if (sp2?.error !== "TAKEN" && sp2?.error !== "RESERVED") break;
+            }
+          } catch {}
           // ══ A CONFIRMED OWNER HAD NO WAY IN (fixed 2026-08-22) ══════════════════════════════
           // MEASURED end to end on a clean store: signup, email, confirm, owner minted, grant
           // accepted - and then nothing. "Your shop is listed" and no route to the console. An
@@ -30948,10 +31083,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             owner: ownerPta || null,
             owner_note: ownerPta ? undefined
               : "NOBODY OWNS THIS - the owner could not be created, so no one can open its console.", pta: ing.id,
-            door: "https://openforbusiness.world/b/" + ing.id,
+            // Their own address, public page and console both - one place for everything.
+            door: bizUrl(shopSlug) || ("https://" + BIZ_WORLD + "/b/" + ing.id),
+            slug: shopSlug || undefined,
             // The doorway reads this, sets the cookie and does not pass it to the page.
             session: ownerSession || undefined,
-            console: ownerSession ? "https://openforbusiness.world/admin" : undefined,
+            console: (ownerSession && shopSlug) ? bizUrl(shopSlug, "/admin") : undefined,
             what_to_say: "Confirmed. Your business is listed.",
             note: "Email only. Nothing has been consented to beyond what you typed - remembering " +
               "anything more still needs a grant." } };
@@ -31306,7 +31443,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           "artist gets their own the same way. Wherever it is scanned it opens them, and it does not " +
           "change or expire. Describing it as a thing for foot traffic sells it short and gets the " +
           "point wrong: it is their identity, and the window is one place they might put it.\n\n" +
-          "$299 a month for the shop, one seat. $99 a month for each additional artist.\n\n" +
+          "$299 a month for the shop, one artist included. $199 a month for each additional artist.\n\n" +
           "The reasoning behind that, so you can defend it when somebody pushes: a tattoo booking is " +
           "not a restaurant reservation. Hours of design work happen before anybody sits down, and a " +
           "no-show costs the artist a day, not a table. A held deposit is the difference. Five chairs " +
@@ -31721,7 +31858,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           grant: st.granted || undefined,
           grant_note: st.grant_note || undefined,
           not_written: (st.write_errors && st.write_errors.length) ? st.write_errors.slice(-4) : undefined,
-          your_page: st.pta ? "https://openforbusiness.world/b/" + st.pta : null } };
+          your_page: st.pta ? "https://" + BIZ_WORLD + "/b/" + st.pta : null } };
       } catch (e) {
         return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
@@ -31759,8 +31896,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const scSlug = await env.AURA_MEMORY.prepare("SELECT slug FROM pta_entities WHERE id = ?")
           .bind(scBizId).first().catch(() => null);
         const url = scSlug?.slug
-          ? "https://" + scSlug.slug + ".openforbusiness.world"
-          : "https://openforbusiness.world/b/" + encodeURIComponent(scBizId);
+          ? bizUrl(scSlug.slug)
+          : "https://" + BIZ_WORLD + "/b/" + encodeURIComponent(scBizId);
         let sent = false, how = null;
         if (scTo.includes("@")) {
           try {
@@ -31827,7 +31964,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "INVITE_SEAT", payload: { ok: true, signed_in: true,
             session: sess.session_id || sess.sid || sess.session, person: inv.person, name: inv.name,
             business: inv.business_name,
-            go: goSlug ? "https://" + goSlug + ".openforbusiness.world" : null,
+            // ══ AN ARTIST LANDS ON THEIR OWN PAGE (2026-11-20) ═══════════════════════════
+            // This sent a seated artist to the SHOP's console, which (rightly) refuses anyone
+            // without an owns edge - so a new artist's first screen was "ask the owner". Their
+            // own page on tattooartist.world is where their bookings and hours are.
+            go: "https://" + ARTIST_WORLD + "/me",
+            shop_page: goSlug ? bizUrl(goSlug) : null,
             next: "Register a passkey now - after that this device, and any device signed into the " +
               "same Apple or Google account, needs nothing typed ever again.",
             note: "The link is spent. It worked once, which is what makes it safe to email." } };
@@ -31865,18 +32007,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         await env.AURA_KV.put("invite:seat:" + tok, JSON.stringify({ person: ivWho,
           name: per?.name || null, business: ivBiz, business_name: biz?.name || null,
           created: Date.now() }), { expirationTtl: 7 * 86400 });
-        const link = "https://openforbusiness.world/join/" + tok;
+        const link = "https://" + ARTIST_WORLD + "/join/" + tok;
 
         let sent = false, how = null;
         if (to) {
           try {
-            const er = await processCommand("EMAIL_SEND " + to + " Your seat at " + (biz?.name || "the shop") +
-              " | " + (per?.name || "You") + " has a seat at " + (biz?.name || "the shop") +
-              ". Open this to sign in and set up your device: " + link +
-              "  --  The link works once and expires in seven days.", env, true);
-            const ep = (er && er.payload) ? er.payload : er;
+            // From tattooartist.world - this is the artist's own door, not the shop's.
+            const ep = await emailFromWorld(env, to, ARTIST_WORLD, "Your seat at " + (biz?.name || "the shop"),
+              (per?.name || "You") + " has a seat at " + (biz?.name || "the shop") +
+              ". Open this to sign in and see your bookings: " + link +
+              "  --  The link works once and expires in seven days.");
             sent = !!(ep && ep.ok);
-            how = sent ? "email" : ((ep && ep.error) || "did not send");
+            how = sent ? "email from " + ep.from : ((ep && ep.error) || "did not send");
           } catch (e) { how = String((e && e.message) || e).slice(0, 100); }
         }
         return { cmd: "INVITE_SEAT", payload: { ok: true, person: ivWho, name: per?.name || null,
@@ -33112,8 +33254,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "WHERE g.from_id = ? AND g.edge_type = 'owns' AND g.state != 'revoked'").bind(sePta).all();
           seCons = (seOwn?.results || []).filter(r => r.slug).map(r => ({
             business: r.name, id: r.id,
-            console: "https://" + r.slug + ".openforbusiness.world/admin?s=" + seS.session,
-            public: "https://" + r.slug + ".openforbusiness.world" }));
+            console: bizUrl(r.slug, "/admin?s=" + seS.session),
+            public: bizUrl(r.slug) }));
         } catch {}
         console.warn("[SESSION MINT] " + sePta + " for " + seHours + "h - operator issued.");
         return { cmd: "SESSION", payload: { ok: true, session: seS.session, pta: sePta,
@@ -33919,8 +34061,46 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 uid, field, now: c[field] ?? val, sequence: saved.sequence }), env, true);
             } catch {}
           }
+          // ══ AND THEY ARE ACTUALLY TOLD (2026-11-20) ════════════════════════════════════════
+          // The loop above writes a record and nobody's phone buzzes - the same gap book() closed
+          // on 2026-08-18. MEASURED: Test Parlor One moved a booking from Wed 1pm to Thu 3pm and the
+          // customer and the artist heard nothing. A move, a new artist or a cancellation is
+          // something a person has to act on, so the customer and the artist both get an email,
+          // from tattooparlors.world, with the time in the shop's own zone.
+          const toldOf = { customer: null, artist: null, prior_artist: null };
+          if (field === "start" || field === "when" || field === "artist" || field === "status") {
+            try {
+              const nBiz = ap.business || c.business;
+              const nRow = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(nBiz).first().catch(() => null);
+              const nShop = nRow?.name || "the shop";
+              const nZone = await bizZoneName(env, nBiz);
+              const nWhen = whenIn(c.start, nZone);
+              let nArtist = null;
+              if (c.artist) { const ar = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(c.artist).first().catch(() => null); nArtist = ar?.name || null; }
+              const what = c.status === "CANCELLED" ? "has been cancelled"
+                : (field === "artist" ? "is now with " + (nArtist || "a different artist")
+                : (field === "status" ? "is now " + String(c.status || "").toLowerCase()
+                : "has moved to " + nWhen));
+              const line = "Your appointment at " + nShop + " " + what + ".  --  " +
+                (c.status === "CANCELLED" ? "It was " : "It is ") + nWhen + (nArtist ? " with " + nArtist : "") +
+                (c.summary ? "  --  " + String(c.summary).slice(0, 160) : "");
+              const tell = async (who, key, subj, body) => {
+                const addr = await reachAddress(env, who, nBiz);
+                if (!addr) { toldOf[key] = "no address"; return; }
+                const e = await emailFromWorld(env, addr, BIZ_WORLD, subj, body);
+                toldOf[key] = e?.ok ? true : (e?.error || false);
+              };
+              if (ap.customer) await tell(ap.customer, "customer", "Change to your appointment at " + nShop, line);
+              if (c.artist) await tell(c.artist, "artist", "Change to a booking at " + nShop,
+                "A booking at " + nShop + " " + what + ".  --  " + nWhen + "  --  " +
+                (c.summary ? String(c.summary).slice(0, 160) : "Appointment"));
+              if (field === "artist" && c.reassigned_from && c.reassigned_from !== c.artist)
+                await tell(c.reassigned_from, "prior_artist", "A booking at " + nShop + " moved to someone else",
+                  "The " + nWhen + " booking at " + nShop + " is now with " + (nArtist || "another artist") + ".");
+            } catch {}
+          }
           return { cmd: "APPOINTMENT", payload: { ok: true, uid, field, value: c[field] ?? val,
-            sequence: saved.sequence, status: c.status,
+            sequence: saved.sequence, status: c.status, told: toldOf,
             note: "Sequence " + saved.sequence + " - every change increments it, so there is never a " +
               "question about which version is current." } };
         }
@@ -33977,9 +34157,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const c = ap.v;
           const z = (t) => String(t || "").replace(/[-:]/g, "").replace(/\.\d{3}/, "");
           const biz = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(ap.business).first();
-          const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Aura//Open For Business//EN",
+          const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Aura//Tattoo Parlors//EN",
             "CALSCALE:GREGORIAN", "METHOD:REQUEST", "BEGIN:VEVENT",
-            "UID:" + c.uid + "@openforbusiness.world",
+            "UID:" + c.uid + "@" + BIZ_WORLD,
             "DTSTAMP:" + z(c.dtstamp), "DTSTART:" + z(c.start), "DTEND:" + z(c.end),
             "SEQUENCE:" + (c.sequence || 0), "STATUS:" + (c.status || "TENTATIVE"),
             // ══ RFC 5545 SAYS ESCAPE, NOT DELETE (fixed 2026-08-18) ══════════════════════════
@@ -33991,7 +34171,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "SUMMARY:" + icsText(c.summary || "Appointment"),
             ...(c.description ? ["DESCRIPTION:" + icsText(c.description)] : []),
             ...(biz?.name ? ["LOCATION:" + icsText(biz.name)] : []),
-            "ORGANIZER;CN=" + (biz?.name || "the shop") + ":mailto:noreply@openforbusiness.world",
+            "ORGANIZER;CN=" + (biz?.name || "the shop") + ":mailto:noreply@" + BIZ_WORLD,
             ...Object.entries(c.attendees || {}).map(([k, v]) =>
               "ATTENDEE;PARTSTAT=" + v + ":urn:pta:" + k),
             "END:VEVENT", "END:VCALENDAR"].join("\r\n");
@@ -34081,7 +34261,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "PORTFOLIO", payload: { ok: true, artist: ent.name, count: idx.length,
             pieces: idx.map(x => ({ id: x.id, caption: x.caption || null, added: x.added,
               shop: x.shop || null, type: x.type,
-              url: "https://openforbusiness.world/w/" + poWho + "/" + x.id })) } };
+              url: "https://" + ARTIST_WORLD + "/w/" + poWho + "/" + x.id })) } };
         }
 
         if (poSub === "ADD") {
@@ -34117,7 +34297,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               piece: id, caption: piece.caption, at_shop: piece.shop, added: piece.added }), env, true);
           } catch {}
           return { cmd: "PORTFOLIO", payload: { ok: true, artist: ent.name, piece: id,
-            url: "https://openforbusiness.world/w/" + poWho + "/" + id,
+            url: "https://" + ARTIST_WORLD + "/w/" + poWho + "/" + id,
             count: idx.length,
             note: "Theirs. If they move shops it goes with them - the shop it was made at stays on " +
               "the record, because that is history rather than ownership." } };
@@ -34480,7 +34660,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             .bind(id).first().catch(() => null);
           if (!r) return { cmd: "SLUG", payload: { ok: false, error: "NO_SUCH_BUSINESS", id } };
           return { cmd: "SLUG", payload: { ok: true, pta: id, name: r.name, slug: r.slug || null,
-            address: r.slug ? "https://" + r.slug + ".openforbusiness.world" : null,
+            address: r.slug ? bizUrl(r.slug) : null,
             note: r.slug ? undefined : "No address yet. SLUG SET gives them one." } };
         }
 
@@ -34511,7 +34691,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           try { await env.AURA_KV.put("slug:" + sl, id, { expirationTtl: 300 }); } catch {}
           return { cmd: "SLUG", payload: { ok: true, pta: id, name: ent.name, slug: sl,
             was: ent.slug || undefined,
-            address: "https://" + sl + ".openforbusiness.world",
+            address: bizUrl(sl),
             note: "That is their address now. Nothing was provisioned - the wildcard already resolves " +
               "and the hostname is the lookup." } };
         }
@@ -34552,7 +34732,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         error: "Usage: OWNER LIST|ADD|REMOVE <business_pta> [person_pta]" } };
       const odb = env.AURA_MEMORY;
       try {
-        const biz = await odb.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(owBiz).first();
+        const biz = await odb.prepare("SELECT id, name, slug FROM pta_entities WHERE id = ?").bind(owBiz).first();
         if (!biz) return { cmd: "OWNER", payload: { ok: false, error: "NO_SUCH_BUSINESS", id: owBiz } };
         const readOwners = async () => {
           const r = await odb.prepare(
@@ -34568,7 +34748,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const owners = await readOwners();
           return { cmd: "OWNER", payload: { ok: true, business: biz.name, id: owBiz,
             count: owners.length, owners,
-            console: owners.length ? "https://openforbusiness.world/console" : null,
+            console: owners.length ? (biz.slug ? bizUrl(biz.slug, "/admin") : "https://" + BIZ_WORLD) : null,
             note: owners.length ? undefined
               : "Nobody owns this yet, so nobody can open its console. That is the gate working - an " +
                 "id in a URL is a request, an owns edge is a fact." } };
@@ -34618,7 +34798,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             now, now).run();
           return { cmd: "OWNER", payload: { ok: true, business: biz.name, person: who, name: p.name,
             edge_id: edgeId, count: (await readOwners()).length,
-            console: "https://openforbusiness.world/console",
+            console: biz.slug ? bizUrl(biz.slug, "/admin") : "https://" + BIZ_WORLD,
             note: "They can open this business's console now. That is all this grants - what Aura may " +
               "remember about " + (p.name || "them") + " as a person is still theirs to give." } };
         }
@@ -34655,7 +34835,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // without their own grant, which is exactly the distinction that stopped a stop from severing
       // artists' employment in August.
       //
-      // BILLING FOLLOWS THE SEATS. $299 covers the shop and one seat. Each seat after that is $99.
+      // BILLING FOLLOWS THE SEATS. $299 covers the shop and one seat. Each seat after that is $199.
       // This counts them; it does not charge - money is its own act and it happens somewhere else.
       //
       //   SEAT LIST <business>
@@ -34685,8 +34865,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         };
         const bill = (n) => ({ seats: n, included: Math.min(n, 1),
           extra: Math.max(0, n - 1),
-          monthly: "$" + (299 + Math.max(0, n - 1) * 99),
-          how: "$299 covers the shop and one seat. $99 for each seat after that." });
+          // Aaron's working prices (2026-11-20, nothing locked): the parlor plan is $299 and
+          // includes one artist; every artist after that pays the artist price, $199.
+          monthly: "$" + (299 + Math.max(0, n - 1) * 199),
+          how: "$299 covers the shop and one artist. $199 for each artist after that." });
 
         if (seSub === "LIST" || !seSub) {
           const seats = await readSeats();
@@ -34996,8 +35178,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const places = (seated?.results || []).map(r => r.name).filter(Boolean);
           if (places.length) return { cmd: "CONSOLE", payload: { ok: true, businesses: [],
             works_at: places,
-            what_to_say: "You work at " + places.join(", ") + ", but the console belongs to whoever " +
-              "owns it. Ask them to add you if you need it.",
+            what_to_say: "You work at " + places.join(", ") + ". The shop's console belongs to whoever " +
+              "owns it - your own bookings and hours are on your page at " + ARTIST_WORLD + "/me.",
+            your_page: "https://" + ARTIST_WORLD + "/me",
             note: "A seat says somebody works here. It does not open the books - otherwise every " +
               "artist in every shop could read that shop's money." } };
         }
@@ -35432,7 +35615,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const w = h && h.data ? h.data.weekly : null;
             return w && typeof w === "object" && !Array.isArray(w) ? w : null;
           })(),
-          your_page: "https://openforbusiness.world/b/" + pick,
+          // Their own address when they have one - the same place the QR opens.
+          your_page: await (async () => {
+            try {
+              const r = await db.prepare("SELECT slug FROM pta_entities WHERE id = ?").bind(pick).first();
+              return r?.slug ? bizUrl(r.slug) : "https://" + BIZ_WORLD + "/b/" + pick;
+            } catch { return "https://" + BIZ_WORLD + "/b/" + pick; }
+          })(),
           // Gate One, read from their chain rather than from a subscription table. A business that has
           // never paid sees its record; one that has paid gets the tools.
           paid: (() => { const o = [...chain].reverse().find(c => c?.event === "OUTCOME"); 
@@ -81339,7 +81528,7 @@ export class PublicEntry extends WorkerEntrypoint {
         for (const pc of owned) {
           const k = (pc.caption || "gallery").toString();
           (groups[k] = groups[k] || []).push(
-            "https://openforbusiness.world/w/" + row.pta + "/" + pc.id);
+            "https://" + ARTIST_WORLD + "/w/" + row.pta + "/" + pc.id);
         }
       } else {
         for (const im of (u.images || [])) {
@@ -81519,7 +81708,7 @@ export class PublicEntry extends WorkerEntrypoint {
       // console is the shop's, not the owner's personal one.
       const r = await processCommand("PTA_TALK " + JSON.stringify({
         pta_entity: view.showing, message: String(said || ""), app: "openforbusiness",
-        mode: "home", console_url: "https://" + String(slug || "") + ".openforbusiness.world",
+        mode: "home", console_url: bizUrl(String(slug || "")),
       }), this.env, true);
       const rp = (r && r.payload) ? r.payload : r;
       return rp?.ok ? rp : { ok: false, error: rp?.error || "no reply",
@@ -81534,6 +81723,86 @@ export class PublicEntry extends WorkerEntrypoint {
   async joinAccept(token) {
     try {
       const r = await processCommand("INVITE_SEAT ACCEPT " + String(token || ""), this.env, true);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // ══ THE ARTIST'S OWN PAGE (2026-11-20, Session B) ═══════════════════════════════════════════
+  // tattooartist.world/me. An artist is their own PTA, and working at a shop is a works_at edge
+  // between two PTAs - so this starts from the PERSON and walks their edges, never from a shop.
+  // One artist, any number of shops: each shop with its hours for THEM (read from their edge by
+  // SEAT HOURS) and every booking where they are the artist, in that shop's own time.
+  // What is NOT here, on purpose: the shop's money, deposits, and its customer list. A booking
+  // shows who is coming and what they asked for - the artist needs that to do the work - and no
+  // contact details. MEASURED with the test switch on: a seated artist opening the shop console
+  // saw every customer and every deposit. This page is the answer to "what does an artist see".
+  // Built from the commands that already own each fact (SEAT HOURS, APPOINTMENT LIST,
+  // bizZoneName) - no second reader of hours or bookings.
+  async artistHome(sessionId) {
+    try {
+      const me = await this._whoIs(sessionId);
+      if (!me?.pta) return { ok: false, error: "NOT_SIGNED_IN",
+        say: "Open the link from your invite email to sign in." };
+      const db = this.env.AURA_MEMORY;
+      const who = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(me.pta).first().catch(() => null);
+      if (!who) return { ok: false, error: "NOT_SIGNED_IN", say: "That sign-in no longer matches anyone." };
+      const run = async (cmd) => { const r = await processCommand(cmd, this.env, true); return (r && r.payload) ? r.payload : r; };
+      const seats = await db.prepare(
+        "SELECT e.id AS edge_id, e.to_id AS biz, e.created_at, x.name, x.slug FROM pta_edges e " +
+        "JOIN pta_entities x ON x.id = e.to_id " +
+        "WHERE e.from_id = ? AND e.edge_type = 'works_at' AND e.state != 'revoked' ORDER BY e.created_at"
+      ).bind(me.pta).all().catch(() => null);
+      const now = Date.now();
+      const shops = [];
+      const upcoming = [];
+      for (const s of (seats?.results || [])) {
+        const zone = await bizZoneName(this.env, s.biz);
+        let hours = null;
+        try { const h = await run("SEAT HOURS " + s.biz + " " + me.pta); hours = h?.reads_as || null; } catch {}
+        let mine = [];
+        try {
+          const l = await run("APPOINTMENT LIST " + s.biz);
+          mine = (l?.appointments || []).filter(a => a.artist === me.pta);
+        } catch {}
+        for (const a of mine) {
+          const end = Date.parse(a.end || "") || (Date.parse(a.start || "") + (Number(a.minutes) || 120) * 60000);
+          if (!isFinite(end) || end < now) continue;
+          upcoming.push({ uid: a.uid, shop: s.name, shop_id: s.biz, start: a.start, end: a.end,
+            when_local: whenIn(a.start, zone), minutes: a.minutes || null, status: a.status,
+            client: a.who || null, wants: a.summary || null, notes: a.description || null,
+            you_said: (a.attendees && a.attendees[me.pta]) || null });
+        }
+        shops.push({ id: s.biz, name: s.name, since: s.created_at, timezone: zone,
+          page: s.slug ? bizUrl(s.slug) : null, your_hours: hours,
+          upcoming: mine.filter(a => (Date.parse(a.end || a.start || "") || 0) >= now && a.status !== "CANCELLED").length });
+      }
+      upcoming.sort((x, y) => String(x.start).localeCompare(String(y.start)));
+      return { ok: true, you: { pta: me.pta, name: who.name || null }, signed_in_via: me.signed_in_via || "session",
+        shops, upcoming, portfolio: "/_portfolio?who=" + me.pta,
+        note: shops.length ? undefined : "You are not seated at a shop yet. A shop adds you from its console." };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // The artist answering for themselves: accept or decline a booking that names THEM. Nothing
+  // else - moving or reassigning is the shop's call from its console. Checked here (the booking's
+  // artist must be the signed-in person) and again by APPOINTMENT REPLY (they must be seated).
+  async artistAct(sessionId, what, args) {
+    try {
+      const me = await this._whoIs(sessionId);
+      if (!me?.pta) return { ok: false, error: "NOT_SIGNED_IN", say: "Sign in again from your invite link." };
+      const a = args || {};
+      if (String(what || "").toLowerCase() !== "reply") return { ok: false, error: "UNKNOWN_ACTION" };
+      const ps = String(a.answer || "").toUpperCase();
+      if (!["ACCEPTED", "DECLINED", "TENTATIVE"].includes(ps)) return { ok: false, error: "BAD_ANSWER" };
+      const r0 = await processCommand("APPOINTMENT " + String(a.booking || ""), this.env, true);
+      const ap = (r0 && r0.payload) ? r0.payload : r0;
+      if (!ap?.ok || (ap.artist || ap.with) !== me.pta) return { ok: false, error: "NOT_YOUR_BOOKING",
+        say: "That booking is not with you." };
+      const r = await processCommand("APPOINTMENT REPLY " + a.booking + " " + me.pta + " " + ps, this.env, true);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
@@ -81620,15 +81889,27 @@ export class PublicEntry extends WorkerEntrypoint {
       // The shop finds out because somebody walks in. Both sides get an email the moment it is asked
       // for - the client so they have it in writing, the shop so nobody has to refresh a screen.
       let told = { client: null, shop: null };
-      const localWhen = (() => {
-        try { return new Date(rp.when).toUTCString().replace(" GMT", ""); } catch { return rp.when; }
-      })();
+      // ══ IN THE SHOP'S OWN TIME (fixed 2026-11-20) ═══════════════════════════════════════
+      // This was `toUTCString()` with " GMT" cut off - so a 1:00pm Los Angeles booking reached the
+      // customer AND the shop as "21:00:00", UTC dressed as local. MEASURED on Test Parlor One.
+      const bookZone = await bizZoneName(this.env, biz);
+      const localWhen = whenIn(rp.when, bookZone);
+      // Who they are booked with, by name - "with an artist" told the shop nothing it could act on.
+      let artistName = null;
+      if (f.with) {
+        try {
+          const aRow = await this.env.AURA_MEMORY
+            .prepare("SELECT name FROM pta_entities WHERE id = ? LIMIT 1").bind(String(f.with)).first();
+          artistName = aRow?.name || null;
+        } catch {}
+      }
       if (contact.includes("@")) {
         try {
-          const e1 = await processCommand("EMAIL_SEND " + contact + " Your appointment at " + sp.name +
-            " | " + localWhen + (f.notes ? "  --  You asked for: " + String(f.notes).slice(0, 200) : "") +
-            "  --  They will confirm shortly. Nothing has been charged.", this.env, true);
-          told.client = ((e1 && e1.payload) ? e1.payload.ok : false) || false;
+          const e1 = await emailFromWorld(this.env, contact, BIZ_WORLD, "Your appointment at " + sp.name,
+            localWhen + (artistName ? " with " + artistName : "") +
+            (f.notes ? "  --  You asked for: " + String(f.notes).slice(0, 200) : "") +
+            "  --  They will confirm shortly. Nothing has been charged.");
+          told.client = !!e1?.ok;
         } catch {}
       }
       try {
@@ -81699,12 +81980,11 @@ export class PublicEntry extends WorkerEntrypoint {
               } catch {}
             }
             if (!addr) continue;
-            const er = await processCommand("EMAIL_SEND " + addr + " New booking at " + sp.name +
-              " | " + name + " asked for " + new Date(rp.when).toUTCString() +
-              (f.with ? " with an artist" : "") +
+            const ep = await emailFromWorld(this.env, addr, BIZ_WORLD, "New booking at " + sp.name,
+              name + " asked for " + localWhen +
+              (f.with ? " with " + (artistName || "an artist") : "") +
               (f.notes ? "  --  They said: " + String(f.notes).slice(0, 200) : "") +
-              "  --  Nothing is confirmed until you say so.", this.env, true);
-            const ep = (er && er.payload) ? er.payload : er;
+              "  --  Nothing is confirmed until you say so.");
             if (ep?.ok) reached++;
           } catch {}
         }
@@ -81721,14 +82001,6 @@ export class PublicEntry extends WorkerEntrypoint {
       // cannot. Aaron: "it needs to give all the information that they just submitted."
       // Every shape of this - a restaurant, a barber, an airline - reads the booking back. Nothing
       // new is looked up that we did not already have; it is all here and was simply not returned.
-      let artistName = null;
-      if (f.with) {
-        try {
-          const aRow = await this.env.AURA_MEMORY
-            .prepare("SELECT name FROM pta_entities WHERE id = ? LIMIT 1").bind(String(f.with)).first();
-          artistName = aRow?.name || null;
-        } catch {}
-      }
       return { ok: true, booking: rp.booking, when: rp.when, pta: wp.entity.id,
         notes_kept, told,
         // What they asked for, read back to them.

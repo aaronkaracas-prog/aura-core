@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.122-2026-11-21-addon-four-artwork-redrawn";
+const BUILD = "aura-core-v9.999.123-2026-11-21-day-view-booking";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -5290,6 +5290,40 @@ async function emailFromWorld(env, to, world, subject, body) {
   r = await processCommand("EMAIL_SEND " + to + " " + subj + " | " + body, env, true);
   p = (r && r.payload) ? r.payload : r;
   return { ok: !!p?.ok, from: p?.ok ? "default sender" : null, error: p?.ok ? undefined : (p?.error || "did not send") };
+}
+// ══ THE SHOP'S BOOKING CHOICES (2026-11-21, Aaron: "we always give them every variable - we're
+// creating a system, we're not coordinating how they're gonna use it") ═══════════════════════════
+// Session lengths, how often a start is offered, walk-ins on or off and how long one runs. Every
+// value is theirs; these defaults only fill what a shop has not set yet.
+const BOOKING_DEFAULTS = {
+  lengths: [{ label: "Consult", minutes: 30 }, { label: "1 hour", minutes: 60 }, { label: "2 hours", minutes: 120 },
+            { label: "Half day", minutes: 240 }, { label: "Full day", minutes: 480 }],
+  step: 30, walkins: true, walkin_minutes: 60
+};
+function normBooking(b) {
+  if (!b || typeof b !== "object") return null;
+  const out = {};
+  if (Array.isArray(b.lengths)) {
+    out.lengths = b.lengths.map(x => ({ label: String((x && x.label) || "").trim().slice(0, 30),
+      minutes: Math.round(Number(x && x.minutes)) }))
+      .filter(x => x.label && x.minutes >= 15 && x.minutes <= 720).slice(0, 12);
+    if (!out.lengths.length) return null;
+  }
+  if (b.step != null) { const st = Math.round(Number(b.step)); if (![5, 10, 15, 20, 30, 60].includes(st)) return null; out.step = st; }
+  if (b.walkins != null) out.walkins = !!b.walkins;
+  if (b.walkin_minutes != null) { const w = Math.round(Number(b.walkin_minutes)); if (!(w >= 15 && w <= 480)) return null; out.walkin_minutes = w; }
+  return Object.keys(out).length ? out : null;
+}
+async function bizBooking(env, bizId) {
+  const out = JSON.parse(JSON.stringify(BOOKING_DEFAULTS));
+  try {
+    const stub = env.PTA_DO.get(env.PTA_DO.idFromName(bizId));
+    const r = await stub.fetch(new Request("http://do", { method: "POST",
+      body: JSON.stringify({ method: "getState", params: [] }) }));
+    const j = await r.json();
+    for (const c of ((j?.pta?.chain) || [])) if (c?.data?.booking && typeof c.data.booking === "object") Object.assign(out, c.data.booking);
+  } catch {}
+  return out;
 }
 // A week typed in a sentence -> the weekly object the calendar reads. Only used ONCE, at signup,
 // to pre-fill the hours grid from what the owner typed into the form ("Tue-Sat 12-8, closed Sun");
@@ -33577,6 +33611,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const avWith = (rest.match(/\bwith:(pta_[a-f0-9]+)/i) || [])[1] || null;
       const avDays = Math.min(Math.max(Number((rest.match(/\bdays:(\d+)/i) || [])[1]) || 14, 1), 60);
       const avSlot = Math.min(Math.max(Number((rest.match(/\bslot:(\d+)/i) || [])[1]) || 120, 15), 480);
+      // ══ HOW OFTEN A SESSION MAY START (2026-11-21) ══════════════════════════════════════
+      // Starts stepped by the session's own length, so a half day could only begin at 12 or 4.
+      // `step:` is the shop's choice (every 15, 30 or 60 minutes); left out, nothing changes.
+      // `now:1` is a walk-in: the next start from this minute, not from an hour ahead.
+      const avStep = Math.min(Math.max(Number((rest.match(/\bstep:(\d+)/i) || [])[1]) || avSlot, 5), avSlot);
+      const avNow = /\bnow:1\b/i.test(rest);
       try {
         const db = env.AURA_MEMORY;
         const biz = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(avBiz).first();
@@ -33823,11 +33863,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // promises, and what it now actually does.
           const slots = [];
           // Every range on the day - so a business that shuts for lunch simply has two.
-          for (const range of o) for (let m = range[0]; m + avSlot <= range[1]; m += avSlot) {
+          for (const range of o) for (let m = range[0]; m + avSlot <= range[1]; m += avStep) {
             // Local minutes -> the actual instant. m is in the shop's clock; tzMin shifts it.
             const t = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(),
               0, m - tzMin));
-            if (t.getTime() < now + 3600000) continue;   // not in the next hour
+            if (t.getTime() < now + (avNow ? 0 : 3600000)) continue;   // not in the next hour (a walk-in: from now)
             const clash = taken.some(x => t.getTime() < x.at + x.mins * 60000 &&
                                           x.at < t.getTime() + avSlot * 60000);
             if (!clash) slots.push({ at: t.toISOString(),
@@ -33846,7 +33886,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const winFrom = new Date(now + tzMin * 60000).toISOString().slice(0, 10);
         const winTo = new Date(now + (avDays - 1) * 86400000 + tzMin * 60000).toISOString().slice(0, 10);
         return { cmd: "AVAILABILITY", payload: { ok: true, business: biz.name, id: avBiz,
-          with: avWith, slot_minutes: avSlot,
+          with: avWith, slot_minutes: avSlot, step_minutes: avStep,
           timezone: tzName || null,
           timezone_source: tzName ? "theirs" : "google listing",
           window: { from: winFrom, to: winTo, days: avDays },
@@ -34686,7 +34726,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // it is an hour out. The zone is the fact; the offset is derived per instant.
       const FIELDS = { about: "SERVICE", hours: "HOURS", services: "SERVICE",
                        phone: "CONTACT", email: "CONTACT", address: "CONTACT",
-                       timezone: "TIMEZONE" };
+                       timezone: "TIMEZONE", booking: "SETTINGS" };
       if (beField === "timezone") {
         // Validated by asking the runtime to use it - the only honest test of an IANA name.
         try { new Intl.DateTimeFormat("en-US", { timeZone: beVal }).format(new Date()); }
@@ -34695,7 +34735,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           what_to_do: "Use an IANA name like America/Los_Angeles, America/New_York or Europe/London." } }; }
       }
       if (!beBiz || !FIELDS[beField]) return { cmd: "BUSINESS_EDIT", payload: { ok: false,
-        error: "Usage: BUSINESS_EDIT <business> <about|hours|services|phone|email|address|timezone> ::: <value>" } };
+        error: "Usage: BUSINESS_EDIT <business> <about|hours|services|phone|email|address|timezone|booking> ::: <value>" } };
       if (!/^pta_|^ent_/.test(beBiz)) {
         const sl = await processCommand("SLUG GET " + beBiz, env, true);
         const sp = (sl && sl.payload) ? sl.payload : sl;
@@ -34712,7 +34752,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (beField === "hours") {
           try { beWeekly = normWeekly(JSON.parse(beVal)); } catch { beWeekly = null; }
         }
+        // Booking settings are the shop's own choices - session lengths, how often a start is
+        // offered, walk-ins. Stored whole, read back by bizBooking(); nothing here decides them.
+        let beBooking = null;
+        if (beField === "booking") {
+          try { beBooking = normBooking(JSON.parse(beVal)); } catch { beBooking = null; }
+          if (!beBooking) return { cmd: "BUSINESS_EDIT", payload: { ok: false, error: "BAD_BOOKING_SETTINGS",
+            what_to_do: 'Send {"lengths":[{"label":"2 hours","minutes":120}],"step":30,"walkins":true,"walkin_minutes":60}' } };
+        }
         const data = beField === "about" || beField === "services" ? { offers: beVal }
+          : beField === "booking" ? { booking: beBooking }
           : beField === "timezone" ? { timezone: beVal }
           : beField === "hours" ? (beWeekly ? { weekly: beWeekly } : { hours: beVal })
           : { [beField]: beVal };
@@ -35513,6 +35562,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         return { cmd: "CONSOLE", payload: { ok: true,
           businesses: list, showing: pick,
           name: list.find(b => b.id === pick)?.name || null,
+          // The shop's own booking choices - lengths, start step, walk-ins (bizBooking).
+          booking: await bizBooking(env, pick),
           business_type: type,
           nav: NAV[type] || NAV._default,
           // ══ THE WORK THAT ARRIVED WHILE THEY WERE OUT (2026-08-25) ══════════════════════════
@@ -35612,7 +35663,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const t = { greeting: null, needs_you: [], nothing_pending: false };
             const owner = await db.prepare("SELECT name FROM pta_entities WHERE id = ?")
               .bind(coOwner).first().catch(() => null);
-            const hour = new Date().getUTCHours();
+            // In the SHOP's clock. MEASURED 2026-11-21: "evening." at 10am in Los Angeles - this read UTC.
+            const gZone = (await bizZoneName(env, pick).catch(() => null)) || "UTC";
+            let hour = new Date().getUTCHours();
+            try { hour = Number(new Intl.DateTimeFormat("en-US", { timeZone: gZone, hour: "numeric", hourCycle: "h23" }).format(new Date())); } catch {}
             t.greeting = (owner?.name ? owner.name + ", " : "") +
               (hour < 11 ? "morning" : hour < 17 ? "afternoon" : "evening") + ".";
             // Bookings ahead, deposits not yet taken, promises with a time on them.
@@ -39853,6 +39907,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const service = pipeParts[1] || "Appointment";
         const amount = pipeParts[2] ? parseFloat(pipeParts[2]) : null;
         const notes = (pipeParts[3] || "").replace(/\bwith:pta_[a-f0-9]+/i, "").trim();
+        // How long it runs, when the caller says (the shop's own session lengths). Left out: the default.
+        const bkMins = Number((afterIds.match(/\|\s*minutes:(\d+)/i) || [])[1]) || undefined;
         if (!whenISO) return { cmd: "BOOKING", payload: { ok: false, error: "When (ISO datetime) required before the first |" } };
         // verify both entities exist
         const biz = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(businessId).first();
@@ -39885,7 +39941,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // That is what this now does. Every clash check, hours check and duration rule runs ONCE,
         // in one place, because there is one place. Four bugs in one day were the cost of two.
         const apr = await processCommand("APPOINTMENT NEW " + businessId + " ::: " + JSON.stringify({
-          customer: customerId, start: whenISO, artist: withArtist || undefined,
+          customer: customerId, start: whenISO, artist: withArtist || undefined, minutes: bkMins,
           summary: service || "Appointment", description: notes || undefined,
           deposit: amount != null && !isNaN(amount) ? amount : undefined,
           uid: eId,
@@ -82406,7 +82462,8 @@ export class PublicEntry extends WorkerEntrypoint {
       // invisible to them. It goes in the booking too - the client keeps their copy, the shop can
       // read the appointment they are being asked for.
       const pipe = [when, String(f.service || f.notes || "").slice(0, 200), String(f.deposit || ""),
-        String(f.notes || "").slice(0, 500)].join(" | ") + (f.with ? " | with:" + f.with : "");
+        String(f.notes || "").slice(0, 500)].join(" | ") + (f.with ? " | with:" + f.with : "") +
+        (opts && Number(opts.minutes) ? " | minutes:" + Math.min(Math.max(Number(opts.minutes), 15), 720) : "");
       const r = await processCommand("BOOKING CREATE " + wp.entity.id + " " + biz + " " + pipe,
         this.env, true);
       const rp = (r && r.payload) ? r.payload : r;
@@ -82656,7 +82713,35 @@ export class PublicEntry extends WorkerEntrypoint {
                                 artist: a.artist || null, summary: a.service || "Appointment",
                                 description: a.notes || "", deposit: a.deposit || null }));
         case "slots":    return await run("AVAILABILITY " + biz + (a.artist ? " with:" + a.artist : "") +
-                                " days:" + (a.days || 21) + (a.minutes ? " slot:" + a.minutes : ""));
+                                " days:" + (a.days || 21) + (a.minutes ? " slot:" + a.minutes : "") +
+                                (a.step ? " step:" + a.step : "") + (a.now ? " now:1" : ""));
+        // ══ THE SHOP BOOKS SOMEBODY IN (2026-11-21) ══════════════════════════════════════════
+        // From the day view: a gap tapped, or the +, or Walk-in. Somebody with a way to reach them
+        // goes through book() - the customer's own door - so they are minted from their contact,
+        // the address rides on the booking and they get an email in the shop's time; the owner
+        // picked the time, so it is CONFIRMED. A walk-in with no contact is a person of their own
+        // (never merged with another "Walk-in"), booked and confirmed, with nobody to email.
+        case "book_in": {
+          const bName = String(a.name || "").trim().slice(0, 80) || (a.walkin ? "Walk-in" : "");
+          if (!bName) return { ok: false, error: "NEED_NAME", say: "Who is it for?" };
+          if (!a.when) return { ok: false, error: "NEED_TIME", say: "Pick a time." };
+          const bMins = Math.min(Math.max(Number(a.minutes) || 120, 15), 720);
+          const bContact = String(a.contact || "").trim().slice(0, 120);
+          const bNotes = String(a.notes || "").trim().slice(0, 500) || (a.walkin ? "Walk-in" : "");
+          if (bContact) {
+            return await this.book(slug, { name: bName, contact: bContact, when: a.when, notes: bNotes,
+              with: a.artist || undefined }, { offered: true, minutes: bMins });
+          }
+          const wid = "walkin:" + biz + ":" + bName.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ":" + Date.now().toString(36);
+          const wp = await run("PTA_ENTITY CREATE person \"" + bName.replace(/"/g, "") + "\" identity:" + wid);
+          if (!wp?.ok || !wp.entity?.id) return { ok: false, error: "COULD_NOT_ADD_THEM", detail: wp?.error || null };
+          const ap = await run("APPOINTMENT NEW " + biz + " ::: " + JSON.stringify({ customer: wp.entity.id, start: a.when,
+            minutes: bMins, artist: a.artist || null, summary: bNotes || "Appointment", description: bNotes || "" }));
+          if (!ap?.ok) return { ...ap, say: ap?.what_to_do || ap?.error || "That time could not be booked." };
+          const bUid = ap.uid || ap.booking || ap.id;
+          if (bUid) await run("APPOINTMENT SET " + bUid + " status CONFIRMED");
+          return { ok: true, booking: bUid || null, when: ap.start || a.when, say: "Booked." };
+        }
         // A customer who is not in the system yet - booking somebody in over the phone is the most
         // common thing an owner does, and it cannot require the person to exist first.
         case "find_or_make": {

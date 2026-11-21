@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.115-2026-11-20-addon-photo-rides";
+const BUILD = "aura-core-v9.999.116-2026-11-20-addon-photo-rides-page";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -72528,7 +72528,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // the inner forearm", while her own look (15:39:57) said open skin "on her hand, upper arm, shoulder, and chest". Their photo now goes
           // with each add-on turn until the first picture is drawn (addon_drawn); with config:talk:picture_text_only on, aura-think hands her
           // her own remembered look as words - no new look, no picture tokens, her words still stream. After a drawing, nothing changes.
-          if (!_photoStill && seeing && refHeld && _bodyPhoto && me && String((carriedObj && carriedObj.job) || "").toLowerCase() === "add") {
+          // (v9.999.116) MEASURED 16:29:32: on that second turn the job was not saved yet (job=-) - they are on Add to Existing (page job1), so the page counts too
+          if (!_photoStill && seeing && refHeld && _bodyPhoto && me && (String((carriedObj && carriedObj.job) || "").toLowerCase() === "add" || String((opts && opts.page) || "") === "job1")) {
             let _adr0 = ""; try { _adr0 = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || ""); } catch {}
             if (_adr0 !== "1") { _photoStill = true; try { console.log("[TURN:LOOK] add-on, nothing drawn yet - their photo goes with this turn, so she works from her own look at it" + " · who=" + me); } catch {} }
           }

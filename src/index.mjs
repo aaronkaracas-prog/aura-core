@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.113-2026-11-20-artist-hours";
+const BUILD = "aura-core-v9.999.114-2026-11-20-artist-signup";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -30796,8 +30796,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const abSite = (abParts.find(x => /^SITE\s/i.test(String(x || "").trim())) || "")
             .replace(/^\s*SITE\s+/i, "").trim().replace(/[^a-z0-9.-]/gi, "") || "cityguide.world";
           const abBrand = abSite.replace(/^www\./, "");
+          // ══ THE OWNER'S NAME (2026-11-20) ═══════════════════════════════════════════════
+          // The console greeted a new owner as "aaronkaracas+parlor2" - the front of their email,
+          // because signup never asked who they are. The form sends it tagged, like SITE.
+          const abOwner = (abParts.find(x => /^OWNER\s/i.test(String(x || "").trim())) || "")
+            .replace(/^\s*OWNER\s+/i, "").replace(/"/g, "").trim().slice(0, 80);
           await env.AURA_KV.put("addbiz:" + token, JSON.stringify({ email, name, address, phone, about,
-            website: abParts[5] || "", hours: abParts[6] || "",
+            website: abParts[5] || "", hours: abParts[6] || "", owner_name: abOwner || null,
             // ══ THE SITE HAS TO SURVIVE THE EMAIL (fixed 2026-08-18) ══════════════════════════
             // START and CONFIRM are two separate invocations, minutes or days apart. `abBrand` is
             // computed in START, so reading it in CONFIRM threw ReferenceError - inside a try, so
@@ -30942,9 +30947,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Minted the same way a booking mints a client: keyed on their contact, so signing up a
             // second shop is the same person rather than a second one.
             try {
-              const ow = await processCommand("PTA_ENTITY CREATE person " +
-                (pend.email.split("@")[0] || "owner") + " identity:" + pend.email.toLowerCase(),
-                env, true);
+              // Their own name when the form gave one (quoted - unquoted, PTA_ENTITY CREATE keeps
+              // the first word only, the same bug SEAT ADD had with surnames).
+              const owName = String(pend.owner_name || pend.email.split("@")[0] || "owner").replace(/"/g, "").trim();
+              const ow = await processCommand("PTA_ENTITY CREATE person \"" + owName + "\" identity:" +
+                pend.email.toLowerCase(), env, true);
               const owp = (ow && ow.payload) ? ow.payload : ow;
               if (owp?.ok && owp.entity?.id) {
                 ownerPta = owp.entity.id;
@@ -31917,6 +31924,167 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "everyone - what somebody does next happens on that page." } };
       } catch (e) {
         return { cmd: "SEND_CODE", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
+    case "ARTIST_JOIN": {
+      // ══ AN ARTIST COMES IN THROUGH THEIR OWN DOOR (2026-11-20, Session B) ═════════════════════
+      // Until now an artist existed only because a shop typed them in. Aaron's architecture is
+      // two-sided: "every actor enters through their own doorway, and the doorways must then
+      // connect." So an artist signs up on tattooartist.world (their own PTA, made on their own
+      // say-so) and ASKS to join a parlor; the parlor answers from its console. Two PTAs, consent
+      // on both sides, and the seat is the SAME works_at edge SEAT ADD makes - no second kind.
+      //
+      //   ARTIST_JOIN START <email> ::: <name> ::: <city> ::: <instagram>   email a confirm link
+      //   ARTIST_JOIN CONFIRM <token>                                       make them, sign them in
+      //   ARTIST_JOIN ASK <artist_pta> <business_pta> ::: <message>         ask a parlor to join
+      //   ARTIST_JOIN LIST <business_pta>                                   who is asking
+      //   ARTIST_JOIN ANSWER <request_id> YES|NO                            the parlor's answer
+      //
+      // A request is its own edge (`seat_request`), never a pending works_at: every seat reader
+      // counts works_at with `state != 'revoked'`, so a pending one would have been seated and
+      // billed the moment it was asked for.
+      if (!isOp) return { cmd: "ARTIST_JOIN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ajP = (rest || "").split(":::").map(x => x.trim());
+      const ajH = (ajP[0] || "").split(/\s+/);
+      const ajSub = String(ajH[0] || "").toUpperCase();
+      const adb = env.AURA_MEMORY;
+      const nowIso = () => new Date().toISOString();
+      try {
+        if (ajSub === "START") {
+          const email = String(ajH[1] || "").trim().toLowerCase();
+          const name = String(ajP[1] || "").replace(/"/g, "").trim().slice(0, 80);
+          if (!email.includes("@") || !name) return { cmd: "ARTIST_JOIN", payload: { ok: false,
+            error: "NEED_NAME_AND_EMAIL", say: "We need your name and an email that works." } };
+          const tok = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, "0")).join("");
+          await env.AURA_KV.put("addartist:" + tok, JSON.stringify({ email, name,
+            city: String(ajP[2] || "").slice(0, 80) || null,
+            instagram: String(ajP[3] || "").replace(/^@/, "").replace(/[^A-Za-z0-9_.]/g, "").slice(0, 30) || null,
+            started_at: nowIso() }), { expirationTtl: 7 * 86400 });
+          const link = "https://" + ARTIST_WORLD + "/start/" + tok;
+          const em = await emailFromWorld(env, email, ARTIST_WORLD, "Confirm your artist page on tattooartist.world",
+            "Hi " + name + ". Open this to finish setting up your artist page: " + link +
+            "  --  The link works for seven days. If this was not you, ignore this email and nothing is created.");
+          return { cmd: "ARTIST_JOIN", payload: { ok: true, mode: "sent", email, sent: !!em?.ok,
+            confirm_link: em?.ok ? undefined : link,
+            say: em?.ok ? "Check your email - the link finishes setting up your page." : "We could not send the email. Use this link instead." } };
+        }
+
+        if (ajSub === "CONFIRM") {
+          const tok = String(ajH[1] || "").replace(/[^a-f0-9]/g, "");
+          let pend = null;
+          try { pend = JSON.parse((await env.AURA_KV.get("addartist:" + tok)) || "null"); } catch {}
+          if (!pend) return { cmd: "ARTIST_JOIN", payload: { ok: false, error: "LINK_EXPIRED",
+            say: "That link has expired or was already used. Start again on tattooartist.world." } };
+          // Keyed on their email exactly the way SEAT ADD keys an artist a shop types in, so an
+          // artist a shop already seated and the same artist signing up are ONE person.
+          const pc = await processCommand("PTA_ENTITY CREATE person \"" + pend.name + "\" identity:email:" + pend.email, env, true);
+          const pp = (pc && pc.payload) ? pc.payload : pc;
+          if (!pp?.ok || !pp.entity?.id) return { cmd: "ARTIST_JOIN", payload: { ok: false, error: "COULD_NOT_CREATE",
+            detail: pp?.error || null, say: pp?.error === "CONTACT_BELONGS_TO_ANOTHER_TYPE"
+              ? "That email already belongs to a business here - use your own." : "We could not set up your page." } };
+          const me = pp.entity.id;
+          try { await processCommand("PTA_ROLE ADD " + me + " artist", env, true); } catch {}
+          // Signing up themselves IS their consent for what they typed - the same three-step grant
+          // a parlor's signup gives, so their own address and details can sit on their own chain.
+          try {
+            const auraActor = (await getSecret(env, "aura_pta_id")) || (await env.AURA_KV.get("config:aura:pta_id")) || "";
+            const gr = auraActor ? await processCommand("PTA_GRANT " + me + " " + auraActor +
+              ' CONFIRM {"edge_type":"grant","permission":{"can_remember":true}}', env, true) : null;
+            const gp = (gr && gr.payload) ? gr.payload : gr;
+            if (gp?.ok && gp.edge_id) await processCommand("PTA_ACCEPT " + gp.edge_id, env, true);
+            await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({ email: pend.email,
+              city: pend.city || null, instagram: pend.instagram || null, event_type: "CONTEXT" }), env, true);
+          } catch {}
+          try { await env.AURA_KV.delete("addartist:" + tok); } catch {}
+          let session = null;
+          try { const ms = await new PublicEntry({}, env)._mintSession(me, "confirmed their email on tattooartist.world"); if (ms?.ok) session = ms.session; } catch {}
+          return { cmd: "ARTIST_JOIN", payload: { ok: true, person: me, name: pp.entity.name || pend.name,
+            existing: pp.mode === "existing" || undefined, session: session || undefined,
+            go: "https://" + ARTIST_WORLD + "/me", say: "You are in. Find your shop and ask to join." } };
+        }
+
+        if (ajSub === "ASK") {
+          const who = ajH[1] || "", biz = ajH[2] || "";
+          const msg = String(ajP[1] || "").slice(0, 300) || null;
+          const shop = await adb.prepare("SELECT id, name, type, slug FROM pta_entities WHERE id = ?").bind(biz).first().catch(() => null);
+          if (!shop || shop.type !== "business") return { cmd: "ARTIST_JOIN", payload: { ok: false, error: "NO_SUCH_SHOP" } };
+          const person = await adb.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(who).first().catch(() => null);
+          if (!person) return { cmd: "ARTIST_JOIN", payload: { ok: false, error: "NO_SUCH_ARTIST" } };
+          const seated = await adb.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'works_at' AND state != 'revoked'")
+            .bind(who, biz).first().catch(() => null);
+          if (seated) return { cmd: "ARTIST_JOIN", payload: { ok: true, already: "seated", say: "You already work at " + shop.name + "." } };
+          const open = await adb.prepare("SELECT id FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'seat_request' AND state = 'pending'")
+            .bind(who, biz).first().catch(() => null);
+          if (open) return { cmd: "ARTIST_JOIN", payload: { ok: true, already: "asked", request: open.id,
+            say: "You have already asked " + shop.name + " - they will see it in their console." } };
+          const reach = await reachAddress(env, who, null);
+          const rid = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+          await adb.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, context, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 'seat_request', 'pending', ?, ?, ?)")
+            .bind(rid, who, biz, JSON.stringify({ reach: reach || null, message: msg }), nowIso(), nowIso()).run();
+          // The owners hear about it - a request nobody is told about is a row in a table.
+          let told = 0;
+          try {
+            const owners = await adb.prepare("SELECT from_id FROM pta_edges WHERE to_id = ? AND edge_type IN ('owns','manages') AND state != 'revoked'").bind(biz).all();
+            for (const o of (owners?.results || [])) {
+              const addr = await reachAddress(env, o.from_id, biz);
+              if (!addr) continue;
+              const e = await emailFromWorld(env, addr, BIZ_WORLD, person.name + " wants to join " + shop.name,
+                person.name + " asked to join " + shop.name + " on tattooparlors.world" + (msg ? ": \"" + msg + "\"" : "") +
+                "  --  Answer from your console: " + (shop.slug ? bizUrl(shop.slug, "/admin") : "https://" + BIZ_WORLD) +
+                " (Artists).");
+              if (e?.ok) told++;
+            }
+          } catch {}
+          return { cmd: "ARTIST_JOIN", payload: { ok: true, request: rid, shop: shop.name, owners_told: told,
+            say: "Asked. " + shop.name + " will see it in their console and answer there." } };
+        }
+
+        if (ajSub === "LIST") {
+          const biz = ajH[1] || "";
+          const r = await adb.prepare("SELECT e.id, e.from_id, e.context, e.created_at, x.name FROM pta_edges e " +
+            "JOIN pta_entities x ON x.id = e.from_id WHERE e.to_id = ? AND e.edge_type = 'seat_request' AND e.state = 'pending' " +
+            "ORDER BY e.created_at").bind(biz).all().catch(() => null);
+          const list = (r?.results || []).map(x => { let c = {}; try { c = JSON.parse(x.context || "{}"); } catch {}
+            return { request: x.id, pta: x.from_id, name: x.name, message: c.message || null, since: x.created_at }; });
+          return { cmd: "ARTIST_JOIN", payload: { ok: true, count: list.length, asking: list } };
+        }
+
+        if (ajSub === "ANSWER") {
+          const rid = ajH[1] || "", yes = /^(YES|Y|ACCEPT|OK)$/i.test(ajH[2] || "");
+          const rq = await adb.prepare("SELECT e.id, e.from_id, e.to_id, e.context, x.name FROM pta_edges e JOIN pta_entities x ON x.id = e.from_id " +
+            "WHERE e.id = ? AND e.edge_type = 'seat_request' AND e.state = 'pending'").bind(rid).first().catch(() => null);
+          if (!rq) return { cmd: "ARTIST_JOIN", payload: { ok: false, error: "NO_SUCH_REQUEST", say: "That request was already answered." } };
+          let rc = {}; try { rc = JSON.parse(rq.context || "{}"); } catch {}
+          const shop = await adb.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(rq.to_id).first().catch(() => null);
+          if (!yes) {
+            await adb.prepare("UPDATE pta_edges SET state = 'declined', updated_at = ? WHERE id = ?").bind(nowIso(), rid).run();
+            // A no that says so - silence would leave them wondering (the REFUSE rule).
+            let told = false;
+            if (rc.reach && String(rc.reach).includes("@")) {
+              const e = await emailFromWorld(env, rc.reach, ARTIST_WORLD, "Your request to join " + (shop?.name || "the shop"),
+                (shop?.name || "The shop") + " did not add you this time. Your page on tattooartist.world is still yours.");
+              told = !!e?.ok;
+            }
+            return { cmd: "ARTIST_JOIN", payload: { ok: true, answered: "no", artist: rq.name, told } };
+          }
+          // YES: the same SEAT ADD a shop uses by hand, keyed on their own email - so it attaches
+          // to THEM (mode "existing"), bills the same, and sends them the same "Your seat" email.
+          const contact = rc.reach && String(rc.reach).includes("@") ? " email:" + rc.reach : "";
+          const sr = await processCommand("SEAT ADD " + rq.to_id + " " + String(rq.name || "Artist").replace(/"/g, "") + contact, env, true);
+          const sp = (sr && sr.payload) ? sr.payload : sr;
+          if (!sp?.ok) return { cmd: "ARTIST_JOIN", payload: { ok: false, error: "COULD_NOT_SEAT", detail: sp?.error || sp } };
+          if (sp.person && sp.person !== rq.from_id) return { cmd: "ARTIST_JOIN", payload: { ok: false,
+            error: "SEATED_SOMEONE_ELSE", seated: sp.person, asked: rq.from_id,
+            say: "The seat attached to a different record than the one who asked - nothing was marked answered." } };
+          await adb.prepare("UPDATE pta_edges SET state = 'accepted', updated_at = ? WHERE id = ?").bind(nowIso(), rid).run();
+          return { cmd: "ARTIST_JOIN", payload: { ok: true, answered: "yes", artist: rq.name, person: sp.person,
+            seats: sp.count, billing: sp.billing, invited: sp.invited || undefined } };
+        }
+        return { cmd: "ARTIST_JOIN", payload: { ok: false, error: "Usage: ARTIST_JOIN START|CONFIRM|ASK|LIST|ANSWER ..." } };
+      } catch (e) {
+        return { cmd: "ARTIST_JOIN", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200) } };
       }
     }
 
@@ -35582,6 +35750,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                        ...(sep.seats || []).map(x => ({ ...x, removable: true }))],
                 billing: sep.billing } : { count: 0,
                 list: [{ pta: pick, name: "The shop", is_shop: true }] };
+              // Artists who asked to join from tattooartist.world, waiting on an answer.
+              try {
+                const aj = await processCommand("ARTIST_JOIN LIST " + pick, env, true);
+                const ajp = (aj && aj.payload) ? aj.payload : aj;
+                out.artists.asking = ajp?.asking || [];
+              } catch { out.artists.asking = []; }
             } catch {}
             return out;
           })(),
@@ -81758,11 +81932,16 @@ export class PublicEntry extends WorkerEntrypoint {
   async artistHome(sessionId) {
     try {
       const me = await this._whoIs(sessionId);
-      if (!me?.pta) return { ok: false, error: "NOT_SIGNED_IN",
-        say: "Open the link from your invite email to sign in." };
+      // ══ SAY WHAT HAPPENED (2026-11-20) ═════════════════════════════════════════════════
+      // A session lasts 15 minutes idle. MEASURED: coming back after that, the page said "That
+      // sign-in no longer matches anyone" - true of the placeholder the test switch hands out, and
+      // meaningless to an artist. What happened is that their sign-in ran out.
+      const expired = { ok: false, error: "NOT_SIGNED_IN", expired: true,
+        say: "Your sign-in has expired. Open the link from your email again, or start at tattooartist.world/start." };
+      if (!me?.pta || me.pta === "pta_0000000000000bad") return expired;
       const db = this.env.AURA_MEMORY;
       const who = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(me.pta).first().catch(() => null);
-      if (!who) return { ok: false, error: "NOT_SIGNED_IN", say: "That sign-in no longer matches anyone." };
+      if (!who) return expired;
       const run = async (cmd) => { const r = await processCommand(cmd, this.env, true); return (r && r.payload) ? r.payload : r; };
       const seats = await db.prepare(
         "SELECT e.id AS edge_id, e.to_id AS biz, e.created_at, x.name, x.slug FROM pta_edges e " +
@@ -81798,9 +81977,34 @@ export class PublicEntry extends WorkerEntrypoint {
           upcoming: mine.filter(a => (Date.parse(a.end || a.start || "") || 0) >= now && a.status !== "CANCELLED").length });
       }
       upcoming.sort((x, y) => String(x.start).localeCompare(String(y.start)));
+      // Shops they have asked to join and not heard back from yet.
+      let asked = [];
+      try {
+        const rq = await db.prepare("SELECT e.id, e.created_at, x.name FROM pta_edges e JOIN pta_entities x ON x.id = e.to_id " +
+          "WHERE e.from_id = ? AND e.edge_type = 'seat_request' AND e.state = 'pending' ORDER BY e.created_at").bind(me.pta).all();
+        asked = (rq?.results || []).map(r => ({ request: r.id, shop: r.name, since: r.created_at }));
+      } catch {}
       return { ok: true, you: { pta: me.pta, name: who.name || null }, signed_in_via: me.signed_in_via || "session",
-        shops, upcoming, portfolio: "/_portfolio?who=" + me.pta,
-        note: shops.length ? undefined : "You are not seated at a shop yet. A shop adds you from its console." };
+        shops, upcoming, asked, portfolio: "/_portfolio?who=" + me.pta,
+        note: shops.length ? undefined : "You are not at a shop yet. Find yours below and ask to join - or a shop can add you from its console." };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // An artist signing themselves up on tattooartist.world. No session - they have none yet; the
+  // emailed link is what makes them, the same proof a parlor's signup rests on.
+  async artistSignup(action, body) {
+    try {
+      const b = body || {};
+      const clean = (v) => String(v == null ? "" : v).replace(/:::/g, " ").replace(/[\r\n]+/g, " ").trim().slice(0, 120);
+      const act = String(action || "").toUpperCase();
+      const cmd = act === "START"
+        ? "ARTIST_JOIN START " + clean(b.email).replace(/\s+/g, "") + " ::: " + clean(b.name) + " ::: " + clean(b.city) + " ::: " + clean(b.instagram)
+        : act === "CONFIRM" ? "ARTIST_JOIN CONFIRM " + String(b.token || "").replace(/[^a-f0-9]/g, "").slice(0, 64) : null;
+      if (!cmd) return { ok: false, error: "UNKNOWN_ACTION" };
+      const r = await processCommand(cmd, this.env, true);
+      return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }
@@ -81814,7 +82018,22 @@ export class PublicEntry extends WorkerEntrypoint {
       const me = await this._whoIs(sessionId);
       if (!me?.pta) return { ok: false, error: "NOT_SIGNED_IN", say: "Sign in again from your invite link." };
       const a = args || {};
-      if (String(what || "").toLowerCase() !== "reply") return { ok: false, error: "UNKNOWN_ACTION" };
+      const w = String(what || "").toLowerCase();
+      if (me.pta === "pta_0000000000000bad") return { ok: false, error: "NOT_SIGNED_IN", say: "Your sign-in has expired." };
+      // Find a parlor to ask - only shops that have signed up (they have an address), by name.
+      if (w === "find") {
+        const q = String(a.q || "").trim().slice(0, 60);
+        if (q.length < 2) return { ok: true, shops: [] };
+        const r = await this.env.AURA_MEMORY.prepare("SELECT id, name, slug FROM pta_entities WHERE type = 'business' " +
+          "AND slug IS NOT NULL AND name LIKE ? ORDER BY name LIMIT 12").bind("%" + q.replace(/[%_]/g, "") + "%").all().catch(() => null);
+        return { ok: true, shops: (r?.results || []).map(x => ({ id: x.id, name: x.name, page: bizUrl(x.slug) })) };
+      }
+      if (w === "ask") {
+        const r = await processCommand("ARTIST_JOIN ASK " + me.pta + " " + String(a.shop || "").replace(/[^A-Za-z0-9_]/g, "") +
+          " ::: " + String(a.message || "").replace(/:::/g, " ").slice(0, 300), this.env, true);
+        return (r && r.payload) ? r.payload : r;
+      }
+      if (w !== "reply") return { ok: false, error: "UNKNOWN_ACTION" };
       const ps = String(a.answer || "").toUpperCase();
       if (!["ACCEPTED", "DECLINED", "TENTATIVE"].includes(ps)) return { ok: false, error: "BAD_ANSWER" };
       const r0 = await processCommand("APPOINTMENT " + String(a.booking || ""), this.env, true);
@@ -82134,6 +82353,14 @@ export class PublicEntry extends WorkerEntrypoint {
         case "seat_add":    return await run("SEAT ADD " + biz + " " + a.name +
                                 (a.contact ? " " + (a.contact.includes("@") ? "email:" : "phone:") + a.contact : ""));
         case "seat_remove": return await run("SEAT REMOVE " + biz + " " + a.person);
+        // An artist who asked to join THIS shop - the request must point at the shop being viewed,
+        // or one owner could answer for another shop by sending its request id.
+        case "join_answer": {
+          const rq = await this.env.AURA_MEMORY.prepare("SELECT to_id FROM pta_edges WHERE id = ? AND edge_type = 'seat_request'")
+            .bind(String(a.request || "")).first().catch(() => null);
+          if (!rq || rq.to_id !== biz) return { ok: false, error: "NOT_THIS_SHOP", say: "That request is not for this shop." };
+          return await run("ARTIST_JOIN ANSWER " + a.request + " " + (a.yes ? "YES" : "NO"));
+        }
 
         // ══ MONEY MOVED IS THE LABEL (2026-08-18) ═══════════════════════════════════════════
         // `PTA_OUTCOME`'s own comment: "a thousand conversations with no label teach nothing... the

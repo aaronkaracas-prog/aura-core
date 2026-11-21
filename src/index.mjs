@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.124-2026-11-21-one-chair-fast-buttons";
+const BUILD = "aura-core-v9.999.125-2026-11-21-new-work-from-redrawn-artwork";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68235,12 +68235,19 @@ async function makeArtistFiles(env, ctx) {
                   }
                 } catch {}
               }
-              const _new = await _flat(_nw, refDesign, [mockUrl]);
+              // ══ THE NEW WORK IS TAKEN FROM THE REDRAWN WHOLE PIECE (v9.999.125, 2026-11-21, Aaron: go) ═══ MEASURED 10:24 (prj_1f821748e26a4a73):
+              // the whole piece was redrawn clean and connected (img_mwqqkszv9dse) but the new-work sheet was still drawn from the four-up card on
+              // the shared edit setting (gpt-image-2 at low) - faint, sparse, off to one side, a different spread of flowers (img_mwqqlglr9qrq), so the
+              // PDF held two versions of the tattoo that did not match. The second picture is now the redrawn artwork (the card only when there is
+              // none), drawn on the artwork's own model and quality, with white behind it - the new work is the whole piece with their tattoo left out.
+              const _nwPic2 = (_whole && _whole.flat) ? _whole.flat : mockUrl;
+              const _new = await _flat(_nw, refDesign, [_nwPic2], (_whole && _whole.flat) ? { raw: true, quality: _artQ, ...(/^gpt-image/i.test(_artM) ? { model: _artM } : {}) } : null);
+              if (_new && _whole && _whole.flat) { try { console.log("[FILES] white behind the new work: " + await whiteBehind(env, _new.flat)); } catch (e) { console.log("[FILES] white behind the new work failed: " + String(e?.message ?? e).slice(0, 160)); } }
               if (_new) {
                 _addSheets.push({ panel: "New work", asked: _name || "everything new", flat: _new.flat, id: _new.id,
                                   seeIn: _seeNew || 0, checked: null, ok: true });
                 try { console.log("[FILES] new work sheet -> ok (original photo + the new look, only what is different) · picture 1: " +
-                                  refDesign + " · picture 2: " + mockUrl + " · words: \"" + _nw + "\" · came back: " + _new.flat); } catch {}
+                                  refDesign + " · picture 2: " + _nwPic2 + (_nwPic2 !== mockUrl ? " (the redrawn whole piece)" : " (the card)") + " · " + ((_whole && _whole.flat) ? (_artM || "the shared edit model") + " at " + _artQ : "the shared edit setting") + " · words: \"" + _nw + "\" · came back: " + _new.flat); } catch {}
               } else {
                 _newWorkFail = "new work sheet failed: " + (_flatErr || "no image came back");
                 try { console.log("[FILES] " + _newWorkFail); } catch {}

@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.119-2026-11-21-addon-two-chat-model";
+const BUILD = "aura-core-v9.999.120-2026-11-21-new-work-real-times";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -81344,6 +81344,21 @@ export class PublicEntry extends WorkerEntrypoint {
 
       // ── SHOPS. The existing crawl, unchanged. `claimed` is the fork: a shop that is on the
       // platform gets booked; one that is not gets told somebody wants them.
+      // ══ WHO SENT THEM (2026-11-21) ════════════════════════════════════════════════════════
+      // A shop's page links to inkit.world/?shop=<id>. The page needs the shop's NAME to say
+      // "Send to Test Parlor Two" - nothing else about them, and nothing private.
+      if (action === "shop_info") {
+        const f = await resolveShop(env, String(b.shop || "").trim());
+        if (!f) return { ok: false, error: "NO_SUCH_SHOP" };
+        let nm = f.name || (f.row && f.row.name) || null;
+        let page = null;
+        try {
+          const pe = await env.AURA_MEMORY.prepare("SELECT name, slug FROM pta_entities WHERE id = ? LIMIT 1")
+            .bind(f.pta || f.key).first();
+          if (pe) { nm = nm || pe.name; page = pe.slug ? bizUrl(pe.slug) : null; }
+        } catch {}
+        return { ok: true, id: f.key, name: nm || "this shop", page };
+      }
       if (action === "shops") {
         if (b.city) return await this.tattooCity(String(b.city));
         return await this.tattooNear(b.lat, b.lng, b.radius_km || 40);
@@ -81373,7 +81388,10 @@ export class PublicEntry extends WorkerEntrypoint {
           if (!t) return null;
           return t.length <= 220 ? t : t.slice(0, 220).replace(/\s+\S*$/, "") + "...";
         })();
-        const contactText = String(b.contact || "").trim().slice(0, 120) || null;
+        // A signed-in person is reachable at the address they signed up with - the shop needs a way to
+        // reach them, and the Ink It page should not have to ask for what we already hold.
+        const contactText = String(b.contact || "").trim().slice(0, 120) ||
+          (me ? await reachAddress(env, me).catch(() => null) : null) || null;
         // The design travels with the message - a shop opening an email about a piece they cannot
         // see has been told nothing.
         let designImg = null, dMeta = null;
@@ -81384,6 +81402,8 @@ export class PublicEntry extends WorkerEntrypoint {
             if (dRow) { dMeta = JSON.parse(dRow.metadata || "{}"); designImg = dMeta.url || dMeta.image_url || null; }
           } catch {}
         }
+        // A finished tattoo is a PROJECT, not a design entity - its artwork comes with the request.
+        if (!designImg && /^https:\/\//.test(String(b.image || ""))) designImg = String(b.image).slice(0, 500);
         try {
           // ══ WORK ARRIVING AT A BUSINESS, NOT A NOTE IN A DRAWER (2026-08-24) ═══════════
           //
@@ -81419,7 +81439,7 @@ export class PublicEntry extends WorkerEntrypoint {
                    (dMeta && dMeta.subject
                      ? String(dMeta.subject).split(/\.\s*Tattoo design,/)[0].slice(0, 400)
                      : null),
-            contact: String(b.contact || "").slice(0, 120) || null,
+            contact: contactText,
             artist: String(b.artist || "").slice(0, 80) || null,
             status: "sent",
             created: new Date().toISOString(),
@@ -82286,9 +82306,14 @@ export class PublicEntry extends WorkerEntrypoint {
   // A customer booking themselves in. No session - they are a stranger standing outside the shop,
   // and requiring an account before they can ask for a time is how booking pages lose people.
   // Nothing is minted until they give a name and a way to be reached.
-  async book(slug, form) {
+  // `opts` is internal only. The host calls book(slug, body) with two arguments, so nothing a
+  // customer posts can reach it. `offered` = the SHOP picked this time for somebody who asked for
+  // them from Ink It (the console's New work), so the customer is told they are booked in, the
+  // booking is CONFIRMED, and the owner who just did it is not emailed about it.
+  async book(slug, form, opts) {
     try {
       const f = form || {};
+      const offered = !!(opts && opts.offered);
       const sl = await processCommand("SLUG GET " + String(slug || ""), this.env, true);
       const sp = (sl && sl.payload) ? sl.payload : sl;
       if (!sp?.ok || !sp.pta) return { ok: false, error: "NO_SUCH_BUSINESS",
@@ -82346,6 +82371,7 @@ export class PublicEntry extends WorkerEntrypoint {
         const bRow = await this.env.AURA_MEMORY.prepare("SELECT context FROM pta_edges WHERE id = ?").bind(rp.booking).first();
         let bc = {}; try { bc = bRow?.context ? JSON.parse(bRow.context) : {}; } catch {}
         bc.reach = contact;
+        if (offered) bc.status = "CONFIRMED";
         await this.env.AURA_MEMORY.prepare("UPDATE pta_edges SET context = ? WHERE id = ?").bind(JSON.stringify(bc), rp.booking).run();
       } catch {}
       // What they said they want, in their words, on their own chain.
@@ -82380,7 +82406,14 @@ export class PublicEntry extends WorkerEntrypoint {
       }
       if (contact.includes("@")) {
         try {
-          const e1 = await emailFromWorld(this.env, contact, BIZ_WORLD, "Your appointment at " + sp.name,
+          const e1 = offered
+            ? await emailFromWorld(this.env, contact, BIZ_WORLD, sp.name + " booked you in",
+                sp.name + " wants to do your tattoo and booked you in for " + localWhen +
+                (artistName ? " with " + artistName : "") +
+                (f.notes ? "  --  Your design: " + String(f.notes).slice(0, 200) : "") +
+                "  --  If that time does not work, tell them and they will find another. Nothing has been charged." +
+                "  --  Their page: " + bizUrl(slug))
+            : await emailFromWorld(this.env, contact, BIZ_WORLD, "Your appointment at " + sp.name,
             localWhen + (artistName ? " with " + artistName : "") +
             (f.notes ? "  --  You asked for: " + String(f.notes).slice(0, 200) : "") +
             "  --  They will confirm shortly. Nothing has been charged.");
@@ -82392,7 +82425,7 @@ export class PublicEntry extends WorkerEntrypoint {
         const owners = await this.env.AURA_MEMORY.prepare(
           "SELECT e.from_id FROM pta_edges e WHERE e.to_id = ? AND e.edge_type IN ('owns','manages') " +
           "AND e.state != 'revoked'").bind(biz).all();
-        const ids = [...new Set([...(owners?.results || []).map(r => r.from_id), f.with].filter(Boolean))];
+        const ids = [...new Set([...(offered ? [] : (owners?.results || []).map(r => r.from_id)), f.with].filter(Boolean))];
         // ══ A CHAIN EVENT IS A RECORD, NOT A MESSAGE (fixed 2026-08-18) ═══════════════════════
         // This loop wrote `BOOKING_ASKED` to each owner's chain and called it "told". Nobody's
         // phone ever buzzed. `told.shop` counted people we had written a NOTE ABOUT, not people we
@@ -82579,6 +82612,51 @@ export class PublicEntry extends WorkerEntrypoint {
         case "seat_remove": return await run("SEAT REMOVE " + biz + " " + a.person);
         // An artist who asked to join THIS shop - the request must point at the shop being viewed,
         // or one owner could answer for another shop by sending its request id.
+        // ══ NEW WORK GETS A REAL TIME, NOT A GUESS (2026-11-21) ═══════════════════════════════
+        // MEASURED: "Give them a time" asked Aura in the chat, and she offered Sunday 10am, Monday,
+        // and 10pm-midnight to a shop open Tue-Sat 12-8 - she has no calendar in that conversation -
+        // and read the request's id out to the owner. The console now shows the shop's real open
+        // times (/_slots, the booking page's own AVAILABILITY) and the owner taps one.
+        // Booking goes through book() - the same door a customer uses - so the customer is minted
+        // from their contact, the address rides on the booking, and they get an email in the
+        // shop's own time. The request has to be filed under THIS shop.
+        case "request_answer": {
+          const rid = String(a.request || "").trim();
+          const rqList = await run("REQUESTS " + biz);
+          const req = (rqList?.requests || []).find(r => r.id === rid);
+          if (!req) return { ok: false, error: "NOT_THIS_SHOP", say: "That request is not for this shop." };
+          const rf = await resolveShop(this.env, biz);
+          const rKey = "req:" + (rf ? rf.key : biz) + ":" + rid;
+          let rec = null; try { rec = JSON.parse(await this.env.AURA_KV.get(rKey) || "null"); } catch {}
+          const shopName = (await this.env.AURA_MEMORY.prepare("SELECT name FROM pta_entities WHERE id = ?")
+            .bind(biz).first().catch(() => null))?.name || "The shop";
+          if (!a.yes) {
+            const d = await run("REQUESTS " + biz + " DECLINE " + rid);
+            let toldThem = false;
+            if (req.contact && String(req.contact).includes("@")) {
+              const e = await emailFromWorld(this.env, req.contact, "inkit.world", shopName + " can't take this one",
+                shopName + " is not able to do this tattoo" + (req.brief ? " (" + String(req.brief).slice(0, 160) + ")" : "") +
+                ".  --  Your design is still yours. Pick another shop on Ink It and send it there: https://inkit.world");
+              toldThem = !!e?.ok;
+            }
+            return { ...d, told_customer: toldThem, say: toldThem ? "Passed. They have been told, and their design is still theirs."
+              : "Passed. There was no email to tell them on." };
+          }
+          if (!a.when) return { ok: false, error: "NEED_TIME", say: "Pick one of the open times." };
+          if (!req.contact) return { ok: false, error: "NO_CONTACT",
+            say: "They left no way to reach them, so there is nobody to book in." };
+          const b = await this.book(slug, { name: req.who || "Customer", contact: req.contact, when: a.when,
+            notes: (req.brief || "A design they made on Ink It") + (req.image ? " - design: " + req.image : ""),
+            with: a.with || req.artist || undefined }, { offered: true });
+          if (!b?.ok) return b;
+          if (rec) {
+            rec.status = "accepted"; rec.booking = b.booking || null; rec.when = b.when || a.when;
+            rec.proposed = a.when; rec.closed = new Date().toISOString();
+            await this.env.AURA_KV.put(rKey, JSON.stringify(rec), { expirationTtl: 180 * 24 * 3600 });
+          }
+          return { ok: true, booking: b.booking, when_local: b.when_local, told_customer: !!b.emailed_you,
+            say: "Booked for " + (b.when_local || a.when) + (b.emailed_you ? ". They have been emailed." : ".") };
+        }
         case "join_answer": {
           const rq = await this.env.AURA_MEMORY.prepare("SELECT to_id FROM pta_edges WHERE id = ? AND edge_type = 'seat_request'")
             .bind(String(a.request || "")).first().catch(() => null);

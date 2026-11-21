@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.130-2026-11-21-new-work-black-their-tattoo-grey";
+const BUILD = "aura-core-v9.999.131-2026-11-21-grey-page-reference-only";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68349,8 +68349,11 @@ async function makeArtistFiles(env, ctx) {
                 const _grey = await _flat(_greyWords, _gid, [String(refUrl)], { raw: true, quality: _artQ, ...(/^gpt-image/i.test(_artM) ? { model: _artM } : {}) });
                 if (_grey) {
                   try { console.log("[FILES] white behind the grey-and-black page: " + await whiteBehind(env, _grey.flat)); } catch {}
+                  // (v9.999.131) a reference page only - no stencils are made from it: MEASURED 11:32 (prj_dd840349ca2b4b81) the image model drew
+                  // their grey roses back in as full black lines on all six of its stencils, the same as the whole piece's. The whole piece's
+                  // stencils are the ones to print; this page shows what is new.
                   _addSheets.push({ panel: "New work in black, their tattoo in light grey", asked: _name || "everything new", flat: _grey.flat, id: _grey.id,
-                                    seeIn: _seeNew || 0, checked: null, ok: true });
+                                    seeIn: _seeNew || 0, checked: null, ok: true, refOnly: true });
                   _greyOk = true;
                   try { console.log("[FILES] new work in black, their tattoo in light grey -> ok · picture 1: the redrawn whole piece " + _whole.flat + " · picture 2: their photo " + refUrl +
                                     " · " + (_artM || "the shared edit model") + " at " + _artQ + " · words: \"" + _greyWords + "\" · came back: " + _grey.flat + (me ? " · who=" + me : "")); } catch {}
@@ -68534,6 +68537,7 @@ async function makeArtistFiles(env, ctx) {
               return null;
             };
             for (const sh of sheets) {
+              if (sh.refOnly) { try { console.log("[ARTIST] " + sh.panel + " - a reference page, no stencils made from it"); } catch {} continue; }   // (v9.999.131)
               const [lp, sp, rp] = await Promise.all([_fin(sh.flat, "LINEART"), _fin(sh.flat, "SHADING"), _fin(sh.flat, "REALISM")]);
               if (lp) { sh.line = lp.image; sh.lineId = lp.design || null; }
               if (sp) sh.shade = sp.image;
@@ -68658,7 +68662,7 @@ async function makeArtistFiles(env, ctx) {
             } else console.log("[ARTIST] the one PDF was not made (" + String((_one && _one.error) || "?") + (_one && _one.why ? ": " + String(_one.why) : "") + ") - a line-art PDF per panel instead");
             for (const z of (_one && _one.ok) ? [] : _sizes) {
               const sh = z.sh, sid = sh.lineId || sh.id, shIn = z.inches, _shLong = z.long;
-              if (!sid) continue;
+              if (!sid || sh.refOnly) continue;   // (v9.999.131) a reference page is never printed as line art
               try {
                 const pr2 = await processCommand("PRINT " + sid + " " + shIn + (_shLong ? " long" : "") + " " + me, env, true);
                 const pp = (pr2 && pr2.payload) ? pr2.payload : pr2;

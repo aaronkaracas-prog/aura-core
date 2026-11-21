@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.114-2026-11-20-artist-signup";
+const BUILD = "aura-core-v9.999.115-2026-11-20-addon-photo-rides";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -72521,7 +72521,17 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // they came out generic twice. While it is their photo on the table and nothing has been
           // drawn from it yet, she sees it every turn. After the first picture the look turn shows her
           // what she made, unchanged.
-          const _photoStill = _photoRides;
+          let _photoStill = _photoRides;
+          // ══ ON AN ADD-ON HER OWN LOOK RIDES ON EVERY TURN UNTIL SOMETHING IS DRAWN (v9.999.115, 2026-11-20, Aaron: go) ═══ MEASURED 15:40:11
+          // (pta_26d1411820e30fde, the bent-arm roses): on the turn after the photo, "I want to make it a full sleeve", she was handed neither
+          // the photo nor her own look - only her one-line say-back ("...sitting on your inner forearm") - and told them "your photo only shows
+          // the inner forearm", while her own look (15:39:57) said open skin "on her hand, upper arm, shoulder, and chest". Their photo now goes
+          // with each add-on turn until the first picture is drawn (addon_drawn); with config:talk:picture_text_only on, aura-think hands her
+          // her own remembered look as words - no new look, no picture tokens, her words still stream. After a drawing, nothing changes.
+          if (!_photoStill && seeing && refHeld && _bodyPhoto && me && String((carriedObj && carriedObj.job) || "").toLowerCase() === "add") {
+            let _adr0 = ""; try { _adr0 = String((await talkStateGet(env, me, ["addon_drawn"])).addon_drawn || ""); } catch {}
+            if (_adr0 !== "1") { _photoStill = true; try { console.log("[TURN:LOOK] add-on, nothing drawn yet - their photo goes with this turn, so she works from her own look at it" + " · who=" + me); } catch {} }
+          }
           // ══ A YES ON AN ADD-ON WAITS FOR WHAT IT DOES BEFORE ANY WORDS SHOW (v9.862, 2026-11-06, Aaron: go) ═══ MEASURED 15:23:01: "yes" after
           // her offer drew the one picture (v9.856), but her own streamed line - "Here it is - lavender sprigs growing off the rose stem ... Your
           // rose stays exactly as it is." - was on screen for the 30s before any picture existed; the fixed line set after her reply never

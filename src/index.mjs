@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.128-2026-11-21-artist-edits-always-land";
+const BUILD = "aura-core-v9.999.129-2026-11-21-artist-phone-view";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -5344,6 +5344,18 @@ async function bizChoices(env, bizId) {
     }
   } catch {}
   return out;
+}
+// The shop's own week as the calendar stores it ({mon:[[720,1200]],...}) - the latest HOURS edit.
+async function bizWeekly(env, bizId) {
+  let w = null;
+  try {
+    const stub = env.PTA_DO.get(env.PTA_DO.idFromName(bizId));
+    const r = await stub.fetch(new Request("http://do", { method: "POST",
+      body: JSON.stringify({ method: "getState", params: [] }) }));
+    const j = await r.json();
+    for (const c of ((j?.pta?.chain) || [])) if (c?.data?.weekly) { const n = normWeekly(c.data.weekly); if (n) w = n; }
+  } catch {}
+  return w;
 }
 async function bizBooking(env, bizId) {
   const out = JSON.parse(JSON.stringify(BOOKING_DEFAULTS));
@@ -82351,12 +82363,15 @@ export class PublicEntry extends WorkerEntrypoint {
       const upcoming = [];
       for (const s of (seats?.results || [])) {
         const zone = await bizZoneName(this.env, s.biz);
-        let hours = null;
+        let hours = null, week = null;
         // SEAT HOURS hands back the stored minutes ({wed:[[780,1140]]}); the page wants
         // "13:00-19:00". MEASURED: this read `reads_as`, which SEAT HOURS never returns, so an
         // artist with hours set saw "No hours set for you here yet".
         try { const h = await run("SEAT HOURS " + s.biz + " " + me.pta);
-          hours = h?.reads_as || (h?.hours && typeof h.hours === "object" ? hoursReadAs(h.hours) : null); } catch {}
+          week = (h?.hours && typeof h.hours === "object") ? h.hours : null;
+          hours = h?.reads_as || (week ? hoursReadAs(week) : null); } catch {}
+        // The phone day view needs the minutes themselves: theirs, and the shop's for days they follow it.
+        const shopWeek = await bizWeekly(this.env, s.biz);
         let mine = [];
         try {
           const l = await run("APPOINTMENT LIST " + s.biz);
@@ -82371,7 +82386,7 @@ export class PublicEntry extends WorkerEntrypoint {
             you_said: (a.attendees && a.attendees[me.pta]) || null });
         }
         shops.push({ id: s.biz, name: s.name, since: s.created_at, timezone: zone,
-          page: s.slug ? bizUrl(s.slug) : null, your_hours: hours,
+          page: s.slug ? bizUrl(s.slug) : null, your_hours: hours, your_week: week, shop_week: shopWeek,
           upcoming: mine.filter(a => (Date.parse(a.end || a.start || "") || 0) >= now && a.status !== "CANCELLED").length });
       }
       upcoming.sort((x, y) => String(x.start).localeCompare(String(y.start)));
@@ -82497,6 +82512,36 @@ export class PublicEntry extends WorkerEntrypoint {
       if (w === "pieces") { const r = await processCommand("PORTFOLIO LIST " + me.pta, this.env, true); return (r && r.payload) ? r.payload : r; }
       if (w === "piece_move") { const r = await processCommand("PORTFOLIO MOVE " + me.pta + " " + String(a.piece || "").replace(/[^A-Za-z0-9_]/g, "") + " " + (parseInt(a.to, 10) || 0), this.env, true); return (r && r.payload) ? r.payload : r; }
       if (w === "piece_remove") { const r = await processCommand("PORTFOLIO REMOVE " + me.pta + " " + String(a.piece || "").replace(/[^A-Za-z0-9_]/g, ""), this.env, true); return (r && r.payload) ? r.payload : r; }
+      // ══ THEIR OWN HOURS, SET BY THEM (2026-11-21) ══ The same stored minutes the shop's console
+      // sets (SEAT HOURS on their works_at edge), only for a shop they are seated at. A day left out
+      // follows the shop; null is a day off. `follow:true` clears theirs - they work the shop's hours.
+      if (w === "hours") {
+        const shop = String(a.shop || "");
+        const seat = await this.env.AURA_MEMORY.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'works_at' AND state != 'revoked'")
+          .bind(me.pta, shop).first().catch(() => null);
+        if (!seat) return { ok: false, error: "NOT_YOUR_SHOP", say: "You do not work there." };
+        if (a.follow) {
+          const r = await processCommand("SEAT HOURS " + shop + " " + me.pta + " ::: CLEAR", this.env, true);
+          const p = (r && r.payload) ? r.payload : r;
+          return { ok: !!p?.ok, say: p?.ok ? "You follow the shop's hours." : (p?.error || "That did not save.") };
+        }
+        const days = (a.days && typeof a.days === "object") ? a.days : null;
+        if (!days) return { ok: false, error: "NO_DAYS" };
+        const weekly = {};
+        for (const k of ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]) {
+          if (!(k in days)) continue;
+          const raw = days[k];
+          if (raw == null) { weekly[k] = null; continue; }
+          const clean = (Array.isArray(raw) && Array.isArray(raw[0]) ? raw : [raw])
+            .map(p => [Math.round(Number(p && p[0])), Math.round(Number(p && p[1]))])
+            .filter(p => isFinite(p[0]) && isFinite(p[1]) && p[0] >= 0 && p[1] <= 1440 && p[1] > p[0]);
+          if (!clean.length) return { ok: false, error: "BAD_HOURS", say: "Those hours do not make sense." };
+          weekly[k] = clean;
+        }
+        const r = await processCommand("SEAT HOURS " + shop + " " + me.pta + " ::: " + JSON.stringify(weekly), this.env, true);
+        const p = (r && r.payload) ? r.payload : r;
+        return { ok: !!p?.ok, weekly, say: p?.ok ? "Saved." : (p?.error || "That did not save.") };
+      }
       if (w === "profile") {
         const f = {};
         const t = (v, n) => String(v == null ? "" : v).replace(/[\r\n]+/g, " ").trim().slice(0, n);

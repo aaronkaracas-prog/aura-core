@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.129-2026-11-21-artist-phone-view";
+const BUILD = "aura-core-v9.999.130-2026-11-21-new-work-black-their-tattoo-grey";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -68324,9 +68324,45 @@ async function makeArtistFiles(env, ctx) {
               // PDF held two versions of the tattoo that did not match. The second picture is now the redrawn artwork (the card only when there is
               // none), drawn on the artwork's own model and quality, with white behind it - the new work is the whole piece with their tattoo left out.
               const _nwPic2 = (_whole && _whole.flat) ? _whole.flat : mockUrl;
-              const _new = await _flat(_nw, refDesign, [_nwPic2], (_whole && _whole.flat) ? { raw: true, quality: _artQ, ...(/^gpt-image/i.test(_artM) ? { model: _artM } : {}) } : null);
+              // ══ ONE PICTURE: THEIR TATTOO IN LIGHT GREY, THE NEW WORK IN BLACK (v9.999.130, 2026-11-21, Aaron: "I like that effect" / go) ═══
+              // MEASURED 10:44 (prj_784a58ef70874f37): "draw only the new work" from the redrawn whole piece still came back as a different design
+              // (img_mwqrbewa5whb - one peony, an empty oval, against two peonies in the whole piece) - the model redraws, it does not subtract.
+              // PROVEN by command 11:19 (img_mwqsidtkg3c1): the whole piece first, their photo second, what their tattoo is in words - both roses
+              // with their stems light grey, every new flower solid black, every part in the same place as the whole piece (overlaid). Without the
+              // words (11:13, img_mwqscdq401c6) only one of the two roses went grey. Their tattoo in words is her read of their photo with no left
+              // or right in it (she read a left arm as right on every run of the rose photo). Setting: config:frame:addon:newwork_grey ("____"
+              // their tattoo). The page is named for the artist: "New work in black, their tattoo in light grey".
+              let _greyOk = false, _greyWords = "";
+              if (_whole && _whole.flat && /^https?:\/\//i.test(String(refUrl || ""))) {
+                let _gw = "The first picture is the finished artwork for my tattoo. The second picture is my tattoo as it is today: ____. Redraw the first picture exactly as it is - the same design, the same size and the same place for everything - but draw the tattoo I already have in very light grey, and everything new in solid black. Flat on a solid white background.";
+                try { const _k = String((await env.AURA_KV.get("config:frame:addon:newwork_grey")) || "").trim(); if (_k.includes("____")) _gw = _k; } catch {}
+                let _her = "";
+                try {
+                  const _rs2 = talkParse((await talkStateGet(env, me, ["ref"])).ref) || null;
+                  _her = (_rs2 && _rs2.her && (!_rs2.url || String(_rs2.url) === String(refUrl))) ? String(_rs2.her) : "";
+                  _her = _her.replace(/\s+/g, " ").trim().replace(/^[^-\u2013\u2014.!?]{0,60}?\s[-\u2013\u2014]\s/, "").split(/(?<=[.!?])\s/)[0]
+                    .replace(/\byour\b/gi, "my").replace(/\b(?:left|right)\s+/gi, "").replace(/[\s.!]+$/, "").slice(0, 240);
+                  _her = _her.replace(/^(?:That's|That is|It's|It is)\s+/i, "").replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase());
+                } catch {}
+                _greyWords = _her ? _gw.replace("____", _her) : _gw.replace(/:\s*____\./, ".");
+                const _gid = (String(_whole.flat).match(/\/image\/(img_[A-Za-z0-9_-]+)/) || [])[1] || _whole.flat;
+                const _grey = await _flat(_greyWords, _gid, [String(refUrl)], { raw: true, quality: _artQ, ...(/^gpt-image/i.test(_artM) ? { model: _artM } : {}) });
+                if (_grey) {
+                  try { console.log("[FILES] white behind the grey-and-black page: " + await whiteBehind(env, _grey.flat)); } catch {}
+                  _addSheets.push({ panel: "New work in black, their tattoo in light grey", asked: _name || "everything new", flat: _grey.flat, id: _grey.id,
+                                    seeIn: _seeNew || 0, checked: null, ok: true });
+                  _greyOk = true;
+                  try { console.log("[FILES] new work in black, their tattoo in light grey -> ok · picture 1: the redrawn whole piece " + _whole.flat + " · picture 2: their photo " + refUrl +
+                                    " · " + (_artM || "the shared edit model") + " at " + _artQ + " · words: \"" + _greyWords + "\" · came back: " + _grey.flat + (me ? " · who=" + me : "")); } catch {}
+                } else {
+                  try { console.log("[FILES] the grey-and-black page drew nothing (" + (_flatErr || "no image") + ") - the new-work sheet instead"); } catch {}
+                }
+              }
+              const _new = _greyOk ? null : await _flat(_nw, refDesign, [_nwPic2], (_whole && _whole.flat) ? { raw: true, quality: _artQ, ...(/^gpt-image/i.test(_artM) ? { model: _artM } : {}) } : null);
               if (_new && _whole && _whole.flat) { try { console.log("[FILES] white behind the new work: " + await whiteBehind(env, _new.flat)); } catch (e) { console.log("[FILES] white behind the new work failed: " + String(e?.message ?? e).slice(0, 160)); } }
-              if (_new) {
+              if (_greyOk) {
+                // the grey-and-black page stands in for the new-work sheet
+              } else if (_new) {
                 _addSheets.push({ panel: "New work", asked: _name || "everything new", flat: _new.flat, id: _new.id,
                                   seeIn: _seeNew || 0, checked: null, ok: true });
                 try { console.log("[FILES] new work sheet -> ok (original photo + the new look, only what is different) · picture 1: " +
@@ -68585,10 +68621,21 @@ async function makeArtistFiles(env, ctx) {
               // create new browser: code: 503: No browser available" - the one PDF was given up at once, the per-panel fallback then hit a 90s
               // navigation timeout, and the tattoo was locked in with no print file at all. When the browser is only busy, it is asked again
               // (after 15s, then 30s) before the fallback.
+              // ══ NO SIDE THEY NEVER SAID (v9.999.130, 2026-11-21, Aaron: go) ═══ MEASURED 10:45 (prj_784a58ef70874f37): the job sheet read "Placement:
+              // right arm" for a left arm - her read of the photo, wrong on every run of that photo. A left or right goes on the sheet only when their
+              // own words (talk state `added`) said one; otherwise the side comes off and the arm stays.
+              let _plc = _tv(_dt.placement) || (intent && intent.placement) || "";
+              if (/\b(?:left|right)\b/i.test(_plc)) {
+                let _theySaid = ""; try { _theySaid = String((await talkStateGet(env, me, ["added"])).added || ""); } catch {}
+                if (!/\b(?:left|right)\b/i.test(_theySaid)) {
+                  const _p0 = _plc; _plc = _plc.replace(/\b(?:left|right)\s+/gi, "").replace(/\b(?:left|right)\b/gi, "").replace(/\s{2,}/g, " ").trim();
+                  try { console.log("[ARTIST-PDF] placement without a side they never said: \"" + _p0 + "\" -> \"" + _plc + "\"" + (me ? " · who=" + me : "")); } catch {}
+                }
+              }
               const _pdfArgs = {
                 title: (_t0.charAt(0).toUpperCase() + _t0.slice(1)).slice(0, 120),
                 rows: [["Style", _tv(_dt.style) || (intent && intent.style)], ["Colour", _tv(_dt.colour) || (intent && _tv(intent.colour))],
-                       ["Size", _tv(_dt.size)], ["Placement", _tv(_dt.placement) || (intent && intent.placement) || "Finalize with your artist"],
+                       ["Size", _tv(_dt.size)], ["Placement", _plc || "Finalize with your artist"],
                        ["Notes", _tv(_dt.notes)], ["Made", new Date().toISOString().slice(0, 10)]],
                 panels: _sizes.map((z) => ({ name: z.sh.panel || "", inches: z.inches, long: z.long, colour: z.sh.flat,
                   stencils: [{ label: "Linework stencil", url: z.sh.line, trace: true }, { label: "Shading-guide stencil", url: z.sh.shade },

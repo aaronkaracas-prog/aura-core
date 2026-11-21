@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.131-2026-11-21-grey-page-reference-only";
+const BUILD = "aura-core-v9.999.132-2026-11-21-passed-gets-other-shops";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -59735,6 +59735,28 @@ async function nextChips(env, design, change) {
   } catch { return null; }
 }
 
+// ══ WHERE A SHOP IS (2026-11-21, Session B) ═════════════════════════════════════════════════
+// A crawled shop has its city on the crawl row. A shop that signed up directly has only the address
+// it typed (CONTACT on its chain, e.g. "123 Main St, Malibu, CA 90265, USA") - the city and state are
+// read off that, the same way zoneFromAddress reads the state.
+async function shopPlace(env, found) {
+  if (!found) return null;
+  if (found.row && found.row.locality) return { locality: String(found.row.locality), region: found.row.region || null };
+  const pta = found.pta || (/^pta_/.test(String(found.key || "")) ? found.key : null);
+  if (!pta) return null;
+  try {
+    const stub = env.PTA_DO.get(env.PTA_DO.idFromName(pta));
+    const r = await stub.fetch(new Request("http://do", { method: "POST",
+      body: JSON.stringify({ method: "getState", params: [] }) }));
+    const j = await r.json();
+    const hit = [...((j?.pta?.chain) || [])].reverse().find(x => x?.data?.address);
+    const parts = String(hit?.data?.address || "").split(",").map(x => x.trim()).filter(Boolean);
+    const i = parts.findIndex(x => /^[A-Z]{2}(\s+\d{5}(-\d{4})?)?$/.test(x));
+    if (i > 0) return { locality: parts[i - 1], region: parts[i].slice(0, 2) };
+  } catch {}
+  return null;
+}
+
 // ══ ONE SHOP, TWO NAMES (2026-08-25) ═════════════════════════════════════════════════════════
 //
 // A shop exists twice in this world. As a `cg_business` UUID if it was crawled, and as a `pta_` if
@@ -81661,6 +81683,7 @@ export class PublicEntry extends WorkerEntrypoint {
         } catch {}
         return { ok: true, id: f.key, name: nm || "this shop", page };
       }
+      if (action === "my_requests") return await this._myRequests(me, String(b.design || "").trim() || null);
       if (action === "shops") {
         if (b.city) return await this.tattooCity(String(b.city));
         return await this.tattooNear(b.lat, b.lng, b.radius_km || 40);
@@ -81743,6 +81766,10 @@ export class PublicEntry extends WorkerEntrypoint {
                      : null),
             contact: contactText,
             artist: String(b.artist || "").slice(0, 80) || null,
+            // (2026-11-21, Session B) the style, so a pass can offer shops that do it, and the
+            // shop's name, so the person's own list reads without looking every shop up again.
+            style: String(b.style || "").trim().slice(0, 80) || null,
+            shop_name: row.name || found.name || null,
             status: "sent",
             created: new Date().toISOString(),
             // No time yet, and that is correct - the artist proposes it. That is the only field
@@ -81755,6 +81782,13 @@ export class PublicEntry extends WorkerEntrypoint {
           try { idx = JSON.parse(await env.AURA_KV.get(idxKey) || "[]"); } catch {}
           idx.unshift(reqId);
           await env.AURA_KV.put(idxKey, JSON.stringify(idx.slice(0, 200)));
+          // The person's side of the same index - what Ink It reads to show where they sent it.
+          if (me) {
+            let mine = [];
+            try { mine = JSON.parse(await env.AURA_KV.get("reqs_by:" + me) || "[]"); } catch {}
+            mine.unshift({ s: shopKey, r: reqId });
+            await env.AURA_KV.put("reqs_by:" + me, JSON.stringify(mine.slice(0, 200)));
+          }
         } catch {}
 
         // ══ THE PROMISE HAS TO BE KEPT, OR NOT MADE (2026-08-24) ═══════════════════════════
@@ -81939,6 +81973,67 @@ export class PublicEntry extends WorkerEntrypoint {
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }
+  }
+
+  // ══ A PASS IS NOT THE END (2026-11-21, Session B, Aaron: go) ═══════════════════════════════════
+  // REQUESTS DECLINE always said "the project is still theirs - match them to another shop", and
+  // nothing did. These are up to three other tattoo shops in the same city as the one that passed,
+  // the ones whose own styles share a word with the tattoo's style first, then shops that have
+  // claimed their page. Every shop this design already went to is left out. Each comes with an Ink
+  // It link that opens the design with that shop chosen. One list, read by the email and the page.
+  async _otherShops(req, exclude) {
+    try {
+      const found = await resolveShop(this.env, req.shop);
+      const place = await shopPlace(this.env, found);
+      if (!place || !place.locality) return [];
+      const ex = new Set([req.shop, found && found.key, found && found.pta, ...(exclude || [])].filter(Boolean));
+      const rows = (await this.env.AURA_MEMORY.prepare(
+        "SELECT id, name, locality, region, website, understanding, claimed_at, pta FROM cg_business " +
+        "WHERE industry = 'tattoo' AND lower(locality) = ?" + (place.region ? " AND region = ?" : "") + " LIMIT 300")
+        .bind(...(place.region ? [place.locality.toLowerCase(), place.region] : [place.locality.toLowerCase()])).all())?.results || [];
+      const skip = new Set(["and", "the", "tattoo", "tattoos", "style", "with", "black", "grey", "gray", "color", "colour"]);
+      const want = String(req.style || "").toLowerCase().split(/[^a-z]+/).filter(w => w.length > 2 && !skip.has(w));
+      return rows.filter(x => !ex.has(x.id) && !(x.pta && ex.has(x.pta))).map(x => {
+        let u = {}; try { u = x.understanding ? JSON.parse(x.understanding) : {}; } catch {}
+        const styles = (Array.isArray(u.styles) ? u.styles : []).map(String);
+        const hay = styles.join(" ").toLowerCase();
+        const hits = want.filter(w => hay.includes(w)).length;
+        return { id: x.id, name: x.name, where: [x.locality, x.region].filter(Boolean).join(", "),
+          styles: styles.slice(0, 3), claimed: !!x.claimed_at, matches_style: hits > 0,
+          score: hits * 10 + (x.claimed_at ? 5 : 0) + (styles.length ? 1 : 0) + (x.website ? 1 : 0) };
+      }).sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name))).slice(0, 3)
+        .map(({ score, ...x }) => ({ ...x, link: "https://inkit.world/?shop=" + encodeURIComponent(x.id) +
+          (req.design ? "&open=" + encodeURIComponent(req.design) : "") }));
+    } catch { return []; }
+  }
+
+  // ══ WHERE THEY SENT IT (2026-11-21, Session B) ══ Every request a person sent, read back from the
+  // index `interest` keeps for them (`reqs_by:<pta>`). The same records the shops' consoles read, so
+  // the email they got and the page they open say the same thing.
+  async _myRequests(me, design) {
+    if (!me) return { ok: false, error: "NOT_SIGNED_IN" };
+    let idx = []; try { idx = JSON.parse(await this.env.AURA_KV.get("reqs_by:" + me) || "[]"); } catch {}
+    const all = [];
+    for (const it of idx.slice(0, 60)) {
+      let r = null; try { r = JSON.parse(await this.env.AURA_KV.get("req:" + it.s + ":" + it.r) || "null"); } catch {}
+      if (r && r.person === me) all.push(r);
+    }
+    const mine = design ? all.filter(r => r.design === design) : all;
+    const said = (st) => st === "accepted" ? "booked" : st === "declined" ? "passed" : "waiting";
+    const list = [];
+    for (const r of mine.slice(0, 20)) {
+      let nm = r.shop_name || null;
+      if (!nm) { try { const f = await resolveShop(this.env, r.shop); nm = (f && (f.name || (f.row && f.row.name))) || null; } catch {} }
+      list.push({ id: r.id, design: r.design || null, shop: r.shop, shop_name: nm || "the shop", status: said(r.status),
+        sent: r.created || null, when: r.when || null, when_local: r.when_local || null });
+    }
+    let others = [];
+    // A design that is booked somewhere needs no other shops; one every shop passed on gets three.
+    if (design && list.some(x => x.status === "passed") && !list.some(x => x.status === "booked")) {
+      const last = mine.find(r => r.status === "declined");
+      if (last) others = await this._otherShops(last, mine.map(r => r.shop));
+    }
+    return { ok: true, requests: list, others };
   }
 
   async tattooNear(lat, lng, radiusKm) {
@@ -83035,15 +83130,37 @@ export class PublicEntry extends WorkerEntrypoint {
             .bind(biz).first().catch(() => null))?.name || "The shop";
           if (!a.yes) {
             const d = await run("REQUESTS " + biz + " DECLINE " + rid);
-            let toldThem = false;
+            let toldThem = false, others = [];
             if (req.contact && String(req.contact).includes("@")) {
+              // ══ THREE OTHER SHOPS, NOT "PICK ANOTHER" (2026-11-21, Session B, Aaron: go) ══
+              // The full record carries the person and the design; every shop this design already
+              // went to is left out.
+              const full = rec || req;
+              let sentTo = [];
+              if (full.person && full.design) {
+                try {
+                  const mi = JSON.parse(await this.env.AURA_KV.get("reqs_by:" + full.person) || "[]");
+                  for (const it of mi.slice(0, 60)) {
+                    const r2 = JSON.parse(await this.env.AURA_KV.get("req:" + it.s + ":" + it.r) || "null");
+                    if (r2 && r2.design === full.design) sentTo.push(r2.shop);
+                  }
+                } catch {}
+              }
+              others = await this._otherShops({ ...full, shop: full.shop || (rf ? rf.key : biz) }, sentTo);
+              const openLink = full.design ? "https://inkit.world/?open=" + encodeURIComponent(full.design) : "https://inkit.world";
               const e = await emailFromWorld(this.env, req.contact, "inkit.world", shopName + " can't take this one",
-                shopName + " is not able to do this tattoo" + (req.brief ? " (" + String(req.brief).slice(0, 160) + ")" : "") +
-                ".  --  Your design is still yours. Pick another shop on Ink It and send it there: https://inkit.world");
+                shopName + " is not able to do this tattoo" + (req.brief ? " (" + String(req.brief).slice(0, 160).replace(/[.\s]+$/, "") + ")" : "") +
+                ".  --  Your design is still yours." +
+                (others.length
+                  ? " These shops near " + shopName + " could do it - tap one to send it there:  " +
+                    others.map(o => o.name + (o.where ? " (" + o.where + ")" : "") + ": " + o.link).join("  -  ")
+                  : " Pick another shop on Ink It and send it there.") +
+                "  --  Everywhere you have sent it: " + openLink);
               toldThem = !!e?.ok;
             }
-            return { ...d, told_customer: toldThem, say: toldThem ? "Passed. They have been told, and their design is still theirs."
-              : "Passed. There was no email to tell them on." };
+            return { ...d, told_customer: toldThem, others_offered: others.map(o => o.name),
+              say: toldThem ? "Passed. They have been told" + (others.length ? " and offered " + others.length + " other shops" : "") +
+                ", and their design is still theirs." : "Passed. There was no email to tell them on." };
           }
           if (!a.when) return { ok: false, error: "NEED_TIME", say: "Pick one of the open times." };
           if (!req.contact) return { ok: false, error: "NO_CONTACT",
@@ -83054,6 +83171,7 @@ export class PublicEntry extends WorkerEntrypoint {
           if (!b?.ok) return b;
           if (rec) {
             rec.status = "accepted"; rec.booking = b.booking || null; rec.when = b.when || a.when;
+            rec.when_local = b.when_local || null;
             rec.proposed = a.when; rec.closed = new Date().toISOString();
             await this.env.AURA_KV.put(rKey, JSON.stringify(rec), { expirationTtl: 180 * 24 * 3600 });
           }

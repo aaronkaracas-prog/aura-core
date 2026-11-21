@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.125-2026-11-21-new-work-from-redrawn-artwork";
+const BUILD = "aura-core-v9.999.126-2026-11-21-any-start-from-now";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -34038,8 +34038,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // of the two-readers disease: the customer picks a slot the shop showed them and is
         // told it does not exist.
         const slotMins = Math.max(15, Number(mins) || 120);
+        // ══ ANY START, FROM NOW (2026-11-21) ══ MEASURED: a 2-hour booking at 2pm for an artist in
+        // 1pm-7pm was refused "not working" - this asked for starts stepped by the booking's own
+        // length (1, 3, 5) and 2pm was not one of them. And "not in the next hour" (the customer
+        // booking page's notice) refused a walk-in starting in 20 minutes. A booking being made is
+        // checked on a 5-minute grid, from this minute.
         const ask = (extra) => "AVAILABILITY " + bizId + (who ? " with:" + who : "") +
-          " days:" + Math.min(Math.max(need, 1), 60) + " slot:" + slotMins + (extra || "");
+          " days:" + Math.min(Math.max(need, 1), 60) + " slot:" + slotMins + " step:5 now:1" + (extra || "");
         const av = await processCommand(ask(""), env, true);
         const avp = (av && av.payload) ? av.payload : av;
         if (!avp?.ok) return { ok: false, why: "HOURS_UNKNOWN", detail: avp?.error || null };
@@ -34088,7 +34093,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // Without `with:`, but with the SAME grid - otherwise "the shop has it and you do not"
           // could be answered off a different set of start times than the question was asked on.
           const shopAv = await processCommand("AVAILABILITY " + bizId + " days:" +
-            Math.min(Math.max(need, 1), 60) + " slot:" + slotMins + " open_only:1", env, true);
+            Math.min(Math.max(need, 1), 60) + " slot:" + slotMins + " step:5 now:1 open_only:1", env, true);
           const sap = (shopAv && shopAv.payload) ? shopAv.payload : shopAv;
           if (hasAt(sap))
             return { ok: false, why: "ARTIST_NOT_WORKING", who,
@@ -82823,7 +82828,7 @@ export class PublicEntry extends WorkerEntrypoint {
           if (!wp?.ok || !wp.entity?.id) return { ok: false, error: "COULD_NOT_ADD_THEM", detail: wp?.error || null };
           const ap = await run("APPOINTMENT NEW " + biz + " ::: " + JSON.stringify({ customer: wp.entity.id, start: a.when,
             minutes: bMins, artist: a.artist || null, summary: bNotes || "Appointment", description: bNotes || "" }));
-          if (!ap?.ok) return { ...ap, say: ap?.what_to_do || ap?.error || "That time could not be booked." };
+          if (!ap?.ok) return { ...ap, say: ap?.say || ap?.what_to_do || ap?.error || "That time could not be booked." };
           const bUid = ap.uid || ap.booking || ap.id;
           if (bUid) await run("APPOINTMENT SET " + bUid + " status CONFIRMED");
           return { ok: true, booking: bUid || null, when: ap.start || a.when, say: "Booked." };

@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.117-2026-11-21-pages-edit-in-place";
+const BUILD = "aura-core-v9.999.118-2026-11-21-shop-hears-about-new-work";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -81420,7 +81420,41 @@ export class PublicEntry extends WorkerEntrypoint {
         // about is a queue nobody opens. Both get a message now.
         let told = false, reachErr = null;
         const shopEmail = found.email || row.email || row.email_found || null;
-        if (shopEmail) {
+        // ══ A SIGNED-UP SHOP GETS WORK, NOT A COLD INTRODUCTION (2026-11-21) ═══════════════
+        // MEASURED: a request to Test Parlor Two (signed up, owner on file) went out as REACH_OUT -
+        // "A note from Aura", "I'm Aura. I noticed...", a button to an auras.guide claim page. That
+        // is the first-contact letter for a shop that has never heard of us, sent to one that pays
+        // us. A shop with owners is told the way ARTIST_JOIN tells them: from tattooparlors.world,
+        // in plain words, with the way into the console where the request is waiting.
+        // REACH_OUT stays exactly as it was for every shop that has no owner yet.
+        const wBiz = found.pta || (/^pta_/.test(String(found.key || "")) ? found.key : null);
+        let ownerAddrs = 0, ownersTold = 0;
+        if (wBiz) {
+          try {
+            const wEnt = await env.AURA_MEMORY.prepare("SELECT slug, name FROM pta_entities WHERE id = ? LIMIT 1").bind(wBiz).first();
+            const wName = (wEnt && wEnt.name) || row.name || "your shop";
+            const wConsole = (wEnt && wEnt.slug) ? bizUrl(wEnt.slug, "/admin") : "https://" + BIZ_WORLD;
+            const wOwners = await env.AURA_MEMORY.prepare(
+              "SELECT from_id FROM pta_edges WHERE to_id = ? AND edge_type IN ('owns','manages') AND state != 'revoked'")
+              .bind(wBiz).all();
+            for (const o of (wOwners?.results || [])) {
+              const addr = await reachAddress(env, o.from_id, wBiz);
+              if (!addr) continue;
+              ownerAddrs++;
+              const e = await emailFromWorld(env, addr, BIZ_WORLD,
+                "New work: " + who + " wants " + wName + " to do their tattoo",
+                who + " designed a tattoo on Ink It (inkit.world) and asked for " + wName + " by name." +
+                (briefText ? " What they want: " + briefText.replace(/[.\s]+$/, "") + "." : "") +
+                (contactText ? " Reach them at " + contactText + "." : "") +
+                (designImg ? " The design: " + designImg : "") +
+                "  --  It is waiting in your console under New work: " + wConsole +
+                " - give them a time, or pass on it.");
+              if (e?.ok) ownersTold++;
+            }
+          } catch (e) { reachErr = String((e && e.message) || e).slice(0, 120); }
+        }
+        if (ownerAddrs) told = ownersTold > 0;
+        if (shopEmail && !ownerAddrs) {
           try {
             const rr = await processCommand("REACH_OUT " + JSON.stringify({
               email: shopEmail,

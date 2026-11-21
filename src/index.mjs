@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.134-2026-11-21-artist-gets-customer-files";
+const BUILD = "aura-core-v9.999.135-2026-11-21-sent-design-can-be-worked-on";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -79296,6 +79296,11 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!listed && me) { try { const fl = talkParse((await talkStateGet(env, me, ["favorites"])).favorites) || [];
           const fv = Array.isArray(fl) ? fl.find((x) => x && x.url === url && x.kind === "inspiration") : null;
           if (fv) { listed = true; _tk = fv.world ? "world" : ""; } } catch {} }
+        // ══ A DESIGN SENT TO THEIR SHOP CAN BE WORKED ON (v9.999.135, 2026-11-21, Session B, Aaron: go) ══ MEASURED 13:12: Artist Two,
+        // Sent to you > Floral Additions > Work on this -> "I couldn't get this picture from its website" - it was neither on a search's list
+        // nor in their saved inspiration. Sent to you notes the pictures it showed them (sentimgs:<pta>, a day); one of those is taken too.
+        if (!listed && me) { try { const si = JSON.parse((await env.AURA_KV.get("sentimgs:" + me)) || "[]");
+          if (Array.isArray(si) && si.includes(url)) { listed = true; _tk = ""; } } catch {} }
         // (v9.907) her read before the eight is told whether it is a tattoo or a picture from the world.
         // ══ THE PICTURE IS TAKEN WHEN THEY OPEN IT (v9.999.31, 2026-11-14, Aaron: "when they click on it to see it bigger we can grab that one -
         // that won't be too heavy") ═══ MEASURED 12:0x: a Get Inspired picture tapped, Work on this -> "I couldn't open that photo from its website",
@@ -79339,6 +79344,13 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch (e) { _why(why + " - the image tool failed: " + String((e && e.message) || e).slice(0, 100)); }
           return null;
         };
+        // 0. (v9.999.135) one of our own pictures - read from our own store, not fetched back through our own website
+        { const _own = (url.match(/^https:\/\/auras\.guide\/image\/(img_[A-Za-z0-9_-]+)$/) || [])[1];
+          if (_own && env.AURA_IMAGES) {
+            try { const _o = await env.AURA_IMAGES.get(_own + ".png");
+              if (_o) { let _b = new Uint8Array(await _o.arrayBuffer());
+                if (_b.length > _MAX) { const _sb = await _shrink(new Response(_b).body, "our own picture is " + Math.round(_b.length / 1024) + "KB"); if (_sb) return _ok(_sb, "image/jpeg", "our own store, shrunk"); }
+                else if (_b.length >= 2000) return _ok(_b, "image/png", "our own store"); } } catch (e) { _why("our own store: " + String((e && e.message) || e).slice(0, 100)); } } }
         // 1. the full picture (or the https copy of an http one)
         try {
           const r = await fetch(_viaThumb ? _thumb : url, _hdr);
@@ -82073,6 +82085,9 @@ export class PublicEntry extends WorkerEntrypoint {
         status: x.r.status === "accepted" ? "booked" : "waiting", when: x.r.when || null, when_local: x.r.when_local || null });
     }
     items.sort((a, b) => String(b.sent || "").localeCompare(String(a.sent || "")));
+    // (v9.999.135) Work on this hands one of these pictures to Aura; inspire_take only takes a picture from a recent search or their
+    // own saved ones. These are theirs to work on too - noted for a day, for this person only.
+    try { await kv.put("sentimgs:" + me, JSON.stringify(items.map(x => x.image).filter(Boolean).slice(0, 24)), { expirationTtl: 24 * 3600 }); } catch {}
     return { ok: true, items };
   }
 

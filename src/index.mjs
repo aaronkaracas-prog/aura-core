@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.121-2026-11-21-reach-signup-address";
+const BUILD = "aura-core-v9.999.122-2026-11-21-addon-four-artwork-redrawn";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -62779,6 +62779,33 @@ async function sheet8Quality(env) { try { const k = String((await env.AURA_KV.ge
 // THE NEW-TATTOO SHEET'S OWN IMAGE MODEL (v9.693, 2026-10-21, Aaron): `config:source:sheet8:model` - empty means the shared
 // `config:edit:model`, as before. Only the new-tattoo 8 read it; add-on, cover-up, change and possibilities sheets edit a photo
 // and stay on the shared setting until each is tested.
+// ══ WHITE BEHIND THE ARTWORK (v9.999.122, 2026-11-21) ═══ MEASURED: gpt-image-2.5-flare leaves the page around a flat design see-through
+// (img_mwqp1vajlahr 93%, img_mwqpd8j9f7tk 79%, the pixels there black at no opacity) - the phone's viewer showed it on a dark page, and anything
+// that reads the pixels without their opacity sees black. The picture is laid on white and stored again under the same id (file and KV),
+// so every reader after it - the tracer, the PDF, the viewer - gets a white page. A picture with nothing see-through is left alone.
+async function whiteBehind(env, url) {
+  const id = (String(url || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i) || [])[1];
+  if (!id) return "no id";
+  let bytes = null;
+  if (env.AURA_IMAGES) { const o = await env.AURA_IMAGES.get(id + ".png").catch(() => null); if (o) bytes = new Uint8Array(await o.arrayBuffer()); }
+  if (!bytes) { const b64 = await env.AURA_KV.get("image:" + id).catch(() => null); if (!b64) return "no picture"; bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)); }
+  const im = PhotonImage.new_from_byteslice(bytes); const w = im.get_width(), h = im.get_height();
+  const px = im.get_raw_pixels(); try { im.free(); } catch {}
+  let clear = 0;
+  for (let i = 3; i < px.length; i += 4) {
+    const a = px[i]; if (a === 255) continue;
+    const f = a / 255; px[i - 3] = Math.round(255 + (px[i - 3] - 255) * f); px[i - 2] = Math.round(255 + (px[i - 2] - 255) * f); px[i - 1] = Math.round(255 + (px[i - 1] - 255) * f);
+    px[i] = 255; clear++;
+  }
+  if (!clear) return "nothing see-through (" + w + "x" + h + ")";
+  const out = new PhotonImage(px, w, h); const png = out.get_bytes(); try { out.free(); } catch {}
+  const _p = [];
+  if (env.AURA_IMAGES) _p.push(env.AURA_IMAGES.put(id + ".png", png, { httpMetadata: { contentType: "image/png" } }).catch(() => null));
+  let t = ""; for (let j = 0; j < png.length; j += 8192) t += String.fromCharCode.apply(null, png.subarray(j, j + 8192));
+  _p.push(env.AURA_KV.put("image:" + id, btoa(t))); t = "";
+  await Promise.all(_p);
+  return Math.round(clear * 100 / (w * h)) + "% of " + id + " (" + w + "x" + h + ") was see-through - now white";
+}
 async function sheet8Model(env) { try { const k = String((await env.AURA_KV.get("config:source:sheet8:model")) || "").trim(); if (/^gpt-image/i.test(k)) return k; } catch {} return null; }
 async function sheet8Size(env) { try { const k = String((await env.AURA_KV.get("config:edit:sheet8:size")) || "").trim(); if (/^\d{3,4}x\d{3,4}$/.test(k)) return k; } catch {} return "1280x3584"; }
 // ══ THE NEW-TATTOO SHEET STRAIGHT TO THE IMAGE MODEL (v9.708, 2026-10-22, Aaron) ═══════════════════════════════════
@@ -67963,12 +67990,12 @@ async function makeArtistFiles(env, ctx) {
             const _src = /^ent_/.test(String(shopParent || "")) ? shopParent
               : ((String(mockUrl).match(/\/image\/(img_[a-z0-9]+)/i) || [])[1] || shopParent);
             let _flatErr = null;
-            const _flat = async (prompt, base, withs) => {
+            const _flat = async (prompt, base, withs, extra) => {
               for (let tries = 0; tries < 2; tries++) {
                 try {
                   const r = await processCommand("IMAGE EVOLVE " + (base || _src) + " " +
                     JSON.stringify({ prompt, by: me, res: "2k", ...(tries ? { seed: 2 } : {}),
-                                     ...(withs ? { with: withs } : {}) }), env, true);
+                                     ...(withs ? { with: withs } : {}), ...(extra || {}) }), env, true);
                   const p = (r && r.payload) ? r.payload : r;
                   if (p && p.ok && p.image_url) return { flat: p.image_url, id: p.child || null };
                   _flatErr = String((p && (p.error || p.why || p.reason)) || "no image came back").slice(0, 200);
@@ -68042,9 +68069,24 @@ async function makeArtistFiles(env, ctx) {
             // clock (10:09, img_mw8594e2b9tl) came back brown all over, the gold beam lost in it - the sentence said nothing of color and the skin's
             // warmth went onto the paper. PROVEN by command 10:14 on the locked card: with the color line the waves stay black and grey and the
             // beam stays gold (img_mw85i8ibjlve). The sentence is a setting (config:frame:addon:whole), tuned without a deploy.
-            let _wholeW = "Draw this whole tattoo flat on plain white paper, with no body and no skin. Keep every color exactly as it is in the tattoo - the black and grey stays black and grey, and any color stays that same color.";
+            // ══ THE WHOLE PIECE IS REDRAWN FOR THE STENCIL (v9.999.122, 2026-11-21, Aaron: "it's an incomplete piece of art ... it should all be
+            // one continuous tattoo" / "this should be the piece of the stencil for the tattoo artist to print") ═══ MEASURED 09:17 (Dragon and
+            // Dog, pta_6fd68c0b9ccfd9d3): "Draw this whole tattoo flat" on gpt-image-2 at low (the shared edit setting) gave img_mwqo8cgmh80p -
+            // tail streamers broken off, tendrils as loose flicks, the flower, dragon and dog three islands with leaves floating between; the
+            // same words at 09:47 came back sepia. PROVEN 09:52 by command on the same card (img_mwqpd8j9f7tk) and 09:55 on a four-up card
+            // (img_mwqpjidxtiy1): this sentence on gpt-image-2.5-flare at high - one connected piece, clean solid lines, shading kept. Every stencil
+            // in the PDF is traced from this one drawing. Settings: config:frame:addon:whole (the words), config:source:artwork:model (empty = the
+            // add-on's image model) and config:source:artwork:quality (empty = high). The model leaves the page around the art see-through
+            // (79% of img_mwqpd8j9f7tk, "solid white background" or not), so white goes behind it as soon as it is back (whiteBehind).
+            let _wholeW = "This is a tattoo I was working on. It is not finished - the pieces float apart. Redraw it as the final artwork my tattoo artist will print the stencil from: one complete tattoo that flows as one piece, every part joined to the next, every line clean, solid and connected - no floating leaves or loose lines. Keep the same design and the same shading. Flat on a solid white background, with no body and no skin. Keep every color exactly as it is - the black and grey stays black and grey, and any color stays that same color.";
             try { const _k = String((await env.AURA_KV.get("config:frame:addon:whole")) || "").trim(); if (_k) _wholeW = _k; } catch {}
-            const _whole = await _flat(_wholeW);
+            let _artM = ""; try { _artM = String((await env.AURA_KV.get("config:source:artwork:model")) || "").trim(); } catch {}
+            if (!/^gpt-image/i.test(_artM)) { try { _artM = String((await env.AURA_KV.get("config:source:addon:model")) || "").trim(); } catch {} }
+            if (!/^gpt-image/i.test(_artM)) _artM = (await sheet8Model(env)) || "";
+            let _artQ = "high"; try { const _k = String((await env.AURA_KV.get("config:source:artwork:quality")) || "").trim().toLowerCase(); if (["low", "medium", "high", "auto"].includes(_k)) _artQ = _k; } catch {}
+            const _whole = await _flat(_wholeW, null, null, { raw: true, quality: _artQ, ...(/^gpt-image/i.test(_artM) ? { model: _artM } : {}) });
+            try { console.log("[FILES] the whole piece redrawn for the stencil · " + (_artM || "the shared edit model") + " at " + _artQ + " · \"" + _wholeW.slice(0, 160) + "...\"" + (me ? " · who=" + me : "")); } catch {}
+            if (_whole) { try { const _wb = await whiteBehind(env, _whole.flat); console.log("[FILES] white behind the artwork: " + _wb); } catch (e) { console.log("[FILES] white behind the artwork failed: " + String(e?.message ?? e).slice(0, 160)); } }
             if (_whole) _addSheets.push({ panel: "Whole piece", asked: "the whole tattoo", flat: _whole.flat,
                                           id: _whole.id, seeIn: _seeWhole || 0, checked: null, ok: true });
             // ══ THE NEW-WORK SHEET NEVER DISAPPEARS SILENTLY (2026-10-01, v9.502, Aaron) ══════════════
@@ -75654,8 +75696,8 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                 const _chatNow = _addonRoute === "thread";
                 let _pw = _chatNow
                   ? (_ownW
-                    ? "This is my current tattoo. I really like the style. Here is what I want: ____. Show me 2 versions side by side on one page, with a wide black gap between them. Make the first one closest to my idea, and the other one a completely different variation."
-                    : "This is my current tattoo. I really like the style. Add to it. Show me 2 completely different ideas side by side on one page, with a wide black gap between them.")
+                    ? "This is my current tattoo. I really like the style. Here is what I want: ____. Show me 4 versions on one page, 2 across and 2 down, with a wide black gap between them. Make the first one closest to what I asked for, and the other three completely different variations."
+                    : "This is my current tattoo. I really like the style. Add to it. Show me 4 completely different ideas on one page, 2 across and 2 down, with a wide black gap between them.")
                   : (_ownW
                     ? "This is my current tattoo. Here is what I want: ____. Do it in the same style as my tattoo. Keep my existing tattoo exactly as it is. Show me 2 different versions of this, side by side on one page, with a wide black gap between them."
                     : "This is my current tattoo. Add to it, in the same style as my tattoo. Keep my existing tattoo exactly as it is. Show me 2 different ideas for the new work, side by side on one page, with a wide black gap between them.");
@@ -75768,7 +75810,17 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                     if (_gm) _canvasNow = { width: parseInt(_gm[1], 10), height: parseInt(_gm[2], 10) }; } catch {}
             }
             // (v9.999.119) the chat model looks at their photo and writes the image model its brief - the page size goes as the image tool's size
-            if (_addonChat && _addonTwo && !_oneParent && !_boxParent && _canvasNow) {
+            // ══ FOUR AGAIN, BECAUSE THE PICK IS REDRAWN FOR THE ARTIST (v9.999.122, 2026-11-21, Aaron: go) ═══ The four cards are what the person
+            // looks at on their body; the artwork their artist prints is redrawn from the card they lock (see THE WHOLE PIECE IS REDRAWN FOR THE
+            // STENCIL). PROVEN 09:55: card 1 of the four-up rose sheet (img_c36aad59d0babb59ea17c, mush up close) came back as clean, connected
+            // artwork (img_mwqpjidxtiy1). Four go on a square page, 2 across and 2 down - 2048x2048, the size of the 07:49 and 08:04 chat-model
+            // sheets (setting config:source:addon:size4); two keep the wide page.
+            if (_addonChat && _addonSheet && !_addonTwo && !_oneParent && !_boxParent) {
+              _canvasNow = { width: 2048, height: 2048 };
+              try { const _g4 = String((await env.AURA_KV.get("config:source:addon:size4")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/);
+                    if (_g4) _canvasNow = { width: parseInt(_g4[1], 10), height: parseInt(_g4[2], 10) }; } catch {}
+            }
+            if (_addonChat && _addonSheet && !_oneParent && !_boxParent && _canvasNow) {
               _viaNow = "thread"; _sizeNow = _canvasNow.width + "x" + _canvasNow.height;
               console.log("[TURN:IDEAS] add-on through the chat model (config:source:addon:route) - it reads their photo and writes the brief · " + _sizeNow + (me ? " · who=" + me : ""));
             }

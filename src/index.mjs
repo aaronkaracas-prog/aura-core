@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.120-2026-11-21-new-work-real-times";
+const BUILD = "aura-core-v9.999.121-2026-11-21-reach-signup-address";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -5267,7 +5267,15 @@ async function reachAddress(env, who, biz) {
       body: JSON.stringify({ method: "getState", params: [] }) }));
     const j = await r.json();
     const hit = [...((j?.pta?.chain) || [])].reverse().find(x => x?.data?.email);
-    return hit?.data?.email || null;
+    if (hit?.data?.email) return hit.data.email;
+    // ══ THE ADDRESS THEY SIGNED UP WITH (2026-11-21) ══════════════════════════════════════════
+    // MEASURED: an Ink It account (signed up by email, never booked anything) sent a design to a
+    // shop and the request arrived with contact: null - nothing on their chain carries an `email`
+    // field. The address they signed up with is the identity they were born with: `email:<addr>`
+    // on the PTA itself and on its BORN event. That is the address they gave us to reach them.
+    const born = [j?.pta?.identity_key, ...((j?.pta?.chain) || []).filter(x => x?.event === "BORN").map(x => x?.data?.identity)]
+      .map(v => String(v || "")).find(v => /^email:[^@\s]+@[^@\s]+$/i.test(v));
+    return born ? born.slice(6) : null;
   } catch { return null; }
 }
 // Mail from the world the person knows us by - a parlor hears from tattooparlors.world, an artist

@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.133-2026-11-21-other-shops-nearby";
+const BUILD = "aura-core-v9.999.134-2026-11-21-artist-gets-customer-files";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -59735,6 +59735,38 @@ async function nextChips(env, design, change) {
   } catch { return null; }
 }
 
+// ══ THE ARTIST'S FILES, AS A LIST (2026-11-21, Session B, Aaron: "give the artist access to it - the complete PDF and the
+// actual files too") ══ The same files, titles and order as Ink It's own "For your artist" list, read off the customer's finished
+// tattoo, so the shop console, the artist's phone and Ink Studio all show exactly what the customer has.
+function artistFileList(pj) {
+  const f = pj && pj.files; if (!f) return [];
+  const out = [];
+  const row = (url, title, sub, pdf) => { if (url && /^https?:\/\//i.test(String(url))) out.push({ url: String(url), title, sub, pdf: !!pdf }); };
+  if (Array.isArray(f.panels) && f.panels.length) {
+    f.panels.forEach((p, i) => { const nm = (p && p.section) || ("Panel " + (i + 1)); if (!p) return;
+      row(p.flat, nm + " · flat artwork", "Full size, on white");
+      row(p.line, nm + " · linework stencil", "For transfer");
+      row(p.shade, nm + " · shading-guide stencil", "For transfer · shows where the shading goes");
+      row(p.real, nm + " · realism stencil", "For transfer · hard edges and shadow borders");
+      if (i === 0 || p.pdf !== f.panels[0].pdf) row(p.pdf, f.print_every_version ? "Print file (PDF) · everything" : nm + " · print file (PDF)",
+        f.print_every_version ? "The design and every stencil, each also mirrored · print at 100%" : "Print at 100%", true); });
+  } else {
+    row(f.flat_artwork, "Flat artwork", "Full size, on white");
+    if (f.image && f.image !== f.flat_artwork) row(f.image, "Linework stencil", "For transfer");
+    row(f.stencil_shading, "Shading-guide stencil", "For transfer · shows where the shading goes");
+    row(f.stencil_realism, "Realism stencil", "For transfer · hard edges and shadow borders");
+    row(f.print_pdf, "Print file (PDF)", f.print_every_version
+      ? "Everything in one file: the design and every stencil, each also mirrored · print at 100%" : "Print at 100%", true);
+  }
+  // An add-on, a cover-up or a rework: the artist sees what is on their skin today.
+  const job = String((pj.details && pj.details.job) || "").toLowerCase();
+  if (["add", "cover", "rework"].includes(job)) {
+    const ph = (pj.lines || []).find(l => l && l.photo);
+    if (ph) row(ph.photo, "Their skin today", "The photo they started from");
+  }
+  return out;
+}
+
 // ══ WHERE A SHOP IS (2026-11-21, Session B) ═════════════════════════════════════════════════
 // A crawled shop has its city on the crawl row. A shop that signed up directly has only the address
 // it typed (CONTACT on its chain, e.g. "123 Main St, Malibu, CA 90265, USA") - the city and state are
@@ -81684,6 +81716,7 @@ export class PublicEntry extends WorkerEntrypoint {
         return { ok: true, id: f.key, name: nm || "this shop", page };
       }
       if (action === "my_requests") return await this._myRequests(me, String(b.design || "").trim() || null);
+      if (action === "sent_to_me") return await this._sentToMe(me);
       if (action === "shops") {
         if (b.city) return await this.tattooCity(String(b.city));
         return await this.tattooNear(b.lat, b.lng, b.radius_km || 40);
@@ -81973,6 +82006,74 @@ export class PublicEntry extends WorkerEntrypoint {
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }
+  }
+
+  // ══ THE CUSTOMER'S FILES, FOR THE SHOP THEY SENT THEM TO (v9.999.134, 2026-11-21, Session B, Aaron: go) ══════════════════
+  // Sending a finished tattoo to a shop IS the customer handing it over, so the request is the permission: whoever can see the
+  // request can open the files. Read from the customer's own Ink It store (never the reader's Ink Studio store) and never
+  // written to - the artist works on a copy in Ink Studio, the customer's tattoo stays exactly as they made it.
+  async _requestFiles(req) {
+    if (!req || !req.person || !/^prj_/i.test(String(req.design || "")))
+      return { ok: false, error: "NO_DESIGN", say: "This one did not come with a finished design." };
+    let r = null;
+    try { r = await _WORLD_ALS.run({ world: null }, () => talkDo(this.env, req.person, "talkProject", [req.design])); } catch {}
+    const pj = r && r.ok && r.project;
+    if (!pj) return { ok: false, error: "NOT_FOUND", say: "That design is not there any more." };
+    const f = pj.files || {};
+    const files = artistFileList(pj);
+    const image = f.flat_artwork || (Array.isArray(f.panels) && f.panels[0] && f.panels[0].flat) || req.image || null;
+    return { ok: true, request: req.id, from: req.name || null, title: String(pj.title || "").split(/\s*[|·]\s*/)[0].slice(0, 80) || null,
+      brief: req.brief || null, placement: (pj.details && pj.details.placement) || null, style: (pj.details && pj.details.style) || req.style || null,
+      image, files, sent: req.created || null, ready: files.length > 0 };
+  }
+  // A request by its id, or the request a booking came from (`reqbook:<uid>` is written when a request is booked; older
+  // bookings are found by looking through the shop's requests).
+  async _findRequest(shopKey, request, booking) {
+    const kv = this.env.AURA_KV;
+    const load = async (s, r) => { try { return JSON.parse(await kv.get("req:" + s + ":" + r) || "null"); } catch { return null; } };
+    if (request) return await load(shopKey, String(request));
+    if (!booking) return null;
+    try { const m = JSON.parse(await kv.get("reqbook:" + booking) || "null"); if (m && m.s === shopKey) { const r = await load(m.s, m.r); if (r) return r; } } catch {}
+    let idx = []; try { idx = JSON.parse(await kv.get("reqs:" + shopKey) || "[]"); } catch {}
+    for (const rid of idx.slice(0, 100)) { const r = await load(shopKey, rid); if (r && r.booking === booking) return r; }
+    return null;
+  }
+  // ══ SENT TO YOU (Ink Studio) ══ Every finished tattoo sent to a shop this person owns, runs or works at - an owner sees all
+  // of them, an artist sees the ones booked with them and the ones nobody has been given yet. Passed ones are left out.
+  async _sentToMe(me) {
+    if (!me) return { ok: false, error: "NOT_SIGNED_IN" };
+    const db = this.env.AURA_MEMORY, kv = this.env.AURA_KV;
+    const seats = (await db.prepare("SELECT to_id, edge_type FROM pta_edges WHERE from_id = ? AND edge_type IN ('owns','manages','works_at') " +
+      "AND state != 'revoked'").bind(me).all().catch(() => null))?.results || [];
+    const picked = [], seen = new Set();
+    for (const st of seats.slice(0, 10)) {
+      const f = await resolveShop(this.env, st.to_id);
+      const key = f ? f.key : st.to_id;
+      if (seen.has(key)) continue; seen.add(key);
+      let nm = (f && (f.name || (f.row && f.row.name))) || null;
+      if (!nm) { try { nm = (await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(st.to_id).first())?.name || null; } catch {} }
+      let idx = []; try { idx = JSON.parse(await kv.get("reqs:" + key) || "[]"); } catch {}
+      for (const rid of idx.slice(0, 30)) {
+        let r = null; try { r = JSON.parse(await kv.get("req:" + key + ":" + rid) || "null"); } catch {}
+        if (!r || !/^prj_/i.test(String(r.design || "")) || r.status === "declined") continue;
+        if (st.edge_type === "works_at" && r.booking) {
+          let who = null;
+          try { const e = await db.prepare("SELECT context FROM pta_edges WHERE id = ?").bind(r.booking).first(); who = e ? (JSON.parse(e.context || "{}").artist || null) : null; } catch {}
+          if (who && who !== me) continue;
+        }
+        picked.push({ r, shop: key, shop_name: nm || "your shop" });
+        if (picked.length >= 12) break;
+      }
+      if (picked.length >= 12) break;
+    }
+    const items = [];
+    for (const x of picked) {
+      const d = await this._requestFiles(x.r);
+      if (d && d.ok) items.push({ ...d, shop: x.shop, shop_name: x.shop_name,
+        status: x.r.status === "accepted" ? "booked" : "waiting", when: x.r.when || null, when_local: x.r.when_local || null });
+    }
+    items.sort((a, b) => String(b.sent || "").localeCompare(String(a.sent || "")));
+    return { ok: true, items };
   }
 
   // ══ A PASS IS NOT THE END (2026-11-21, Session B, Aaron: go) ═══════════════════════════════════
@@ -82672,6 +82773,22 @@ export class PublicEntry extends WorkerEntrypoint {
       // ══ THEIR OWN PAGE, EDITED ON THE PAGE (2026-11-21) ═════════════════════════════════
       // Pictures and details belong to the signed-in artist only - `who` is never taken from the
       // request, so nobody can rearrange somebody else's work by changing a field.
+      // (v9.999.134) The customer's artist files for one of their bookings - theirs, or one nobody has been given yet, at a
+      // shop they are seated at.
+      if (w === "artist_files") {
+        const r0 = await processCommand("APPOINTMENT " + String(a.booking || "").replace(/[^A-Za-z0-9_]/g, ""), this.env, true);
+        const ap = (r0 && r0.payload) ? r0.payload : r0;
+        if (!ap?.ok) return { ok: false, error: "NO_SUCH_BOOKING", say: "That booking is not there." };
+        const who = ap.artist || ap.with || null;
+        if (who && who !== me.pta) return { ok: false, error: "NOT_YOUR_BOOKING", say: "That booking is not with you." };
+        const seat = await this.env.AURA_MEMORY.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type IN ('works_at','owns','manages') " +
+          "AND state != 'revoked'").bind(me.pta, ap.business).first().catch(() => null);
+        if (!seat) return { ok: false, error: "NOT_SEATED_HERE", say: "You do not work at that shop." };
+        const rfA = await resolveShop(this.env, ap.business);
+        const reqA = await this._findRequest(rfA ? rfA.key : ap.business, null, String(a.booking));
+        if (!reqA) return { ok: false, error: "NO_FILES", say: "This booking did not come from Ink It, so there are no files with it." };
+        return await this._requestFiles(reqA);
+      }
       if (w === "pieces") { const r = await processCommand("PORTFOLIO LIST " + me.pta, this.env, true); return (r && r.payload) ? r.payload : r; }
       if (w === "piece_move") { const r = await processCommand("PORTFOLIO MOVE " + me.pta + " " + String(a.piece || "").replace(/[^A-Za-z0-9_]/g, "") + " " + (parseInt(a.to, 10) || 0), this.env, true); return (r && r.payload) ? r.payload : r; }
       if (w === "piece_remove") { const r = await processCommand("PORTFOLIO REMOVE " + me.pta + " " + String(a.piece || "").replace(/[^A-Za-z0-9_]/g, ""), this.env, true); return (r && r.payload) ? r.payload : r; }
@@ -83189,11 +83306,20 @@ export class PublicEntry extends WorkerEntrypoint {
           if (rec) {
             rec.status = "accepted"; rec.booking = b.booking || null; rec.when = b.when || a.when;
             rec.when_local = b.when_local || null;
+            // (v9.999.134) the booking knows which request it came from - its artist files are one look away
+            try { if (b.booking) await this.env.AURA_KV.put("reqbook:" + b.booking, JSON.stringify({ s: rf ? rf.key : biz, r: rid }), { expirationTtl: 365 * 24 * 3600 }); } catch {}
             rec.proposed = a.when; rec.closed = new Date().toISOString();
             await this.env.AURA_KV.put(rKey, JSON.stringify(rec), { expirationTtl: 180 * 24 * 3600 });
           }
           return { ok: true, booking: b.booking, when_local: b.when_local, told_customer: !!b.emailed_you,
             say: "Booked for " + (b.when_local || a.when) + (b.emailed_you ? ". They have been emailed." : ".") };
+        }
+        // (v9.999.134) The customer's artist files for a request in New work, or for a booking that came from one.
+        case "artist_files": {
+          const rfF = await resolveShop(this.env, biz);
+          const reqF = await this._findRequest(rfF ? rfF.key : biz, a.request ? String(a.request) : null, a.booking ? String(a.booking) : null);
+          if (!reqF) return { ok: false, error: "NO_FILES", say: "This one did not come from Ink It, so there are no files with it." };
+          return await this._requestFiles(reqF);
         }
         case "join_answer": {
           const rq = await this.env.AURA_MEMORY.prepare("SELECT to_id FROM pta_edges WHERE id = ? AND edge_type = 'seat_request'")

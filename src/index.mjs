@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.123-2026-11-21-day-view-booking";
+const BUILD = "aura-core-v9.999.124-2026-11-21-one-chair-fast-buttons";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -33767,7 +33767,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // `open_only:1` answers "are they open then", ignoring who is already booked. Used by the
         // hours check to tell a closed day from a full one - two different sentences to a client.
         const avOpenOnly = /\bopen_only:\s*1\b/i.test(rest);
-        const taken = [];
+        const taken = [], avFloats = [], avOthersTaken = {};
         const bk = avOpenOnly ? null : await db.prepare(
           "SELECT context FROM pta_edges WHERE to_id = ? AND edge_type = 'books' AND state != 'revoked'"
         ).bind(avBiz).all().catch(() => null);
@@ -33784,12 +33784,29 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (!isFinite(at)) continue;
           if (c.status === "CANCELLED") continue;              // a cancelled chair is a free chair
           const who = c.artist || c.with || null;
-          if (avWith && who && who !== avWith) continue;
           const endMs = Date.parse(c.end || "");
           const mins = isFinite(endMs) && endMs > at
             ? Math.round((endMs - at) / 60000)
             : (Number(c.minutes) || avSlot);
+          // ══ A BOOKING WITH NOBODY NAMED TAKES ONE CHAIR, NOT EVERY CHAIR (2026-11-21) ══════
+          // MEASURED: a 2pm "anyone" booking blocked Artist Three from 1:30 to 3:30 - asked for one
+          // artist, it counted against them as if nobody else could take it. Asked for an artist,
+          // it is kept aside and only blocks a slot when no OTHER artist working then is free.
+          if (avWith && who && who !== avWith) { (avOthersTaken[who] = avOthersTaken[who] || []).push({ at, mins }); continue; }
+          if (avWith && !who && c.kind !== "block") { avFloats.push({ at, mins }); continue; }
           taken.push({ at, mins, kind: c.kind || "booking" });
+        }
+        // Everybody else seated here, with their own week (unset = the shop's).
+        const avOthers = [];
+        if (avWith && avFloats.length) {
+          try {
+            const os = await db.prepare("SELECT from_id, context FROM pta_edges WHERE to_id = ? AND edge_type = 'works_at' " +
+              "AND state != 'revoked' AND from_id != ?").bind(avBiz, avWith).all();
+            for (const r of (os?.results || [])) {
+              let oc = {}; try { oc = r.context ? JSON.parse(r.context) : {}; } catch {}
+              avOthers.push({ id: r.from_id, week: normWeekly(oc.weekly || oc.hours) || null });
+            }
+          } catch {}
         }
 
         const out = [], now = Date.now();
@@ -33851,6 +33868,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // from a site or a listing. Either way the loop below only sees ranges.
           let o = structured ? (structured[DAY_KEYS[wd]] || null) : open[wd];
           if (!o || !o.length) continue;
+          // The shop's day, kept before it is narrowed to the person - the others work inside it.
+          const oShop = o;
+          const avOtherDay = avOthers.map(x => {
+            let r = oShop;
+            if (x.week && DAY_KEYS[wd] in x.week) r = x.week[DAY_KEYS[wd]] ? intersectDay(oShop, x.week[DAY_KEYS[wd]]) : null;
+            return { id: x.id, ranges: r };
+          });
           // THE INTERSECTION. The business says when the doors are open; the person says when they
           // are there. Bookable is where both are true - never wider than the business's hours.
           if (personOpen && personSaid?.has(wd)) {
@@ -33868,8 +33892,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const t = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(),
               0, m - tzMin));
             if (t.getTime() < now + (avNow ? 0 : 3600000)) continue;   // not in the next hour (a walk-in: from now)
-            const clash = taken.some(x => t.getTime() < x.at + x.mins * 60000 &&
-                                          x.at < t.getTime() + avSlot * 60000);
+            const tEnd = t.getTime() + avSlot * 60000;
+            let clash = taken.some(x => t.getTime() < x.at + x.mins * 60000 && x.at < tEnd);
+            if (!clash && avFloats.length) {
+              const fl = avFloats.filter(x => t.getTime() < x.at + x.mins * 60000 && x.at < tEnd).length;
+              if (fl) {
+                const free = avOtherDay.filter(x => (x.ranges || []).some(r => r[0] <= m && m + avSlot <= r[1]) &&
+                  !(avOthersTaken[x.id] || []).some(y => t.getTime() < y.at + y.mins * 60000 && y.at < tEnd)).length;
+                if (fl > free) clash = true;
+              }
+            }
             if (!clash) slots.push({ at: t.toISOString(),
               local: String(Math.floor(m / 60) % 12 || 12) + ":" + String(m % 60).padStart(2, "0") +
                      (m >= 720 ? "pm" : "am") });
@@ -33956,6 +33988,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const apSub = String(apH[0] || "").toUpperCase();
       const apBody = (apP[1] || "").trim();
       const db = env.AURA_MEMORY;
+      // An artist by name, for the sentence a person reads - never their id.
+      const apNameOf = async (id) => { if (!id) return "That artist"; try { const r = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(id).first(); return (r && r.name) || "That artist"; } catch { return "That artist"; } };
       // RFC 5545 3.3.11: backslash, then semicolon and comma, then newline as a literal \n.
       // Order matters - escaping the backslash last would mangle every escape added before it.
       const icsText = (v) => String(v == null ? "" : v)
@@ -34141,6 +34175,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // on a shop whose hours had just been read correctly to reach this line.
             artist: hs.who || undefined,
             grid_starts: hs.grid_starts || undefined,
+            // What a person reads. `what_to_do` stays for Aura and the command line.
+            say: hs.why === "ARTIST_NOT_WORKING" ? ((await apNameOf(hs.who || f.artist)) + " isn't working then.")
+              : hs.why === "TIME_TAKEN" ? "Somebody already has that time."
+              : hs.why === "HOURS_UNKNOWN" ? "The shop's hours aren't set, so that time can't be checked."
+              : "The shop is closed then.",
             what_to_do:
               hs.why === "ARTIST_NOT_WORKING"
                 ? "The shop is open then, but that artist is not working. AVAILABILITY " + biz +
@@ -34242,6 +34281,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const mhs = await hoursSay(mvBiz, d, Number(c.minutes) || 120, c.artist || null);
             if (!mhs.ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: mhs.why,
               asked_for: d.toISOString(), business: mvBiz, detail: mhs.detail || undefined,
+              say: mhs.why === "ARTIST_NOT_WORKING" ? ((await apNameOf(c.artist)) + " isn't working then.")
+                : mhs.why === "TIME_TAKEN" ? "Somebody already has that time."
+                : mhs.why === "HOURS_UNKNOWN" ? "The shop's hours aren't set, so that time can't be checked."
+                : "The shop is closed then.",
               what_to_do: mhs.why === "SHOP_IS_SHUT"
                 ? "That is outside their hours or already taken. AVAILABILITY " + mvBiz + " lists what is open."
                 : "Their hours could not be read, so this move was not checked against them." } };
@@ -34299,6 +34342,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               if (!hs2.ok) return { cmd: "APPOINTMENT", payload: { ok: false,
                 error: hs2.why, uid, artist: val, asked_for: c.start,
                 detail: hs2.detail || undefined, grid_starts: hs2.grid_starts || undefined,
+                say: hs2.why === "ARTIST_NOT_WORKING" ? ((await apNameOf(val)) + " isn't working then.")
+                  : (await apNameOf(val)) + " can't take that time.",
                 what_to_do: hs2.why === "ARTIST_NOT_WORKING"
                   ? "That artist is not working then, so the booking cannot move to them. " +
                     "AVAILABILITY " + rBiz + " with:" + val + " lists the times they are in."
@@ -82675,9 +82720,43 @@ export class PublicEntry extends WorkerEntrypoint {
   // One door, and the session decides. Every action checks that this person owns this business
   // before it runs - the console is a view, not an authority, and a request from it is still a
   // request from a stranger until the edge says otherwise.
+  // ══ "IS THIS THEIR SHOP" WITHOUT BUILDING THE WHOLE CONSOLE (2026-11-21) ══════════════════
+  // MEASURED: every console button (open times, book, move, confirm) took ~5s, because act() ran
+  // the full CONSOLE - appointments, customers, deposits, requests, understanding - only to read
+  // `showing` off it. Same answer, three lookups: signed in; the address is a business; they own or
+  // manage it (or the build key is armed, which CONSOLE also honours). The seats come with it,
+  // because the gallery check below needs them. No address = the full console decides, as before.
+  async _shopFor(sessionId, slug) {
+    try {
+      if (!slug) return await this.console_(sessionId, slug);
+      const me = await this.sessionCheck(sessionId);
+      if (!me?.ok) return { ok: false, error: "NOT_SIGNED_IN" };
+      let biz = String(slug);
+      if (!/^pta_|^ent_/.test(biz)) {
+        const sl = await processCommand("SLUG GET " + biz, this.env, true);
+        const sp = (sl && sl.payload) ? sl.payload : sl;
+        if (!sp?.ok || !sp.pta) return { ok: false, error: "NO_SUCH_BUSINESS" };
+        biz = sp.pta;
+      }
+      const db = this.env.AURA_MEMORY;
+      let open = false;
+      try { open = !!(await this.env.AURA_KV.get("config:build:key")); } catch {}
+      const ok = open
+        ? await db.prepare("SELECT 1 FROM pta_entities WHERE id = ? AND type = 'business'").bind(biz).first().catch(() => null)
+        : await db.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type IN ('owns','manages') " +
+            "AND state != 'revoked' LIMIT 1").bind(me.pta, biz).first().catch(() => null);
+      if (!ok) return { ok: false, error: open ? "NO_SUCH_BUSINESS" : "NOT_YOURS" };
+      const seats = await db.prepare("SELECT from_id AS pta FROM pta_edges WHERE to_id = ? AND edge_type = 'works_at' " +
+        "AND state != 'revoked'").bind(biz).all().catch(() => null);
+      return { ok: true, showing: biz, artists: { list: (seats?.results || []).map(r => ({ pta: r.pta })) } };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
   async act(sessionId, slug, what, args) {
     try {
-      const view = await this.console_(sessionId, slug);
+      const view = await this._shopFor(sessionId, slug);
       // ══ SAY WHICH DOOR IS SHUT (fixed 2026-08-23) ══════════════════════════════════════════
       // `console_` refuses NOT_SIGNED_IN for a dead session and NO_SUCH_BUSINESS for a bad slug,
       // and this flattened all of it into "that is not a business you can change".

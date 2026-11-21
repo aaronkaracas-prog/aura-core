@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.116-2026-11-20-addon-photo-rides-page";
+const BUILD = "aura-core-v9.999.117-2026-11-21-pages-edit-in-place";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -5286,6 +5286,44 @@ async function emailFromWorld(env, to, world, subject, body) {
 // A week typed in a sentence -> the weekly object the calendar reads. Only used ONCE, at signup,
 // to pre-fill the hours grid from what the owner typed into the form ("Tue-Sat 12-8, closed Sun");
 // from then on hours are clicked, never typed. Days it cannot read are left out, not guessed shut.
+// ══ AN ARTIST'S OWN DETAILS (2026-11-21) ═══════════════════════════════════════════════════
+// What an artist says about themselves - city, Instagram, a line about their work, a website, an
+// address that is OPTIONAL (Aaron: "a tattoo artist may work out of their house - it's up to
+// them") and whether to show it. Kept on their OWN chain as CONTEXT events marked profile, latest wins per field,
+// so it follows them between shops. Reading merges the signup CONTEXT and every PROFILE after it.
+async function artistProfile(env, pta) {
+  const out = {};
+  try {
+    const stub = env.PTA_DO.get(env.PTA_DO.idFromName(pta));
+    const r = await stub.fetch(new Request("http://do", { method: "POST",
+      body: JSON.stringify({ method: "getState", params: [] }) }));
+    const j = await r.json();
+    for (const c of (j?.pta?.chain || [])) {
+      const d = c?.data || {};
+      // Only what THEY said about themselves: the signup CONTEXT and their own edits (profile:true).
+      if (!(d.profile === true || d.event_type === "CONTEXT")) continue;
+      for (const k of ["city", "instagram", "bio", "website", "address", "show_address"])
+        if (d[k] !== undefined && d[k] !== null && d[k] !== "") out[k] = d[k];
+    }
+  } catch {}
+  return out;
+}
+// Editing their own page is their consent for what they type - the same grant a signup gives.
+// A shop-seated artist never gave one (the shop typed them in), so their first edit gives it.
+async function selfGrant(env, pta) {
+  try {
+    const auraActor = (await getSecret(env, "aura_pta_id")) || (await env.AURA_KV.get("config:aura:pta_id")) || "";
+    if (!auraActor) return false;
+    const has = await env.AURA_MEMORY.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'grant' AND state = 'active'")
+      .bind(pta, auraActor).first().catch(() => null);
+    if (has) return true;
+    const gr = await processCommand("PTA_GRANT " + pta + " " + auraActor +
+      ' CONFIRM {"edge_type":"grant","permission":{"can_remember":true}}', env, true);
+    const gp = (gr && gr.payload) ? gr.payload : gr;
+    if (gp?.ok && gp.edge_id) await processCommand("PTA_ACCEPT " + gp.edge_id, env, true);
+    return true;
+  } catch { return false; }
+}
 const WEEK_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 function weekFromText(text) {
   const t = String(text || "").toLowerCase().replace(/[–—]/g, "-");
@@ -30645,7 +30683,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: "Neither Google nor our own records know this id. A QR that points here is either " +
             "mistyped or belongs to a record that was removed." } };
 
+        // ══ THE SHOP'S OWN PICTURES AND ITS ARTISTS (2026-11-21) ═══════════════════════════════
+        // MEASURED: `photos` was Google's alone - a parlor that uploaded its own work from the
+        // console never saw it on its public page. Their own come first, in the order they set;
+        // Google fills in after. And the page lists who works here, each linked to their own page
+        // on tattooartist.world - the parlor and its artists are one circle.
+        let ownPhotos = [], artistsHere = [];
+        if (pta) {
+          try {
+            const pl = await processCommand("PORTFOLIO LIST " + pta, env, true);
+            const pp = (pl && pl.payload) ? pl.payload : pl;
+            ownPhotos = (pp?.pieces || []).map(x => x.url).filter(Boolean);
+          } catch {}
+          try {
+            const sl = await processCommand("SEAT LIST " + pta, env, true);
+            const sp = (sl && sl.payload) ? sl.payload : sl;
+            artistsHere = (sp?.seats || []).map(x => ({ name: x.name || "Artist", pta: x.pta,
+              page: "https://" + ARTIST_WORLD + "/a/" + x.pta }));
+          } catch {}
+        }
         return { cmd: "OFB", payload: { ok: true, place_id: obId, claimed: !!pta, pta,
+          artists: artistsHere,
           source: dp.ok ? (pta ? "google + their own record" : "google") : "their own record",
           name: dp.name || (own && own.name) || null,
           address: dp.address || (own && own.contact && own.contact.address) || null,
@@ -30663,7 +30721,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             ? (Array.isArray(own.hours) ? own.hours
                : (hoursLines(own.hours) || [String(own.hours.open || own.hours.hours || "")]).filter(Boolean))
             : null),
-          photos: dp.photos, maps_url: dp.maps_url,
+          photos: [...ownPhotos, ...((dp.photos || []).filter(u => !ownPhotos.includes(u)))],
+          own_photos: ownPhotos.length, maps_url: dp.maps_url,
           about: (understanding && understanding.what_it_is) || dp.about ||
                  (own && own.service && own.service.offers) || null,
           offerings: (understanding && understanding.offerings) || null,
@@ -30796,6 +30855,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const abSite = (abParts.find(x => /^SITE\s/i.test(String(x || "").trim())) || "")
             .replace(/^\s*SITE\s+/i, "").trim().replace(/[^a-z0-9.-]/gi, "") || "cityguide.world";
           const abBrand = abSite.replace(/^www\./, "");
+          // ══ A PARLOR HAS A PLACE (2026-11-21) ═══════════════════════════════════════════
+          // Aaron: businesses must add their address (artists may not - some work from home).
+          if (!String(address || "").trim()) return { cmd: "ADD_BUSINESS", payload: { ok: false,
+            error: "NEED_ADDRESS", what_to_say: "Add your shop's address - pick it from the suggestions as you type." } };
           // ══ THE OWNER'S NAME (2026-11-20) ═══════════════════════════════════════════════
           // The console greeted a new owner as "aaronkaracas+parlor2" - the front of their email,
           // because signup never asked who they are. The form sends it tagged, like SITE.
@@ -31960,6 +32023,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           await env.AURA_KV.put("addartist:" + tok, JSON.stringify({ email, name,
             city: String(ajP[2] || "").slice(0, 80) || null,
             instagram: String(ajP[3] || "").replace(/^@/, "").replace(/[^A-Za-z0-9_.]/g, "").slice(0, 30) || null,
+            address: String(ajP[4] || "").slice(0, 200) || null,
             started_at: nowIso() }), { expirationTtl: 7 * 86400 });
           const link = "https://" + ARTIST_WORLD + "/start/" + tok;
           const em = await emailFromWorld(env, email, ARTIST_WORLD, "Confirm your artist page on tattooartist.world",
@@ -31994,7 +32058,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const gp = (gr && gr.payload) ? gr.payload : gr;
             if (gp?.ok && gp.edge_id) await processCommand("PTA_ACCEPT " + gp.edge_id, env, true);
             await processCommand("PTA_REMEMBER " + me + " CONTEXT " + JSON.stringify({ email: pend.email,
-              city: pend.city || null, instagram: pend.instagram || null, event_type: "CONTEXT" }), env, true);
+              city: pend.city || null, instagram: pend.instagram || null, address: pend.address || null,
+              show_address: false, event_type: "CONTEXT" }), env, true);
           } catch {}
           try { await env.AURA_KV.delete("addartist:" + tok); } catch {}
           let session = null;
@@ -81997,7 +82062,66 @@ export class PublicEntry extends WorkerEntrypoint {
       } catch {}
       return { ok: true, you: { pta: me.pta, name: who.name || null }, signed_in_via: me.signed_in_via || "session",
         shops, upcoming, asked, portfolio: "/_portfolio?who=" + me.pta,
+        public_page: "https://" + ARTIST_WORLD + "/a/" + me.pta,
         note: shops.length ? undefined : "You are not at a shop yet. Find yours below and ask to join - or a shop can add you from its console." };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // ══ ADDRESS SUGGESTIONS AS THEY TYPE (2026-11-21) ═════════════════════════════════════════
+  // Aaron: a parlor must give a real address - "when you start typing an address, Google finds a
+  // valid one". The form only accepts an address picked from these, so what is stored is one
+  // Google recognises. Uses the same google_maps key as PLACE, and the same off-switch:
+  // `config:places:off` stops it too, plus `config:places:autocomplete:off` for this alone.
+  // Billed per request by Google (Autocomplete), so the page asks only after 4 characters and a
+  // pause in typing; the session token groups one person's keystrokes into one session.
+  async addressSuggest(q, token) {
+    try {
+      const text = String(q || "").trim().slice(0, 120);
+      if (text.length < 4) return { ok: true, suggestions: [] };
+      const off = (await this.env.AURA_KV.get("config:places:off").catch(() => null)) ||
+                  (await this.env.AURA_KV.get("config:places:autocomplete:off").catch(() => null));
+      if (off) return { ok: true, suggestions: [], off: true, say: "Address suggestions are switched off - type the full address." };
+      const key = await getSecret(this.env, "google_maps");
+      if (!key) return { ok: true, suggestions: [], off: true, say: "Address suggestions are not set up." };
+      const u = "https://maps.googleapis.com/maps/api/place/autocomplete/json?types=address&input=" +
+        encodeURIComponent(text) + "&key=" + encodeURIComponent(key) +
+        (token ? "&sessiontoken=" + encodeURIComponent(String(token).slice(0, 64)) : "");
+      const r = await fetch(u);
+      const j = await r.json().catch(() => ({}));
+      if (j.status && j.status !== "OK" && j.status !== "ZERO_RESULTS")
+        return { ok: false, error: "LOOKUP_FAILED", status: j.status, say: "Address lookup is not answering - type the full address." };
+      return { ok: true, suggestions: (j.predictions || []).slice(0, 6).map(p => ({ text: p.description, id: p.place_id })) };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // ══ AN ARTIST'S PUBLIC PAGE (2026-11-21) ══════════════════════════════════════════════════
+  // tattooartist.world/a/<pta>. Who they are, where they work (each shop linked to its own page),
+  // their Instagram, and their work in the order THEY set. Public by nature - this is the page
+  // they hand out. Never their email, phone or street address unless they chose to show it.
+  async artistPublic(who) {
+    try {
+      const id = String(who || "").replace(/[^A-Za-z0-9_]/g, "");
+      const db = this.env.AURA_MEMORY;
+      const row = await db.prepare("SELECT id, name, type FROM pta_entities WHERE id = ?").bind(id).first().catch(() => null);
+      if (!row || row.type === "business") return { ok: false, error: "NO_SUCH_ARTIST", say: "There is no artist at this address." };
+      const prof = await artistProfile(this.env, id);
+      const shops = await db.prepare("SELECT x.id, x.name, x.slug FROM pta_edges e JOIN pta_entities x ON x.id = e.to_id " +
+        "WHERE e.from_id = ? AND e.edge_type = 'works_at' AND e.state != 'revoked' ORDER BY e.created_at").bind(id).all().catch(() => null);
+      let pieces = [];
+      try {
+        const r = await processCommand("PORTFOLIO LIST " + id, this.env, true);
+        const p = (r && r.payload) ? r.payload : r;
+        pieces = (p?.pieces || []).map(x => ({ id: x.id, url: x.url, caption: x.caption || null }));
+      } catch {}
+      return { ok: true, pta: id, name: row.name || "Artist",
+        city: prof.city || null, instagram: prof.instagram || null, bio: prof.bio || null,
+        website: prof.website || null, address: prof.show_address ? (prof.address || null) : null,
+        shops: (shops?.results || []).map(s => ({ id: s.id, name: s.name, page: s.slug ? bizUrl(s.slug) : null })),
+        pieces, page: "https://" + ARTIST_WORLD + "/a/" + id };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }
@@ -82011,7 +82135,7 @@ export class PublicEntry extends WorkerEntrypoint {
       const clean = (v) => String(v == null ? "" : v).replace(/:::/g, " ").replace(/[\r\n]+/g, " ").trim().slice(0, 120);
       const act = String(action || "").toUpperCase();
       const cmd = act === "START"
-        ? "ARTIST_JOIN START " + clean(b.email).replace(/\s+/g, "") + " ::: " + clean(b.name) + " ::: " + clean(b.city) + " ::: " + clean(b.instagram)
+        ? "ARTIST_JOIN START " + clean(b.email).replace(/\s+/g, "") + " ::: " + clean(b.name) + " ::: " + clean(b.city) + " ::: " + clean(b.instagram) + " ::: " + clean(b.address)
         : act === "CONFIRM" ? "ARTIST_JOIN CONFIRM " + String(b.token || "").replace(/[^a-f0-9]/g, "").slice(0, 64) : null;
       if (!cmd) return { ok: false, error: "UNKNOWN_ACTION" };
       const r = await processCommand(cmd, this.env, true);
@@ -82043,6 +82167,32 @@ export class PublicEntry extends WorkerEntrypoint {
         const r = await processCommand("ARTIST_JOIN ASK " + me.pta + " " + String(a.shop || "").replace(/[^A-Za-z0-9_]/g, "") +
           " ::: " + String(a.message || "").replace(/:::/g, " ").slice(0, 300), this.env, true);
         return (r && r.payload) ? r.payload : r;
+      }
+      // ══ THEIR OWN PAGE, EDITED ON THE PAGE (2026-11-21) ═════════════════════════════════
+      // Pictures and details belong to the signed-in artist only - `who` is never taken from the
+      // request, so nobody can rearrange somebody else's work by changing a field.
+      if (w === "pieces") { const r = await processCommand("PORTFOLIO LIST " + me.pta, this.env, true); return (r && r.payload) ? r.payload : r; }
+      if (w === "piece_move") { const r = await processCommand("PORTFOLIO MOVE " + me.pta + " " + String(a.piece || "").replace(/[^A-Za-z0-9_]/g, "") + " " + (parseInt(a.to, 10) || 0), this.env, true); return (r && r.payload) ? r.payload : r; }
+      if (w === "piece_remove") { const r = await processCommand("PORTFOLIO REMOVE " + me.pta + " " + String(a.piece || "").replace(/[^A-Za-z0-9_]/g, ""), this.env, true); return (r && r.payload) ? r.payload : r; }
+      if (w === "profile") {
+        const f = {};
+        const t = (v, n) => String(v == null ? "" : v).replace(/[\r\n]+/g, " ").trim().slice(0, n);
+        if (a.city !== undefined) f.city = t(a.city, 80);
+        if (a.instagram !== undefined) f.instagram = t(a.instagram, 40).replace(/^@/, "").replace(/[^A-Za-z0-9_.]/g, "");
+        if (a.bio !== undefined) f.bio = t(a.bio, 600);
+        if (a.website !== undefined) f.website = t(a.website, 200);
+        if (a.address !== undefined) f.address = t(a.address, 200);
+        if (a.show_address !== undefined) f.show_address = !!a.show_address;
+        if (a.name !== undefined && t(a.name, 80)) {
+          await this.env.AURA_MEMORY.prepare("UPDATE pta_entities SET name = ? WHERE id = ?").bind(t(a.name, 80).replace(/"/g, ""), me.pta).run();
+        }
+        if (Object.keys(f).length) {
+          await selfGrant(this.env, me.pta);
+          const r = await processCommand("PTA_REMEMBER " + me.pta + " CONTEXT " + JSON.stringify({ ...f, profile: true, event_type: "CONTEXT" }), this.env, true);
+          const p = (r && r.payload) ? r.payload : r;
+          if (p && p.ok === false) return { ok: false, error: p.error || "NOT_SAVED", say: "That did not save." };
+        }
+        return { ok: true, saved: Object.keys(f).concat(a.name !== undefined ? ["name"] : []) };
       }
       if (w !== "reply") return { ok: false, error: "UNKNOWN_ACTION" };
       const ps = String(a.answer || "").toUpperCase();

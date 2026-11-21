@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.126-2026-11-21-any-start-from-now";
+const BUILD = "aura-core-v9.999.127-2026-11-21-one-chair-everywhere-styles-tapped";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -5314,6 +5314,37 @@ function normBooking(b) {
   if (b.walkin_minutes != null) { const w = Math.round(Number(b.walkin_minutes)); if (!(w >= 15 && w <= 480)) return null; out.walkin_minutes = w; }
   return Object.keys(out).length ? out : null;
 }
+// ══ WHAT THEY DO, TAPPED - NEVER TYPED (2026-11-21, Aaron: "they can just tap what they do ... so we
+// don't take someone typing in misspellings") ═══════════════════════════════════════════════════════
+// Every name a shop or artist can pick is one of the 41 styles customers already see on Ink It
+// (STYLE_41) or one of these kinds of work - so a customer and a shop say the same word for the
+// same thing. Anything else sent is dropped, not stored.
+const WORK_CHOICES = ["Custom designs", "Flash", "Cover-ups", "Lettering & script", "Portraits", "Touch-ups", "Piercing"];
+function cleanStyles(list) {
+  const known = new Map([...STYLE_41, ...WORK_CHOICES].map(x => [x.toLowerCase(), x]));
+  const out = [];
+  for (const v of (Array.isArray(list) ? list : [])) {
+    const k = known.get(String(v || "").trim().toLowerCase());
+    if (k && !out.includes(k)) out.push(k);
+  }
+  return out.slice(0, 48);
+}
+// What a shop chose for itself, as it chose it - the booking choices it actually saved (no defaults
+// filled in, so "walk-ins welcome" is only said by a shop that said it) and its styles.
+async function bizChoices(env, bizId) {
+  const out = { booking: null, styles: null };
+  try {
+    const stub = env.PTA_DO.get(env.PTA_DO.idFromName(bizId));
+    const r = await stub.fetch(new Request("http://do", { method: "POST",
+      body: JSON.stringify({ method: "getState", params: [] }) }));
+    const j = await r.json();
+    for (const c of ((j?.pta?.chain) || [])) {
+      if (c?.data?.booking && typeof c.data.booking === "object") out.booking = Object.assign(out.booking || {}, c.data.booking);
+      if (Array.isArray(c?.data?.styles)) out.styles = cleanStyles(c.data.styles);
+    }
+  } catch {}
+  return out;
+}
 async function bizBooking(env, bizId) {
   const out = JSON.parse(JSON.stringify(BOOKING_DEFAULTS));
   try {
@@ -5346,6 +5377,7 @@ async function artistProfile(env, pta) {
       if (!(d.profile === true || d.event_type === "CONTEXT")) continue;
       for (const k of ["city", "instagram", "bio", "website", "address", "show_address"])
         if (d[k] !== undefined && d[k] !== null && d[k] !== "") out[k] = d[k];
+      if (Array.isArray(d.styles)) out.styles = cleanStyles(d.styles);   // tapped, from the one list
     }
   } catch {}
   return out;
@@ -30769,7 +30801,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           own_photos: ownPhotos.length, maps_url: dp.maps_url,
           about: (understanding && understanding.what_it_is) || dp.about ||
                  (own && own.service && own.service.offers) || null,
-          offerings: (understanding && understanding.offerings) || null,
+          // What they do: what the shop TAPPED, when it has (Your business), else what was read about
+          // them. "Walk-ins welcome" only when the shop itself switched walk-ins on.
+          offerings: await (async () => {
+            const ch = pta ? await bizChoices(env, pta) : null;
+            const base = (ch && ch.styles && ch.styles.length) ? ch.styles.slice()
+              : ((understanding && understanding.offerings) || null);
+            if (ch && ch.booking && ch.booking.walkins === true) return [...(base || []), "Walk-ins welcome"];
+            return base;
+          })(),
           serves: (understanding && understanding.serves) || null,
           claim_url: pta ? null : "https://tattooparlors.world/b/" + encodeURIComponent(obId),
           // A tattoo shop's public page is on the consumer doorway, never on the business layer.
@@ -33768,10 +33808,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // hours check to tell a closed day from a full one - two different sentences to a client.
         const avOpenOnly = /\bopen_only:\s*1\b/i.test(rest);
         const taken = [], avFloats = [], avOthersTaken = {};
+        // `skip:<booking>` leaves one booking out - the one being moved, which must not collide with
+        // its own old time (MEASURED 2026-11-21: 5:00 -> 5:30 refused "somebody already has that time").
+        const avSkip = (rest.match(/\bskip:(edge_[a-f0-9]+)/i) || [])[1] || null;
         const bk = avOpenOnly ? null : await db.prepare(
-          "SELECT context FROM pta_edges WHERE to_id = ? AND edge_type = 'books' AND state != 'revoked'"
+          "SELECT id, context FROM pta_edges WHERE to_id = ? AND edge_type = 'books' AND state != 'revoked'"
         ).bind(avBiz).all().catch(() => null);
         for (const r of (bk?.results || [])) {
+          if (avSkip && r.id === avSkip) continue;
           let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
           // ══ OCCUPANCY READS ONE SHAPE (fixed 2026-08-18) ═══════════════════════════════════
           // This read `c.when` and `c.with` - the OLD BOOKING shape. `APPOINTMENT` writes `start`
@@ -34021,7 +34065,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // and a slot already taken by somebody looked like the shop being closed.
       // `with:` narrows to that person, which is what makes the person layer real at the door
       // rather than only in the listing.
-      const hoursSay = async (bizId, when, mins, who) => {
+      const hoursSay = async (bizId, when, mins, who, skipUid) => {
         const target = new Date(when);
         if (isNaN(target)) return { ok: false, why: "BAD_TIME" };
         // Ask far enough ahead to actually contain the date. 60 is the command's own ceiling.
@@ -34044,7 +34088,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // booking page's notice) refused a walk-in starting in 20 minutes. A booking being made is
         // checked on a 5-minute grid, from this minute.
         const ask = (extra) => "AVAILABILITY " + bizId + (who ? " with:" + who : "") +
-          " days:" + Math.min(Math.max(need, 1), 60) + " slot:" + slotMins + " step:5 now:1" + (extra || "");
+          " days:" + Math.min(Math.max(need, 1), 60) + " slot:" + slotMins + " step:5 now:1" +
+          (skipUid ? " skip:" + skipUid : "") + (extra || "");
         const av = await processCommand(ask(""), env, true);
         const avp = (av && av.payload) ? av.payload : av;
         if (!avp?.ok) return { ok: false, why: "HOURS_UNKNOWN", detail: avp?.error || null };
@@ -34202,6 +34247,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
               if (c.status === "CANCELLED") continue;
               if (f.artist && c.artist && c.artist !== f.artist) continue;
+              // An "anyone" booking takes one chair: whether it leaves this artist free was decided by
+              // AVAILABILITY in hoursSay above (the same rule the open times use). Blocks still block.
+              if (f.artist && !c.artist && c.kind !== "block") continue;
               const s2 = new Date(c.start || c.when).getTime();
               const e2 = s2 + (Number(c.minutes) || 120) * 60000;
               if (start.getTime() < e2 && s2 < end.getTime()) return r.id;
@@ -34283,7 +34331,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const mvBiz = ap.business || c.business;
             const mvEnd = new Date(d.getTime() + (Number(c.minutes) || 120) * 60000);
             // Same function NEW uses, so the two doors cannot drift apart again.
-            const mhs = await hoursSay(mvBiz, d, Number(c.minutes) || 120, c.artist || null);
+            const mhs = await hoursSay(mvBiz, d, Number(c.minutes) || 120, c.artist || null, uid);
             if (!mhs.ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: mhs.why,
               asked_for: d.toISOString(), business: mvBiz, detail: mhs.detail || undefined,
               say: mhs.why === "ARTIST_NOT_WORKING" ? ((await apNameOf(c.artist)) + " isn't working then.")
@@ -34296,12 +34344,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // And nobody else's chair. Same artist, overlapping window, excluding this appointment.
             try {
               const others = await env.AURA_MEMORY.prepare(
-                "SELECT id, context FROM pta_edges WHERE to_id = ? AND edge_type = 'booking' " +
+                // 'books' - the edge a booking actually is. This read 'booking', matched nothing, and the
+                // overlap test never ran (MEASURED 2026-11-21).
+                "SELECT id, context FROM pta_edges WHERE to_id = ? AND edge_type = 'books' " +
                 "AND state != 'revoked' AND id != ?").bind(mvBiz, uid).all();
               for (const o of (others?.results || [])) {
                 let oc = {}; try { oc = JSON.parse(o.context || "{}"); } catch {}
                 if (oc.status === "CANCELLED") continue;
                 if (c.artist && oc.artist && oc.artist !== c.artist) continue;
+                if (c.artist && !oc.artist && oc.kind !== "block") continue;   // one chair - hoursSay decided
                 const os = Date.parse(oc.start || oc.when || ""), oe = Date.parse(oc.end || "") ||
                   (os + (Number(oc.minutes) || 120) * 60000);
                 if (isFinite(os) && d.getTime() < oe && mvEnd.getTime() > os) {
@@ -34343,7 +34394,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               const rStart = new Date(c.start);
               const rEnd = new Date(rStart.getTime() + (Number(c.minutes) || 120) * 60000);
               // The same `hoursSay` NEW uses, asked about the NEW artist.
-              const hs2 = await hoursSay(rBiz, rStart, Number(c.minutes) || 120, val);
+              const hs2 = await hoursSay(rBiz, rStart, Number(c.minutes) || 120, val, uid);
               if (!hs2.ok) return { cmd: "APPOINTMENT", payload: { ok: false,
                 error: hs2.why, uid, artist: val, asked_for: c.start,
                 detail: hs2.detail || undefined, grid_starts: hs2.grid_starts || undefined,
@@ -34358,12 +34409,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               // branch runs, asked about the artist we are moving TO.
               try {
                 const others = await env.AURA_MEMORY.prepare(
-                  "SELECT id, context FROM pta_edges WHERE to_id = ? AND edge_type = 'booking' " +
+                  "SELECT id, context FROM pta_edges WHERE to_id = ? AND edge_type = 'books' " +
                   "AND state != 'revoked' AND id != ?").bind(rBiz, uid).all();
                 for (const o of (others?.results || [])) {
                   let oc = {}; try { oc = JSON.parse(o.context || "{}"); } catch {}
                   if (oc.status === "CANCELLED") continue;
                   if (oc.artist && oc.artist !== val) continue;
+                  if (!oc.artist && oc.kind !== "block") continue;   // one chair - hoursSay decided
                   const os = Date.parse(oc.start || oc.when || "");
                   const oe = Date.parse(oc.end || "") || (os + (Number(oc.minutes) || 120) * 60000);
                   if (isFinite(os) && rStart.getTime() < oe && rEnd.getTime() > os)
@@ -34776,7 +34828,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // it is an hour out. The zone is the fact; the offset is derived per instant.
       const FIELDS = { about: "SERVICE", hours: "HOURS", services: "SERVICE",
                        phone: "CONTACT", email: "CONTACT", address: "CONTACT",
-                       timezone: "TIMEZONE", booking: "SETTINGS" };
+                       timezone: "TIMEZONE", booking: "SETTINGS", styles: "SERVICE" };
       if (beField === "timezone") {
         // Validated by asking the runtime to use it - the only honest test of an IANA name.
         try { new Intl.DateTimeFormat("en-US", { timeZone: beVal }).format(new Date()); }
@@ -34785,7 +34837,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           what_to_do: "Use an IANA name like America/Los_Angeles, America/New_York or Europe/London." } }; }
       }
       if (!beBiz || !FIELDS[beField]) return { cmd: "BUSINESS_EDIT", payload: { ok: false,
-        error: "Usage: BUSINESS_EDIT <business> <about|hours|services|phone|email|address|timezone|booking> ::: <value>" } };
+        error: "Usage: BUSINESS_EDIT <business> <about|hours|services|phone|email|address|timezone|booking|styles> ::: <value>" } };
       if (!/^pta_|^ent_/.test(beBiz)) {
         const sl = await processCommand("SLUG GET " + beBiz, env, true);
         const sp = (sl && sl.payload) ? sl.payload : sl;
@@ -34810,8 +34862,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (!beBooking) return { cmd: "BUSINESS_EDIT", payload: { ok: false, error: "BAD_BOOKING_SETTINGS",
             what_to_do: 'Send {"lengths":[{"label":"2 hours","minutes":120}],"step":30,"walkins":true,"walkin_minutes":60}' } };
         }
+        let beStyles = null;
+        if (beField === "styles") {
+          try { beStyles = cleanStyles(JSON.parse(beVal)); } catch { beStyles = null; }
+          if (!beStyles) return { cmd: "BUSINESS_EDIT", payload: { ok: false, error: "BAD_STYLES",
+            what_to_do: 'Send a list of names from STYLE_41 or WORK_CHOICES: ["Fine Line","Cover-ups"]' } };
+        }
         const data = beField === "about" || beField === "services" ? { offers: beVal }
           : beField === "booking" ? { booking: beBooking }
+          : beField === "styles" ? { styles: beStyles }
           : beField === "timezone" ? { timezone: beVal }
           : beField === "hours" ? (beWeekly ? { weekly: beWeekly } : { hours: beVal })
           : { [beField]: beVal };
@@ -35614,6 +35673,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           name: list.find(b => b.id === pick)?.name || null,
           // The shop's own booking choices - lengths, start step, walk-ins (bizBooking).
           booking: await bizBooking(env, pick),
+          // What they do, tapped from one list (cleanStyles) - and the list itself.
+          styles: (await bizChoices(env, pick)).styles || [],
+          style_choices: { styles: STYLE_41, work: WORK_CHOICES },
           business_type: type,
           nav: NAV[type] || NAV._default,
           // ══ THE WORK THAT ARRIVED WHILE THEY WERE OUT (2026-08-25) ══════════════════════════
@@ -82376,6 +82438,7 @@ export class PublicEntry extends WorkerEntrypoint {
       return { ok: true, pta: id, name: row.name || "Artist",
         city: prof.city || null, instagram: prof.instagram || null, bio: prof.bio || null,
         website: prof.website || null, address: prof.show_address ? (prof.address || null) : null,
+        styles: prof.styles || [], style_choices: { styles: STYLE_41, work: WORK_CHOICES },
         shops: (shops?.results || []).map(s => ({ id: s.id, name: s.name, page: s.slug ? bizUrl(s.slug) : null })),
         pieces, page: "https://" + ARTIST_WORLD + "/a/" + id };
     } catch (e) {
@@ -82439,6 +82502,7 @@ export class PublicEntry extends WorkerEntrypoint {
         if (a.website !== undefined) f.website = t(a.website, 200);
         if (a.address !== undefined) f.address = t(a.address, 200);
         if (a.show_address !== undefined) f.show_address = !!a.show_address;
+        if (a.styles !== undefined) f.styles = cleanStyles(a.styles);
         if (a.name !== undefined && t(a.name, 80)) {
           await this.env.AURA_MEMORY.prepare("UPDATE pta_entities SET name = ? WHERE id = ?").bind(t(a.name, 80).replace(/"/g, ""), me.pta).run();
         }

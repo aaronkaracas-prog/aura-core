@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.132-2026-11-21-passed-gets-other-shops";
+const BUILD = "aura-core-v9.999.133-2026-11-21-other-shops-nearby";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -81988,9 +81988,25 @@ export class PublicEntry extends WorkerEntrypoint {
       if (!place || !place.locality) return [];
       const ex = new Set([req.shop, found && found.key, found && found.pta, ...(exclude || [])].filter(Boolean));
       const rows = (await this.env.AURA_MEMORY.prepare(
-        "SELECT id, name, locality, region, website, understanding, claimed_at, pta FROM cg_business " +
+        "SELECT id, name, locality, region, website, understanding, claimed_at, pta, lat, lng FROM cg_business " +
         "WHERE industry = 'tattoo' AND lower(locality) = ?" + (place.region ? " AND region = ?" : "") + " LIMIT 300")
         .bind(...(place.region ? [place.locality.toLowerCase(), place.region] : [place.locality.toLowerCase()])).all())?.results || [];
+      // ══ A SMALL TOWN HAS FEW SHOPS (v9.999.133, 2026-11-21) ══ MEASURED: a pass in Malibu offered one shop - the only
+      // other crawled shop in that town. Fewer than three in the city: the rest come from the closest shops within 40 km
+      // of the middle of that city's own shops (a signed-up shop has an address, not a map position).
+      const pts = rows.filter(x => isFinite(Number(x.lat)) && isFinite(Number(x.lng)) && x.lat !== null && x.lng !== null);
+      if (rows.filter(x => !ex.has(x.id) && !(x.pta && ex.has(x.pta))).length < 3 && pts.length) {
+        const la = pts.reduce((a, x) => a + Number(x.lat), 0) / pts.length, ln = pts.reduce((a, x) => a + Number(x.lng), 0) / pts.length;
+        const dLat = 40 / 111, dLng = 40 / (111 * Math.max(0.15, Math.cos(la * Math.PI / 180)));
+        const near = (await this.env.AURA_MEMORY.prepare(
+          "SELECT id, name, locality, region, website, understanding, claimed_at, pta, lat, lng FROM cg_business " +
+          "WHERE industry = 'tattoo' AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? LIMIT 300")
+          .bind(la - dLat, la + dLat, ln - dLng, ln + dLng).all())?.results || [];
+        const have = new Set(rows.map(x => x.id));
+        const km = (x) => { const dy = (x.lat - la) * 111, dx = (x.lng - ln) * 111 * Math.cos(la * Math.PI / 180); return Math.sqrt(dx * dx + dy * dy); };
+        near.filter(x => !have.has(x.id)).map(x => ({ ...x, _km: km(x) })).filter(x => x._km <= 40)
+          .sort((a, b) => a._km - b._km).slice(0, 40).forEach(x => rows.push(x));
+      }
       const skip = new Set(["and", "the", "tattoo", "tattoos", "style", "with", "black", "grey", "gray", "color", "colour"]);
       const want = String(req.style || "").toLowerCase().split(/[^a-z]+/).filter(w => w.length > 2 && !skip.has(w));
       return rows.filter(x => !ex.has(x.id) && !(x.pta && ex.has(x.pta))).map(x => {
@@ -82000,7 +82016,8 @@ export class PublicEntry extends WorkerEntrypoint {
         const hits = want.filter(w => hay.includes(w)).length;
         return { id: x.id, name: x.name, where: [x.locality, x.region].filter(Boolean).join(", "),
           styles: styles.slice(0, 3), claimed: !!x.claimed_at, matches_style: hits > 0,
-          score: hits * 10 + (x.claimed_at ? 5 : 0) + (styles.length ? 1 : 0) + (x.website ? 1 : 0) };
+          score: hits * 10 + (x.claimed_at ? 5 : 0) + (styles.length ? 1 : 0) + (x.website ? 1 : 0) +
+            (x._km == null ? 3 : -Math.min(3, x._km / 10)) };
       }).sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name))).slice(0, 3)
         .map(({ score, ...x }) => ({ ...x, link: "https://inkit.world/?shop=" + encodeURIComponent(x.id) +
           (req.design ? "&open=" + encodeURIComponent(req.design) : "") }));
@@ -83159,7 +83176,7 @@ export class PublicEntry extends WorkerEntrypoint {
               toldThem = !!e?.ok;
             }
             return { ...d, told_customer: toldThem, others_offered: others.map(o => o.name),
-              say: toldThem ? "Passed. They have been told" + (others.length ? " and offered " + others.length + " other shops" : "") +
+              say: toldThem ? "Passed. They have been told" + (others.length ? " and offered " + others.length + (others.length === 1 ? " other shop" : " other shops") : "") +
                 ", and their design is still theirs." : "Passed. There was no email to tell them on." };
           }
           if (!a.when) return { ok: false, error: "NEED_TIME", say: "Pick one of the open times." };

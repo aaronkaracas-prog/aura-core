@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.118-2026-11-21-shop-hears-about-new-work";
+const BUILD = "aura-core-v9.999.119-2026-11-21-addon-two-chat-model";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -20961,6 +20961,8 @@ async function successionGate(env) {
             const tr = await processCommand("THREAD START " + _sendUrl + " " + JSON.stringify({ prompt: p.prompt, action: "auto",
               ...(_thImgs ? { images: _thImgs } : {}),
               ...(["low", "medium", "high", "auto"].includes(String(p.quality || "")) ? { quality: String(p.quality) } : {}),
+              // (v9.999.119) a caller may name the image model (only the add-on does); unnamed, THREAD keeps config:edit:model
+              ...(/^gpt-image/i.test(String(p.image_model || "")) ? { image_model: String(p.image_model) } : {}),
               ...(/^\d{3,4}x\d{3,4}$/.test(String(p.size || "")) ? { size: String(p.size) } : {}) }), env, true);
             tp = (tr && tr.payload) ? tr.payload : tr;
             if (tp && tp.ok && tp.image) break;
@@ -75565,6 +75567,18 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
           // cards when it comes back (eightCards); a pick is cut off it, never redrawn, and a change after the pick is ONE picture on the card
           // they picked (v9.854's change path, unchanged). The page size: config:source:addon:size (empty = 2304x3456).
           let _addonOne = false, _oneParent = null, _addonSheet = false, _askedFor = null, _boxParent = null;
+          // ══ AN ADD-ON GOES THROUGH THE CHAT MODEL, TWO VERSIONS (v9.999.119, 2026-11-21, Aaron: "lock it in - when someone does an add on we only
+          // give back two different versions" / "we're calling the chat model ... not to make tattoos and everything else") ═══ PROVEN by command
+          // 08:13-08:20 (THREAD START, gpt-6.1-sol writing the brief, gpt-image-2.5-flare at medium, 2048x1536): four clean photos - straight-arm
+          // roses (img_mwqludn0b9th), koi shoulder (img_mwqlv1iwi1bz), dragon back (img_mwqlvq4g5bdq), calf (img_mwqlwfmjut19) - every body
+          // natural, every tattoo kept, crisp new lines, two clearly different ideas. MEASURED on the way: the image model alone on the bent arm
+          // invented an upper arm (07:28 A/B, img_mwqk6xvtguwx, img_mwqk7flwyqep); four on one page through the chat model came back as mush -
+          // each tattoo too few pixels (08:05-08:08, img_mwqlj1v60lag, img_mwqlqens8ved). ONLY the first add-on drawing on their photo (their
+          // words, a "Show me:" tap, or Imagine ideas for me) goes this way. A change on a card (Fine-tune), a green box, a size from her place
+          // buttons, cover-ups and new tattoos are untouched. Setting: config:source:addon:route = direct puts it back on the image model alone
+          // with the v9.999.109 sentences. Sentences: config:frame:addon:own_chat ("____" their words) and config:frame:addon:own_wild_chat.
+          let _addonChat = false, _addonRoute = "thread";
+          try { if (String((await env.AURA_KV.get("config:source:addon:route")) || "").trim().toLowerCase() === "direct") _addonRoute = "direct"; } catch {}
           if (String(jobNow || "") === "add" && _ideasGrid && !_addonPoss && !_designGrid && parentId === refDesign) {
             const _ownW = _addonOwnWords ? String(_addonOwnWords).replace(/[\s.]+$/, "").slice(0, 600) : "";
             if (_addonMore && _ownW) {
@@ -75629,14 +75643,23 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               // own_wild_two, size_two, size_wild_two - new names, so no older four-picture setting can stand in for them.
               let _boxOwn = ""; try { _boxOwn = String((await talkStateGet(env, me, ["addon_box"])).addon_box || "").trim(); } catch {}
               if (!_sizeSent && !_boxOwn) {   // a green box they marked keeps its own proven words (v9.894)
-                let _pw = _ownW
-                  ? "This is my current tattoo. Here is what I want: ____. Do it in the same style as my tattoo. Keep my existing tattoo exactly as it is. Show me 2 different versions of this, side by side on one page, with a wide black gap between them."
-                  : "This is my current tattoo. Add to it, in the same style as my tattoo. Keep my existing tattoo exactly as it is. Show me 2 different ideas for the new work, side by side on one page, with a wide black gap between them.";
-                try { const _k = String((await env.AURA_KV.get(_ownW ? "config:frame:addon:own_two" : "config:frame:addon:own_wild_two")) || "").trim(); if (_ownW ? _k.includes("____") : _k) _pw = _k; } catch {}
+                const _chatNow = _addonRoute === "thread";
+                let _pw = _chatNow
+                  ? (_ownW
+                    ? "This is my current tattoo. I really like the style. Here is what I want: ____. Show me 2 versions side by side on one page, with a wide black gap between them. Make the first one closest to my idea, and the other one a completely different variation."
+                    : "This is my current tattoo. I really like the style. Add to it. Show me 2 completely different ideas side by side on one page, with a wide black gap between them.")
+                  : (_ownW
+                    ? "This is my current tattoo. Here is what I want: ____. Do it in the same style as my tattoo. Keep my existing tattoo exactly as it is. Show me 2 different versions of this, side by side on one page, with a wide black gap between them."
+                    : "This is my current tattoo. Add to it, in the same style as my tattoo. Keep my existing tattoo exactly as it is. Show me 2 different ideas for the new work, side by side on one page, with a wide black gap between them.");
+                const _pwKey = _chatNow ? (_ownW ? "config:frame:addon:own_chat" : "config:frame:addon:own_wild_chat") : (_ownW ? "config:frame:addon:own_two" : "config:frame:addon:own_wild_two");
+                try { const _k = String((await env.AURA_KV.get(_pwKey)) || "").trim(); if (_ownW ? _k.includes("____") : _k) _pw = _k; } catch {}
                 // her idea they tapped ("Show me: a raven ...") is a thing - "Add to it, the same way, with a raven ..."
-                if (_ownW && /^\s*show me:/i.test(String(said || ""))) _pw = _pw.replace(" Here is what I want: ____.", " Add to it with ____.");
+                // (v9.999.119) through the chat model the tap is their own sentence from the Tell screen ("to add new flowers, as a full sleeve")
+                // or her idea ("a raven ...") - "I want ____."
+                if (_ownW && /^\s*show me:/i.test(String(said || ""))) _pw = _pw.replace(" Here is what I want: ____.", _chatNow ? " I want ____." : " Add to it with ____.");
                 _pw = _pw.replace("____", _ownW.replace(/^(?:show me:?\s*)/i, "").replace(/^(?:[A-Z](?=[a-z])|An?(?= ))/, (c) => c.toLowerCase()));
-                if (_addStyle1) _pw = _pw.replace("in the same style as my tattoo", "in the " + _addStyle1 + " style");
+                if (_addStyle1) _pw = _chatNow ? _pw.replace("I really like the style.", "Do it in the " + _addStyle1 + " style.") : _pw.replace("in the same style as my tattoo", "in the " + _addStyle1 + " style");
+                _addonChat = _chatNow;
                 _sentNow = _pw; _sizeSent = true; _oFrom = (_ownW ? "own" : "own_wild") + (_addStyle1 ? "+style" : "");
                 console.log("[TURN:IDEAS] their own words, no place tapped - the plain sentence, no zoom-out, no framing lines" + (me ? " · who=" + me : ""));
               }
@@ -75735,6 +75758,11 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
               _canvasNow = _addonTwo ? { width: 2048, height: 1536 } : { width: 2304, height: 3456 };
               try { const _gm = String((await env.AURA_KV.get(_addonTwo ? "config:source:addon:size2" : "config:source:addon:size")) || "").trim().match(/^(\d{3,4})x(\d{3,4})$/);
                     if (_gm) _canvasNow = { width: parseInt(_gm[1], 10), height: parseInt(_gm[2], 10) }; } catch {}
+            }
+            // (v9.999.119) the chat model looks at their photo and writes the image model its brief - the page size goes as the image tool's size
+            if (_addonChat && _addonTwo && !_oneParent && !_boxParent && _canvasNow) {
+              _viaNow = "thread"; _sizeNow = _canvasNow.width + "x" + _canvasNow.height;
+              console.log("[TURN:IDEAS] add-on through the chat model (config:source:addon:route) - it reads their photo and writes the brief · " + _sizeNow + (me ? " · who=" + me : ""));
             }
             let _m1 = ""; try { _m1 = String((await env.AURA_KV.get("config:source:addon:model")) || "").trim(); } catch {}
             _modelNow = /^gpt-image/i.test(_m1) ? _m1 : await sheet8Model(env);
@@ -76001,6 +76029,7 @@ let _refHer = null;   // (v9.878) her own first sentence about their photo, kept
                   ...(_canvasNow ? _canvasNow : {}),
                   // THE IDEAS PICTURE GOES THE CHATGPT WAY (v9.596): a chat model reads their photo and writes the brief.
                   ...(_viaNow ? { via: _viaNow } : {}),
+                  ...(_viaNow === "thread" && _addonChat && _modelNow ? { image_model: _modelNow } : {}),   // (v9.999.119) the add-on's own image model
                   ...(_qualNow ? { quality: _qualNow } : {}),
                   ...(_modelNow ? { model: _modelNow } : {}), ...(_rawNow ? { raw: true } : {}),
                   ...(_sizeNow ? { size: _sizeNow } : {}) }), env, true);

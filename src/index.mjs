@@ -116,7 +116,7 @@ function rpFrom(origin) {
 }
 
 // (v9.999.24, 2026-11-14) no code change - the picture store aura-images is now bound as AURA_IMAGES in wrangler.toml
-const BUILD = "aura-core-v9.999.127-2026-11-21-one-chair-everywhere-styles-tapped";
+const BUILD = "aura-core-v9.999.128-2026-11-21-artist-edits-always-land";
 // ══ EVERY SUBJECT CARD HAS ITS OWN FIRST QUESTION (v9.960, 2026-11-11, Aaron: "we're on animals she should say oh are we talking
 // about your current pet, a past pet, a pet you like ... on Zodiac are you talking about your sign, another sign ... there's a generic
 // good answer for her to come back with under every section") ═══ Create My Own on a subject card (page v870 sends the card's name as
@@ -5375,8 +5375,12 @@ async function artistProfile(env, pta) {
       const d = c?.data || {};
       // Only what THEY said about themselves: the signup CONTEXT and their own edits (profile:true).
       if (!(d.profile === true || d.event_type === "CONTEXT")) continue;
-      for (const k of ["city", "instagram", "bio", "website", "address", "show_address"])
-        if (d[k] !== undefined && d[k] !== null && d[k] !== "") out[k] = d[k];
+      // An empty value CLEARS the field - otherwise an artist could never take down a website, an
+      // address or a line about themselves once it was there (MEASURED 2026-11-21).
+      for (const k of ["city", "instagram", "bio", "website", "address", "show_address"]) {
+        if (d[k] === "") delete out[k];
+        else if (d[k] !== undefined && d[k] !== null) out[k] = d[k];
+      }
       if (Array.isArray(d.styles)) out.styles = cleanStyles(d.styles);   // tapped, from the one list
     }
   } catch {}
@@ -82508,7 +82512,10 @@ export class PublicEntry extends WorkerEntrypoint {
         }
         if (Object.keys(f).length) {
           await selfGrant(this.env, me.pta);
-          const r = await processCommand("PTA_REMEMBER " + me.pta + " CONTEXT " + JSON.stringify({ ...f, profile: true, event_type: "CONTEXT" }), this.env, true);
+          // `at` makes every save its own event. Without it a save identical to an EARLIER one (going
+          // back to a style list or a city they had before) hashed the same, was treated as a replay
+          // and skipped - while still answering "saved" (MEASURED 2026-11-21).
+          const r = await processCommand("PTA_REMEMBER " + me.pta + " CONTEXT " + JSON.stringify({ ...f, profile: true, event_type: "CONTEXT", at: new Date().toISOString() }), this.env, true);
           const p = (r && r.payload) ? r.payload : r;
           if (p && p.ok === false) return { ok: false, error: p.error || "NOT_SAVED", say: "That did not save." };
         }
